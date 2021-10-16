@@ -1,0 +1,183 @@
+- sql: |
+    select * from emp a where EMPNO in (select DEPTNO from dept b  )
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[00-27],dept_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (`EMPNO` IN (SELECT `DEPTNO` FROM `dept` AS `dept`))")
+
+- sql: |
+    select * from emp a where EMPNO in (select DEPTNO from dept b  ) and empno=3
+
+  plan: |
+    LogicalView(tables="optest_0000.emp_03,dept_03", sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE ((`EMPNO` = 3) AND (`EMPNO` IN (SELECT * FROM (SELECT `DEPTNO` FROM `dept` AS `dept`) AS `t` WHERE (`DEPTNO` = 3))))")
+
+- sql: |
+    select * from emp where EMPNO in(select EMPNO from emp) and ename in (select ename from emp)
+
+  plan: |
+    LogicalSemiJoin(condition="ENAME = ename", type="semi")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (`EMPNO` IN (SELECT `EMPNO` FROM `emp` AS `emp0`))")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `ENAME` AS `ename` FROM `emp` AS `emp`")
+
+- sql: |
+    select * from emp where EMPNO in(select EMPNO from emp) and empno=3 and EMPNO in (select DEPTNO from dept)
+
+  plan: |
+    LogicalView(tables="optest_0000.emp_03,dept_03", sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (((`EMPNO` = 3) AND (`EMPNO` IN (SELECT * FROM (SELECT `EMPNO` FROM `emp` AS `emp0`) AS `t` WHERE (`EMPNO` = 3)))) AND (`EMPNO` IN (SELECT * FROM (SELECT `DEPTNO` FROM `dept` AS `dept`) AS `t1` WHERE (`DEPTNO` = 3))))")
+
+- sql: |
+    select * from emp t1 where EMPNO in(select EMPNO from emp t2 where t1.ename = t2.ename) and empno=3 and EMPNO in (select DEPTNO from dept)
+
+  plan: |
+    LogicalView(tables="optest_0000.emp_03,dept_03", sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (((`EMPNO` = 3) AND (`EMPNO` IN (SELECT `EMPNO` FROM (SELECT `EMPNO`, `ENAME` FROM `emp` AS `emp0`) AS `t` WHERE (((`emp`.`EMPNO` = `EMPNO`) AND (`emp`.`ENAME` = `ENAME`)) AND (`EMPNO` = 3))))) AND (`EMPNO` IN (SELECT * FROM (SELECT `DEPTNO` FROM `dept` AS `dept`) AS `t2` WHERE ((`emp`.`EMPNO` = `DEPTNO`) AND (`DEPTNO` = 3)))))")
+
+- sql: |
+    select * from emp a where EMPNO not in (select DEPTNO from dept b  )
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[00-27],dept_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (`EMPNO` NOT IN (SELECT `DEPTNO` FROM `dept` AS `dept`))")
+
+- sql: |
+    select * from emp a where EMPNO in (select DEPTNO from dept b where a.JOB = b.name )
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[00-27],dept_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (`EMPNO` IN (SELECT `DEPTNO` FROM `dept` AS `dept` WHERE ((`emp`.`EMPNO` = `DEPTNO`) AND (`emp`.`JOB` = `NAME`))))")
+
+- sql: |
+    select * from emp a where EMPNO not in (select DEPTNO from dept b where a.JOB = b.name )
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[00-27],dept_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (`EMPNO` NOT IN (SELECT `DEPTNO` FROM `dept` AS `dept` WHERE ((`emp`.`EMPNO` = `DEPTNO`) AND (`emp`.`JOB` = `NAME`))))")
+
+- sql: |
+    select * from emp a where exists (select DEPTNO from dept b)
+
+  plan: |
+    LogicalSemiJoin(condition="true", type="semi")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where not exists (select DEPTNO from dept b)
+
+  plan: |
+    LogicalSemiJoin(condition="true", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where exists (select DEPTNO from dept b where a.JOB = b.name )
+
+  plan: |
+    LogicalSemiJoin(condition="JOB = NAME", type="semi")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where not exists (select DEPTNO from dept b where a.JOB = b.name )
+
+  plan: |
+    LogicalSemiJoin(condition="JOB = NAME", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where empno > ALL (select DEPTNO from dept b)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO <= DEPTNO", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where empno > ALL (select DEPTNO from dept b where a.JOB = b.name)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO <= DEPTNO AND JOB = NAME", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where empno >= ALL (select DEPTNO from dept b where b.DEPTNO=10)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO < DEPTNO", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="optest_0001.dept_10", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 10)")
+
+- sql: |
+    select * from emp a where empno >= ALL (select DEPTNO from dept b where a.JOB = b.name and b.deptno=a.mgr and b.DEPTNO=10)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO < DEPTNO AND JOB = NAME AND DEPTNO = MGR", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="optest_0001.dept_10", sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept` WHERE (`DEPTNO` = 10)")
+
+- sql: |
+    select * from emp a where empno = ALL (select DEPTNO from dept b where b.DEPTNO=10)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO <> DEPTNO", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="optest_0001.dept_10", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 10)")
+
+- sql: |
+    select * from emp a where empno = ALL (select DEPTNO from dept b where a.JOB = b.name and b.deptno=a.mgr and b.DEPTNO=10)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO <> DEPTNO AND JOB = NAME AND DEPTNO = MGR", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="optest_0001.dept_10", sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept` WHERE (`DEPTNO` = 10)")
+
+- sql: |
+    select * from emp a where empno < ALL (select DEPTNO from dept b where b.DEPTNO=10)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO >= DEPTNO", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="optest_0001.dept_10", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 10)")
+
+- sql: |
+    select * from emp a where empno <= ALL (select DEPTNO from dept b where b.DEPTNO=10)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO > DEPTNO", type="anti")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="optest_0001.dept_10", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 10)")
+
+- sql: |
+    select * from emp a where  empno > ANY (select DEPTNO from dept b)
+
+  plan: |
+    LogicalSemiJoin(condition="EMPNO > DEPTNO", type="semi")
+      LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+      LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where empno = ANY (select DEPTNO from dept b)
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[00-27],dept_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (`EMPNO` = SOME (SELECT `DEPTNO` FROM `dept` AS `dept`))")
+
+- sql: |
+    select * from emp a where empno > ALL (select DEPTNO from dept b where a.JOB = b.name and b.deptno>10 or b.DEPTNO=10)
+
+  plan: |
+    Project(EMPNO="EMPNO", ENAME="ENAME", JOB="JOB", MGR="MGR", HIREDATE="HIREDATE", SAL="SAL", COMM="COMM", DEPTNO="DEPTNO", SLACKER="SLACKER")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=GREATER_THAN, type=ANTI)
+          LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+          Project(DEPTNO="DEPTNO")
+            Filter(condition="($cor0.JOB = NAME AND DEPTNO > 10) OR DEPTNO = 10")
+              LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")
+
+- sql: |
+    select * from emp a where empno >= ALL (select DEPTNO from dept b where a.JOB = b.name and b.deptno=a.mgr or b.DEPTNO=10)
+
+  plan: |
+    Project(EMPNO="EMPNO", ENAME="ENAME", JOB="JOB", MGR="MGR", HIREDATE="HIREDATE", SAL="SAL", COMM="COMM", DEPTNO="DEPTNO", SLACKER="SLACKER")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=GREATER_THAN_OR_EQUAL, type=ANTI)
+          LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp`")
+          Project(DEPTNO="DEPTNO")
+            Filter(condition="($cor0.JOB = NAME AND DEPTNO = $cor0.MGR) OR DEPTNO = 10")
+              LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")

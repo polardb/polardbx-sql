@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="user_priv">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `user_priv` (
+                `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `user_name` char(32) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
+                `host` char(60) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
+                `account_type` tinyint(1) NOT NULL DEFAULT '0',
+                `password` char(100) COLLATE utf8_unicode_ci NOT NULL,
+                `select_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `insert_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `update_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `delete_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `create_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `drop_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `grant_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `index_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `alter_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `show_view_priv` int(11) NOT NULL DEFAULT '0',
+                `create_view_priv` int(11) NOT NULL DEFAULT '0',
+                `create_user_priv` int(11) NOT NULL DEFAULT '0',
+                `meta_db_priv` int(11) NOT NULL DEFAULT '0',
+                `show_audit_log_priv` int(11) NOT NULL DEFAULT '0',
+                `replication_client_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `replication_slave_priv` tinyint(1) NOT NULL DEFAULT '0',
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk` (`user_name`, `host`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Users and global privileges'
+        ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `user_priv` ADD COLUMN `account_type` tinyint(1) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `user_priv` ADD COLUMN `show_audit_log_priv` int(11) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `user_priv` SET `show_audit_log_priv` =  1 WHERE `user_name` = 'polardbx_root'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `user_priv` SET `account_type` = 5 WHERE `user_name` = 'polardbx_root'
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `user_priv` ADD COLUMN `replication_client_priv` tinyint(1) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `user_priv` ADD COLUMN `replication_slave_priv` tinyint(1) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `user_priv` SET `replication_client_priv` = 1, `replication_slave_priv` = 1 WHERE `user_name` = 'polardbx_root'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `user_priv` SET `replication_client_priv` = 1, `replication_slave_priv` = 1 WHERE `account_type` = 2 OR `select_priv` = 1
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="db_priv">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `db_priv` (
+                `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `user_name` char(32) NOT NULL DEFAULT '',
+                `host` char(60) NOT NULL DEFAULT '',
+                `db_name` char(64) NOT NULL DEFAULT '',
+                `select_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `insert_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `update_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `delete_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `create_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `drop_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `grant_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `index_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `alter_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `show_view_priv` int(11) NOT NULL DEFAULT '0',
+                `create_view_priv` int(11) NOT NULL DEFAULT '0',
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk` (`user_name`, `host`, `db_name`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Database privileges'
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="table_priv">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `table_priv` (
+                `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `user_name` char(32) NOT NULL DEFAULT '',
+                `host` char(60) NOT NULL DEFAULT '',
+                `db_name` char(64) NOT NULL DEFAULT '',
+                `table_name` char(64) NOT NULL DEFAULT '',
+                `select_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `insert_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `update_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `delete_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `create_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `drop_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `grant_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `index_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `alter_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `show_view_priv` int(11) NOT NULL DEFAULT '0',
+                `create_view_priv` int(11) NOT NULL DEFAULT '0',
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk` (`user_name`, `host`, `db_name`,`table_name`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Table privileges'
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="quarantine_config">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `quarantine_config` (
+                `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `inst_id` varchar(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+                `group_name` varchar(200) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+                `net_work_type` varchar(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci DEFAULT NULL,
+                `security_ip_type` varchar(100) CHARACTER SET utf8 COLLATE utf8_unicode_ci DEFAULT NULL,
+                `security_ips` text CHARACTER SET utf8 COLLATE utf8_unicode_ci,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk` (`inst_id`,`group_name`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Quantine config'
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="role_priv">
+        <Create><![CDATA[
+           CREATE TABLE if not exists `role_priv` (
+                `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `role_id` bigint(11) NOT NULL,
+                `receiver_id` bigint(11) NOT NULL,
+                `with_admin_option` bool NOT NULL DEFAULT FALSE,
+                `default_role` bool NOT NULL DEFAULT FALSE,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk` (`role_id`, `receiver_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Role privileges'
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="default_role_state">
+        <Create><![CDATA[
+           CREATE TABLE if not exists `default_role_state` (
+                `account_id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `default_role_state` tinyint(1) NOT NULL DEFAULT 0,
+                PRIMARY KEY (`account_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Role privileges'
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="user_login_error_limit">
+        <Create><![CDATA[
+            CREATE TABLE `user_login_error_limit` (
+                `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `limit_key` varchar(128) DEFAULT NULL,
+                `max_error_limit` varchar(128) NOT NULL,
+                `error_count` varchar(1024) NOT NULL,
+                `expire_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk_inst_key` (`limit_key`)
+              ) ENGINE=InnoDB AUTO_INCREMENT=57 DEFAULT CHARSET=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

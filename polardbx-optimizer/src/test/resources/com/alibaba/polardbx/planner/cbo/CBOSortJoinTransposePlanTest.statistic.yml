@@ -1,0 +1,11 @@
+t_one:
+  100000
+
+t_two:
+  100000
+
+t_one.name.cardinality:
+  10000
+
+t_two.name.cardinality:
+  10000

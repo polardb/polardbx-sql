@@ -1,0 +1,118 @@
+- sql: |
+    select count(tb1.int_col2) as cnt_int_col2, tb1.id as id, tb1.name as name
+    from
+      (
+        select *
+        from test_hash_tb
+        where int_col1 > 100
+      ) tb1
+    group by tb1.id, tb1.name
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT COUNT(`int_col2`) AS `cnt_int_col2`, `id`, (`name`) AS `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`int_col1` > 100) GROUP BY `id`")
+
+- sql: |
+    select tb2.id as id, tb2.name as name
+    from
+      (
+        select count(tb1.int_col2) as cnt_int_col2, tb1.id as id, tb1.name as name
+        from
+          (
+            select *
+            from test_hash_tb
+            where int_col1 > 100
+          ) tb1
+        group by tb1.id, tb1.name
+      ) tb2
+     order by tb2.id
+     limit 100
+  plan: |
+
+    MergeSort(sort="id ASC", offset=0, fetch=100)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, (`name`) AS `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`int_col1` > 100) GROUP BY `id` ORDER BY `id` LIMIT 100")
+
+
+- sql: |
+    select count(distinct tb3.id ) as cnt_id
+    from
+      (
+        select tb2.id as id, tb2.name as name
+        from
+          (
+            select count(tb1.int_col2) as cnt_int_col2, tb1.id as id, tb1.name as name
+            from
+              (
+                select *
+                from test_hash_tb
+                where int_col1 > 100
+              ) tb1
+            group by tb1.id, tb1.name
+          ) tb2
+         order by tb2.id
+         limit 100
+      )  tb3
+  plan: |
+
+    HashAgg(cnt_id="COUNT(id)")
+      MergeSort(sort="id ASC", offset=0, fetch=100)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`int_col1` > 100) GROUP BY `id` ORDER BY `id` LIMIT 100")
+
+
+- sql: |
+    select tb.id as c1,tb.int_col1 as c2, tb.int_col2 as c3, tb.int_col3 as c4
+    from
+      (
+        select id,int_col1, int_col2, int_col3, int_col4,int_col5
+        from test_hash_tb
+        where int_col1 > 100
+        order by id,int_col1, int_col2, int_col3, int_col4,int_col5
+
+      ) tb
+    where tb.id > 100
+  plan: |
+
+    Project(c1="id", c2="int_col1", c3="int_col2", c4="int_col3")
+      MergeSort(sort="id ASC,int_col1 ASC,int_col2 ASC,int_col3 ASC,int_col4 ASC,int_col5 ASC")
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`int_col1` > 100) AND (`id` > 100)) ORDER BY `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`")
+
+- sql: |
+    select tb.id as c1,tb.int_col1 as c2, tb.int_col2 as c3, tb.int_col3 as c4
+    from
+      (
+        select id,int_col1, int_col2, int_col3, int_col4,int_col5
+        from test_hash_tb
+        where int_col1 > 100
+        order by id,int_col1, int_col2, int_col3, int_col4,int_col5
+
+      ) tb
+    where tb.id > 100
+    group by tb.id,tb.int_col1, tb.int_col2, tb.int_col3
+  plan: |
+
+    project(c1="id", c2="int_col1", c3="int_col2", c4="int_col3")
+      mergesort(sort="id asc,int_col1 asc,int_col2 asc,int_col3 asc,int_col4 asc,int_col5 asc")
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5` from `test_hash_tb` as `test_hash_tb` where ((`int_col1` > 100) and (`id` > 100)) order by `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`")
+
+- sql: |
+    select
+        count(distinct tb.id),
+        tb.int_col1
+
+    from
+      (
+        select id,name,int_col1
+        from
+          msg_tb
+        where msg_id>1000
+        order by int_col1
+      )  tb
+    group by tb.int_col1
+
+  plan: |
+
+    project(count(distinct tb.id)="count(distinct tb.id)", int_col1="int_col1")
+      hashagg(group="int_col1", count(distinct tb.id)="count(id)")
+        hashagg(group="int_col1,id")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].msg_tb_[0-7]", shardcount=8, sql="select `int_col1`, `id` from `msg_tb` as `msg_tb` where (`msg_id` > 1000)")

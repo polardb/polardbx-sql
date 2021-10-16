@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="table_group">
+        <Create><![CDATA[
+        create table if not exists `table_group` (
+              `id` bigint not null auto_increment,
+              `gmt_create` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `schema_name` varchar(64) not null ,
+              `tg_name` varchar(64) not null,
+              `locality` text default null,
+              `primary_zone` text default null,
+              `inited` int not null default 0,
+              `meta_version` bigint unsigned not null default '1',
+              `manual_create` int not null default 0 comment '0:create implicitly, 1:create manually',
+              `tg_type` int(11) NOT NULL DEFAULT '0' COMMENT '0:part_tg_group,1:default single_tg, 2:non default single_tg',
+               primary key (`id`),
+               unique key `uidx_tgname`(`schema_name`,`tg_name`, `meta_version`),
+               key `db_tg`(`schema_name`, `tg_name`)
+        ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="partition_group">
+        <Create><![CDATA[
+        create table if not exists `partition_group` (
+              `id` bigint not null auto_increment,
+              `partition_name` varchar(64) not null,
+              `tg_id` bigint,
+              `gmt_create` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `phy_db` varchar(64) not null ,
+              `locality` text default null,
+              `primary_zone` text default null,
+              `pax_group_id` bigint not null default -1,
+              `meta_version` bigint unsigned not null default '1',
+              `visible` int not null default '1',
+               primary key (`id`),
+               key `idx_tgid`(`tg_id`),
+               unique key `u_pname`(`tg_id`,`partition_name`, `meta_version`)
+        ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="partition_group_delta">
+            <Create><![CDATA[
+            create table if not exists `partition_group_delta` (
+                  `id` bigint not null default 0,
+                  `partition_name` varchar(64) not null,
+                  `tg_id` bigint,
+                  `gmt_create` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  `phy_db` varchar(64) not null ,
+                  `locality` text default null,
+                  `primary_zone` text default null,
+                  `pax_group_id` bigint not null default -1,
+                  `meta_version` bigint unsigned not null default '1',
+                  `type` int not null default 1 comment '1:new partition group 0:outdated partition group',
+                  `visible` int not null default '1',
+                   key `idx_tgid`(`tg_id`),
+                   unique key `u_pname`(`tg_id`,`partition_name`, `type`)
+            ) charset=utf8
+            ]]></Create>
+        </SystemTable>
+
+    <SystemTable name="tablegroup_outline">
+        <Create><![CDATA[
+            create table if not exists `tablegroup_outline` (
+              `id` bigint(21) unsigned not null auto_increment,
+              `batch_id` bigint unsigned not null,
+              `job_id` bigint unsigned not null,
+              `parent_job_id` bigint unsigned not null default '0',
+              `gmt_create` datetime default current_timestamp,
+              `gmt_modified` datetime default current_timestamp,
+              `schema_name` varchar(64) not null,
+              `table_group_id` bigint not null,
+              `partition_group_name` varchar(64) not null comment 'partition group name',
+              `table_name` varchar(128) not null comment 'group key',
+              `partition_info` longtext comment 'json format, new partition meta',
+              `type` int not null comment '1:split, 2:merge, 3:move',
+              `status` int not null default 0 comment '0:creating,1:delete_only',
+               `version` bigint(21) not null comment 'table meta version',
+              `extra` longtext default null,
+              `source_sql` text default null,
+
+              primary key(`id`),
+              unique key `u_id`(`job_id`)
+            ) charset=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="complex_task_outline">
+            <Create><![CDATA[
+                create table if not exists `complex_task_outline` (
+                  `id` bigint(21) unsigned not null auto_increment,
+                  `job_id` bigint unsigned not null,
+                  `gmt_create` datetime default current_timestamp,
+                  `gmt_modified` datetime default current_timestamp,
+                  `table_schema` varchar(64) not null,
+                  `tg_name` varchar(64) not null default '-' comment 'tablegroup name',
+                  `object_name` varchar(128) not null,
+                  `type` int not null comment '1:split, 2:merge, 3:move',
+                  `status` int not null default 0 comment '0:creating,1:delete_only,2:xx',
+                  `extra` longtext default null,
+                  `source_sql` text default null,
+                  `sub_task` int not null comment '0:parent task, 1:sub task',
+                  primary key(`id`),
+                  key `k_job_id`(`job_id`),
+                  key `k_sch_obj`(`table_schema`, `object_name`, `sub_task`)
+                ) charset=utf8mb4
+            ]]></Create>
+        </SystemTable>
+</SystemTables>

@@ -1,0 +1,12 @@
+sql: |
+  select count(distinct create_time)
+  from test_hash_tb4 a group by name;
+
+
+plan: |
+
+  Project(count(DISTINCT create_time)="count(DISTINCT create_time)")
+    HashAgg(group="name", count(DISTINCT create_time)="COUNT(create_time)")
+      HashAgg(group="name,create_time")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb4", shardCount=4, sql="SELECT `name`, `create_time` FROM `test_hash_tb4` AS `test_hash_tb4` GROUP BY `name`, `create_time`")

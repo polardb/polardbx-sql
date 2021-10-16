@@ -1,0 +1,137 @@
+- sql: |
+    #// 第1个测试SQL，测试IN的简单相关子查询下推，
+    #// 关联列含 "拆分键=拆分键", 可下推
+    select a.id, a.name
+    from test_hash_tb a 
+    where a.id in ( select id from test_hash_tb2 b where a.name=b.name )
+
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT `id` FROM (SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2`) AS `t` WHERE ((`test_hash_tb`.`id` = `id`) AND (`test_hash_tb`.`name` = `name`))))")
+
+- sql: |
+    #// 测试EXIST的简单相关子查询下推,
+    #// 关联列不含"拆分键=拆分键", subquery不可下推
+    # 外层查询有count, count不可以下推
+    /*+TDDL:SEMI_HASH_JOIN(test_hash_tb,test_hash_tb2)*/
+    select count(id)
+    from test_hash_tb a
+    where exists ( select 1 from test_hash_tb2 b where a.name=b.name )
+
+
+  plan: |
+
+    HashAgg(count(id)="COUNT(id)")
+      SemiHashJoin(condition="name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- sql: |
+    #// 测试EXIST的简单相关子查询下推,
+    #// 关联列含"拆分键=拆分键",subquery可以下推
+    # 外层查询有count, count可以下推
+    select count(id)
+    from test_hash_tb a
+    where exists ( select 1 from test_hash_tb2 b where a.id=b.id )
+
+  plan: |
+
+    HashAgg(count(id)="SUM(count(id))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT COUNT(`id`) AS `count(id)` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`test_hash_tb`.`id` = `id`)))")
+
+- sql: |
+    #// @desc
+    #// 测试EXIST的简单相关子查询下推,
+    #// 关联列含"拆分键=拆分键",
+    #，外层查询有count distinct 列 "id" , order by id列 可以下推
+    # 外层查询有count, count 不可以下推
+    # 外层查询有没有group by
+    select count(distinct id)
+    from test_hash_tb a
+    where exists ( select 1 from test_hash_tb2 b where a.id=b.id )
+
+  plan: |
+
+    HashAgg(count(DISTINCT id)="COUNT(id)")
+      HashAgg(group="id")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`test_hash_tb`.`id` = `id`)))")
+
+- sql: |
+    # 测试EXIST的简单相关子查询下推,
+    # 关联列含"拆分键id=拆分键id"
+    # 外层查询含count distinct id, id 是拆分键
+    # 外层查询有group by，排序列 create_time,id可以下推
+    # 外层查询含count不能下推
+    select count(distinct id)
+    from test_hash_tb a
+    where exists
+      (
+        select 1
+        from test_hash_tb2 b
+        where a.id=b.id
+      )
+    group by create_time
+
+
+  plan: |
+
+    Project(count(DISTINCT id)="count(DISTINCT id)")
+      HashAgg(group="create_time", count(DISTINCT id)="COUNT(id)")
+        HashAgg(group="create_time,id")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `create_time`, `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`test_hash_tb`.`id` = `id`)))")
+
+- sql: |
+    # 测试EXIST的简单相关子查询下推,
+    # 关联列不是拆分键,需要semi-join
+    # 外层查询含count distinct id, id 是拆分键
+    # 外层查询有group by 
+    # 排序列 create_time,id应该可以下推semi-join左表，目前没有下推
+    /*+TDDL:SEMI_HASH_JOIN(test_hash_tb,test_hash_tb2)*/
+    select count(distinct id)
+    from test_hash_tb a
+    where exists 
+      ( 
+        select 1 
+        from test_hash_tb2 b 
+        where a.name=b.name 
+      )
+    group by create_time
+
+
+  plan: |
+
+    Project(count(DISTINCT id)="count(DISTINCT id)")
+      HashAgg(group="create_time", count(DISTINCT id)="COUNT(id)")
+        Project(create_time="create_time", id="id")
+          SemiHashJoin(condition="name = name", type="semi")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- sql: |
+    # 测试EXIST的简单相关子查询下推,
+    # 关联列含"拆分键=拆分键",
+    # ，count distinct 列 "name"  可以下推
+    select count(distinct name)
+    from test_hash_tb a
+    where exists 
+      ( 
+        select 1 
+        from test_hash_tb2 b 
+        where a.id=b.id 
+      )
+
+  plan: |
+
+    HashAgg(count(DISTINCT name)="COUNT(name)")
+      HashAgg(group="name")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`test_hash_tb`.`id` = `id`))) GROUP BY `name`")

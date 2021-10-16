@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="column_statistics">
+        <Create><![CDATA[
+            create table if not exists `column_statistics` (
+              `id` bigint unsigned not null auto_increment,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              `schema_name` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `column_name` varchar(64) not null,
+              `cardinality` bigint not null,
+              `cmsketch` longtext not null,
+              `histogram` longtext not null,
+              `null_count` bigint not null,
+              `sample_rate` float not null,
+              `extend_field` longtext comment 'Json string extend field',
+              primary key (`id`),
+              unique key (`schema_name`, `table_name`, `column_name`),
+              key (`table_name`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `column_statistics` add key (`table_name`)
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="table_statistics">
+        <Create><![CDATA[
+            create table if not exists `table_statistics` (
+              `id` bigint unsigned not null auto_increment,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              `schema_name` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `row_count` bigint not null,
+              `extend_field` longtext comment 'Json string extend field',
+              primary key (`id`),
+              unique key (`schema_name`, `table_name`),
+              key (`table_name`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `table_statistics` add key (`table_name`)
+        ]]></Change>
+    </SystemTable>
+</SystemTables>

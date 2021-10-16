@@ -1,0 +1,39 @@
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("not exists(select a.pk from test_table_a a join test_table_b b on a.pk = b.pk WHERE b.pk = 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT EXISTS (SELECT `a`.`pk` FROM `test_table_a` AS `a` INNER JOIN `test_table_b` AS `b` ON (`a`.`pk` = `b`.`pk`) WHERE (`b`.`pk` = 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("exists(select a.pk from test_table_a a join test_table_b b on a.pk = b.pk WHERE b.pk = 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (EXISTS (SELECT `a`.`pk` FROM `test_table_a` AS `a` INNER JOIN `test_table_b` AS `b` ON (`a`.`pk` = `b`.`pk`) WHERE (`b`.`pk` = 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("not exists(select b.pk from test_table_b b WHERE test_table_a.pk = b.pk and b.pk = 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      logicalview(tables="test_table_a,test_table_b", sql="select `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` from `test_table_a` as `test_table_a` where (not exists (select `b`.`pk` from `test_table_b` as `b` where ((`test_table_a`.`pk` = `b`.`pk`) and (`b`.`pk` = 100001))))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("exists(select b.pk from test_table_b b WHERE test_table_a.pk = b.pk and b.pk = 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.test_table_a_13,test_table_b_13", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (EXISTS (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE ((`test_table_a`.`pk` = `b`.`pk`) AND (`b`.`pk` = 100001))))")

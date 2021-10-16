@@ -1,0 +1,101 @@
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name='xx' order by id;
+
+  plan: |
+
+    MergeSort(sort="id ASC")
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `id`")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name='xx' order by name;
+
+  plan: |
+
+    Project(id="id")
+      MergeSort(sort="name ASC")
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `name`")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name='xx' order by id desc;
+
+  plan: |
+
+    MergeSort(sort="id DESC")
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `id` DESC")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name = 'xx' order by name desc;
+
+  plan: |
+
+    Project(id="id")
+      MergeSort(sort="name DESC")
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `name` DESC")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name='xx' order by id, name;
+
+  plan: |
+
+    Project(id="id")
+      MergeSort(sort="id ASC,name ASC")
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `id`, `name`")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name='xx' order by name desc, id;
+
+  plan: |
+
+    Project(id="id")
+      MergeSort(sort="name DESC,id ASC")
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `name` DESC, `id`")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where id = 1 order by id;
+
+  plan: |
+
+    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `id`")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where id = 1 order by name;
+
+  plan: |
+
+    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `name`")
+
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where id = 1 order by id, name;
+
+  plan: |
+
+    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `id`, `name`")
+
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where id = 1 order by name, id;
+
+  plan: |
+
+    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `name`, `id`")

@@ -1,0 +1,7 @@
+-
+  sql: |
+    select /* +TDDL: construct() push_from("test_table_a a join test_table_b b on a.pk = b.pk") add_un() */ * from test_table_a;
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `bigint_test` AS `id` FROM `test_table_a`")

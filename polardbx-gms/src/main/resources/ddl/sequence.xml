@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="sequence">
+        <Create><![CDATA[
+            create table if not exists `sequence` (
+              `id` bigint unsigned not null auto_increment,
+              `schema_name` varchar(64) not null,
+              `name` varchar(128) not null,
+              `new_name` varchar(128) default null,
+              `value` bigint not null,
+              `unit_count` int(11) not null default '1',
+              `unit_index` int(11) not null default '0',
+              `inner_step` int(11) not null default '100000',
+              `status` int not null default '0' comment '0:ABSENT,1:PUBLIC',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key (`id`),
+              unique key (`schema_name`, `name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="sequence_opt">
+        <Create><![CDATA[
+            create table if not exists `sequence_opt` (
+              `id` bigint unsigned not null auto_increment,
+              `schema_name` varchar(64) not null,
+              `name` varchar(128) not null,
+              `new_name` varchar(128) default null,
+              `value` bigint unsigned not null,
+              `increment_by` int(10) unsigned not null default '1',
+              `start_with` bigint unsigned not null default '1',
+              `max_value` bigint unsigned not null default '18446744073709551615',
+              `cycle` tinyint(5) unsigned not null default '0',
+              `status` int not null default '0' comment '0:ABSENT,1:PUBLIC',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key (`id`),
+              unique key (`schema_name`, `name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="__test_sequence">
+        <Create><![CDATA[
+            create table if not exists `__test_sequence` (
+              `id` bigint unsigned not null auto_increment,
+              `schema_name` varchar(64) not null,
+              `name` varchar(128) not null,
+              `new_name` varchar(128) default null,
+              `value` bigint not null,
+              `unit_count` int(11) not null default '1',
+              `unit_index` int(11) not null default '0',
+              `inner_step` int(11) not null default '100000',
+              `status` int not null default '0' comment '0:ABSENT,1:PUBLIC',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key (`id`),
+              unique key (`schema_name`, `name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="__test_sequence_opt">
+        <Create><![CDATA[
+            create table if not exists `__test_sequence_opt` (
+              `id` bigint unsigned not null auto_increment,
+              `schema_name` varchar(64) not null,
+              `name` varchar(128) not null,
+              `new_name` varchar(128) default null,
+              `value` bigint unsigned not null,
+              `increment_by` int(10) unsigned not null default '1',
+              `start_with` bigint unsigned not null default '1',
+              `max_value` bigint unsigned not null default '18446744073709551615',
+              `cycle` tinyint(5) unsigned not null default '0',
+              `status` int not null default '0' comment '0:ABSENT,1:PUBLIC',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key (`id`),
+              unique key (`schema_name`, `name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

@@ -1,0 +1,363 @@
+test_hash_tb:
+  CREATE TABLE `test_hash_tb` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tb2:
+  CREATE TABLE `test_hash_tb2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+
+test_hash_tb3:
+  CREATE TABLE `test_hash_tb3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tb5:
+  CREATE TABLE `test_hash_tb5` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(id) tbpartitions 3;
+
+
+test_tb_shard_by_name:
+  CREATE TABLE `test_tb_shard_by_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `key` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`NAME`);
+
+
+test_tb2_shard_by_name:
+  CREATE TABLE `test_tb2_shard_by_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `key` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`NAME`);
+
+test_tb_shard_by_key:
+  CREATE TABLE `test_tb_shard_by_key` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `key` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`KEY`);
+
+test_tb2_shard_by_key:
+  CREATE TABLE `test_tb2_shard_by_key` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `key` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`KEY`);
+
+test_tb_shard_by_strhash_sk:
+  CREATE TABLE `test_tb_shard_by_strhash_sk` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by STR_HASH(`SK`, -1, 5);
+
+test_tb2_shard_by_strhash_sk:
+  CREATE TABLE `test_tb2_shard_by_strhash_sk` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by STR_HASH(`sk`, -1, 6);
+
+test_tb_shard_by_strhash_name:
+  CREATE TABLE `test_tb_shard_by_strhash_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by STR_HASH(`name`, -1, 5);
+
+test_tb2_shard_by_strhash_name:
+  CREATE TABLE `test_tb2_shard_by_strhash_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by STR_HASH(`name`, -1, 6);
+
+
+test_tb_shard_by_hash_id_strhash_name:
+  CREATE TABLE `test_tb_shard_by_hash_id_strhash_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by STR_HASH(`name`, -1, 5) tbpartitions 2;
+
+test_tb2_shard_by_hash_id_strhash_name:
+  CREATE TABLE `test_tb2_shard_by_hash_id_strhash_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by STR_HASH(`name`, -1, 6) tbpartitions 2;
+
+test_tb3_shard_by_hash_id_strhash_sk:
+  CREATE TABLE `test_tb3_shard_by_hash_id_strhash_sk` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by STR_HASH(`sk`, -1, 5) tbpartitions 2;
+
+test_tb_shard_by_hash_id_yyyymm_create:
+  CREATE TABLE `test_tb_shard_by_hash_id_yyyymm_create` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by YYYYMM(`create_time`) tbpartitions 2;
+
+test_tb2_shard_by_hash_id_yyyymm_modify:
+  CREATE TABLE `test_tb2_shard_by_hash_id_yyyymm_modify` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by YYYYMM(`modify_time`) tbpartitions 2;
+
+
+test_tb3_shard_by_hash_id_yyyydd_modify:
+  CREATE TABLE `test_tb3_shard_by_hash_id_yyyydd_modify` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by YYYYDD(`modify_time`) tbpartitions 2;
+
+
+test_tb_shard_by_hash_id_mm_create:
+  CREATE TABLE `test_tb_shard_by_hash_id_mm_create` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by MM(`create_time`) tbpartitions 12;
+
+test_tb2_shard_by_hash_id_mm_modify:
+  CREATE TABLE `test_tb2_shard_by_hash_id_mm_modify` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by HASH(`ID`) tbpartition by MM(`modify_time`) tbpartitions 12;
+
+test_tb_shard_by_uni_name_mmdd_create:
+  CREATE TABLE `test_tb_shard_by_uni_name_mmdd_create` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by UNI_HASH(`name`) tbpartition by MMDD(`create_time`) tbpartitions 31;
+
+test_tb2_shard_by_uni_sk_mmdd_modify:
+  CREATE TABLE `test_tb2_shard_by_uni_sk_mmdd_modify` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by UNI_HASH(`sk`) tbpartition by MMDD(`modify_time`) tbpartitions 31;
+
+test_tb_no_shard:
+  CREATE TABLE `test_tb_no_shard` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+test_tb2_no_shard:
+  CREATE TABLE `test_tb2_no_shard` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+test_tb_broadcast:
+  CREATE TABLE `test_tb_broadcast` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 broadcast;
+
+test_tb2_broadcast:
+  CREATE TABLE `test_tb2_broadcast` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 broadcast;
+
+test_tb_uni_name:
+  CREATE TABLE `test_tb_uni_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by UNI_HASH(`name`);
+
+test_tb_uni_sk:
+  CREATE TABLE `test_tb_uni_sk` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by UNI_HASH(`sk`);
+
+
+#test_tb_range_id_name:
+#      CREATE TABLE `test_tb_range_id_name` (
+#        `id` int(11) NOT NULL,
+#        `name` varchar(30) DEFAULT NULL,
+#        `sk` varchar(30) DEFAULT NULL,
+#        `create_time` datetime DEFAULT NULL,
+#        `modify_time` datetime DEFAULT NULL,
+#        PRIMARY KEY (`id`),
+#        KEY `auto_shard_key_ID` (`id`)
+#      ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by RANGE_HASH( `id`, `name`, 4);
+#
+#test_tb_range_id_sk:
+#      CREATE TABLE `test_tb_range_id_sk` (
+#        `id` int(11) NOT NULL,
+#        `name` varchar(30) DEFAULT NULL,
+#        `sk` varchar(30) DEFAULT NULL,
+#        `create_time` datetime DEFAULT NULL,
+#        `modify_time` datetime DEFAULT NULL,
+#        PRIMARY KEY (`id`),
+#        KEY `auto_shard_key_ID` (`id`)
+#      ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by RANGE_HASH( `id`, `sk`, 4);
+
+test_tb_shift_id:
+  CREATE TABLE `test_tb_shift_id` (
+  `id` int(11) NOT NULL,
+  `pk` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by RIGHT_SHIFT( `id`, 4);
+
+test_tb_shift_pk:
+  CREATE TABLE `test_tb_shift_pk` (
+  `id` int(11) NOT NULL,
+  `pk` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by RIGHT_SHIFT( `pk`, 4);
+
+test_tb2_shift_pk:
+  CREATE TABLE `test_tb2_shift_pk` (
+  `id` int(11) NOT NULL,
+  `pk` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `sk` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `modify_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by RIGHT_SHIFT( `pk`, 6);
+
+testorder:
+  CREATE TABLE `testorder` (
+  `Id` bigint(20) unsigned NOT NULL COMMENT '订单ID',
+  `Source` int(10) unsigned NOT NULL COMMENT '',
+  `Type` tinyint(4) NOT NULL DEFAULT '0' COMMENT '',
+  `OriOrderId` bigint(20) unsigned DEFAULT NULL COMMENT '',
+  `MemberId` bigint(20) unsigned NOT NULL COMMENT '会员ID',
+  KEY `auto_shard_key_ID` (`Id`),
+  KEY `auto_shard_key_MEMBERID` (`MemberId`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='' dbpartition BY RANGE_HASH(`Id`, `MemberId`, 2)

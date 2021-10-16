@@ -1,0 +1,57 @@
+- sql: |
+    /*+TDDL:SORT_MERGE_JOIN(t_shard_id1,t_shard_id2)*/
+    select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    Project(id="id")
+      SortMergeJoin(condition="id = id", type="inner")
+        MergeSort(sort="id ASC")
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1` ORDER BY `name`")
+        MergeSort(sort="id ASC")
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2` ORDER BY `name`")
+
+- sql: |
+    /*+TDDL:SORT_MERGE_JOIN(t_shard_id2,t_shard_id1)*/
+    select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    Project(id="id0")
+      SortMergeJoin(condition="id = id", type="inner")
+        MergeSort(sort="id ASC")
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2` ORDER BY `name`")
+        MergeSort(sort="id ASC")
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1` ORDER BY `name`")

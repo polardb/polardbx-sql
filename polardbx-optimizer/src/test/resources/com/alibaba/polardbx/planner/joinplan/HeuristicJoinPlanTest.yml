@@ -1,0 +1,381 @@
+#- sql: |
+#    /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/
+#    select table_shard_id0.id from table_shard_id0
+#    join table_shard_id1
+#    on table_shard_id0.id3 = table_shard_id1.id2
+#    join table_shard_id2
+#    join table_shard_id3
+#    on table_shard_id2.id1 = table_shard_id3.id2 and table_shard_id1.id1 = table_shard_id3.id2
+#    join table_shard_id4
+#    on table_shard_id0.id3 = table_shard_id4.id1 and table_shard_id2.id2 = table_shard_id4.id1 and table_shard_id3.id3 = table_shard_id4.id1
+#    join table_shard_id5
+#    on table_shard_id1.id3 = table_shard_id5.id2
+#    join table_shard_id6
+#    on table_shard_id0.id2 = table_shard_id6.id1 and table_shard_id1.id1 = table_shard_id6.id2
+#    join table_shard_id7
+#    on table_shard_id4.id1 = table_shard_id7.id1 and table_shard_id3.id2 = table_shard_id7.id3 and table_shard_id1.id3 = table_shard_id7.id3
+#    join table_shard_id8
+#    join table_shard_id9
+#    on table_shard_id5.id2 = table_shard_id9.id3
+#    join table_shard_id10
+#    on table_shard_id5.id3 = table_shard_id10.id1 and table_shard_id4.id1 = table_shard_id10.id2 and table_shard_id6.id1 = table_shard_id10.id1
+#    join table_shard_id11
+#    on table_shard_id0.id2 = table_shard_id11.id1 and table_shard_id2.id3 = table_shard_id11.id1
+#    join table_shard_id12
+#    on table_shard_id1.id2 = table_shard_id12.id1
+#    join table_shard_id13
+#    on table_shard_id2.id2 = table_shard_id13.id1 and table_shard_id12.id2 = table_shard_id13.id1 and table_shard_id6.id1 = table_shard_id13.id1
+#    join table_shard_id14
+#    on table_shard_id6.id2 = table_shard_id14.id1 and table_shard_id10.id3 = table_shard_id14.id1 and table_shard_id13.id2 = table_shard_id14.id2
+#    join table_shard_id15
+#    on table_shard_id13.id3 = table_shard_id15.id2 and table_shard_id3.id2 = table_shard_id15.id1 and table_shard_id9.id3 = table_shard_id15.id3
+#    join table_shard_id16
+#    on table_shard_id9.id2 = table_shard_id16.id1 and table_shard_id13.id2 = table_shard_id16.id2
+#    join table_shard_id17
+#    join table_shard_id18
+#    join table_shard_id19
+#    join table_shard_id20
+#    on table_shard_id11.id1 = table_shard_id20.id2 and table_shard_id19.id2 = table_shard_id20.id1 and table_shard_id3.id2 = table_shard_id20.id3
+#    join table_shard_id21
+#    on table_shard_id1.id3 = table_shard_id21.id3 and table_shard_id20.id1 = table_shard_id21.id1 and table_shard_id13.id1 = table_shard_id21.id3
+#    join table_shard_id22
+#    on table_shard_id0.id3 = table_shard_id22.id3
+#    join table_shard_id23
+#    on table_shard_id7.id1 = table_shard_id23.id2 and table_shard_id21.id2 = table_shard_id23.id1 and table_shard_id20.id2 = table_shard_id23.id1
+#    join table_shard_id24
+#    on table_shard_id13.id3 = table_shard_id24.id3 and table_shard_id11.id1 = table_shard_id24.id1 and table_shard_id16.id3 = table_shard_id24.id3
+#    join table_shard_id25
+#    join table_shard_id26
+#    on table_shard_id3.id3 = table_shard_id26.id2
+#    join table_shard_id27
+#    on table_shard_id2.id2 = table_shard_id27.id2
+#    join table_shard_id28
+#    on table_shard_id27.id2 = table_shard_id28.id1
+#    join table_shard_id29
+#    on table_shard_id24.id1 = table_shard_id29.id1 and table_shard_id3.id3 = table_shard_id29.id2
+#    join table_shard_id30
+#    on table_shard_id24.id2 = table_shard_id30.id1
+#    join table_shard_id31
+#    join table_shard_id32
+#    on table_shard_id16.id2 = table_shard_id32.id2 and table_shard_id12.id3 = table_shard_id32.id1
+#    join table_shard_id33
+#    on table_shard_id14.id2 = table_shard_id33.id2 and table_shard_id7.id1 = table_shard_id33.id1
+#    join table_shard_id34
+#    on table_shard_id3.id2 = table_shard_id34.id3 and table_shard_id18.id2 = table_shard_id34.id1 and table_shard_id6.id1 = table_shard_id34.id3
+#    join table_shard_id35
+#    on table_shard_id12.id1 = table_shard_id35.id1 and table_shard_id26.id3 = table_shard_id35.id2
+#    join table_shard_id36
+#    join table_shard_id37
+#    on table_shard_id24.id3 = table_shard_id37.id2 and table_shard_id31.id3 = table_shard_id37.id3
+#    join table_shard_id38
+#    on table_shard_id31.id3 = table_shard_id38.id1 and table_shard_id4.id1 = table_shard_id38.id1
+#    join table_shard_id39
+#    on table_shard_id34.id1 = table_shard_id39.id1 and table_shard_id20.id3 = table_shard_id39.id3 and table_shard_id9.id1 = table_shard_id39.id2
+#    join table_shard_id40
+#    join table_shard_id41
+#    on table_shard_id27.id2 = table_shard_id41.id2
+#    join table_shard_id42
+#    on table_shard_id39.id2 = table_shard_id42.id2
+#    join table_shard_id43
+#    on table_shard_id4.id1 = table_shard_id43.id2 and table_shard_id15.id1 = table_shard_id43.id3 and table_shard_id9.id2 = table_shard_id43.id2
+#    join table_shard_id44
+#    on table_shard_id20.id2 = table_shard_id44.id3
+#    join table_shard_id45
+#    on table_shard_id16.id2 = table_shard_id45.id2 and table_shard_id39.id1 = table_shard_id45.id2
+#    join table_shard_id46
+#    join table_shard_id47
+#    on table_shard_id11.id2 = table_shard_id47.id1 and table_shard_id14.id2 = table_shard_id47.id2
+#    join table_shard_id48
+#    on table_shard_id41.id1 = table_shard_id48.id1
+#    join table_shard_id49
+#    on table_shard_id2.id1 = table_shard_id49.id2 and table_shard_id34.id1 = table_shard_id49.id2 and table_shard_id44.id3 = table_shard_id49.id1
+#    where table_shard_id0.id>10;
+#
+#  plan: |
+#    null
+
+#- sql: |
+#    /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/
+#    select table_shard_id0.id from table_shard_id0
+#    join table_shard_id1
+#    on table_shard_id0.id2 = table_shard_id1.id1
+#    join table_shard_id2
+#    on table_shard_id0.id1 = table_shard_id2.id1
+#    join table_shard_id3
+#    join table_shard_id4
+#    on table_shard_id3.id2 = table_shard_id4.id2
+#    join table_shard_id5
+#    on table_shard_id1.id2 = table_shard_id5.id3 and table_shard_id0.id2 = table_shard_id5.id3 and table_shard_id3.id2 = table_shard_id5.id3
+#    join table_shard_id6
+#    on table_shard_id1.id1 = table_shard_id6.id3 and table_shard_id2.id1 = table_shard_id6.id3
+#    join table_shard_id7
+#    on table_shard_id2.id3 = table_shard_id7.id1 and table_shard_id0.id1 = table_shard_id7.id2 and table_shard_id4.id3 = table_shard_id7.id3
+#    join table_shard_id8
+#    join table_shard_id9
+#    on table_shard_id8.id1 = table_shard_id9.id3
+#    join table_shard_id10
+#    on table_shard_id0.id2 = table_shard_id10.id2
+#    join table_shard_id11
+#    on table_shard_id8.id1 = table_shard_id11.id2 and table_shard_id2.id2 = table_shard_id11.id3 and table_shard_id6.id2 = table_shard_id11.id1
+#    join table_shard_id12
+#    join table_shard_id13
+#    on table_shard_id3.id3 = table_shard_id13.id3 and table_shard_id12.id2 = table_shard_id13.id1 and table_shard_id0.id2 = table_shard_id13.id3
+#    join table_shard_id14
+#    on table_shard_id11.id3 = table_shard_id14.id2 and table_shard_id2.id1 = table_shard_id14.id1
+#    join table_shard_id15
+#    on table_shard_id5.id1 = table_shard_id15.id3
+#    join table_shard_id16
+#    on table_shard_id11.id3 = table_shard_id16.id2
+#    join table_shard_id17
+#    on table_shard_id6.id2 = table_shard_id17.id2
+#    join table_shard_id18
+#    on table_shard_id11.id3 = table_shard_id18.id2 and table_shard_id1.id3 = table_shard_id18.id1 and table_shard_id12.id1 = table_shard_id18.id3
+#    join table_shard_id19
+#    join table_shard_id20
+#    on table_shard_id0.id3 = table_shard_id20.id3 and table_shard_id6.id2 = table_shard_id20.id1
+#    join table_shard_id21
+#    on table_shard_id11.id2 = table_shard_id21.id1
+#    join table_shard_id22
+#    on table_shard_id9.id2 = table_shard_id22.id2
+#    join table_shard_id23
+#    on table_shard_id20.id2 = table_shard_id23.id3 and table_shard_id15.id2 = table_shard_id23.id2 and table_shard_id11.id3 = table_shard_id23.id2
+#    join table_shard_id24
+#    on table_shard_id5.id3 = table_shard_id24.id1
+#    join table_shard_id25
+#    on table_shard_id3.id3 = table_shard_id25.id3
+#    join table_shard_id26
+#    on table_shard_id14.id1 = table_shard_id26.id3 and table_shard_id19.id1 = table_shard_id26.id3
+#    join table_shard_id27
+#    on table_shard_id24.id2 = table_shard_id27.id1 and table_shard_id15.id3 = table_shard_id27.id1 and table_shard_id16.id1 = table_shard_id27.id2
+#    join table_shard_id28
+#    join table_shard_id29
+#    join table_shard_id30
+#    on table_shard_id2.id3 = table_shard_id30.id2 and table_shard_id7.id1 = table_shard_id30.id2 and table_shard_id18.id2 = table_shard_id30.id1
+#    join table_shard_id31
+#    on table_shard_id15.id3 = table_shard_id31.id3 and table_shard_id23.id1 = table_shard_id31.id1
+#    join table_shard_id32
+#    join table_shard_id33
+#    on table_shard_id29.id2 = table_shard_id33.id2
+#    join table_shard_id34
+#    join table_shard_id35
+#    on table_shard_id19.id3 = table_shard_id35.id1 and table_shard_id29.id1 = table_shard_id35.id3 and table_shard_id12.id1 = table_shard_id35.id1
+#    join table_shard_id36
+#    on table_shard_id22.id2 = table_shard_id36.id1 and table_shard_id19.id1 = table_shard_id36.id2
+#    join table_shard_id37
+#    on table_shard_id15.id2 = table_shard_id37.id3
+#    join table_shard_id38
+#    on table_shard_id20.id2 = table_shard_id38.id2
+#    join table_shard_id39
+#    on table_shard_id24.id2 = table_shard_id39.id3 and table_shard_id35.id2 = table_shard_id39.id1
+#    join table_shard_id40
+#    on table_shard_id22.id1 = table_shard_id40.id3
+#    join table_shard_id41
+#    on table_shard_id10.id2 = table_shard_id41.id1 and table_shard_id0.id1 = table_shard_id41.id3
+#    join table_shard_id42
+#    on table_shard_id24.id3 = table_shard_id42.id3 and table_shard_id39.id2 = table_shard_id42.id2 and table_shard_id2.id1 = table_shard_id42.id2
+#    join table_shard_id43
+#    on table_shard_id37.id1 = table_shard_id43.id3 and table_shard_id10.id3 = table_shard_id43.id3 and table_shard_id27.id1 = table_shard_id43.id3
+#    join table_shard_id44
+#    join table_shard_id45
+#    join table_shard_id46
+#    on table_shard_id4.id2 = table_shard_id46.id2
+#    join table_shard_id47
+#    on table_shard_id41.id2 = table_shard_id47.id2
+#    join table_shard_id48
+#    on table_shard_id31.id1 = table_shard_id48.id3 and table_shard_id23.id1 = table_shard_id48.id3 and table_shard_id29.id1 = table_shard_id48.id1
+#    join table_shard_id49
+#    on table_shard_id34.id2 = table_shard_id49.id1 and table_shard_id40.id3 = table_shard_id49.id1
+#    join table_shard_id50
+#    on table_shard_id7.id1 = table_shard_id50.id1
+#    join table_shard_id51
+#    on table_shard_id35.id3 = table_shard_id51.id2 and table_shard_id33.id3 = table_shard_id51.id1
+#    join table_shard_id52
+#    join table_shard_id53
+#    on table_shard_id1.id1 = table_shard_id53.id1 and table_shard_id43.id3 = table_shard_id53.id1
+#    join table_shard_id54
+#    on table_shard_id40.id2 = table_shard_id54.id3 and table_shard_id10.id2 = table_shard_id54.id1 and table_shard_id30.id3 = table_shard_id54.id1
+#    join table_shard_id55
+#    join table_shard_id56
+#    on table_shard_id21.id3 = table_shard_id56.id2 and table_shard_id55.id2 = table_shard_id56.id1 and table_shard_id33.id2 = table_shard_id56.id2
+#    join table_shard_id57
+#    join table_shard_id58
+#    on table_shard_id33.id1 = table_shard_id58.id3
+#    join table_shard_id59
+#    on table_shard_id2.id1 = table_shard_id59.id2 and table_shard_id51.id2 = table_shard_id59.id3 and table_shard_id20.id3 = table_shard_id59.id1
+#    join table_shard_id60
+#    join table_shard_id61
+#    on table_shard_id52.id2 = table_shard_id61.id2
+#    join table_shard_id62
+#    on table_shard_id36.id2 = table_shard_id62.id3 and table_shard_id54.id1 = table_shard_id62.id3
+#    join table_shard_id63
+#    on table_shard_id13.id3 = table_shard_id63.id1 and table_shard_id30.id3 = table_shard_id63.id3
+#    join table_shard_id64
+#    on table_shard_id6.id2 = table_shard_id64.id1 and table_shard_id30.id2 = table_shard_id64.id1
+#    join table_shard_id65
+#    join table_shard_id66
+#    on table_shard_id39.id1 = table_shard_id66.id3 and table_shard_id46.id1 = table_shard_id66.id2
+#    join table_shard_id67
+#    on table_shard_id26.id1 = table_shard_id67.id1
+#    join table_shard_id68
+#    on table_shard_id5.id3 = table_shard_id68.id2 and table_shard_id24.id3 = table_shard_id68.id3
+#    join table_shard_id69
+#    on table_shard_id43.id1 = table_shard_id69.id3 and table_shard_id58.id3 = table_shard_id69.id3 and table_shard_id0.id1 = table_shard_id69.id1
+#    join table_shard_id70
+#    on table_shard_id20.id1 = table_shard_id70.id1 and table_shard_id39.id3 = table_shard_id70.id2 and table_shard_id52.id2 = table_shard_id70.id2
+#    join table_shard_id71
+#    join table_shard_id72
+#    join table_shard_id73
+#    on table_shard_id61.id2 = table_shard_id73.id2 and table_shard_id31.id2 = table_shard_id73.id1 and table_shard_id67.id2 = table_shard_id73.id1
+#    join table_shard_id74
+#    on table_shard_id17.id3 = table_shard_id74.id1
+#    join table_shard_id75
+#    on table_shard_id56.id3 = table_shard_id75.id2 and table_shard_id17.id3 = table_shard_id75.id3 and table_shard_id65.id1 = table_shard_id75.id2
+#    join table_shard_id76
+#    on table_shard_id56.id1 = table_shard_id76.id1 and table_shard_id45.id2 = table_shard_id76.id3
+#    join table_shard_id77
+#    on table_shard_id50.id3 = table_shard_id77.id1 and table_shard_id11.id3 = table_shard_id77.id3
+#    join table_shard_id78
+#    on table_shard_id14.id2 = table_shard_id78.id3 and table_shard_id39.id2 = table_shard_id78.id1 and table_shard_id26.id1 = table_shard_id78.id3
+#    join table_shard_id79
+#    on table_shard_id13.id3 = table_shard_id79.id1
+#    join table_shard_id80
+#    on table_shard_id41.id1 = table_shard_id80.id3 and table_shard_id54.id3 = table_shard_id80.id1 and table_shard_id18.id2 = table_shard_id80.id1
+#    join table_shard_id81
+#    on table_shard_id17.id2 = table_shard_id81.id2 and table_shard_id70.id3 = table_shard_id81.id3 and table_shard_id64.id3 = table_shard_id81.id2
+#    join table_shard_id82
+#    on table_shard_id23.id1 = table_shard_id82.id1 and table_shard_id22.id2 = table_shard_id82.id2
+#    join table_shard_id83
+#    on table_shard_id25.id3 = table_shard_id83.id3
+#    join table_shard_id84
+#    on table_shard_id75.id2 = table_shard_id84.id2 and table_shard_id24.id2 = table_shard_id84.id1
+#    join table_shard_id85
+#    on table_shard_id54.id1 = table_shard_id85.id2 and table_shard_id69.id3 = table_shard_id85.id1
+#    join table_shard_id86
+#    on table_shard_id51.id2 = table_shard_id86.id2
+#    join table_shard_id87
+#    on table_shard_id78.id3 = table_shard_id87.id2 and table_shard_id1.id3 = table_shard_id87.id1 and table_shard_id74.id3 = table_shard_id87.id1
+#    join table_shard_id88
+#    join table_shard_id89
+#    on table_shard_id13.id2 = table_shard_id89.id3
+#    join table_shard_id90
+#    on table_shard_id47.id3 = table_shard_id90.id2 and table_shard_id42.id1 = table_shard_id90.id2 and table_shard_id71.id3 = table_shard_id90.id1
+#    join table_shard_id91
+#    on table_shard_id27.id1 = table_shard_id91.id1 and table_shard_id86.id2 = table_shard_id91.id2
+#    join table_shard_id92
+#    on table_shard_id64.id3 = table_shard_id92.id2
+#    join table_shard_id93
+#    on table_shard_id25.id3 = table_shard_id93.id2 and table_shard_id74.id3 = table_shard_id93.id2
+#    join table_shard_id94
+#    join table_shard_id95
+#    on table_shard_id5.id3 = table_shard_id95.id1 and table_shard_id78.id1 = table_shard_id95.id2
+#    join table_shard_id96
+#    join table_shard_id97
+#    join table_shard_id98
+#    on table_shard_id13.id1 = table_shard_id98.id3
+#    join table_shard_id99
+#    on table_shard_id27.id1 = table_shard_id99.id1 and table_shard_id68.id3 = table_shard_id99.id2 and table_shard_id14.id2 = table_shard_id99.id3
+#    where table_shard_id0.id>10;
+#
+#  plan: |
+#    null
+
+- sql: |
+    /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/ 
+    select a.id from t_shard_id1 a
+    join t_shard_business_id b on a.id<b.business_id join t_shard_id3 c on a.create_time < c.create_time join t_shard_id2 d on d.name = a.name where b.id < c.id;
+
+  plan: |
+    Project(id="id1")
+      HashJoin(condition="name = name", type="inner")
+        NlJoin(condition="create_time < create_time AND id < business_id", type="inner")
+          NlJoin(condition="id < id", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_id3_[0-3]", shardCount=16, sql="SELECT `id`, `create_time` FROM `t_shard_id3` AS `t_shard_id3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_business_id", shardCount=4, sql="SELECT `id`, `business_id` FROM `t_shard_business_id` AS `t_shard_business_id`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/
+    select count(a.name) from t_shard_id1 a
+    left join t_shard_business_id b on a.id<b.id right join t_shard_name c on a.name = c.name left join t_shard_name d on b.name = d.name;
+
+  plan: |
+    HashAgg(count(a.name)="COUNT(name)")
+      HashJoin(condition="name0 = name", type="left")
+        Project(name="name0", name0="name00", name1="name")
+          HashJoin(condition="name = name", type="left", build="left")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `name` FROM `t_shard_name` AS `t_shard_name`")
+            Project(name="name", name0="name0")
+              NlJoin(condition="id < id", type="left")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].t_shard_business_id", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_business_id` AS `t_shard_business_id`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `name` FROM `t_shard_name` AS `t_shard_name`")
+
+- sql: |
+    /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/ 
+    select count(a.name) from t_shard_id1 a
+    left join t_shard_business_id b on a.id=b.id join t_shard_name c on a.name = c.name join t_shard_id3 d on b.create_time= d.create_time;
+
+  plan: |
+    HashAgg(count(a.name)="SUM($f4)")
+      Project(name="name", count(a.name)="count(a.name)", name0="name0", $f1="$f1", $f4="count(a.name) * $f1")
+        HashJoin(condition="name = name", type="inner")
+          HashAgg(group="name", count(a.name)="COUNT(name)")
+            HashJoin(condition="create_time = create_time", type="inner")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].t_shard_id3_[0-3]", shardCount=16, sql="SELECT `create_time` FROM `t_shard_id3` AS `t_shard_id3`")
+              HashJoin(condition="id = id", type="left")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].t_shard_business_id", shardCount=4, sql="SELECT `id`, `create_time` FROM `t_shard_business_id` AS `t_shard_business_id`")
+          HashAgg(group="name", $f1="COUNT()")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `name` FROM `t_shard_name` AS `t_shard_name`")
+
+- sql: |
+    /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/
+    select count(a.name) from t_shard_id1 a
+    join t_shard_id2 b on a.create_time = b.create_time left join t_shard_name d on d.id = b.id join t_shard_id3 c on c.id < a.id and c.name = b.name;
+
+  plan: |
+    hashagg(count(a.name)="count(name00)")
+      hashjoin(condition="name = name and id < id0", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_id3_[0-3]", shardcount=16, sql="select `id`, `name` from `t_shard_id3` as `t_shard_id3`")
+        project(id="id", name="name", create_time="create_time", id0="id1", name0="name0", create_time0="create_time0", id1="id0")
+          bkajoin(condition="create_time = create_time", type="inner")
+            hashjoin(condition="id = id", type="left", build="left")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].t_shard_id2", shardcount=4, sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `id` from `t_shard_name` as `t_shard_name`")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `id`, `name`, `create_time` from `t_shard_id1` as `t_shard_id1` where (`create_time` in (...))")
+
+- sql: |
+    /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/
+    select count(a.name) from t_shard_business_id a
+    join t_shard_business_id b on a.create_time = b.create_time join t_shard_business_id c where a.name = c.name;
+
+  plan: |
+    hashagg(count(a.name)="sum($f4)")
+      project(name="name", count(a.name)="count(a.name)", name0="name0", $f1="$f1", $f4="count(a.name) * $f1")
+        hashjoin(condition="name = name", type="inner")
+          sortagg(group="name", count(a.name)="count(name)")
+            hashjoin(condition="create_time = create_time", type="inner")
+              mergesort(sort="name asc")
+                logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `name`, `create_time` from `t_shard_business_id` as `t_shard_business_id` order by `name`")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `create_time` from `t_shard_business_id` as `t_shard_business_id`")
+          hashagg(group="name", $f1="count()")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `name` from `t_shard_business_id` as `t_shard_business_id`")

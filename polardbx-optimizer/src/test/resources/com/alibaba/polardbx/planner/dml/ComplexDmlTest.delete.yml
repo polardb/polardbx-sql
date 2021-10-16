@@ -1,0 +1,352 @@
+# one sharding table
+- sql: |
+    delete a from test_hash_ta a where a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_ta", sql="DELETE FROM `test_hash_ta` WHERE (`id` = ?)")
+
+- sql: |
+    delete from a using test_hash_ta a where a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_ta", sql="DELETE FROM `test_hash_ta` WHERE (`id` = ?)")
+
+- sql: |
+    delete a from test_hash_ta a, test_hash_ta b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_ta", sql="DELETE `test_hash_ta` FROM `test_hash_ta` AS `test_hash_ta` INNER JOIN `test_hash_ta` AS `test_hash_ta0` ON (((`test_hash_ta`.`id` = ?) AND (`test_hash_ta0`.`id` = ?)) AND (`test_hash_ta`.`id` = `test_hash_ta0`.`id`))")
+
+- sql: |
+    delete a from test_broadcast a, test_broadcast b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast", sql="DELETE `a` FROM `test_broadcast` AS `a`, `test_broadcast` AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="1")
+
+- sql: |
+    delete test_hash_tb from test_hash_tb, test_hash_ta where test_hash_ta.id = test_hash_tb.id;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_tb,test_hash_ta", shardCount=4, sql="DELETE `test_hash_tb` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_ta` AS `test_hash_ta` ON (`test_hash_tb`.`id` = `test_hash_ta`.`id`)")
+
+- sql: |
+    delete a from test_hash_tb b, test_hash_ta a where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb,test_hash_ta", sql="DELETE `test_hash_ta` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_ta` AS `test_hash_ta` ON (((`test_hash_tb`.`id` = ?) AND (`test_hash_ta`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_hash_ta`.`id`))")
+
+- sql: |
+    delete from a,b using test_hash_tb b, test_hash_ta a where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb,test_hash_ta", sql="DELETE `test_hash_ta`, `test_hash_tb` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_ta` AS `test_hash_ta` ON (((`test_hash_tb`.`id` = ?) AND (`test_hash_ta`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_hash_ta`.`id`))")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,FORBID_EXECUTE_DML_ALL=false)*/
+    delete a from test_hash_tb a, test_hash_ta;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_hash_tb")
+      NlJoin(condition="true", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` FOR UPDATE")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` FOR UPDATE")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_broadcast")
+      LogicalView(tables="optest_0001.test_hash_tb,test_broadcast", sql="SELECT `test_broadcast`.`id` AS `id0`, `test_broadcast`.`name` AS `name0`, `test_broadcast`.`create_time` AS `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_broadcast` AS `test_broadcast` ON (((`test_broadcast`.`id` = ?) AND (`test_hash_tb`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_broadcast`.`id`)) FOR UPDATE")
+
+- sql: |
+    delete b from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb,test_broadcast", sql="DELETE `test_hash_tb` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_broadcast` AS `test_broadcast` ON (((`test_broadcast`.`id` = ?) AND (`test_hash_tb`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_broadcast`.`id`))")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a,b from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_broadcast, optest.test_hash_tb")
+      LogicalView(tables="optest_0001.test_hash_tb,test_broadcast", sql="SELECT `test_broadcast`.`id` AS `id0`, `test_broadcast`.`name` AS `name0`, `test_broadcast`.`create_time` AS `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_broadcast` AS `test_broadcast` ON (((`test_broadcast`.`id` = ?) AND (`test_hash_tb`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_broadcast`.`id`)) FOR UPDATE")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a from test_single a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_single")
+      HashJoin(condition="id = id", type="inner")
+        LogicalView(tables="optest_0000.test_single", sql="SELECT `id`, `name`, `create_time` FROM `test_single` AS `test_single` WHERE (`id` = ?) FOR UPDATE")
+        LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?) FOR UPDATE")
+
+- sql: |
+    delete b from test_single a join test_hash_tb b where a.id = b.id and a.id = 0;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_single, test_hash_tb]", sql="DELETE `b` FROM ? AS `a` INNER JOIN ? AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="`test_single`,`test_hash_tb`,0")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a,b from test_single a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_single, optest.test_hash_tb")
+      HashJoin(condition="id = id", type="inner")
+        LogicalView(tables="optest_0000.test_single", sql="SELECT `id`, `name`, `create_time` FROM `test_single` AS `test_single` WHERE (`id` = ?) FOR UPDATE")
+        LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?) FOR UPDATE")
+
+- sql: |
+    delete a from test_broadcast a, test_broadcast_b b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast_b", sql="DELETE `a` FROM `test_broadcast` AS `a`, `test_broadcast_b` AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="1")
+
+- sql: |
+    delete a,b from test_broadcast a, test_broadcast_b b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast_b", sql="DELETE `a`, `b` FROM `test_broadcast` AS `a`, `test_broadcast_b` AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="1")
+
+- sql: |
+    delete a from test_hash_ta a join (select name, id from test_hash_tb b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_ta, test_hash_tb]", sql="DELETE `a` FROM ? AS `a` INNER JOIN (SELECT `b`.`name` AS `name`, `b`.`id` AS `id` FROM ? AS `b` WHERE ((`b`.`name` = ?) AND (`b`.`id` = ?))) AS `b` WHERE (`a`.`id` = `b`.`id`)", params="`test_hash_ta`,`test_hash_tb`,c,1")
+
+- sql: |
+    delete a from test_broadcast a join (select name, id from test_broadcast b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast", sql="DELETE `a` FROM `test_broadcast` AS `a` INNER JOIN (SELECT `b`.`name` AS `name`, `b`.`id` AS `id` FROM `test_broadcast` AS `b` WHERE ((`b`.`name` = ?) AND (`b`.`id` = ?))) AS `b` WHERE (`a`.`id` = `b`.`id`)", params="c,1")
+
+- sql: |
+    delete a from test_hash_tb a join (select name, id from test_broadcast b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_broadcast]", sql="DELETE `a` FROM ? AS `a` INNER JOIN (SELECT `b`.`name` AS `name`, `b`.`id` AS `id` FROM ? AS `b` WHERE ((`b`.`name` = ?) AND (`b`.`id` = ?))) AS `b` WHERE (`a`.`id` = `b`.`id`)", params="`test_hash_tb`,`test_broadcast`,c,1")
+
+- sql: |
+    delete a from test_broadcast a join (select name, id from test_hash_ta b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_broadcast")
+      LogicalView(tables="optest_0001.test_hash_ta,test_broadcast", sql="SELECT `test_broadcast`.`id` AS `id0`, `test_broadcast`.`name` AS `name0`, `test_broadcast`.`create_time`, `t`.`name`, `t`.`id` FROM (SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` WHERE ((`name` = ?) AND (`id` = ?))) AS `t` INNER JOIN `test_broadcast` AS `test_broadcast` ON (`t`.`id` = `test_broadcast`.`id`) FOR UPDATE")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete test_hash_ta from test_hash_ta;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete test_hash_ta from optest.test_hash_ta;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_ta from test_hash_ta;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_ta from optest.test_hash_ta;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete test_hash_ta from optest1.test_hash_ta;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Object 'optest1' not found
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest1.test_hash_ta from test_hash_ta;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Table 'optest1.test_hash_ta' not found
+
+- sql: |
+    delete optest.test_hash_ta from optest1.test_hash_ta;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Object 'optest1' not found
+
+- sql: |
+    delete optest1.test_hash_ta from optest.test_hash_ta;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Table 'optest1.test_hash_ta' not found
+
+- sql: |
+    delete optest1.test_hash_ta from optest1.test_hash_ta;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Object 'optest1' not found
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta a;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta AS a;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete a from test_hash_ta AS a;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    delete from test_hash_ta AS `a-a` where `a-a`.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_ta", sql="DELETE FROM `test_hash_ta` WHERE (`id` = ?)")
+
+- sql: |
+    delete `a-a` from test_hash_ta AS `a-a` where `a-a`.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_ta", sql="DELETE FROM `test_hash_ta` WHERE (`id` = ?)")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from optest.test_hash_ta;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from optest.test_hash_ta a;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from optest.test_hash_ta AS a;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete a from optest.test_hash_ta AS a;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="DELETE FROM `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_tb, test_hash_ta from optest.test_hash_ta join test_hash_tb;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_hash_tb, optest.test_hash_ta")
+      NlJoin(condition="true", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` FOR UPDATE")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` FOR UPDATE")
+
+- sql: |
+    delete optest1.test_hash_tb, test_hash_ta from optest.test_hash_ta join test_hash_tb;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Unknown table 'optest1.test_hash_tb' in MULTI DELETE
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_tb, a from optest.test_hash_ta as a join test_hash_tb;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_hash_tb, optest.test_hash_ta")
+      NlJoin(condition="true", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` FOR UPDATE")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` FOR UPDATE")
+
+- sql: |
+    delete optest.test_hash_tb, optest.test_hash_ta from optest.test_hash_ta as a join test_hash_tb;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Unknown table 'optest.test_hash_ta' in MULTI DELETE
+
+- sql: |
+    delete b from self_join_t1 a join self_join_t1 b on a.c1 = b.c1 and a.pk > b.pk where a.pk > 0;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].self_join_t1", shardCount=4, sql="DELETE `self_join_t10` FROM `self_join_t1` AS `self_join_t1` INNER JOIN `self_join_t1` AS `self_join_t10` ON (((`self_join_t1`.`c1` = `self_join_t10`.`c1`) AND (`self_join_t1`.`pk` > `self_join_t10`.`pk`)) AND (`self_join_t1`.`pk` > ?))")
+
+
+- sql: |
+    delete from test_broadcast where id > 0 and exists (select id from test_broadcast_b where test_broadcast.name = name);
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast_b", sql="delete `test_broadcast` from `test_broadcast` as `test_broadcast` where ((`id` > ?) and (exists (select `test_broadcast_b`.`id` as `id` from `test_broadcast_b` as `test_broadcast_b` where (`test_broadcast`.`name` = `test_broadcast_b`.`name`))))", params="0")
+
+- sql: |
+    delete from optest.test_broadcast where id > 0 and exists (select id from optest.test_broadcast_b where test_broadcast.name = name);
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast_b", sql="delete `test_broadcast` from `test_broadcast` as `test_broadcast` where ((`id` > ?) and (exists (select `test_broadcast_b`.`id` as `id` from `test_broadcast_b` as `test_broadcast_b` where (`test_broadcast`.`name` = `test_broadcast_b`.`name`))))", params="0")

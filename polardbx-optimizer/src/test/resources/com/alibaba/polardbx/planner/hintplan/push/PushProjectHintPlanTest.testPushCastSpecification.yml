@@ -1,0 +1,30 @@
+# CAST
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("cast(timestamp_test as DATE)")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT CAST(`timestamp_test` AS DATE) AS `CAST(timestamp_test AS DATE)` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("cast(NULL as DATE)")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT CAST(NULL AS DATE) AS `CAST(NULL AS DATE)` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("cast('2018-01-16 12:47:54' as DATE)")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT CAST('2018-01-16 12:47:54' AS DATE) AS `CAST('2018-01-16 12:47:54' AS DATE)` FROM `test_table_a` AS `test_table_a`")

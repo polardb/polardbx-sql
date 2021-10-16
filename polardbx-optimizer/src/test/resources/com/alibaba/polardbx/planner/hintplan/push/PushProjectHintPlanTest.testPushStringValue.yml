@@ -1,0 +1,70 @@
+# string, string function, charset, collate, ||
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("'CoronaDB' as name")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT 'CoronaDB' AS `name` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("concat('Co', 'rona', 'DB') as name")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT CONCAT('Co', 'rona', 'DB') AS `name` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("_utf8'CoronaDB' as name")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT 'CoronaDB' AS `name` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("_utf8'CoronaDB' collate utf8_general_ci as name")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT 'CoronaDB' AS `name` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("concat('Co', 'rona', 'DB') collate utf8_danish_ci as name")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT CONCAT('Co', 'rona', 'DB') AS `name` FROM `test_table_a` AS `test_table_a`")
+
+  # Calcite support only '<BOOLEAN> OR <BOOLEAN>' for now
+#-
+#  sql: |
+#    select /* +TDDL: construct()
+#    push_pj("varchar_test_p255 || 'CoronaDB' as name")
+#    add_un()*/ * from test_table_a;
+#
+#  plan: |
+#    Gather(concurrent=true)
+#      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `varchar_test_p255` || 'CoronaDB' AS `name` FROM `test_table_a`")
+#
+#-
+#  sql: |
+#    select /* +TDDL: construct()
+#    push_pj("varchar_test_p255 collate utf8_danish_ci || _utf8'CoronaDB' collate utf8_danish_ci as name")
+#    add_un()*/ * from test_table_a;
+#
+#  plan: |
+#    Gather(concurrent=true)
+#      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT -2 FROM `test_table_a`")

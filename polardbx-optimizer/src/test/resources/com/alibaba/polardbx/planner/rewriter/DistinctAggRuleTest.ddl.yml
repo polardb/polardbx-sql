@@ -1,0 +1,16 @@
+test_tb:
+  CREATE TABLE test_tb(
+  a int,
+  b bigint,
+  c int,
+  primary key(a)
+  ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;
+
+test_tb2:
+  CREATE TABLE test_tb2(
+  a int,
+  b bigint,
+  c int,
+  e varchar(30),
+  d varchar(30)
+  ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;

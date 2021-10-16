@@ -1,0 +1,20 @@
+# datetime
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("now() as now")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT NOW() AS `now` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("date_sub(date(now()), interval 1 day) as yesterday")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT DATE_SUB(DATE(NOW()), INTERVAL 1 DAY) AS `yesterday` FROM `test_table_a` AS `test_table_a`")

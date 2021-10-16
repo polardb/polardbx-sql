@@ -1,0 +1,168 @@
+test_table_a:
+  CREATE TABLE `test_table_a` (
+  `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+test_table_b:
+  CREATE TABLE `test_table_b` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+test_table_c:
+  CREATE TABLE `test_table_c` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST
+
+
+hint_a_table_a:
+  CREATE TABLE `hint_a_table_a` (
+  `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_a_table_b:
+  CREATE TABLE `hint_a_table_b` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_a_table_c:
+  CREATE TABLE `hint_a_table_c` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST
+
+
+hint_b_table_a:
+  CREATE TABLE `hint_b_table_a` (
+  `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_b_table_b:
+  CREATE TABLE `hint_b_table_b` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_b_table_c:
+  CREATE TABLE `hint_b_table_c` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST
+
+
+hint_c_table_a:
+  CREATE TABLE `hint_c_table_a` (
+  `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_c_table_b:
+  CREATE TABLE `hint_c_table_b` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_c_table_c:
+  CREATE TABLE `hint_c_table_c` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST
+
+
+hint_d_table_a:
+  CREATE TABLE `hint_d_table_a` (
+  `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_d_table_b:
+  CREATE TABLE `hint_d_table_b` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+hint_d_table_c:
+  CREATE TABLE `hint_d_table_c` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST

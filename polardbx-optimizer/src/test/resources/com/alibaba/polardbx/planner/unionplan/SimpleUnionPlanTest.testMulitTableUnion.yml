@@ -1,0 +1,125 @@
+- sql: |
+    # test union wtih two subquery
+    (select a.id
+    from 
+    	test_hash_tb a
+    where a.name='xx')
+    union
+    (select b.id
+    from test_hash_tb2 b
+    where b.name='xx' );
+
+  plan: |
+
+    HashAgg(group="id")
+      UnionAll(concurrent=true)
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` = 'xx')")
+
+- sql: |
+    # test union wtih three subquery
+    (
+      select a.id
+      from
+        test_hash_tb a
+      where a.name='xx'
+    )
+    union
+    (
+      select b.id
+      from test_hash_tb2 b
+      where b.name='xx'
+    )
+    union
+     (
+      select c.id
+      from test_hash_tb3 c
+      where c.name='xx'
+    )
+
+  plan: |
+
+    HashAgg(group="id")
+      UnionAll(concurrent=true)
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` = 'xx')")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` FROM `test_hash_tb3` AS `test_hash_tb3` WHERE (`name` = 'xx')")
+
+- sql: |
+    # test union wtih 4 subquery
+    (
+      select a.id
+      from
+        test_hash_tb a
+      where a.name='xx'
+    )
+    union
+    (
+      select b.id
+      from test_hash_tb2 b
+      where b.name='xx'
+    )
+    union
+     (
+      select c.id
+      from test_hash_tb3 c
+      where c.name='xx'
+    )
+    union
+     (
+      select d.id
+      from test_hash_tb4 d
+      where d.name='xx'
+    )
+
+  plan: |
+
+    HashAgg(group="id")
+      UnionAll(concurrent=true)
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` = 'xx')")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` FROM `test_hash_tb3` AS `test_hash_tb3` WHERE (`name` = 'xx')")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb4", shardCount=4, sql="SELECT `id` FROM `test_hash_tb4` AS `test_hash_tb4` WHERE (`name` = 'xx')")
+
+- sql: |
+    # UNION with order by
+    select a.id from test_hash_tb a
+    union all
+    select a.id from test_hash_tb a
+    order by id;
+
+  plan: |
+
+    MemSort(sort="id ASC")
+      UnionAll(concurrent=true)
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+
+- sql: |
+    select a.id from test_hash_tb a
+    union all
+    select a.id from test_hash_tb a
+    union all select a.id from test_hash_tb a
+    order by id;
+
+  plan: |
+
+    MemSort(sort="id ASC")
+      UnionAll(concurrent=true)
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")

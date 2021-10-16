@@ -1,0 +1,80 @@
+# order by column/order by number/multi column with different collate
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("pk")
+    add_ms("pk")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="pk ASC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("pk desc")
+    add_ms("pk desc")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="pk DESC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY `pk` DESC")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("2 desc ")
+    add_ms("2 desc")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="bigint_test DESC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY 2 DESC")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("pk collate utf8_danish_ci asc")
+    add_ms("pk")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="pk ASC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("pk, 2")
+    add_ms("pk, 2")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="pk ASC,bigint_test ASC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY `pk`, 2")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("pk DESC, bigint_test ASC")
+    add_ms("pk DESC, bigint_test ASC")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="pk DESC,bigint_test ASC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY `pk` DESC, `bigint_test`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("pk DESC, 2 ASC, varchar_test_p255 desc")
+    add_ms("pk DESC, 2 ASC, varchar_test_p255 desc")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="pk DESC,bigint_test ASC,varchar_test_p255 DESC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY `pk` DESC, 2, `varchar_test_p255` DESC")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_sort("pk DESC, 2 ASC, varchar_test_p255 collate utf8_danish_ci desc")
+    add_ms("pk DESC, 2 ASC, varchar_test_p255 desc")*/ * from test_table_a;
+
+  plan: |
+
+    MergeSort(sort="pk DESC,bigint_test ASC,varchar_test_p255 DESC")
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` ORDER BY `pk` DESC, 2, `varchar_test_p255` DESC")

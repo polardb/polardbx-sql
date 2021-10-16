@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="concurrency_control_rule">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `concurrency_control_rule`(
+                `id` char(100) COLLATE utf8_unicode_ci NOT NULL,
+                `sql_type`  char(6) NOT NULL,
+                `db_name`   char(64) COLLATE utf8_unicode_ci NOT NULL,
+                `table_name` char(64) COLLATE utf8_unicode_ci NOT NULL,
+                `user_name` char(32) COLLATE utf8_unicode_ci,
+                `client_ip` char(60) COLLATE utf8_unicode_ci NOT NULL,
+                `parallelism` int(11) NOT NULL DEFAULT 0  comment 'value of MAX_CONCURRENCY in the CREATE CCL_RULE statement',
+                `keywords` varchar(512) DEFAULT NULL,
+                `template_id` text,
+                `queue_size` int(11) NOT NULL DEFAULT 0 comment 'value of WAIT_QUEUE_SIZE in the CREATE CCL_RULE statement',
+                `priority` int(11) NOT NULL AUTO_INCREMENT,
+                `trigger_priority` int(11) NOT NULL,
+                `wait_timeout` int(11) NOT NULL DEFAULT 600,
+                `fast_match` int(11) NOT NULL DEFAULT 0,
+                `light_wait` int(11) NOT NULL DEFAULT 0,
+                `query` text,
+                `params` text,
+                `query_template_id` char(8) DEFAULT NULL,
+                `inst_id` char(35) NOT NULL,
+                `gmt_updated` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                 PRIMARY KEY (`priority`),
+                 UNIQUE KEY (`inst_id`,`id`)
+            ) charset=utf8mb4
+        ]]></Create>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` add column `light_wait` int(11) NOT NULL DEFAULT 0
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` add column `query` text
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` add column `params` text
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` add column `query_template_id` char(8) DEFAULT NULL
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` add column `trigger_priority` int NOT NULL
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` modify column `user_name` char(32) COLLATE utf8_unicode_ci
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` modify column `template_id` text
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` modify column `id` char(100) COLLATE utf8_unicode_ci NOT NULL
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` add column `inst_id` char(35) NOT NULL
+        ]]></Change>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` modify column `user_name` char(32) COLLATE utf8_unicode_ci
+        ]]></Change>
+
+    </SystemTable>
+
+    <SystemTable name="concurrency_control_trigger">
+        <Create><![CDATA[
+                CREATE TABLE IF NOT EXISTS `concurrency_control_trigger` (
+                  `id` char(50) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+                  `priority` int(11) NOT NULL AUTO_INCREMENT,
+                  `conditions` text,
+                  `rule_config` text,
+                  `schema`   char(64) COLLATE utf8_unicode_ci NOT NULL,
+                  `rule_upgrade` int(11) NOT NULL DEFAULT '0',
+                  `max_ccl_rule` int(11) NOT NULL DEFAULT '0',
+                  `ccl_rule_count` int(11) NOT NULL DEFAULT '0',
+                  `max_sql_size`  int(11) NOT NULL DEFAULT '4096',
+                  `gmt_updated` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `inst_id` char(35) NOT NULL,
+                  PRIMARY KEY (`priority`),
+                  UNIQUE KEY `id` (`inst_id`,`id`)
+                ) DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+
+
+    </SystemTable>
+
+</SystemTables>

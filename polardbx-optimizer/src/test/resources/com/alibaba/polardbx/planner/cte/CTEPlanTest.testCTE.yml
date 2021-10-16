@@ -1,0 +1,50 @@
+-
+  sql: |
+    with cte as (select * from t1) select * from cte
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`")
+
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t1,t2)*/
+    with cte as (select * from t1), cte2 as (select * from t2) select * from cte join cte2 on cte.id = cte2.id
+
+  plan: |
+    BKAJoin(condition="id = id", type="inner")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2` WHERE (`id` IN (...))")
+
+-
+  sql: |
+    with cte as (select * from t1), cte2 as (select count(*) from cte) select * from cte2
+
+  plan: |
+    HashAgg(count(*)="SUM(count(*))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT COUNT(*) AS `count(*)` FROM `t1` AS `t1`")
+
+-
+  sql: |
+    with cte as (select id from t1), cte2 as (select id from t1) select * from cte join cte2 on cte.id = cte2.id
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `t1`.`id`, `t10`.`id` AS `id0` FROM `t1` AS `t1` INNER JOIN `t1` AS `t10` ON (`t1`.`id` = `t10`.`id`)")
+
+-
+  sql: |
+    WITH cte (col1, col2) AS (   SELECT 1, 2   UNION ALL   SELECT 3, 4 ) SELECT col1, col2 FROM cte;
+
+  plan: |
+    DynamicValues(tuples=[{ 1, 2 }, { 3, 4 }])
+
+-
+  sql: |
+    WITH cte AS (   SELECT 1 AS col1, 2 AS col2   UNION ALL   SELECT 3, 4 ) SELECT col1, col2 FROM cte;
+
+  plan: |
+    DynamicValues(tuples=[{ 1, 2 }, { 3, 4 }])

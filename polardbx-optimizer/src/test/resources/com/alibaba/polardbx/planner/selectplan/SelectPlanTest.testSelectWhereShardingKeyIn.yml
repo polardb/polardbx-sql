@@ -1,0 +1,12 @@
+sql: |
+  select id
+  from test_hash_tb a
+  where a.id in (1,2);
+
+
+plan: |
+
+  materializedsemijoin(condition="id = expr$0", type="semi")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
+    dynamicvalues(tuples=[{ 1 }, { 2 }])

@@ -1,0 +1,40 @@
+# + - * /
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("-2")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT -2 FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("-2 id")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT -2 AS `id` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("-(1-3)*3/6 id")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT (((- (1 - 3)) * 3) / 6) AS `id` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("-(count(distinct * )-3)*3/6 id")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT (((- (COUNT(DISTINCT *) - 3)) * 3) / 6) AS `id` FROM `test_table_a` AS `test_table_a`")

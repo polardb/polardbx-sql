@@ -1,0 +1,150 @@
+customer:
+  CREATE TABLE `customer` (
+  `c_custkey` int(11) NOT NULL,
+  `c_name` varchar(25) NOT NULL,
+  `c_address` varchar(40) NOT NULL,
+  `c_nationkey` int(11) NOT NULL,
+  `c_phone` varchar(15) NOT NULL,
+  `c_acctbal` decimal(15,2) NOT NULL,
+  `c_mktsegment` varchar(10) NOT NULL,
+  `c_comment` varchar(117) NOT NULL,
+  PRIMARY KEY (`c_custkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(c_custkey) PARTITIONS 4;
+
+lineitem:
+  CREATE TABLE `lineitem` (
+  `l_orderkey` int(11) NOT NULL,
+  `l_partkey` int(11) NOT NULL,
+  `l_suppkey` int(11) NOT NULL,
+  `l_linenumber` int(11) NOT NULL,
+  `l_quantity` decimal(15,2) NOT NULL,
+  `l_extendedprice` decimal(15,2) NOT NULL,
+  `l_discount` decimal(15,2) NOT NULL,
+  `l_tax` decimal(15,2) NOT NULL,
+  `l_returnflag` varchar(1) NOT NULL,
+  `l_linestatus` varchar(1) NOT NULL,
+  `l_shipdate` date NOT NULL,
+  `l_commitdate` date NOT NULL,
+  `l_receiptdate` date NOT NULL,
+  `l_shipinstruct` varchar(25) NOT NULL,
+  `l_shipmode` varchar(10) NOT NULL,
+  `l_comment` varchar(44) NOT NULL,
+  PRIMARY KEY (`l_orderkey`,`l_linenumber`),
+  KEY `i_l_partkey` (`l_partkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(l_orderkey) PARTITIONS 4;
+
+nation:
+  CREATE TABLE `nation` (
+  `n_nationkey` int(11) NOT NULL,
+  `n_name` varchar(25) NOT NULL,
+  `n_regionkey` int(11) NOT NULL,
+  `n_comment` varchar(152) DEFAULT NULL,
+  PRIMARY KEY (`n_nationkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 broadcast;
+
+orders:
+  CREATE TABLE `orders` (
+  `o_orderkey` int(11) NOT NULL,
+  `o_custkey` int(11) NOT NULL,
+  `o_orderstatus` varchar(1) NOT NULL,
+  `o_totalprice` decimal(15,2) NOT NULL,
+  `o_orderdate` date NOT NULL,
+  `o_orderpriority` varchar(15) NOT NULL,
+  `o_clerk` varchar(15) NOT NULL,
+  `o_shippriority` int(11) NOT NULL,
+  `o_comment` varchar(79) NOT NULL,
+  KEY `custkey_idx` (`o_custkey`),
+  PRIMARY KEY (`o_orderkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(O_ORDERKEY) PARTITIONS 4;
+
+part:
+  CREATE TABLE `part` (
+  `p_partkey` int(11) NOT NULL,
+  `p_name` varchar(55) NOT NULL,
+  `p_mfgr` varchar(25) NOT NULL,
+  `p_brand` varchar(10) NOT NULL,
+  `p_type` varchar(25) NOT NULL,
+  `p_size` int(11) NOT NULL,
+  `p_container` varchar(10) NOT NULL,
+  `p_retailprice` decimal(15,2) NOT NULL,
+  `p_comment` varchar(23) NOT NULL,
+  PRIMARY KEY (`p_partkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(p_partkey) PARTITIONS 4;
+
+partsupp:
+  CREATE TABLE `partsupp` (
+  `ps_partkey` int(11) NOT NULL,
+  `ps_suppkey` int(11) NOT NULL,
+  `ps_availqty` int(11) NOT NULL,
+  `ps_supplycost` decimal(15,2) NOT NULL,
+  `ps_comment` varchar(199) NOT NULL,
+  PRIMARY KEY (`ps_partkey`,`ps_suppkey`),
+  KEY `IDX_PARTSUPP_SUPPKEY` (`PS_SUPPKEY`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(ps_partkey) PARTITIONS 4;
+
+region:
+  CREATE TABLE `region` (
+  `r_regionkey` int(11) NOT NULL,
+  `r_name` varchar(25) NOT NULL,
+  `r_comment` varchar(152) DEFAULT NULL,
+  PRIMARY KEY (`r_regionkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 broadcast;
+
+supplier:
+  CREATE TABLE `supplier` (
+  `s_suppkey` int(11) NOT NULL,
+  `s_name` varchar(25) NOT NULL,
+  `s_address` varchar(40) NOT NULL,
+  `s_nationkey` int(11) NOT NULL,
+  `s_phone` varchar(15) NOT NULL,
+  `s_acctbal` decimal(15,2) NOT NULL,
+  `s_comment` varchar(101) NOT NULL,
+  PRIMARY KEY (`s_suppkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(s_suppkey) PARTITIONS 4;
+X:
+  CREATE TABLE `X` (
+  `b` int(11) NOT NULL,
+  `id` int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `b_index` (`b`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 partition by hash(`id`) PARTITIONS 4;
+
+Y:
+  CREATE TABLE `Y` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`, `b`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 partition by hash(`a`) PARTITIONS 4;
+
+lineitem_index_reverse:
+  CREATE TABLE `lineitem_index_reverse` (
+  `l_orderkey` int(11) NOT NULL,
+  `l_partkey` int(11) NOT NULL,
+  `l_suppkey` int(11) NOT NULL,
+  `l_linenumber` int(11) NOT NULL,
+  `l_quantity` decimal(15,2) NOT NULL,
+  `l_extendedprice` decimal(15,2) NOT NULL,
+  `l_discount` decimal(15,2) NOT NULL,
+  `l_tax` decimal(15,2) NOT NULL,
+  `l_returnflag` varchar(1) NOT NULL,
+  `l_linestatus` varchar(1) NOT NULL,
+  `l_shipdate` date NOT NULL,
+  `l_commitdate` date NOT NULL,
+  `l_receiptdate` date NOT NULL,
+  `l_shipinstruct` varchar(25) NOT NULL,
+  `l_shipmode` varchar(10) NOT NULL,
+  `l_comment` varchar(44) NOT NULL,
+  PRIMARY KEY (`l_linenumber`, `l_orderkey`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1  partition by hash(`l_orderkey`) PARTITIONS 4;
+
+sbtest1:
+  CREATE TABLE `sbtest1` (
+  `id` int(10) UNSIGNED NOT NULL,
+  `k` int(10) UNSIGNED NOT NULL DEFAULT '0',
+  `g` int(10) UNSIGNED NOT NULL DEFAULT '0',
+  `c` char(120) NOT NULL DEFAULT '',
+  `pad` char(60) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  KEY `k_1` (`k`),
+  GLOBAL INDEX `gig`(`g`) COVERING (`id`) partition by hash(`g`) PARTITIONS 7
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8  partition by hash(`id`) PARTITIONS 4;

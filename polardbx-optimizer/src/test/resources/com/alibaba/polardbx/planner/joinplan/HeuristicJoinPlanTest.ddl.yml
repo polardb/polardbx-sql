@@ -1,0 +1,1150 @@
+t_shard_id1:
+  CREATE TABLE `t_shard_id1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+t_shard_id2:
+  CREATE TABLE `t_shard_id2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+t_shard_id3:
+  CREATE TABLE `t_shard_id3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`name`) TBPARTITIONS 4;
+
+t_shard_name:
+  CREATE TABLE `t_shard_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`name`);
+
+t_shard_business_id:
+  CREATE TABLE `t_shard_business_id` (
+  `id` int(11) NOT NULL,
+  `business_id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`business_id`);
+
+table_shard_id0:
+  CREATE TABLE table_shard_id0(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id1:
+  CREATE TABLE table_shard_id1(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id2:
+  CREATE TABLE table_shard_id2(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id3:
+  CREATE TABLE table_shard_id3(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id4:
+  CREATE TABLE table_shard_id4(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id5:
+  CREATE TABLE table_shard_id5(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id6:
+  CREATE TABLE table_shard_id6(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id7:
+  CREATE TABLE table_shard_id7(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id8:
+  CREATE TABLE table_shard_id8(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id9:
+  CREATE TABLE table_shard_id9(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id10:
+  CREATE TABLE table_shard_id10(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id11:
+  CREATE TABLE table_shard_id11(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id12:
+  CREATE TABLE table_shard_id12(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id13:
+  CREATE TABLE table_shard_id13(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id14:
+  CREATE TABLE table_shard_id14(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id15:
+  CREATE TABLE table_shard_id15(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id16:
+  CREATE TABLE table_shard_id16(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id17:
+  CREATE TABLE table_shard_id17(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id18:
+  CREATE TABLE table_shard_id18(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id19:
+  CREATE TABLE table_shard_id19(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id20:
+  CREATE TABLE table_shard_id20(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id21:
+  CREATE TABLE table_shard_id21(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id22:
+  CREATE TABLE table_shard_id22(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id23:
+  CREATE TABLE table_shard_id23(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id24:
+  CREATE TABLE table_shard_id24(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id25:
+  CREATE TABLE table_shard_id25(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id26:
+  CREATE TABLE table_shard_id26(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id27:
+  CREATE TABLE table_shard_id27(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id28:
+  CREATE TABLE table_shard_id28(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id29:
+  CREATE TABLE table_shard_id29(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id30:
+  CREATE TABLE table_shard_id30(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id31:
+  CREATE TABLE table_shard_id31(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id32:
+  CREATE TABLE table_shard_id32(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id33:
+  CREATE TABLE table_shard_id33(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id34:
+  CREATE TABLE table_shard_id34(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id35:
+  CREATE TABLE table_shard_id35(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id36:
+  CREATE TABLE table_shard_id36(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id37:
+  CREATE TABLE table_shard_id37(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id38:
+  CREATE TABLE table_shard_id38(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id39:
+  CREATE TABLE table_shard_id39(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id40:
+  CREATE TABLE table_shard_id40(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id41:
+  CREATE TABLE table_shard_id41(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id42:
+  CREATE TABLE table_shard_id42(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id43:
+  CREATE TABLE table_shard_id43(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id44:
+  CREATE TABLE table_shard_id44(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id45:
+  CREATE TABLE table_shard_id45(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id46:
+  CREATE TABLE table_shard_id46(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id47:
+  CREATE TABLE table_shard_id47(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id48:
+  CREATE TABLE table_shard_id48(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id49:
+  CREATE TABLE table_shard_id49(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id50:
+  CREATE TABLE table_shard_id50(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id51:
+  CREATE TABLE table_shard_id51(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id52:
+  CREATE TABLE table_shard_id52(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id53:
+  CREATE TABLE table_shard_id53(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id54:
+  CREATE TABLE table_shard_id54(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id55:
+  CREATE TABLE table_shard_id55(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id56:
+  CREATE TABLE table_shard_id56(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id57:
+  CREATE TABLE table_shard_id57(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id58:
+  CREATE TABLE table_shard_id58(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id59:
+  CREATE TABLE table_shard_id59(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id60:
+  CREATE TABLE table_shard_id60(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id61:
+  CREATE TABLE table_shard_id61(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id62:
+  CREATE TABLE table_shard_id62(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id63:
+  CREATE TABLE table_shard_id63(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id64:
+  CREATE TABLE table_shard_id64(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id65:
+  CREATE TABLE table_shard_id65(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id66:
+  CREATE TABLE table_shard_id66(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id67:
+  CREATE TABLE table_shard_id67(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id68:
+  CREATE TABLE table_shard_id68(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id69:
+  CREATE TABLE table_shard_id69(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id70:
+  CREATE TABLE table_shard_id70(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id71:
+  CREATE TABLE table_shard_id71(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id72:
+  CREATE TABLE table_shard_id72(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id73:
+  CREATE TABLE table_shard_id73(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id74:
+  CREATE TABLE table_shard_id74(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id75:
+  CREATE TABLE table_shard_id75(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id76:
+  CREATE TABLE table_shard_id76(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id77:
+  CREATE TABLE table_shard_id77(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id78:
+  CREATE TABLE table_shard_id78(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id79:
+  CREATE TABLE table_shard_id79(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id80:
+  CREATE TABLE table_shard_id80(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id81:
+  CREATE TABLE table_shard_id81(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id82:
+  CREATE TABLE table_shard_id82(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id83:
+  CREATE TABLE table_shard_id83(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id84:
+  CREATE TABLE table_shard_id84(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id85:
+  CREATE TABLE table_shard_id85(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id86:
+  CREATE TABLE table_shard_id86(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id87:
+  CREATE TABLE table_shard_id87(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id88:
+  CREATE TABLE table_shard_id88(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id89:
+  CREATE TABLE table_shard_id89(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id90:
+  CREATE TABLE table_shard_id90(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id91:
+  CREATE TABLE table_shard_id91(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id92:
+  CREATE TABLE table_shard_id92(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id93:
+  CREATE TABLE table_shard_id93(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id94:
+  CREATE TABLE table_shard_id94(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id95:
+  CREATE TABLE table_shard_id95(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id96:
+  CREATE TABLE table_shard_id96(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id97:
+  CREATE TABLE table_shard_id97(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id98:
+  CREATE TABLE table_shard_id98(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+table_shard_id99:
+  CREATE TABLE table_shard_id99(
+  id int(11) NOT NULL,
+  id1 int(11) NOT NULL,
+  id2 int(11) NOT NULL,
+  id3 int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  )ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+

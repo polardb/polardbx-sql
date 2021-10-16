@@ -1,0 +1,9 @@
+sql: |
+  select id
+  from test_hash_tb a
+  where a.id=1;
+
+
+plan: |
+
+  LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1)")

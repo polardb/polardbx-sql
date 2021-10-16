@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="schemata">
+        <Create><![CDATA[
+            create table if not exists `schemata` (
+              `id` bigint unsigned not null auto_increment,
+              `catalog_name` varchar(512) default 'def',
+              `schema_name` varchar(64) not null,
+              `default_character_set_name` varchar(32) not null,
+              `default_collation_name` varchar(32) not null,
+              `sql_path` varchar(512) default null,
+              `default_db_index` varchar(256) not null,
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key (`id`),
+              unique key (`schema_name`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `schemata` add column `version` int default 0
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="tables">
+        <Create><![CDATA[
+            create table if not exists `tables` (
+              `id` bigint unsigned not null auto_increment,
+              `table_catalog` varchar(512) default 'def',
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `new_table_name` varchar(64) default null,
+              `table_type` varchar(64) default 'BASE TABLE',
+              `engine` varchar(64) default 'InnoDB',
+              `version` bigint unsigned not null default '1',
+              `row_format` varchar(10) default 'Dynamic',
+              `table_rows` bigint unsigned default '0',
+              `avg_row_length` bigint unsigned default '0',
+              `data_length` bigint unsigned default '16384',
+              `max_data_length` bigint unsigned default '0',
+              `index_length` bigint unsigned default '16384',
+              `data_free` bigint unsigned default '0',
+              `auto_increment` bigint unsigned default '1',
+              `create_time` timestamp not null default current_timestamp,
+              `update_time` timestamp not null default current_timestamp on update current_timestamp,
+              `check_time` timestamp default current_timestamp,
+              `table_collation` varchar(32) default null,
+              `checksum` bigint unsigned default null,
+              `create_options` varchar(255) default null,
+              `table_comment` varchar(2048) default null,
+              `status` int not null default '0' comment '0:ABSENT,1:PUBLIC',
+              `flag` bigint unsigned default '0',
+              primary key (`id`),
+              unique key (`table_schema`, `table_name`),
+              key (`table_name`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `tables` add key (`table_name`)
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="tables_ext">
+        <Create><![CDATA[
+            create table if not exists `tables_ext` (
+              `id` bigint unsigned not null auto_increment,
+              `table_catalog` varchar(512) default 'def',
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `new_table_name` varchar(64) default null,
+              `table_type` int not null default '0' comment '0:SINGLE,1:SHARDING,2:BROADCAST,3:GSI',
+              `db_partition_key` varchar(512) default null,
+              `db_partition_policy` varchar(64) default null,
+              `db_partition_count` int unsigned not null default '1',
+              `db_name_pattern` varchar(256) not null,
+              `db_rule` varchar(512) default null,
+              `db_meta_map` mediumtext default null,
+              `tb_partition_key` varchar(512) default null,
+              `tb_partition_policy` varchar(64) default null,
+              `tb_partition_count` int unsigned not null default '1',
+              `tb_name_pattern` varchar(256) not null,
+              `tb_rule` varchar(512) default null,
+              `tb_meta_map` mediumtext default null,
+              `ext_partitions` mediumtext default null,
+              `full_table_scan` int unsigned not null default '0',
+              `broadcast` int unsigned not null default '0',
+              `version` bigint unsigned not null default '1',
+              `status` int not null default '0' comment '0:ABSENT,1:PUBLIC',
+              `flag` bigint unsigned default '0',
+              primary key (`id`),
+              unique key (`table_schema`, `table_name`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `tables_ext` add key (`table_name`)
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="table_partitions">
+        <Create><![CDATA[
+        create table if not exists `table_partitions` (
+              `id` bigint not null auto_increment,
+              `parent_id` bigint not null comment '>0:has parent;  <=0:has no parent',
+              `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `sp_temp_flag` int not null comment '1:sub part is defined by template,0:defined by non-template',
+              `group_id` bigint not null default -1 comment 'part_level = 0 ref to tableGroupId, next_level = -1 ref to partition group',
+              `meta_version` bigint unsigned not null default '1',
+              `auto_flag` int default 0 comment '0:auto rebalancing is not open, 1: auto rebalancing is open',
+              `tbl_type` int default 0 comment '0:primary table, 1:gsi table',
+              `part_name` varchar(64) null comment 'the name of part',
+              `part_temp_name` varchar(64) null comment 'part name in template',
+              `part_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
+              `next_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
+              `part_status` int not null,
+              `part_position` bigint default null,
+              `part_method` varchar(64) default null,
+              `part_expr` longtext default null,
+              `part_desc` longtext default null,
+              `part_comment` longtext default null,
+              `part_engine` varchar(64) default null,
+              `part_extras` longtext default null,
+              `part_flags` bigint unsigned default '0',
+              `phy_table` varchar(64) default null,
+               primary key (`id`),
+               unique key `uidx_pname`(`table_schema`,`table_name`,`part_name`),
+               key `tb_level`(`table_schema`,`table_name`,`part_level`),
+               key `obj_id`(`id`,`parent_id`),
+               key `db_tb`(`table_schema`, `table_name`)
+        ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="table_partitions_delta">
+        <Create><![CDATA[
+        create table if not exists `table_partitions_delta` (
+              `id` bigint not null auto_increment,
+              `parent_id` bigint not null comment '>0:has parent; <=0:has no parent',
+              `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `sp_temp_flag` int not null comment '1:sub part is defined by template,0:defined by non-template',
+              `group_id` bigint not null default -1 comment 'part_level = 0 ref to tableGroupId, next_level = -1 ref to partition group',
+              `meta_version` bigint unsigned not null default '1',
+              `auto_flag` int default 0 comment '0:auto rebalancing is not open, 1: auto rebalancing is open',
+              `tbl_type` int default 0 comment '0:primary table, 1:gsi table',
+              `part_name` varchar(64) null comment 'the name of part',
+              `part_temp_name` varchar(64) null comment 'part name in template',
+              `part_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
+              `next_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
+              `part_status` int not null,
+              `part_position` bigint default null,
+              `part_method` varchar(64) default null,
+              `part_expr` longtext default null,
+              `part_desc` longtext default null,
+              `part_comment` longtext default null,
+              `part_engine` varchar(64) default null,
+              `part_extras` longtext default null,
+              `part_flags` bigint unsigned default '0',
+              `phy_table` varchar(64) default null,
+               primary key (`id`),
+               unique key `uidx_pname`(`table_schema`,`table_name`,`part_name`),
+               key `tb_level`(`table_schema`,`table_name`,`part_level`),
+               key `obj_id`(`id`,`parent_id`),
+               key `db_tb`(`table_schema`, `table_name`)
+        ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="views">
+        <Create><![CDATA[
+            create table if not exists `views` (
+              `id` bigint unsigned not null auto_increment,
+              `catalog_name` varchar(512) default 'def',
+              `schema_name` varchar(64) not null,
+              `view_name` varchar(64) not null,
+              `column_list` mediumtext default null,
+              `view_definition` longtext not null,
+              `plan` longtext default null,
+              `plan_type` varchar(255) default null,
+              `plan_error` longtext,
+              `materialization` varchar(255) default null,
+              `check_option` varchar(8) default null,
+              `is_updatable` varchar(3) default null,
+              `definer` varchar(93) default null,
+              `security_type` varchar(7) default null,
+              `character_set_client` varchar(32) default null,
+              `collation_connection` varchar(32) default null,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              `gmt_created` timestamp not null default current_timestamp,
+              `extend_field` longtext comment 'Json string extend field',
+              primary key (`id`),
+              unique key (`schema_name`, `view_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="columns">
+        <Create><![CDATA[
+            create table if not exists `columns` (
+              `id` bigint unsigned not null auto_increment,
+              `table_catalog` varchar(512) default 'def',
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `column_name` varchar(64) not null,
+              `ordinal_position` bigint unsigned not null default '0',
+              `column_default` longtext,
+              `is_nullable` varchar(3) not null,
+              `data_type` varchar(64) not null,
+              `character_maximum_length` bigint unsigned default null,
+              `character_octet_length` bigint unsigned default null,
+              `numeric_precision` bigint unsigned default null,
+              `numeric_scale` bigint unsigned default null,
+              `datetime_precision` bigint unsigned default null,
+              `character_set_name` varchar(32) default null,
+              `collation_name` varchar(32) default null,
+              `column_type` longtext not null,
+              `column_key` varchar(3) default null,
+              `extra` varchar(60) default null,
+              `privileges` varchar(80) default null,
+              `column_comment` varchar(1024) default null,
+              `generation_expression` longtext not null,
+              `jdbc_type` int not null,
+              `jdbc_type_name` varchar(64) not null,
+              `field_length` bigint not null default '0',
+              `version` bigint unsigned not null default '1',
+              `status` int not null default '0' comment '0:ABSENT,1:PUBLIC',
+              `flag` bigint unsigned default '0',
+              primary key (`id`),
+              unique key (`table_schema`, `table_name`, `column_name`),
+              key (`table_name`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `columns` modify column `extra` varchar(60) default null
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columns` add key (`table_name`)
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="indexes">
+        <Create><![CDATA[
+            create table if not exists `indexes` (
+              `id` bigint unsigned not null auto_increment,
+              `table_catalog` varchar(512) default 'def',
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `non_unique` bigint(1) not null default '0',
+              `index_schema` varchar(64) not null,
+              `index_name` varchar(64) not null,
+              `seq_in_index` bigint(10) not null default '0',
+              `column_name` varchar(64) not null,
+              `collation` varchar(3) default null,
+              `cardinality` bigint default null,
+              `sub_part` bigint(3) default null,
+              `packed` varchar(10) default null,
+              `nullable` varchar(3) default null,
+              `index_type` varchar(16) default null comment 'BTREE, FULLTEXT, HASH, RTREE, GLOBAL',
+              `comment` varchar(16) default null comment 'INDEX, COVERING',
+              `index_comment` varchar(1024) default null,
+              `index_column_type` bigint(10) default '0' comment '0:INDEX,1:COVERING',
+              `index_location` bigint(10) not null default '0' comment '0:LOCAL,1:GLOBAL',
+              `index_table_name` varchar(64) default null,
+              `index_status` bigint(10) not null default '0' comment '0:CREATING,1:DELETE_ONLY,2:WRITE_ONLY,3:WRITE_REORG,4:PUBLIC,5:DELETE_REORG,6:REMOVING,7:ABSENT',
+              `version` bigint not null default '1',
+              `flag` bigint unsigned default '0',
+              primary key (`id`),
+              unique key (`table_schema`, `table_name`, `index_name`, `column_name`),
+              key `i_index_name_version` (`index_name`, `version`),
+              key (`table_name`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `indexes` drop key `table_schema`
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `indexes` add unique key (`table_schema`, `table_name`, `index_name`, `column_name`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `indexes` add key (`table_name`)
+        ]]></Change>
+    </SystemTable>
+
+    <SystemTable name="locality_info">
+        <Create><![CDATA[
+        CREATE TABLE LOCALITY_INFO (
+              `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `object_type` int(11) NOT NULL COMMENT '0:default, 1:database, 2:tablegroup, 3:partitiongroup',
+              `object_id`   bigint(20) NOT NULL             COMMENT 'id of the locality object',
+              `primary_zone` varchar(128) NOT NULL DEFAULT '' COMMENT 'primary zone of the object',
+              `locality`    text NOT NULL COMMENT 'locality of the object',
+
+              PRIMARY KEY(`id`),
+              UNIQUE KEY(`object_type`, `object_id`)
+        ) CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+</SystemTables>

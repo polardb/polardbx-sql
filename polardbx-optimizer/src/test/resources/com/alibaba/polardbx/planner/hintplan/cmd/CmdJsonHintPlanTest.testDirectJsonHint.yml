@@ -1,0 +1,218 @@
+# JSON formatted Direct HINT
+
+# SELECT
+
+## replace dbid only
+- sql: |
+    select /*+TDDL({'type':'direct','dbid':'optest_0001'}) */
+    pk from hint_b_table_a;
+
+  plan: |
+
+    LogicalView(tables="optest_0001.hint_b_table_a", sql="SELECT `hint_b_table_a`.`pk` FROM `hint_b_table_a` AS `hint_b_table_a`")
+
+- sql: |
+    select /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    pk from hint_b_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0001,0002].hint_b_table_a", shardCount=2, sql="SELECT `hint_b_table_a`.`pk` FROM `hint_b_table_a` AS `hint_b_table_a`")
+
+- sql: |
+    select /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    "a";
+
+  plan: |
+
+    PhyViewUnion(concurrent=true)
+      PhyTableOperation(groups="optest_0001", sql="SELECT 'a'")
+      PhyTableOperation(groups="optest_0002", sql="SELECT 'a'")
+
+- sql: |
+    /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    show tables like "%test%"
+
+  plan: |
+
+    PhyViewUnion(concurrent=true)
+      PhyQuery(node="[0001,0002]", sql="SHOW TABLES LIKE '%test%'")
+
+- sql: |
+    select /*+TDDL({'type':'direct','vtab':'hint_b_table_a','dbid':'optest_0001','realtabs':['hint_b_table_a_07','hint_b_table_a_08','hint_b_table_a_09']}) */
+    pk from hint_b_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.hint_b_table_a_[07-09]", shardCount=3, sql="SELECT `hint_b_table_a`.`pk` FROM `hint_b_table_a` AS `hint_b_table_a`")
+
+- sql: |
+    select /*+TDDL({'type':'direct','vtab':'hint_b_table_a,hint_b_table_c','dbid':'optest_0001','realtabs':['hint_b_table_a_07, hint_b_table_c','hint_b_table_a_08, hint_b_table_c','hint_b_table_a_09, hint_b_table_c']}) */
+    a.pk from hint_b_table_a a join hint_b_table_c c on a.pk = c.pk;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.hint_b_table_a_[07-09],hint_b_table_c", shardCount=3, sql="SELECT `a`.`pk` FROM `hint_b_table_a` AS `a` INNER JOIN `hint_b_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`)")
+
+- sql: |
+    select /*+TDDL({'type':'direct','vtab':'hint_b_table_a, hint_b_table_b','dbid':'optest_0001','realtabs':['hint_b_table_a_07, hint_b_table_b_07','hint_b_table_a_08, hint_b_table_b_08','hint_b_table_a_09, hint_b_table_b_09']}) */
+    a.pk, b.bigint_test, c.pk as c_pk from hint_b_table_a a join hint_b_table_c c on a.pk = c.pk join hint_b_table_b b on c.pk = b.pk;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.hint_b_table_a_[07-09],hint_b_table_c,hint_b_table_b_[07-09]", shardCount=3, sql="SELECT `a`.`pk`, `b`.`bigint_test`, `c`.`pk` AS `c_pk` FROM `hint_b_table_a` AS `a` INNER JOIN `hint_b_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`) INNER JOIN `hint_b_table_b` AS `b` ON (`c`.`pk` = `b`.`pk`)")
+
+- sql: |
+    select /*+TDDL({'type':'direct','vtab':'hint_b_table_a, hint_b_table_b','dbid':'optest_0001'}) */
+    a.pk, b.bigint_test, c.pk as c_pk from hint_b_table_a a join hint_b_table_c c on a.pk = c.pk join hint_b_table_b b on c.pk = b.pk;
+
+  plan: |
+
+    LogicalView(tables="optest_0001.hint_b_table_a,hint_b_table_c,hint_b_table_b", sql="SELECT `a`.`pk`, `b`.`bigint_test`, `c`.`pk` AS `c_pk` FROM `hint_b_table_a` AS `a` INNER JOIN `hint_b_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`) INNER JOIN `hint_b_table_b` AS `b` ON (`c`.`pk` = `b`.`pk`)")
+
+- sql: |
+    insert /*+TDDL({'type':'direct','dbid':'optest_0001'}) */
+    into hint_b_table_a(bigint_test) values(2);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a`")
+
+- sql: |
+    insert /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    into hint_b_table_a(bigint_test) values(2);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a`")
+    PhyTableOperation(tables="optest_0002.[hint_b_table_a]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a`")
+
+- sql: |
+    insert /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    into hint_b_table_a(bigint_test) values(2),(3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_b_table_a`")
+    PhyTableOperation(tables="optest_0002.[hint_b_table_a]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_b_table_a`")
+
+- sql: |
+    replace /*+TDDL({'type':'direct','dbid':'optest_0001'}) */
+    into hint_b_table_a(bigint_test) values(2);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a`")
+
+- sql: |
+    replace /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    into hint_b_table_a(bigint_test) values(2);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a`")
+    PhyTableOperation(tables="optest_0002.[hint_b_table_a]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a`")
+
+- sql: |
+    replace /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    into hint_b_table_a(bigint_test) values(2),(3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_b_table_a`")
+    PhyTableOperation(tables="optest_0002.[hint_b_table_a]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_b_table_a`")
+
+- sql: |
+    insert /*+TDDL({'type':'direct','vtab':'hint_b_table_a','dbid':'optest_0001','realtabs':['hint_b_table_a_07','hint_b_table_a_08','hint_b_table_a_09']}) */
+    into hint_b_table_a(bigint_test) values(2);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a_07]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a_07`")
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a_09]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a_09`")
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a_08]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a_08`")
+
+- sql: |
+    replace /*+TDDL({'type':'direct','vtab':'hint_b_table_a','dbid':'optest_0001','realtabs':['hint_b_table_a_07','hint_b_table_a_08','hint_b_table_a_09']}) */
+    into hint_b_table_a(bigint_test) values(2);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a_07]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a_07`")
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a_09]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a_09`")
+    PhyTableOperation(tables="optest_0001.[hint_b_table_a_08]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2)", params="`hint_b_table_a_08`")
+
+- sql: |
+    update /*+TDDL({'type':'direct','dbid':'optest_0001'}) */
+    hint_b_table_a set bigint_test=3 where pk = 100003;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.hint_b_table_a", sql="UPDATE `hint_b_table_a` AS `hint_b_table_a` SET `bigint_test` = 3 WHERE (`pk` = 100003)")
+
+- sql: |
+    update /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    hint_b_table_a set bigint_test=3 where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0001,0002].hint_b_table_a", shardCount=2, sql="UPDATE `hint_b_table_a` AS `hint_b_table_a` SET `bigint_test` = 3 WHERE (`pk` = 100003)")
+
+- sql: |
+    update /*+TDDL({'type':'direct','vtab':'hint_b_table_a','dbid':'optest_0001','realtabs':['hint_b_table_a_07','hint_b_table_a_08','hint_b_table_a_09']}) */
+    hint_b_table_a set bigint_test=3 where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="optest_0001.hint_b_table_a_[07-09]", shardCount=3, sql="UPDATE `hint_b_table_a` AS `hint_b_table_a` SET `bigint_test` = 3 WHERE (`pk` = 100003)")
+
+- sql: |
+    delete /*+TDDL({'type':'direct','dbid':'optest_0001'}) */
+    from hint_b_table_a where pk = 100003;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.hint_b_table_a", sql="DELETE FROM `hint_b_table_a` WHERE (`pk` = 100003)")
+
+- sql: |
+    delete /*+TDDL({'type':'direct','dbid':'optest_0001, optest_0002'}) */
+    from hint_b_table_a where pk = 100003;
+
+  plan: |
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0001,0002].hint_b_table_a", shardCount=2, sql="DELETE FROM `hint_b_table_a` WHERE (`pk` = 100003)")
+
+  ## replace dbid and table name
+- sql: |
+    delete /*+TDDL({'type':'direct','vtab':'hint_b_table_a','dbid':'optest_0001','realtabs':['hint_b_table_a_07','hint_b_table_a_08','hint_b_table_a_09']}) */
+    from hint_b_table_a where pk = 100003;
+
+  plan: |
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="optest_0001.hint_b_table_a_[07-09]", shardCount=3, sql="DELETE FROM `hint_b_table_a` WHERE (`pk` = 100003)")
+
+  ### replace dbid and multi table name
+#-
+#  sql: |
+#    delete /*+TDDL({'type':'direct','vtab':'hint_b_table_a,hint_b_table_c','dbid':'optest_0001','realtabs':['hint_b_table_a_07, hint_b_table_c','hint_b_table_a_08, hint_b_table_c','hint_b_table_a_09, hint_b_table_c']}) */
+#    from hint_b_table_a a ,hint_b_table_b b where a.pk = b.pk and a.pk = 100003;
+#
+#  plan: |
+#    AffectedRowsSum(Concurrent:=true)
+#      LogicalView(tables="0001.hint_b_table_a_[07-09],hint_b_table_c", shardCount=3, sql="SELECT `a`.`pk` FROM `hint_b_table_a` AS `a` INNER JOIN `hint_b_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`)")
+#
+### replace dbid and partial table name
+#-
+#  sql: |
+#    delete /*+TDDL({'type':'direct','vtab':'hint_b_table_a, hint_b_table_b','dbid':'optest_0001','realtabs':['hint_b_table_a_07, hint_b_table_b_07','hint_b_table_a_08, hint_b_table_b_08','hint_b_table_a_09, hint_b_table_b_09']}) */
+#    from hint_b_table_a a, hint_b_table_c c ,hint_b_table_b b where a.pk = b.pk and a.pk = c.pk and a.pk = 100003;
+#
+#  plan: |
+#    AffectedRowsSum(Concurrent:=true)
+#      LogicalView(tables="0001.hint_b_table_a_[07-09],hint_b_table_c,hint_b_table_b_[07-09]", shardCount=3, sql="SELECT `a`.`pk`, `b`.`bigint_test`, `c`.`pk` AS `c_pk` FROM `hint_b_table_a` AS `a` INNER JOIN `hint_b_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`) INNER JOIN `hint_b_table_b` AS `b` ON (`c`.`pk` = `b`.`pk`)")

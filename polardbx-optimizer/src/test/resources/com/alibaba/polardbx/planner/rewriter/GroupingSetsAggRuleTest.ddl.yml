@@ -1,0 +1,13 @@
+single_test_tb:
+  CREATE TABLE single_test_tb(
+  a int,
+  b bigint,
+  c int
+  );
+
+test_tb:
+  CREATE TABLE test_tb(
+  a int,
+  b bigint,
+  c int
+  ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;

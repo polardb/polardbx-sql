@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="scaleout_outline">
+        <Create><![CDATA[
+            create table if not exists `scaleout_outline` (
+              `id` bigint(21) unsigned not null auto_increment,
+              `batch_id` bigint unsigned not null,
+              `job_id` bigint unsigned not null,
+              `parent_job_id` bigint unsigned not null default '0',
+              `gmt_create` datetime default current_timestamp,
+              `gmt_modified` datetime default current_timestamp,
+              `table_schema` varchar(64) not null default '',
+              `table_name` varchar(128) not null default '',
+              `source_physical_db` varchar(128) not null default '' comment 'group key',
+              `target_physical_db` varchar(128) not null default '' comment 'group key',
+              `old_storage_inst_id` varchar(128) comment 'old storage instance id',
+              `new_storage_inst_id` varchar(128) comment 'new storage instance id',
+              `src_phy_schema` varchar(128) not null default '' comment 'physical database name',
+              `tar_phy_schema` varchar(128) not null default '' comment 'physical database name',
+              `type` bigint(10) not null default 0 comment '0:replicate table,1:replicate db',
+              `status` bigint(10) not null default 0 comment '0:creating,1:delete_only,2:write_only,3:write_reorg,4:ready_to_public, 5:delete_reorg,6:removing,7:absent,10: doingdbmig,11: finishdbmig,12:dbreadonly,13:public',
+              `job_status` varchar(64) not null default '',
+              `version` bigint(21) not null comment 'table meta version',
+              `remark` longtext,
+              `extra` longtext default null,
+              primary key(`id`),
+              key `idx_db_tb_status`(source_physical_db, table_name, status),
+              key `idx_job_id_status`(job_id, job_status),
+              key `idx_sch_tb_status`(table_schema, table_name, STATUS)
+            ) charset=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="scaleout_backfill_objects">
+        <Create><![CDATA[
+            create table if not exists `scaleout_backfill_objects` (
+              `id` bigint(21) unsigned not null auto_increment,
+              `job_id` bigint unsigned not null,
+              `table_schema` varchar(64) not null default '',
+              `table_name` varchar(64) not null default '',
+              `source_group` varchar(64) not null default '' comment 'group key',
+              `target_group` varchar(64) not null default '' comment 'group key',
+              `physical_table` varchar(64) not null default '' comment 'physical table name',
+              `column_index` bigint not null default -1 comment 'pk column index in table',
+              `parameter_method` varchar(64) not null default '' comment 'parameter method for applying last_value to extractor',
+              `last_value` longtext default null,
+              `max_value` longtext default null,
+              `status` bigint(10) not null default 0 comment '0:init,1:running,2:success,3:failed',
+              `message` longtext default null ,
+              `success_row_count` bigint unsigned not null,
+              `start_time` datetime default null,
+              `end_time` datetime default null,
+              `extra` longtext default null,
+              primary key(`id`),
+              unique key `i_job_db_tb_column`(`job_id`, `source_group`, `physical_table`, `column_index`),
+              key `i_job_id`(`job_id`),
+              key `i_job_id_status`(`job_id`, `status`)
+            ) charset=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="scaleout_checker_reports">
+        <Create><![CDATA[
+            create table if not exists `scaleout_checker_reports` (
+                `id` bigint(21) unsigned not null auto_increment,
+                `job_id` bigint unsigned not null,
+                `table_schema` varchar(64) not null default '',
+                `source_physical_db` varchar(128) not null default '' comment 'group key',
+                `target_physical_db` varchar(128) not null default '' comment 'group key',
+                `table_name` varchar(64) not null default '',
+                `physical_table_name` varchar(64) not null default '',
+                `error_type` varchar(128) not null default '' comment 'check error type',
+                `timestamp` datetime default null comment 'error found time',
+                `status` bigint(10) not null default 0 comment '0:found,1:repaired,2:start,3:finish',
+                `primary_key` longtext default null,
+                `details` longtext default null,
+                `extra` longtext default null,
+                `check_rows` bigint default 0,
+                primary key(`id`),
+                key `i_job_id`(`job_id`),
+                key `i_job_id_status`(`job_id`, `status`),
+                key `i_table_name_job_id`(`table_name`, `job_id`)
+                ) charset=utf8mb4
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

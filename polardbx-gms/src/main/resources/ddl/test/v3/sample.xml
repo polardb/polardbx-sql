@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="_meta_db_test_schema_change">
+        <Create><![CDATA[
+            create table if not exists `_meta_db_test_schema_change` (`c1` int, `c2` int, `c4` int, key (`c2`), unique key `idx1` (`c4`))
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `_meta_db_test_schema_change` add column `c2` int
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_schema_change` add column `c3` int
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_schema_change` add key (`c2`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_schema_change` add column `c4` int
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_schema_change` drop column `c3`
+        ]]></Change>
+        <Change><![CDATA[
+            create unique index idx1 on `_meta_db_test_schema_change`(c4)
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="_meta_db_test_version_control">
+        <Create><![CDATA[
+            create table if not exists `_meta_db_test_version_control` (`v1` int, `v2` int, key (`v2`))
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `_meta_db_test_version_control` add column `v2` int
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_version_control` add column `v3` int
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_version_control` add key (`v2`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_version_control` add key (`v3`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `_meta_db_test_version_control` drop column `v3`
+        ]]></Change>
+    </SystemTable>
+</SystemTables>

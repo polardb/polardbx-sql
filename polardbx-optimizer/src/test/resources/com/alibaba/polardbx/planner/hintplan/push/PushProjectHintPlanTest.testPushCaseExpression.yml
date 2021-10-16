@@ -1,0 +1,47 @@
+# NULLIF, coalesce, CASE WHEN
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("nullif(1,1)")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT (NULLIF(1, 1)) AS `nullif(1, 1)` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("case pk when 1 then 'hello' when substring('2', 1, 1) then 'CoronaDB' when null then '!' end ")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT (CASE WHEN (`pk` = 1) THEN 'hello' WHEN (`pk` = SUBSTRING('2', 1, 1)) THEN 'CoronaDB' WHEN (`pk` IS NULL) THEN '!' ELSE NULL END) FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("case pk when 1 then 'hello' when 2 then 'CoronaDB' when null then '!' else '?' end ")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT (CASE WHEN (`pk` = 1) THEN 'hello' WHEN (`pk` = 2) THEN 'CoronaDB' WHEN (`pk` IS NULL) THEN '!' ELSE '?' END) FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("case when pk = 1 then 'hello' when pk = 2 then 'CoronaDB' when pk is null then '!' end ")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT (CASE WHEN (`pk` = 1) THEN 'hello' WHEN (`pk` = 2) THEN 'CoronaDB' WHEN (`pk` IS NULL) THEN '!' ELSE NULL END) FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("case when pk = 1 then 'hello' when pk = substring('2', 1, 1) then 'CoronaDB' when pk = 3 then '!' else '?' end ")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT (CASE WHEN (`pk` = 1) THEN 'hello' WHEN (`pk` = SUBSTRING('2', 1, 1)) THEN 'CoronaDB' WHEN (`pk` = 3) THEN '!' ELSE '?' END) FROM `test_table_a` AS `test_table_a`")

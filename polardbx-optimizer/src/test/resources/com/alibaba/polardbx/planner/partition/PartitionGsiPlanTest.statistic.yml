@@ -1,0 +1,173 @@
+t_order:
+  100000
+
+t_order.order_id.cardinality:
+  100000
+
+t_order.buyer_id.cardinality:
+  10000
+
+t_order.seller_id.cardinality:
+  10000
+
+t_order1:
+  10000
+
+t_order10:
+  10000
+
+g_i_buyer10:
+  10000
+
+g_i_seller10:
+  10000
+
+t_order10.buyer_id.cardinality:
+  1000
+t_order10.seller_id.cardinality:
+  1000
+
+g_i_buyer:
+  10000
+
+g_i_seller:
+  10000
+
+t_buyer:
+  10000
+t_buyer.buyer_id.cardinality:
+  10000
+t_buyer.nationkey.cardinality:
+  128
+t_buyer.name.cardinality:
+  10000
+
+t_buyer10:
+  10000
+t_buyer10.buyer_id.cardinality:
+  10000
+t_buyer10.nationkey.cardinality:
+  128
+t_buyer10.name.cardinality:
+  10000
+
+t_seller:
+  10000
+t_seller.seller_id.cardinality:
+  10000
+t_seller.nationkey.cardinality:
+  128
+t_seller.name.cardinality:
+  10000
+
+
+t_seller10:
+  10000
+t_seller10.seller_id.cardinality:
+  10000
+t_seller10.nationkey.cardinality:
+  128
+t_seller10.name.cardinality:
+  10000
+
+
+order_dim:
+  100000
+
+order_dim.order_id.cardinality:
+  100000
+
+nation:
+  128
+
+test_index:
+  998739
+test_index_join:
+  97321
+test_index.k1.cardinality:
+  189428
+test_index.k2.cardinality:
+  187110
+test_index.id.cardinality:
+  982755
+test_index.value.cardinality:
+  982869
+test_index_join.id.cardinality:
+  97513
+test_index_join.k.cardinality:
+  97513
+
+orders:
+  148767864
+orders.o_clerk.cardinality:
+  2011936
+orders.o_orderstatus.cardinality:
+  3
+orders.o_orderdate.cardinality:
+  2406
+orders.o_shippriority.cardinality:
+  1
+orders.o_custkey.cardinality:
+  21911488
+orders.o_totalprice.cardinality:
+  25422545
+orders.o_comment.cardinality:
+  26588340
+orders.o_orderkey.cardinality:
+  27876192
+orders.o_orderpriority.cardinality:
+  5
+orders.sampleRate:
+  0.000672188
+orders.o_clerk.nullCount:
+  0
+orders.o_comment.nullCount:
+  0
+orders.o_custkey.nullCount:
+  0
+orders.o_orderdate.nullCount:
+  0
+orders.o_orderkey.nullCount:
+  0
+orders.o_orderpriority.nullCount:
+  0
+orders.o_orderstatus.nullCount:
+  0
+orders.o_shippriority.nullCount:
+  0
+orders.o_totalprice.nullCount:
+  0
+customer:
+  14836390
+customer.c_custkey.cardinality:
+  10123836
+customer.c_acctbal.cardinality:
+  3568777
+customer.c_phone.cardinality:
+  9946029
+customer.c_mktsegment.cardinality:
+  5
+customer.c_address.cardinality:
+  10235072
+customer.c_nationkey.cardinality:
+  25
+customer.c_name.cardinality:
+  10420709
+customer.c_comment.cardinality:
+  9616111
+customer.c_acctbal.nullCount:
+  0
+customer.c_address.nullCount:
+  0
+customer.c_comment.nullCount:
+  0
+customer.c_custkey.nullCount:
+  0
+customer.c_mktsegment.nullCount:
+  0
+customer.c_name.nullCount:
+  0
+customer.c_nationkey.nullCount:
+  0
+customer.c_phone.nullCount:
+  0

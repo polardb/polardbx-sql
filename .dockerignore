@@ -1,0 +1,3 @@
+*
+!polardbx-server/target
+!docker

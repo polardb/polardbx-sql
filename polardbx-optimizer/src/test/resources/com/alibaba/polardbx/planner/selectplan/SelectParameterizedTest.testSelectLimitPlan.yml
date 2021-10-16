@@ -1,0 +1,57 @@
+- sql: |
+    select id 
+    from test_hash_tb a 
+    where a.name='xx' limit 5;
+
+  plan: |
+
+    MergeSort(sort="", offset=0, fetch=?1)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = ?) LIMIT (? + 0)")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name='xx' limit 3,5;
+
+  plan: |
+
+    MergeSort(sort="", offset=?1, fetch=?2)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = ?) LIMIT (? + ?)")
+
+- sql: |
+    /*+TDDL:enable_broadcast_random_read=false*/ select id
+    from test_broadcast_tb a
+    where a.name='xx' limit 5;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast_tb", sql="SELECT `a`.`id` AS `id` FROM `test_broadcast_tb` AS `a` WHERE (`a`.`name` = ?) LIMIT ? OFFSET 0", params="xx,5")
+
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name=(select name from test_broadcast_tb limit 3,1) limit 10, 5;
+
+  plan: |
+    MergeSort(sort="", offset=?2, fetch=?3)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM (SELECT `id`, `name`, `create_time`, ? AS `$f3` FROM `test_hash_tb` AS `test_hash_tb`) AS `t` WHERE (`name` = `$f3`) LIMIT (? + ?)")
+
+    >> individual scalar subquery :
+    LogicalView(tables="optest_0000.test_broadcast_tb", sql="SELECT `name` FROM `test_broadcast_tb` AS `test_broadcast_tb` LIMIT ? OFFSET ?")
+
+
+- sql: |
+    SELECT DISTINCT - + MIN( DISTINCT + + col0 ) col2 FROM random_groupby_12_tab1 AS cor0 GROUP BY col0 HAVING ( col0 ) IS NULL;;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.random_groupby_12_tab1_00", sql="SELECT `col2` FROM (SELECT (- MIN(DISTINCT `col0`)) AS `col2` FROM `random_groupby_12_tab1` AS `random_groupby_12_tab1` WHERE (`col0` IS NULL) GROUP BY `col0`) AS `t1` GROUP BY `col2`")
+
+
+-
+  sql: |
+    SELECT DISTINCT - + MIN( DISTINCT + + id ) col2 FROM t_seller AS cor0 GROUP BY id HAVING ( id ) IS NULL;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.t_seller_00", sql="SELECT `col2` FROM (SELECT (- MIN(DISTINCT `id`)) AS `col2` FROM `t_seller` AS `t_seller` WHERE (`id` IS NULL) GROUP BY `id`) AS `t1` GROUP BY `col2`")

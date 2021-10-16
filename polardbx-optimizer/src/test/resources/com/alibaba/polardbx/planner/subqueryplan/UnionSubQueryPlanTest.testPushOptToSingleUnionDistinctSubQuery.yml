@@ -1,0 +1,203 @@
+- sql: |
+    # subquery is union
+    select *
+    from
+      (
+
+
+         select a.id
+         from test_hash_tb a
+         where a.name='xx'
+
+        union all
+
+        (
+
+          select b.id
+          from test_hash_tb2 b
+          where b.name='xx'
+
+        )
+
+      ) a_uni_b
+
+  plan: |
+
+    UnionAll(concurrent=true)
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` = 'xx')")
+
+- sql: |
+    # subquery is union
+    select *
+    from
+      (
+
+
+         select a.id
+         from
+         test_hash_tb a
+          where a.name='xx'
+
+        union all
+
+        (
+
+          select b.id
+          from test_hash_tb2 b
+          where b.name='xx'
+
+        )
+
+      ) a_uni_b
+      limit 5
+
+  plan: |
+
+    Limit(offset=0, fetch=5)
+      UnionAll(concurrent=true)
+        MergeSort(sort="", fetch=5)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') LIMIT 5")
+        MergeSort(sort="", fetch=5)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` = 'xx') LIMIT 5")
+
+- sql: |
+    # subquery is union
+    select
+      count( distinct id)
+    from
+      (
+
+
+         select a.id
+         from
+         test_hash_tb a
+          where a.name='xx'
+
+        union all
+
+        (
+
+          select b.id
+          from test_hash_tb2 b
+          where b.name='xx'
+
+        )
+
+      ) a_uni_b
+
+  plan: |
+
+    HashAgg(count(DISTINCT id)="COUNT(id)")
+      HashAgg(group="id")
+        UnionAll(concurrent=true)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` = 'xx')")
+
+- sql: |
+    # subquery is union
+    select *
+    from
+      (
+
+
+         select a.id
+         from
+         test_hash_tb a
+          where a.name='xx'
+
+        union all
+
+        (
+
+          select b.id
+          from test_hash_tb2 b
+          where b.name='xx'
+
+        )
+
+      ) a_uni_b
+      where a_uni_b.id=1
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="SELECT `a_uni_b`.`id` FROM (SELECT `a`.`id` FROM ? AS `a` WHERE (`a`.`name` = 'xx') UNION ALL SELECT `b`.`id` FROM ? AS `b` WHERE (`b`.`name` = 'xx')) AS `a_uni_b` WHERE (`a_uni_b`.`id` = 1)")
+
+- sql: |
+    # subquery is union
+    select max(id), name
+    from
+      (
+
+
+         select a.id as id, a.name as name
+         from
+         test_hash_tb a
+          where a.name='xx'
+
+        union all
+
+        (
+
+          select b.id as id, b.name as name
+          from test_hash_tb2 b
+          where b.name='xx'
+
+        )
+
+      ) a_uni_b
+
+      group by name
+
+
+  plan: |
+
+    Project(max(id)="max(id)", name="name")
+      HashAgg(group="name", max(id)="MAX(id)")
+        UnionAll(concurrent=true)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` = 'xx')")
+
+- sql: |
+    # subquery is union
+    select
+      a_uni_b.id
+    from
+      (
+
+
+         select a.id as id
+         from
+         test_hash_tb a
+          where a.name='xx'
+
+        union all
+
+        (
+
+          select b.id as id
+          from test_hash_tb2 b
+          where b.name='xx'
+
+        )
+
+      ) a_uni_b, test_hash_tb c
+    where a_uni_b.id = c.id and c.id > 5
+
+  plan: |
+
+    Project(id="id")
+      BKAJoin(condition="id = id", type="inner")
+        UnionAll(concurrent=true)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`name` = 'xx') AND (`id` > 5))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`name` = 'xx') AND (`id` > 5))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`id` > 5) AND (`id` IN (...)))")

@@ -1,0 +1,32 @@
+-
+  sql: |
+    select count(*) from test_hash_tb a join test_hash_tb b where a.id=b.id and a.name="xx";
+
+  plan: |
+
+    HashAgg(count(*)="SUM(count(*))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`))")
+
+-
+  sql: |
+    select count(*) from test_hash_tb a join test_hash_tb b where a.id=b.id group by a.name;
+
+  plan: |
+
+    Project(count(*)="count(*)")
+      HashAgg(group="name", count(*)="SUM(count(*))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`name`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) GROUP BY `test_hash_tb`.`name`")
+
+-
+  sql: |
+    select count(*) from test_hash_tb a join test_hash_tb b where a.id=b.id group by a.name order by count(*);
+
+  plan: |
+
+    MemSort(sort="count(*) ASC")
+      Project(count(*)="count(*)")
+        HashAgg(group="name", count(*)="SUM(count(*))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`name`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) GROUP BY `test_hash_tb`.`name`")

@@ -1,0 +1,429 @@
+# https://dev.mysql.com/doc/refman/8.0/en/show.html
+
+## show binary logs
+-
+  sql: |
+    show binary logs
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW BINARY LOGS")
+
+-
+  sql: |
+    show master logs
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW MASTER LOGS")
+
+## show binlog events
+-
+  sql: |
+    show binlog events
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW BINLOG EVENTS")
+
+-
+  sql: |
+    show binlog events in 'aaa'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW BINLOG EVENTS IN 'aaa'")
+
+-
+  sql: |
+    show binlog events in 'aaa' from 315857354 limit 2, 3
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW BINLOG EVENTS IN 'aaa' FROM 315857354 LIMIT 2, 3")
+
+## show character set
+-
+  sql: |
+    show character set
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW CHARACTER SET")
+
+-
+  sql: |
+    show character set like 'latin%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW CHARACTER SET LIKE 'latin%'")
+
+-
+  sql: |
+    show character set where Charset like 'latin%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW CHARACTER SET WHERE (`Charset` LIKE 'latin%')")
+
+## show collation
+-
+  sql: |
+    show collation
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COLLATION")
+
+-
+  sql: |
+    show collation like 'latin%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COLLATION LIKE 'latin%'")
+
+-
+  sql: |
+    show collation where Charset like 'latin%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COLLATION WHERE (`Charset` LIKE 'latin%')")
+
+## show columns
+-
+  sql: |
+    show columns in test_table_a
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COLUMNS FROM `test_table_a` WHERE (`field` <> '_drds_implicit_id_')")
+
+-
+  sql: |
+    show columns from test_table_a in optest_0000 like 'id'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COLUMNS FROM `test_table_a` FROM `optest_0000` LIKE 'id'")
+
+-
+  sql: |
+    show full columns from test_table_a in optest_0000 where field like 'nam%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW FULL COLUMNS FROM `test_table_a` FROM `optest_0000` WHERE ((`field` LIKE 'nam%') AND (`field` <> '_drds_implicit_id_'))")
+
+## show create database
+-
+  sql: |
+    show create database op_test
+  plan: |
+    LogicalShow(sql="SHOW CREATE DATABASE `op_test`")
+
+-
+  sql: |
+    show create schema op_test
+  plan: |
+    LogicalShow(sql="SHOW CREATE DATABASE `op_test`")
+
+-
+  sql: |
+    show create schema if not exists op_test
+  plan: |
+    LogicalShow(sql="SHOW CREATE DATABASE IF NOT EXISTS `op_test`")
+
+## show create event
+-
+  sql: |
+    show create event op_event
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW CREATE EVENT `op_event`")
+
+## show create function
+-
+  sql: |
+    show create function op_function
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW CREATE FUNCTION `op_function`")
+
+## show create procedure
+-
+  sql: |
+    show create procedure op_procedure
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW CREATE PROCEDURE `op_procedure`")
+
+## show create trigger
+-
+  sql: |
+    show create trigger op_trigger
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW CREATE TRIGGER `op_trigger`")
+
+## show create view
+-
+  sql: |
+    show create view op_view
+  plan: |
+    LogicalShow(sql="SHOW CREATE VIEW `op_view`")
+
+## show engine
+-
+  sql: |
+    show engine innodb status
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW ENGINE `innodb` STATUS")
+
+-
+  sql: |
+    show engine innodb mutex
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW ENGINE `innodb` MUTEX")
+
+-
+  sql: |
+    show engine PERFORMANCE_SCHEMA status
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW ENGINE `PERFORMANCE_SCHEMA` STATUS")
+
+## show engine
+-
+  sql: |
+    show engines
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW ENGINES")
+
+-
+  sql: |
+    show storage engines
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW STORAGE ENGINES")
+
+## show errors
+-
+  sql: |
+    show errors
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW ERRORS")
+
+-
+  sql: |
+    show errors limit 2,3
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW ERRORS LIMIT 2, 3")
+
+-
+  sql: |
+    show COUNT(*) ERRORS
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COUNT(*) ERRORS")
+
+## show events
+-
+  sql: |
+    show events
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW EVENTS")
+
+-
+  sql: |
+    show events from optest_0000
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW EVENTS FROM `optest_0000`")
+
+-
+  sql: |
+    show events in optest_0000
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW EVENTS FROM `optest_0000`")
+
+-
+  sql: |
+    show events from optest_0000 like 'optest%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW EVENTS FROM `optest_0000` LIKE 'optest%'")
+
+-
+  sql: |
+    show events from optest_0000 where name like 'optest%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW EVENTS FROM `optest_0000` WHERE (`name` LIKE 'optest%')")
+
+-
+  sql: |
+    show events like 'optest%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW EVENTS LIKE 'optest%'")
+
+-
+  sql: |
+    show events where name like 'optest%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW EVENTS WHERE (`name` LIKE 'optest%')")
+
+## show function code
+-
+  sql: |
+    show function code op_function
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW FUNCTION CODE `op_function`")
+
+## show function status
+-
+  sql: |
+    show function status
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW FUNCTION STATUS")
+
+-
+  sql: |
+    show function status like 'op_func%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW FUNCTION STATUS LIKE 'op_func%'")
+
+-
+  sql: |
+    show function status where aaa like 'op_func%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW FUNCTION STATUS WHERE (`aaa` LIKE 'op_func%')")
+
+# show master status
+-
+  sql: |
+    show master status
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW MASTER STATUS")
+
+# show open tables
+-
+  sql: |
+    show open tables
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW OPEN TABLES")
+
+-
+  sql: |
+    show open tables in optest_0000
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW OPEN TABLES FROM `optest_0000`")
+
+-
+  sql: |
+    show open tables in optest_0000 like 'optest%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW OPEN TABLES FROM `optest_0000` LIKE 'optest%'")
+
+-
+  sql: |
+    show open tables in optest_0000 where TABLE like 'optest%'
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW OPEN TABLES FROM `optest_0000` WHERE (`TABLE` LIKE 'optest%')")
+
+# show plugins
+-
+  sql: |
+    show plugins
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW PLUGINS")
+
+# SHOW PRIVILEGES
+-
+  sql: |
+    show privileges
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW PRIVILEGES")
+
+# show procedure code
+-
+  sql: |
+    show procedure code op_proc
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW PROCEDURE CODE `op_proc`")
+
+# show profile
+-
+  sql: |
+    show profile
+  plan: |
+    LogicalShow(sql="SHOW PROFILE")
+
+-
+  sql: |
+    show profile ALL, IPC FOR query 2 limit 3 offset 1
+  plan: |
+    Limit(offset=1, fetch=3)
+      LogicalShow(sql="SHOW PROFILE LIMIT 1, 3")
+
+# show profiles
+-
+  sql: |
+    show profiles
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW PROFILES")
+
+# show relavlog events
+-
+  sql: |
+    show relaylog events
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW RELAYLOG EVENTS")
+
+-
+  sql: |
+    show relaylog events in 'log_name' from '000' limit 2, 3
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW RELAYLOG EVENTS IN 'log_name' FROM '000' LIMIT 2, 3")
+
+# show slave hosts
+-
+  sql: |
+    show slave hosts
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW SLAVE HOSTS")
+
+# show slave status
+-
+  sql: |
+    show slave status
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW SLAVE STATUS")
+
+# show status
+-
+  sql: |
+    show status
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW STATUS")
+
+-
+  sql: |
+    show GLOBAL status like "stat%"
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW GLOBAL STATUS LIKE 'stat%'")
+
+-
+  sql: |
+    show SESSION status where Variable_name like "stat%"
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW SESSION STATUS WHERE (`Variable_name` LIKE 'stat%')")
+
+
+#-
+#  sql: |
+#    show table status in optest_0000 where Engine like "inno%"
+#  plan: |
+#    PhyQuery(node="optest_0000", sql="SHOW TABLE STATUS FROM `optest_0000` WHERE (`Engine` LIKE 'inno%')")
+
+# show triggers
+-
+  sql: |
+    show triggers
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW TRIGGERS")
+
+-
+  sql: |
+    show triggers from optest_0000 like "stat%"
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW TRIGGERS FROM `optest_0000` LIKE 'stat%'")
+
+-
+  sql: |
+    show TRIGGERS in optest_0000 where Engine like "inno%"
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW TRIGGERS FROM `optest_0000` WHERE (`Engine` LIKE 'inno%')")
+
+## show warnings
+-
+  sql: |
+    show warnings
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW WARNINGS")
+
+-
+  sql: |
+    show warnings limit 2,3
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW WARNINGS LIMIT 2, 3")
+
+-
+  sql: |
+    show COUNT(*) warnings
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COUNT(*) WARNINGS")

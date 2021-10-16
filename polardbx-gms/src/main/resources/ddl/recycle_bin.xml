@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="recycle_bin">
+        <Create><![CDATA[
+            create table if not exists `recycle_bin` (
+              `id` bigint unsigned not null auto_increment,
+              `gmt_create` datetime not null,
+              `name` varchar(255) not null default'',
+              `original_name` varchar(255) not null,
+              `schema_name` varchar(64) not null,
+              primary key (`id`),
+              unique key (`name`, `schema_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

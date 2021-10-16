@@ -1,0 +1,67 @@
+test_hash_tb:
+  CREATE TABLE `test_hash_tb` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tb2:
+  CREATE TABLE `test_hash_tb2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+
+test_hash_tb3:
+  CREATE TABLE `test_hash_tb3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tb5:
+  CREATE TABLE `test_hash_tb5` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(id) tbpartitions 3;
+
+func_group_t1_68:
+  CREATE TABLE `func_group_t1_68` (
+  `pk` int(11) NOT NULL,
+  `i` int(11) DEFAULT NULL,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8  dbpartition by hash(`pk`) tbpartition by hash(`pk`) tbpartitions 4
+
+corona_select_broadcast:
+ CREATE TABLE `corona_select_broadcast` (
+ `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+ `varchar_test` varchar(255) DEFAULT NULL,
+ `integer_test` int(11) DEFAULT NULL,
+ `char_test` char(255) DEFAULT NULL,
+ `tinyint_test` tinyint(4) DEFAULT NULL,
+ `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+ `smallint_test` smallint(6) DEFAULT NULL,
+ `mediumint_test` mediumint(9) DEFAULT NULL,
+ `bigint_test` bigint(20) DEFAULT NULL,
+ `double_test` double DEFAULT NULL,
+ `decimal_test` decimal(10, 0) DEFAULT NULL,
+ `date_test` date DEFAULT NULL,
+ `time_test` time DEFAULT NULL,
+ `datetime_test` datetime DEFAULT NULL,
+ `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+ `year_test` year(4) DEFAULT NULL,
+ PRIMARY KEY (`pk`)
+ ) ENGINE = InnoDB AUTO_INCREMENT = 101 DEFAULT CHARSET = utf8  broadcast

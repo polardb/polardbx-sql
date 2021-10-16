@@ -1,0 +1,19 @@
+- sql: |
+    select a.id as b
+    from test_hash_tb a 
+    where a.name='xx' order by b;
+
+  plan: |
+
+    MergeSort(sort="b ASC")
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` AS `b` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `id`")
+
+- sql: |
+    select id as b
+    from test_hash_tb
+    where test_hash_tb.name='xx' order by b;
+
+  plan: |
+
+    MergeSort(sort="b ASC")
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` AS `b` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') ORDER BY `id`")

@@ -1,0 +1,68 @@
+t_shard_id1:
+  CREATE TABLE `t_shard_id1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+t_shard_id2:
+  CREATE TABLE `t_shard_id2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+t_shard_name:
+  CREATE TABLE `t_shard_name` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`name`);
+
+t_shard_business_id:
+  CREATE TABLE `t_shard_business_id` (
+  `id` int(11) NOT NULL,
+  `business_id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`business_id`);
+
+t_shard_id_name:
+  CREATE TABLE `t_shard_id3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`name`) TBPARTITIONS 4;
+
+t_broadcast:
+  CREATE TABLE `t_broadcast` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 broadcast
+
+t_composite_pk_shard_id:
+  CREATE TABLE `t_composite_pk_shard_id` (
+  `id` int(11) NOT NULL,
+  `id1` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`,`id1`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);

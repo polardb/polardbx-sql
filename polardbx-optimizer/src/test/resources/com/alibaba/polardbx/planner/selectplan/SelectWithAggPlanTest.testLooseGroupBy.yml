@@ -1,0 +1,76 @@
+- sql: |
+    select id, name, count(*) from test_hash_tb group by name;
+
+  plan: |
+
+    Project(id="id", name="name", count(*)="count(*)")
+      HashAgg(group="name", id="__FIRST_VALUE(id)", count(*)="SUM(count(*))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, (`id`) AS `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` GROUP BY `name`")
+
+- sql: |
+    select id, concat('a',id),name , count(*) from test_hash_tb group by name;
+
+  plan: |
+
+    Project(id="id", concat('a', id)="CONCAT('a', id)", name="name", count(*)="count(*)")
+      HashAgg(group="name", id="__FIRST_VALUE(id)", count(*)="SUM(count(*))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, (`id`) AS `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` GROUP BY `name`")
+
+- sql: |
+    select id, name, count(*) from test_hash_tb group by name having id > 0;
+
+  plan: |
+
+    Project(id="id", name="name", count(*)="count(*)")
+      Filter(condition="id > 0")
+        HashAgg(group="name", id="__FIRST_VALUE(id)", count(*)="SUM(count(*))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, (`id`) AS `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` GROUP BY `name`")
+
+- sql: |
+    select id, name, count(*) from test_hash_tb group by name having id > 0 and name like '%lc';
+
+  plan: |
+
+    Project(id="id", name="name", count(*)="count(*)")
+      Filter(condition="id > 0")
+        HashAgg(group="name", id="__FIRST_VALUE(id)", count(*)="SUM(count(*))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, (`id`) AS `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` LIKE '%lc') GROUP BY `name`")
+
+- sql: |
+    select id, name, count(distinct create_time) from test_hash_tb group by id;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, (`name`) AS `name`, COUNT(DISTINCT `create_time`) AS `count(DISTINCT create_time)` FROM `test_hash_tb` AS `test_hash_tb` GROUP BY `id`")
+
+- sql: |
+    select id, name, count(distinct create_time) from test_hash_tb group by name;
+
+  plan: |
+
+    Project(id="id", name="name", count(DISTINCT create_time)="count(DISTINCT create_time)")
+      HashAgg(group="name", id="MIN(id) FILTER $4", count(DISTINCT create_time)="COUNT(create_time) FILTER $3")
+        Project(name="name", create_time="create_time", id="id", $g_0="CASE(=($2, 0), 0, 1) = 0", $g_1="CASE(=($2, 0), 0, 1) = 1")
+          HashAgg(group="name,create_time,$e", id="__FIRST_VALUE(id)")
+            Expand(projects="{name=name, create_time=create_time, id=id, $e=0}, {name=name, create_time=null, id=id, $e=1}")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, `create_time`, (`id`) AS `id` FROM `test_hash_tb` AS `test_hash_tb` GROUP BY `name`, `create_time`")
+
+- sql: |
+    select id, name, count(distinct create_time) from test_hash_tb group by name having id > 1;
+
+  plan: |
+
+    Project(id="id", name="name", count(DISTINCT create_time)="count(DISTINCT create_time)")
+      Filter(condition="id > 1")
+        HashAgg(group="name", id="MIN(id) FILTER $4", count(DISTINCT create_time)="COUNT(create_time) FILTER $3")
+          Project(name="name", create_time="create_time", id="id", $g_0="CASE(=($2, 0), 0, 1) = 0", $g_1="CASE(=($2, 0), 0, 1) = 1")
+            HashAgg(group="name,create_time,$e", id="__FIRST_VALUE(id)")
+              Expand(projects="{name=name, create_time=create_time, id=id, $e=0}, {name=name, create_time=null, id=id, $e=1}")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, `create_time`, (`id`) AS `id` FROM `test_hash_tb` AS `test_hash_tb` GROUP BY `name`, `create_time`")

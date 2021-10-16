@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="key_column_usage">
+        <Create><![CDATA[
+            create table if not exists `key_column_usage` (
+              `id` bigint unsigned not null auto_increment,
+              `constraint_catalog` varchar(512) default null,
+              `constraint_schema` varchar(64) not null,
+              `constraint_name` varchar(64) not null,
+              `table_catalog` varchar(512) default 'def',
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `column_name` varchar(64) not null,
+              `ordinal_position` bigint(10) not null default '0',
+              `position_in_unique_constraint` bigint(10) default null,
+              `referenced_table_schema` varchar(64) default null,
+              `referenced_table_name` varchar(64) default null,
+              `referenced_column_name` varchar(64) default null,
+              primary key (`id`),
+              key (`constraint_schema`, `constraint_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="partitions">
+        <Create><![CDATA[
+            create table if not exists `partitions` (
+              `id` bigint unsigned not null auto_increment,
+              `table_catalog` varchar(512) default 'def',
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `partition_name` varchar(64) default null,
+              `subpartition_name` varchar(64) default null,
+              `partition_ordinal_position` bigint unsigned default null,
+              `subpartition_ordinal_position` bigint unsigned default null,
+              `partition_method` varchar(18) default null,
+              `subpartition_method` varchar(12) default null,
+              `partition_expression` longtext,
+              `subpartition_expression` longtext,
+              `partition_description` longtext,
+              `table_rows` bigint unsigned not null default '0',
+              `avg_row_length` bigint unsigned not null default '0',
+              `data_length` bigint unsigned not null default '0',
+              `max_data_length` bigint unsigned default null,
+              `index_length` bigint unsigned not null default '0',
+              `data_free` bigint unsigned not null default '0',
+              `create_time` datetime default null,
+              `update_time` datetime default null,
+              `check_time` datetime default null,
+              `checksum` bigint unsigned default null,
+              `partition_comment` varchar(80) default null,
+              `nodegroup` varchar(12) default null,
+              `tablespace_name` varchar(64) default null,
+              primary key (`id`),
+              key (`table_schema`, `table_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="table_constraints">
+        <Create><![CDATA[
+            create table if not exists `table_constraints` (
+              `id` bigint unsigned not null auto_increment,
+              `constraint_catalog` varchar(512) default null,
+              `constraint_schema` varchar(64) not null,
+              `constraint_name` varchar(64) not null,
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `constraint_type` varchar(64) not null,
+              primary key (`id`),
+              key (`constraint_schema`, `constraint_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="referential_constraints">
+        <Create><![CDATA[
+            create table if not exists `referential_constraints` (
+              `id` bigint unsigned not null auto_increment,
+              `constraint_catalog` varchar(512) default null,
+              `constraint_schema` varchar(64) not null,
+              `constraint_name` varchar(64) not null,
+              `unique_constraint_catalog` varchar(512) default null,
+              `unique_constraint_schema` varchar(64) not null,
+              `unique_constraint_name` varchar(64) default null,
+              `match_option` varchar(64) default null,
+              `update_rule` varchar(64) default null,
+              `delete_rule` varchar(64) default null,
+              `table_name` varchar(64) default null,
+              `referenced_table_name` varchar(64) not null,
+              primary key (`id`),
+              key (`constraint_schema`, `constraint_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="audit_log">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `audit_log` (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `user_name` varchar(128) NOT NULL,
+              `host` varchar(128) NOT NULL,
+              `port` int(128) NOT NULL,
+               `schema` varchar(128) NOT NULL,
+              `audit_info` varchar(1024) DEFAULT null,
+              `action` varchar(16) COMMENT 'LOGIN, LOGOUT, LOGIN_ERR, CREATE_USER, DROP_USER, GRANT, REVOKE, SET_PASSWORD',
+              `trace_id` varchar(64) DEFAULT '',
+              PRIMARY KEY (`id`),
+              KEY `user_name_key` (`user_name`),
+              KEY `action_key` (`action`),
+              KEY `gmt_created_key` (`gmt_created`)
+            ) DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

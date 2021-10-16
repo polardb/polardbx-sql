@@ -1,0 +1,165 @@
+t_order:
+  CREATE TABLE `t_order` (
+      `id` bigint(11) NOT NULL AUTO_INCREMENT,
+      `order_id` varchar(20) DEFAULT NULL,
+      `buyer_id` varchar(20) DEFAULT NULL,
+      `seller_id` varchar(20) DEFAULT NULL,
+      `order_snapshot` longtext,
+      `order_detail` longtext,
+      PRIMARY KEY (`id`),
+      KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+      GLOBAL INDEX `g_i_buyer`(`buyer_id`) COVERING (`id`, `order_id`, `seller_id`, `order_snapshot`) DBPARTITION BY HASH(`buyer_id`) TBPARTITION BY HASH(`buyer_id`) TBPARTITIONS 3,
+      UNIQUE GLOBAL KEY `g_i_seller` (`seller_id`) COVERING (`id`, `order_id`, `buyer_id`, `order_snapshot`) DBPARTITION BY HASH(`seller_id`) TBPARTITION BY HASH(`seller_id`) TBPARTITIONS 3
+  ) ENGINE = InnoDB AUTO_INCREMENT = 2300006 CHARSET = utf8 dbpartition by hash(`order_id`) TBPARTITION BY HASH(`order_id`) TBPARTITIONS 3,
+
+t_order1:
+  CREATE TABLE `t_order1` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `order_id` varchar(20) DEFAULT NULL,
+  `buyer_id` varchar(20) DEFAULT NULL,
+  `seller_id` varchar(20) DEFAULT NULL,
+  `order_snapshot` longtext,
+  `order_detail` longtext,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+  GLOBAL INDEX `g_i_buyer1`(`buyer_id`) COVERING (`id`, `order_id`, `seller_id`, `order_snapshot`) DBPARTITION BY HASH(`buyer_id`) TBPARTITION BY HASH(`buyer_id`) TBPARTITIONS 3,
+  GLOBAL INDEX `g_i_seller_id`(`seller_id`) COVERING (`id`, `order_id`) DBPARTITION BY HASH(`seller_id`) TBPARTITION BY HASH(`seller_id`) TBPARTITIONS 3
+  ) ENGINE = InnoDB AUTO_INCREMENT = 5182880 DEFAULT CHARSET = utf8  dbpartition by hash(`order_id`)
+
+
+t_order10:
+  CREATE TABLE `t_order10` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `order_id` varchar(20) DEFAULT NULL,
+  `buyer_id` varchar(20) DEFAULT NULL,
+  `seller_id` varchar(20) DEFAULT NULL,
+  `order_snapshot` longtext,
+  `order_detail` longtext,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+  GLOBAL INDEX `g_i_buyer10`(`buyer_id`) COVERING (`id`, `order_id`, `seller_id`, `order_snapshot`) DBPARTITION BY HASH
+  (`buyer_id`) TBPARTITION BY HASH(`buyer_id`) TBPARTITIONS 10,
+  UNIQUE GLOBAL KEY `g_i_seller10` (`seller_id`) COVERING (`id`, `order_id`, `buyer_id`, `order_snapshot`) DBPARTITION
+  BY HASH(`seller_id`) TBPARTITION BY HASH(`seller_id`) TBPARTITIONS 10
+  ) ENGINE = InnoDB AUTO_INCREMENT = 2300006 CHARSET = utf8 dbpartition by hash(`order_id`) TBPARTITION BY HASH
+  (`order_id`) TBPARTITIONS 10,
+
+
+t_buyer:
+  CREATE TABLE `t_buyer` (
+    `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+    `order_id` varchar(20) DEFAULT NULL,
+    `buyer_id` varchar(20) DEFAULT NULL,
+    `name` varchar(20) DEFAULT NULL,
+    `nationkey` int(11) DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `name_idx` (name),
+    KEY `auto_shard_key_buyer_id` (`buyer_id`) USING BTREE
+  ) ENGINE=InnoDB AUTO_INCREMENT=2300006 DEFAULT CHARSET=utf8 dbpartition by hash(`buyer_id`) tbpartition by hash(`buyer_id`) tbpartitions 3
+
+t_buyer10:
+  CREATE TABLE `t_buyer10` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `order_id` varchar(20) DEFAULT NULL,
+  `buyer_id` varchar(20) DEFAULT NULL,
+  `name` varchar(20) DEFAULT NULL,
+  `nationkey` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `name_idx` (name),
+  KEY `auto_shard_key_buyer_id` (`buyer_id`) USING BTREE
+  ) ENGINE=InnoDB AUTO_INCREMENT=2300006 DEFAULT CHARSET=utf8 dbpartition by hash(`buyer_id`) tbpartition by hash
+  (`buyer_id`) tbpartitions 10
+
+
+t_seller:
+  CREATE TABLE `t_seller` (
+    `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+    `order_id` varchar(20) DEFAULT NULL,
+    `seller_id` varchar(20) DEFAULT NULL,
+    `name` varchar(20) DEFAULT NULL,
+    `nationkey` int(11) DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `name_idx` (name),
+    KEY `auto_shard_key_buyer_id` (`seller_id`) USING BTREE
+  ) ENGINE=InnoDB AUTO_INCREMENT=2300002 DEFAULT CHARSET=utf8 dbpartition by hash(`seller_id`) tbpartition by hash(`seller_id`) tbpartitions 3
+
+t_seller10:
+  CREATE TABLE `t_seller10` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `order_id` varchar(20) DEFAULT NULL,
+  `seller_id` varchar(20) DEFAULT NULL,
+  `name` varchar(20) DEFAULT NULL,
+  `nationkey` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `name_idx` (name),
+  KEY `auto_shard_key_buyer_id` (`seller_id`) USING BTREE
+  ) ENGINE=InnoDB AUTO_INCREMENT=2300002 DEFAULT CHARSET=utf8 dbpartition by hash(`seller_id`) tbpartition by hash
+  (`seller_id`) tbpartitions 10
+
+
+order_dim:
+  CREATE TABLE `order_dim` (
+    `order_id` varchar(20) NOT NULL,
+    `order_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`order_id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 broadcast
+
+nation:
+  CREATE TABLE `nation` (
+    `n_nationkey` int(11) NOT NULL COMMENT 'test',
+    `n_name` varchar(25) NOT NULL COMMENT 'test',
+    `n_regionkey` int(11) NOT NULL COMMENT 'test',
+    `n_comment` varchar(152) DEFAULT NULL COMMENT 'test',
+    PRIMARY KEY (`n_nationkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='test' broadcast
+
+test_index:
+  CREATE TABLE `test_index` (
+  `id` int(11) NOT NULL,
+  `k1` int(11) NOT NULL,
+  `k2` int(11) NOT NULL,
+  `value` char(40) DEFAULT NULL,
+  `d1` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  GLOBAL INDEX `idx_k1`(`k1`) COVERING (`id`) DBPARTITION BY HASH(`k1`),
+  GLOBAL INDEX `idx_k2_d1_k1`(`k2`, `d1`, `k1`) COVERING (`id`) DBPARTITION BY HASH(`k2`),
+  GLOBAL INDEX `idx_k2_k1_d1`(`k2`, `k1`, `d1`) COVERING (`id`) DBPARTITION BY HASH(`k2`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1  dbpartition by hash(`id`)
+
+test_index_join:
+  CREATE TABLE `test_index_join` (
+  `id` int(11) NOT NULL,
+  `k` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1  dbpartition by hash(`id`)
+
+
+orders:
+  CREATE TABLE `orders` (
+  `o_orderkey` int(11) NOT NULL,
+  `o_custkey` int(11) NOT NULL,
+  `o_orderstatus` varchar(1) NOT NULL,
+  `o_totalprice` decimal(15,2) NOT NULL,
+  `o_orderdate` date NOT NULL,
+  `o_orderpriority` varchar(15) NOT NULL,
+  `o_clerk` varchar(15) NOT NULL,
+  `o_shippriority` int(11) NOT NULL,
+  `o_comment` varchar(79) NOT NULL,
+  PRIMARY KEY (`o_orderkey`),
+  GLOBAL INDEX `orders_idx_custkey`(`o_custkey`) COVERING (`o_orderkey`) DBPARTITION BY HASH(`o_custkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by RIGHT_SHIFT(`O_ORDERKEY`, 6) tbpartition by RIGHT_SHIFT(`O_ORDERKEY`, 6) tbpartitions 4;
+
+customer:
+  CREATE TABLE `customer` (
+  `c_custkey` int(11) NOT NULL,
+  `c_name` varchar(25) NOT NULL,
+  `c_address` varchar(40) NOT NULL,
+  `c_nationkey` int(11) NOT NULL,
+  `c_phone` varchar(15) NOT NULL,
+  `c_acctbal` decimal(15,2) NOT NULL,
+  `c_mktsegment` varchar(10) NOT NULL,
+  `c_comment` varchar(117) NOT NULL,
+  PRIMARY KEY (`c_custkey`),
+  KEY `IDX_CUSTOMER_NATIONKEY` (`C_NATIONKEY`),
+  GLOBAL INDEX `customer_idx_name`(`c_name`) COVERING (`c_custkey`) DBPARTITION BY HASH(`c_name`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by hash(`c_custkey`) tbpartition by hash(`c_custkey`) tbpartitions 4;

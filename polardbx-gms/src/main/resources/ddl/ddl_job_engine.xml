@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="ddl_engine">
+        <Create><![CDATA[
+            create table if not exists `ddl_engine` (
+              `id` bigint unsigned not null auto_increment,
+              `job_id` bigint unsigned not null,
+              `ddl_type` varchar(64) not null,
+              `schema_name` varchar(64) not null,
+              `object_name` varchar(64) not null,
+              `response_node` varchar(64),
+              `execution_node` varchar(64),
+              `state` varchar(64) not null,
+              `resources` text default null,
+              `progress` smallint default '0',
+              `trace_id` varchar(64),
+              `context` longtext,
+              `task_graph` longtext comment 'task graph in agency-list format',
+              `result` longtext,
+              `ddl_stmt` longtext,
+              `gmt_created` bigint unsigned not null,
+              `gmt_modified` bigint unsigned not null,
+              `max_parallelism` smallint NOT NULL DEFAULT 1 comment 'max parallelism for ddl tasks',
+              `supported_commands` int NOT NULL comment 'bitmap of supported commands',
+              `paused_policy` varchar(64) not null,
+              `rollback_paused_policy` varchar(64) not null,
+              primary key (`id`),
+              unique key (`job_id`),
+              key (`schema_name`, `job_id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="ddl_engine_task">
+        <Create><![CDATA[
+            create table if not exists `ddl_engine_task` (
+              `job_id` bigint(20) unsigned not null,
+              `task_id` bigint(20) unsigned not null,
+              `schema_name` varchar(64) not null,
+              `name` varchar(256) not null,
+              `state` char(32) not null default 'INIT',
+              `exception_action` char(64) not null default 'TRY_RECOVERY_THEN_PAUSE',
+              `value` longtext,
+              `extra` longtext,
+              unique key `job_id_task_id` (`job_id`, `task_id`),
+              primary key `task_id_key` (`task_id`)
+            ) default charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="read_write_lock">
+        <Create><![CDATA[
+            create table if not exists `read_write_lock` (
+              `schema_name` varchar(64) not null,
+              `owner` varchar(128) not null,
+              `resource` varchar(255) not null,
+              `type` varchar(128) not null,
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              unique key (`resource`, `type`)
+            ) default charset=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

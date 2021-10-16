@@ -1,0 +1,30 @@
+# 42.123, 456.789 E -123
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("42.123 as 'answer to life?'")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT 42.123 AS `answer to life?` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj(".123 as 'just for test'")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT 0.123 AS `just for test` FROM `test_table_a` AS `test_table_a`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("456.789E-123 as 'just for test'")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT 4.56789E-121 AS `just for test` FROM `test_table_a` AS `test_table_a`")

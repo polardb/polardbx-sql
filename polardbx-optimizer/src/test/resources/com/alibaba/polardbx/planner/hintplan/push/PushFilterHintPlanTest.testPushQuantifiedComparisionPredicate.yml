@@ -1,0 +1,119 @@
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk > any(select pk from test_table_b b WHERE b.pk > 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` > SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` > 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk < any(select pk from test_table_b b WHERE b.pk < 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` < SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` < 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk <= any(select pk from test_table_b b WHERE b.pk <= 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <= SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` <= 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk = any(select pk from test_table_b b WHERE b.pk = 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` = SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk >= any(select pk from test_table_b b WHERE b.pk >= 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` >= SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` >= 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk <> any(select pk from test_table_b b WHERE b.pk <> 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <> SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` <> 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk > all(select pk from test_table_b b WHERE b.pk > 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` > ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` > 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk < all(select pk from test_table_b b WHERE b.pk < 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` < ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` < 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk >= all(select pk from test_table_b b WHERE b.pk >= 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` >= ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` >= 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk <= all(select pk from test_table_b b WHERE b.pk <= 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <= ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` <= 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk <> all(select pk from test_table_b b WHERE b.pk <> 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <> ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` <> 100001)))")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk = all(select pk from test_table_b b WHERE b.pk = 100001)")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` = ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001)))")

@@ -1,0 +1,7 @@
+- sql: |
+
+    INSERT INTO bmsql_history (h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, h_date, h_amount, h_data) VALUES (1, 1, 1, 1, 1, 1, 1, 1)
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[bmsql_history]", sql="INSERT INTO ? (`h_c_id`, `h_c_d_id`, `h_c_w_id`, `h_d_id`, `h_w_id`, `h_date`, `h_amount`, `h_data`) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", params="`bmsql_history`,1,1,1,1,1,1,1,1")

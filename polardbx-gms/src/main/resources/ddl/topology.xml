@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+
+    <SystemTable name="server_info">
+        <Create><![CDATA[
+            create table if not exists server_info (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `inst_id` varchar(128) NOT NULL,
+              `inst_type` int(11) NOT NULL COMMENT '0:master, 1:slave',
+              `ip`  varchar(128) NOT NULL,
+              `port` int(11) NOT NULL,
+              `htap_port` int(11) NOT NULL COMMENT 'port for htap',
+              `mgr_port` int(11) NOT NULL,
+              `mpp_port` int(11) NOT NULL,
+              `status` int(11) NOT NULL COMMENT '0:server ready, 1:server not_ready, 2:server removed',
+              `region_id` varchar(128) DEFAULT NULL,
+              `azone_id` varchar(128) DEFAULT NULL,
+              `idc_id` varchar(128) DEFAULT NULL,
+              `cpu_core` int(11) DEFAULT NULL,
+              `mem_size` int(11) DEFAULT NULL,
+              `extras` text DEFAULT NULL COMMENT 'reserve for extra info',
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_inst_id_addr` (`inst_id`, `ip`, `port`),
+              INDEX `idx_inst_id_status` (`inst_id`,`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="storage_info">
+        <Create><![CDATA[
+            create table if not exists storage_info (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `inst_id` varchar(128) NOT NULL,
+              `storage_inst_id` varchar(128) NOT NULL,
+              `storage_master_inst_id` varchar(128) NOT NULL,
+              `ip`  varchar(128) NOT NULL,
+              `port` int(11) NOT NULL COMMENT 'port for mysql',
+              `xport` int(11) DEFAULT NULL COMMENT 'port for x-protocol',
+              `user` varchar(128) NOT NULL,
+              `passwd_enc` text NOT NULL,
+              `storage_type` int(11) NOT NULL COMMENT '0:x-cluster, 1:mysql, 2:polardb',
+              `inst_kind` int(11) NOT NULL COMMENT '0:master, 1:slave, 2:metadb',
+              `status` int(11) NOT NULL COMMENT '0:storage ready, 1:storage not_ready, 2:storage removed',
+              `region_id` varchar(128) DEFAULT NULL,
+              `azone_id` varchar(128) DEFAULT NULL,
+              `idc_id` varchar(128) DEFAULT NULL,
+              `max_conn` int(11) NOT NULL,
+              `cpu_core` int(11) DEFAULT NULL,
+              `mem_size` int(11) DEFAULT NULL COMMENT 'mem unit: MB',
+              `is_vip` int(11) NOT NULL DEFAULT '0' COMMENT '0: ip is not a vip, 1: ip is a vip',
+              `extras` text DEFAULT NULL COMMENT 'reserve for extra info',
+              PRIMARY KEY (`id`),
+              INDEX `idx_inst_id_status` (`inst_id`,`status`),
+              UNIQUE KEY `uk_inst_id_addr` (`storage_inst_id`, `ip`, `port`, `inst_kind`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="db_info">
+        <Create><![CDATA[
+            create table if not exists db_info (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `db_name` varchar(128) NOT NULL,
+              `app_name` varchar(128) NOT NULL,
+              `db_type` int(11) NOT NULL COMMENT '0:part_db,1:default_db,2:system_db,3:cdc_db,4:new_part_db',
+              `db_status` int(11) NOT NULL COMMENT '0:running, 1:creating, 2:dropping',
+              `charset` varchar(128) DEFAULT NULL,
+              `collation` varchar(128) DEFAULT NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_db` (`db_name`),
+              INDEX `idx_type` (`db_type`),
+              INDEX `idx_app_name` (`app_name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="db_group_info">
+        <Create><![CDATA[
+            create table if not exists db_group_info (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `db_name` varchar(128) NOT NULL,
+              `group_name` varchar(128) NOT NULL,
+              `phy_db_name` varchar(128) NOT NULL,
+              `group_type` int(11) NOT NULL COMMENT '0:normal group, 1:scaleout group',
+              PRIMARY KEY (`id`),
+              INDEX `idx_db_type` (`db_name`, `group_type`),
+              UNIQUE KEY `uk_db_grp` (`db_name`, `group_name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="group_detail_info">
+        <Create><![CDATA[
+            create table if not exists group_detail_info (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `inst_id` varchar(128) NOT NULL,
+              `db_name` varchar(128) NOT NULL,
+              `group_name` varchar(128) NOT NULL,
+              `storage_inst_id` varchar(128) NOT NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_inst_db_grp` (`inst_id`, `db_name`, `group_name`),
+              INDEX `idx_storage_inst` (`storage_inst_id`,`inst_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="config_listener">
+        <Create><![CDATA[
+            create table if not exists config_listener (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `data_id` varchar(200) NOT NULL,
+              `status` int NOT NULL COMMENT '0:normal, 1:removed',
+              `op_version` bigint NOT NULL,
+              `extras` varchar(1024) DEFAULT NULL,
+              PRIMARY KEY (`id`),
+              INDEX `idx_modify_ts` (`gmt_modified`),
+              INDEX `idx_status` (`status`),
+              UNIQUE KEY `uk_data_id` (`data_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="inst_config">
+        <Create><![CDATA[
+            create table if not exists inst_config (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `inst_id` varchar(128) NOT NULL,
+              `param_key` varchar(128) NOT NULL,
+              `param_val` varchar(1024) NOT NULL,
+               PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_inst_key` (`inst_id`, `param_key`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="inst_lock">
+        <Create><![CDATA[
+            create table if not exists inst_lock (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `inst_id` varchar(128) NOT NULL,
+              `locked` int(11) NOT NULL COMMENT '0:unlocked, 1:locked',
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_inst_id` (`inst_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="variable_config">
+        <Create><![CDATA[
+            create table if not exists variable_config (
+               `id` bigint(11) NOT NULL AUTO_INCREMENT,
+               `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+               `inst_id` varchar(128) NOT NULL,
+               `param_key` varchar(128) NOT NULL,
+               `param_val` varchar(1024) NOT NULL,
+               `extra` varchar(128),
+               PRIMARY KEY (`id`),
+               UNIQUE KEY `uk_param_key` (`param_key`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

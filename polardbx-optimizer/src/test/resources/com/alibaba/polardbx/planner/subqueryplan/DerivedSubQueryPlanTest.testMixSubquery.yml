@@ -1,0 +1,13 @@
+- sql: |
+    select * from test_hash_tb t3 where id in (select id from test_hash_tb t1 where exists (select 1 from test_hash_tb t2 where t1.id=t2.id));
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT `id` FROM `test_hash_tb` AS `test_hash_tb0` WHERE ((EXISTS (SELECT `id` FROM `test_hash_tb` AS `test_hash_tb1` WHERE (`test_hash_tb0`.`id` = `id`))) AND TRUE)))")
+
+- sql: |
+    select * from  test_hash_tb t2 join (select * from test_hash_tb where id in (select id from drds1 t1 )) t1 on t2.id=t1.id;
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] ERR-CODE: [PXC-4006][ERR_TABLE_NOT_EXIST] Table 'drds1' doesn't exist.

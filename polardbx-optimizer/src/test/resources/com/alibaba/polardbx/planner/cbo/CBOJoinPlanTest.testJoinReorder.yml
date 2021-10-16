@@ -1,0 +1,761 @@
+-
+  sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id1,t_shard_id3) HASH_JOIN((t_shard_id1,t_shard_id3),t_shard_id2)*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2, t_shard_id3 where t_shard_id1.name = t_shard_id2.name and t_shard_id1.name = t_shard_id3.name
+
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="name = name0 AND name = name", type="inner")
+        HashJoin(condition="name = name", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+
+-
+  sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id2,t_shard_id3) HASH_JOIN((t_shard_id2,t_shard_id3),t_shard_id1)*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2, t_shard_id3 where t_shard_id1.name = t_shard_id2.name and t_shard_id1.name = t_shard_id3.name
+
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="name0 = name AND name = name", type="inner")
+        HashJoin(condition="name = name", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+
+-
+  sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id3,t_shard_id2) HASH_JOIN(t_shard_id1,(t_shard_id3,t_shard_id2))*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2, t_shard_id3 where t_shard_id1.name = t_shard_id2.name and t_shard_id1.name = t_shard_id3.name
+
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="name0 = name AND name = name", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+        Project(name="name0", name0="name")
+          HashJoin(condition="name = name", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+
+-
+  sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id2,t_shard_id1) HASH_JOIN(t_shard_id3,(t_shard_id2,t_shard_id1))*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2, t_shard_id3 where t_shard_id1.name = t_shard_id2.name and t_shard_id1.name = t_shard_id3.name
+
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="name0 = name AND name = name", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+        Project(id="id", name="name0", name0="name")
+          HashJoin(condition="name = name", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_JOIN=false,ENABLE_SEMI_HASH_JOIN=false) NL_JOIN(t_shard_id1,t_shard_id3) NL_JOIN(t_shard_id2,(t_shard_id1,t_shard_id3))*/
+    select * from t_shard_id1 inner join t_shard_id2 on t_shard_id1.name = t_shard_id2.name left join t_shard_id3 on t_shard_id1.name = t_shard_id3.name
+
+  plan: |
+
+    Project(id="id0", name="name0", create_time="create_time0", id1="id", name1="name", create_time1="create_time", id0="id00", name0="name00", create_time0="create_time00")
+      NlJoin(condition="name = name", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id2` AS `t_shard_id2`")
+        NlJoin(condition="name = name", type="left")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id3` AS `t_shard_id3`")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_JOIN=false,ENABLE_SEMI_HASH_JOIN=false) NL_JOIN(t_shard_id1,t_shard_id3) NL_JOIN((t_shard_id1,t_shard_id3),t_shard_id2)*/
+    select t_shard_id2.name from t_shard_id1 left join t_shard_id2 on t_shard_id1.name = t_shard_id2.name inner join t_shard_id3 on t_shard_id1.name = t_shard_id3.name
+
+  plan: |
+
+    Project(name="name1")
+      NlJoin(condition="name = name", type="left")
+        NlJoin(condition="name = name", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` FROM `t_shard_id1` AS `t_shard_id1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_JOIN=false,ENABLE_SEMI_HASH_JOIN=false) SEMI_NL_JOIN(t_shard_id1,t_shard_id3) SEMI_NL_JOIN((t_shard_id1,t_shard_id3),t_shard_id2)*/
+    select * from t_shard_id1 where t_shard_id1.name in (select name from t_shard_id2) and t_shard_id1.name in (select name from t_shard_id3)
+
+  plan: |
+
+    SemiNLJoin(condition="name = name", type="semi")
+      SemiNLJoin(condition="name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+
+-
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(t1,t3) HASH_JOIN((t1,t3),t2)*/
+    select * from t1 inner join t2 on t1.id = t2.id where t1.name in (select name from t3)
+
+  plan: |
+
+    HashJoin(condition="id = id", type="inner")
+      SemiHashJoin(condition="name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t3_[00-11]", shardCount=12, sql="SELECT `name` FROM `t3` AS `t3`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2`")
+
+-
+  sql: |
+    /*+TDDL:HASH_JOIN(t1,t2) SEMI_HASH_JOIN((t1,t2),t3)*/
+    select * from t1 inner join t2 on t1.id = t2.id where t1.name in (select name from t3)
+
+  plan: |
+
+    SemiHashJoin(condition="name = name", type="semi")
+      HashJoin(condition="id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t3_[00-11]", shardCount=12, sql="SELECT `name` FROM `t3` AS `t3`")
+
+-
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(t2,t3) HASH_JOIN((t2,t3),t1)*/
+    select * from t1 inner join t2 on t1.id = t2.id where t2.name in (select name from t3)
+
+  plan: |
+
+    Project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time")
+      HashJoin(condition="id = id", type="inner")
+        SemiHashJoin(condition="name = name", type="semi")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t3_[00-11]", shardCount=12, sql="SELECT `name` FROM `t3` AS `t3`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`")
+
+-
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(t2,t3) HASH_JOIN(t1,(t2,t3)) NO_JOIN(t2, t1)*/
+    select * from t1 inner join t2 on t1.id = t2.id where t2.name in (select t3.name from t3)
+
+  plan: |
+
+    HashJoin(condition="id = id", type="inner")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`")
+      SemiHashJoin(condition="name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t3_[00-11]", shardCount=12, sql="SELECT `name` FROM `t3` AS `t3`")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_JOIN=false,ENABLE_SEMI_HASH_JOIN=false) SEMI_NL_JOIN(t_shard_id1,t_shard_id3) SEMI_NL_JOIN((t_shard_id1,t_shard_id3),t_shard_id2)*/
+    select * from t_shard_id1 where t_shard_id1.name in (select name from t_shard_id2) and t_shard_id1.name not in (select name from t_shard_id3)
+
+  plan: |
+
+    SemiNLJoin(condition="name = name", type="semi")
+      SemiNLJoin(condition="name = name", type="anti")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_JOIN=false,ENABLE_SEMI_HASH_JOIN=false) SEMI_NL_JOIN(t_shard_id1,t_shard_id2) SEMI_NL_JOIN((t_shard_id1,t_shard_id2),t_shard_id3)*/
+    select * from t_shard_id1 where t_shard_id1.name in (select name from t_shard_id2) and t_shard_id1.name not in (select name from t_shard_id3)
+
+  plan: |
+
+    SemiNLJoin(condition="name = name", type="anti")
+      SemiNLJoin(condition="name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3`")
+
+-
+  sql: |
+    /*+TDDL: BKA_JOIN(t_shard_id2,t_shard_id4) BKA_JOIN(t_shard_id1,t_shard_id3) HASH_JOIN((t_shard_id1,t_shard_id3),(t_shard_id2,t_shard_id4))*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2, t_shard_id3, t_shard_id4 where t_shard_id1.name = t_shard_id2.name and t_shard_id1.name = t_shard_id3.name and t_shard_id3.name = t_shard_id4.name
+
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="name0 = name0 AND name0 = name AND name = name0 AND name = name", type="inner")
+        BKAJoin(condition="name = name", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3` WHERE (`name` IN (...))")
+        BKAJoin(condition="name = name", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id4", shardCount=4, sql="SELECT `name` FROM `t_shard_id4` AS `t_shard_id4` WHERE (`name` IN (...))")
+
+-
+  sql: |
+    /*+TDDL: BKA_JOIN(t_shard_id2,t_shard_id4) BKA_JOIN((t_shard_id2,t_shard_id4),t_shard_id3) BKA_JOIN((t_shard_id2,t_shard_id4,t_shard_id3),t_shard_id1) */
+    select t_shard_id1.id from t_shard_id1, t_shard_id2, t_shard_id3, t_shard_id4 where t_shard_id1.name = t_shard_id2.name and t_shard_id1.name = t_shard_id3.name and t_shard_id3.name = t_shard_id4.name
+
+  plan: |
+
+    Project(id="id")
+      BKAJoin(condition="name1 = name AND name0 = name AND name = name", type="inner")
+        Project(name="name", name0="name1", name1="name0")
+          BKAJoin(condition="name0 = name AND name = name", type="inner")
+            BKAJoin(condition="name = name", type="inner")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].t_shard_id4", shardCount=4, sql="SELECT `name` FROM `t_shard_id4` AS `t_shard_id4` WHERE (`name` IN (...))")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `name` FROM `t_shard_id3` AS `t_shard_id3` WHERE (`name` IN (...))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1` WHERE (`name` IN (...))")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l4,l2) HASH_JOIN(l1,l3) HASH_JOIN((l1,l3),(l4,l2)) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="id0 = id0 AND id0 = id AND id0 = id AND id = id", type="inner")
+        HashJoin(condition="id = id", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+        Project(id="id0", id0="id")
+          HashJoin(condition="id = id", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l4,l2) HASH_JOIN(l3,(l4,l2)) HASH_JOIN((l3,l4,l2),l1) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+  plan: |
+
+    Project(id="id2")
+      HashJoin(condition="id1 = id AND id0 = id AND id = id", type="inner")
+        Project(id="id0", id0="id", id1="id00")
+          HashJoin(condition="id = id0 AND id = id", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+            Project(id="id0", id0="id")
+              HashJoin(condition="id = id", type="inner")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l4,l1) HASH_JOIN(l2,l3) HASH_JOIN((l4,l1),(l2,l3)) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="id0 = id0 AND id0 = id AND id0 = id AND id = id", type="inner")
+        Project(id="id0", id0="id")
+          HashJoin(condition="id = id", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+        HashJoin(condition="id = id", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l4,l3) HASH_JOIN(l1,l2) HASH_JOIN((l4,l3),(l1,l2)) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+  plan: |
+
+    Project(id="id1")
+      HashJoin(condition="id0 = id AND id0 = id0 AND id = id AND id = id0", type="inner")
+        Project(id="id0", id0="id")
+          HashJoin(condition="id = id", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+        HashJoin(condition="id = id", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l4,l3) HASH_JOIN(l2,(l4,l3)) HASH_JOIN(l1,(l4,l3,l2)) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="id00 = id AND id0 = id AND id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+        HashJoin(condition="id0 = id AND id = id", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+          Project(id="id0", id0="id")
+            HashJoin(condition="id = id", type="inner")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l4,l3) HASH_JOIN((l4,l3),l2) HASH_JOIN((l4,l3,l2),l1) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+  plan: |
+
+    Project(id="id1")
+      HashJoin(condition="id00 = id AND id0 = id AND id = id", type="inner")
+        Project(id="id1", id0="id", id00="id0")
+          HashJoin(condition="id0 = id AND id = id", type="inner")
+            Project(id="id0", id0="id")
+              HashJoin(condition="id = id", type="inner")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l5,l4) HASH_JOIN((l5,l4),l3) HASH_JOIN((l5,l4,l3),l2) HASH_JOIN((l5,l4,l3,l2),l1) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4,l5
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+       AND l4.id = l5.id
+  plan: |
+
+    Project(id="id3")
+      HashJoin(condition="id2 = id AND id1 = id AND id0 = id AND id = id", type="inner")
+        Project(id="id2", id0="id", id1="id0", id2="id1")
+          HashJoin(condition="id1 = id AND id0 = id AND id = id", type="inner")
+            Project(id="id1", id0="id", id1="id0")
+              HashJoin(condition="id = id0 AND id = id", type="inner")
+                Project(id="id0", id0="id")
+                  HashJoin(condition="id = id", type="inner")
+                    Gather(concurrent=true)
+                      LogicalView(tables="[0000-0003].l5_[00-19]", shardCount=20, sql="SELECT `id` FROM `l5` AS `l5`")
+                    Gather(concurrent=true)
+                      LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l6,l5) HASH_JOIN((l6,l5),l4) HASH_JOIN((l6,l5,l4),l3) HASH_JOIN((l6,l5,l4,l3),l2) HASH_JOIN((l6,l5,l4,l3,l2),l1) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4,l5,l6
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+       AND l4.id = l5.id
+       AND l5.id = l6.id
+  plan: |
+
+    Project(id="id4")
+      HashJoin(condition="id3 = id AND id2 = id AND id1 = id AND id0 = id AND id = id", type="inner")
+        Project(id="id3", id0="id", id1="id0", id2="id1", id3="id2")
+          HashJoin(condition="id2 = id AND id1 = id AND id0 = id AND id = id", type="inner")
+            Project(id="id2", id0="id", id1="id0", id2="id1")
+              HashJoin(condition="id = id1 AND id = id0 AND id = id", type="inner")
+                Project(id="id1", id0="id", id1="id0")
+                  HashJoin(condition="id = id0 AND id = id", type="inner")
+                    Project(id="id0", id0="id")
+                      HashJoin(condition="id = id", type="inner")
+                        Gather(concurrent=true)
+                          LogicalView(tables="[0000-0003].l6_[00-23]", shardCount=24, sql="SELECT `id` FROM `l6` AS `l6`")
+                        Gather(concurrent=true)
+                          LogicalView(tables="[0000-0003].l5_[00-19]", shardCount=20, sql="SELECT `id` FROM `l5` AS `l5`")
+                    Gather(concurrent=true)
+                      LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l6,l5) HASH_JOIN((l6,l5),l4) HASH_JOIN(l3,(l6,l5,l4)) HASH_JOIN((l6,l5,l4,l3),l2) HASH_JOIN(l1,(l6,l5,l4,l3,l2)) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4,l5,l6
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+       AND l4.id = l5.id
+       AND l5.id = l6.id
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="id3 = id AND id2 = id AND id1 = id AND id0 = id AND id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id` FROM `l1` AS `l1`")
+        Project(id="id2", id0="id", id1="id0", id2="id00", id3="id1")
+          HashJoin(condition="id1 = id AND id00 = id AND id0 = id AND id = id", type="inner")
+            HashJoin(condition="id = id1 AND id = id0 AND id = id", type="inner")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id` FROM `l3` AS `l3`")
+              Project(id="id1", id0="id", id1="id0")
+                HashJoin(condition="id = id0 AND id = id", type="inner")
+                  Project(id="id0", id0="id")
+                    HashJoin(condition="id = id", type="inner")
+                      Gather(concurrent=true)
+                        LogicalView(tables="[0000-0003].l6_[00-23]", shardCount=24, sql="SELECT `id` FROM `l6` AS `l6`")
+                      Gather(concurrent=true)
+                        LogicalView(tables="[0000-0003].l5_[00-19]", shardCount=20, sql="SELECT `id` FROM `l5` AS `l5`")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id` FROM `l2` AS `l2`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l7,l6) HASH_JOIN((l7,l6),l5) HASH_JOIN((l7,l6,l5),l4) HASH_JOIN((l7,l6,l5,l4),l3) HASH_JOIN((l7,l6,l5,l4,l3),l2) HASH_JOIN((l7,l6,l5,l4,l3,l2),l1) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4,l5,l6,l7
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+       AND l4.id = l5.id
+       AND l5.id = l6.id
+       AND l6.id = l7.id
+  plan: |
+
+    project(id="id5")
+      hashjoin(condition="id = id", type="inner")
+        project(id="id4", id0="id", id1="id0", id2="id1", id3="id2", id4="id3")
+          hashjoin(condition="id = id", type="inner")
+            project(id="id3", id0="id", id1="id0", id2="id1", id3="id2")
+              hashjoin(condition="id = id", type="inner")
+                project(id="id2", id0="id", id1="id0", id2="id1")
+                  hashjoin(condition="id = id", type="inner")
+                    project(id="id1", id0="id", id1="id0")
+                      hashjoin(condition="id = id", type="inner")
+                        project(id="id0", id0="id")
+                          hashjoin(condition="id = id", type="inner")
+                            gather(concurrent=true)
+                              logicalview(tables="[0000-0003].l7_[00-27]", shardcount=28, sql="select `id` from `l7` as `l7`")
+                            gather(concurrent=true)
+                              logicalview(tables="[0000-0003].l6_[00-23]", shardcount=24, sql="select `id` from `l6` as `l6`")
+                        gather(concurrent=true)
+                          logicalview(tables="[0000-0003].l5_[00-19]", shardcount=20, sql="select `id` from `l5` as `l5`")
+                    gather(concurrent=true)
+                      logicalview(tables="[0000-0003].l4_[00-15]", shardcount=16, sql="select `id` from `l4` as `l4`")
+                gather(concurrent=true)
+                  logicalview(tables="[0000-0003].l3_[00-11]", shardcount=12, sql="select `id` from `l3` as `l3`")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].l2_[0-7]", shardcount=8, sql="select `id` from `l2` as `l2`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].l1", shardcount=4, sql="select `id` from `l1` as `l1`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(l8,l7) HASH_JOIN((l8,l7),l6) HASH_JOIN((l8,l7,l6),l5) HASH_JOIN((l8,l7,l6,l5),l4) HASH_JOIN((l8,l7,l6,l5,l4),l3) HASH_JOIN((l8,l7,l6,l5,l4,l3),l2) HASH_JOIN((l8,l7,l6,l5,l4,l3,l2),l1) */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4,l5,l6,l7,l8
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+       AND l4.id = l5.id
+       AND l5.id = l6.id
+       AND l6.id = l7.id
+       AND l7.id = l8.id
+  plan: |
+
+    project(id="id6")
+      hashjoin(condition="id = id", type="inner")
+        project(id="id5", id0="id", id1="id0", id2="id1", id3="id2", id4="id3", id5="id4")
+          hashjoin(condition="id = id", type="inner")
+            project(id="id4", id0="id", id1="id0", id2="id1", id3="id2", id4="id3")
+              hashjoin(condition="id = id", type="inner")
+                project(id="id3", id0="id", id1="id0", id2="id1", id3="id2")
+                  hashjoin(condition="id = id", type="inner")
+                    project(id="id2", id0="id", id1="id0", id2="id1")
+                      hashjoin(condition="id = id", type="inner")
+                        project(id="id1", id0="id", id1="id0")
+                          hashjoin(condition="id = id", type="inner")
+                            project(id="id0", id0="id")
+                              hashjoin(condition="id = id", type="inner")
+                                gather(concurrent=true)
+                                  logicalview(tables="[0000-0003].l8_[00-31]", shardcount=32, sql="select `id` from `l8` as `l8`")
+                                gather(concurrent=true)
+                                  logicalview(tables="[0000-0003].l7_[00-27]", shardcount=28, sql="select `id` from `l7` as `l7`")
+                            gather(concurrent=true)
+                              logicalview(tables="[0000-0003].l6_[00-23]", shardcount=24, sql="select `id` from `l6` as `l6`")
+                        gather(concurrent=true)
+                          logicalview(tables="[0000-0003].l5_[00-19]", shardcount=20, sql="select `id` from `l5` as `l5`")
+                    gather(concurrent=true)
+                      logicalview(tables="[0000-0003].l4_[00-15]", shardcount=16, sql="select `id` from `l4` as `l4`")
+                gather(concurrent=true)
+                  logicalview(tables="[0000-0003].l3_[00-11]", shardcount=12, sql="select `id` from `l3` as `l3`")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].l2_[0-7]", shardcount=8, sql="select `id` from `l2` as `l2`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].l1", shardcount=4, sql="select `id` from `l1` as `l1`")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false) HASH_JOIN(fact,l6) HASH_JOIN((fact,l6),l5) HASH_JOIN((fact,l6,l5),l4)
+    HASH_JOIN((fact,l6,l5,l4),l3) HASH_JOIN((fact,l6,l5,l4,l3),l2) HASH_JOIN((fact,l6,l5,l4,l3,l2),l1) */
+    SELECT *
+    FROM  fact left join l1 on l1.id = fact.id1
+    left join l2 on l2.id = fact.id2
+    left join l3 on l3.id = fact.id3
+    left join l4 on l4.id = fact.id4
+    left join l5 on l5.id = fact.id5
+    left join l6 on l6.id = fact.id6
+  plan: |
+
+    Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id15", name0="name4", create_time0="create_time4", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1", id14="id13", name3="name2", create_time3="create_time2", id15="id14", name4="name3", create_time4="create_time3")
+      HashJoin(condition="id = id1", type="left")
+        Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id14", name0="name3", create_time0="create_time3", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1", id14="id13", name3="name2", create_time3="create_time2")
+          HashJoin(condition="id = id2", type="left")
+            Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id13", name0="name2", create_time0="create_time2", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1")
+              HashJoin(condition="id = id3", type="left")
+                Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id12", name0="name1", create_time0="create_time1", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time")
+                  HashJoin(condition="id = id4", type="left")
+                    Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id11", name0="name0", create_time0="create_time0", id0="id0", name="name", create_time="create_time")
+                      HashJoin(condition="id = id5", type="left")
+                        HashJoin(condition="id = id6", type="left")
+                          Gather(concurrent=true)
+                            LogicalView(tables="[0000-0003].fact_[00-39]", shardCount=40, sql="SELECT `id`, `id1`, `id2`, `id3`, `id4`, `id5`, `id6`, `id7`, `id8`, `id9`, `id10` FROM `fact` AS `fact`")
+                          Gather(concurrent=true)
+                            LogicalView(tables="[0000-0003].l6_[00-23]", shardCount=24, sql="SELECT `id`, `name`, `create_time` FROM `l6` AS `l6`")
+                        Gather(concurrent=true)
+                          LogicalView(tables="[0000-0003].l5_[00-19]", shardCount=20, sql="SELECT `id`, `name`, `create_time` FROM `l5` AS `l5`")
+                    Gather(concurrent=true)
+                      LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id`, `name`, `create_time` FROM `l4` AS `l4`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id`, `name`, `create_time` FROM `l3` AS `l3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `l2` AS `l2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `l1` AS `l1`")
+
+-
+  sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false) HASH_JOIN(fact,l7) HASH_JOIN((fact,l7),l6) HASH_JOIN((fact,l7,l6),l5) HASH_JOIN((fact,l7,l6,l5),l4) HASH_JOIN((fact,l7,l6,l5,l4),l3) HASH_JOIN((fact,l7,l6,l5,l4,l3),l2) HASH_JOIN((fact,l7,l6,l5,l4,l3,l2),l1) */
+    SELECT *
+    FROM  fact left join l1 on l1.id = fact.id1
+    left join l2 on l2.id = fact.id2
+    left join l3 on l3.id = fact.id3
+    left join l4 on l4.id = fact.id4
+    left join l5 on l5.id = fact.id5
+    left join l6 on l6.id = fact.id6
+    left join l7 on l7.id = fact.id7
+  plan: |
+
+    Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id16", name0="name5", create_time0="create_time5", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1", id14="id13", name3="name2", create_time3="create_time2", id15="id14", name4="name3", create_time4="create_time3", id16="id15", name5="name4", create_time5="create_time4")
+      HashJoin(condition="id = id1", type="left")
+        Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id15", name0="name4", create_time0="create_time4", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1", id14="id13", name3="name2", create_time3="create_time2", id15="id14", name4="name3", create_time4="create_time3")
+          HashJoin(condition="id = id2", type="left")
+            Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id14", name0="name3", create_time0="create_time3", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1", id14="id13", name3="name2", create_time3="create_time2")
+              HashJoin(condition="id = id3", type="left")
+                Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id13", name0="name2", create_time0="create_time2", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1")
+                  HashJoin(condition="id = id4", type="left")
+                    Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id12", name0="name1", create_time0="create_time1", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time")
+                      HashJoin(condition="id = id5", type="left")
+                        Project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id11", name0="name0", create_time0="create_time0", id0="id0", name="name", create_time="create_time")
+                          HashJoin(condition="id = id6", type="left")
+                            HashJoin(condition="id = id7", type="left")
+                              Gather(concurrent=true)
+                                LogicalView(tables="[0000-0003].fact_[00-39]", shardCount=40, sql="SELECT `id`, `id1`, `id2`, `id3`, `id4`, `id5`, `id6`, `id7`, `id8`, `id9`, `id10` FROM `fact` AS `fact`")
+                              Gather(concurrent=true)
+                                LogicalView(tables="[0000-0003].l7_[00-27]", shardCount=28, sql="SELECT `id`, `name`, `create_time` FROM `l7` AS `l7`")
+                            Gather(concurrent=true)
+                              LogicalView(tables="[0000-0003].l6_[00-23]", shardCount=24, sql="SELECT `id`, `name`, `create_time` FROM `l6` AS `l6`")
+                        Gather(concurrent=true)
+                          LogicalView(tables="[0000-0003].l5_[00-19]", shardCount=20, sql="SELECT `id`, `name`, `create_time` FROM `l5` AS `l5`")
+                    Gather(concurrent=true)
+                      LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id`, `name`, `create_time` FROM `l4` AS `l4`")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id`, `name`, `create_time` FROM `l3` AS `l3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `l2` AS `l2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `l1` AS `l1`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(v1,v3) HASH_JOIN(v4,v2) HASH_JOIN((v1,v3),(v4,v2)) */
+    select v1_k, v2_k, v3_k, v4_k from v1 inner join v2 on v1_k = v2_k inner join (v3 inner join v4 on v3_k = v4_k)  on name1 = name3 and name2 = name4;
+  plan: |
+
+    Project(v1_k="v1_k", v2_k="v2_k", v3_k="v3_k", v4_k="v4_k")
+      HashJoin(condition="v4_k = v3_k AND v2_k = v1_k", type="inner")
+        HashJoin(condition="name3 = name1", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v1", shardCount=4, sql="SELECT `v1_k`, `name1` FROM `v1` AS `v1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `v3_k`, `name3` FROM `v3` AS `v3`")
+        Project(v2_k="v2_k", name2="name2", v4_k="v4_k", name4="name4")
+          HashJoin(condition="name2 = name4", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].v4_[00-15]", shardCount=16, sql="SELECT `v4_k`, `name4` FROM `v4` AS `v4`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `v2_k`, `name2` FROM `v2` AS `v2`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(v1,v3) HASH_JOIN(v2,v4) HASH_JOIN((v2,v4),(v1,v3)) */
+    select v1_k, v2_k, v3_k, v4_k from v1 inner join v2 on v1_k = v2_k inner join (v3 inner join v4 on v3_k = v4_k)  on name1 = name3 and name2 = name4;
+  plan: |
+
+    Project(v1_k="v1_k", v2_k="v2_k", v3_k="v3_k", v4_k="v4_k")
+      HashJoin(condition="v4_k = v3_k AND v2_k = v1_k", type="inner")
+        HashJoin(condition="name2 = name4", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `v2_k`, `name2` FROM `v2` AS `v2`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v4_[00-15]", shardCount=16, sql="SELECT `v4_k`, `name4` FROM `v4` AS `v4`")
+        HashJoin(condition="name3 = name1", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v1", shardCount=4, sql="SELECT `v1_k`, `name1` FROM `v1` AS `v1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `v3_k`, `name3` FROM `v3` AS `v3`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(v1,v3) HASH_JOIN(v2,v4) HASH_JOIN((v2,v4),(v1,v3)) */
+    select v1_k, v2_k, v3_k, v4_k from v1 inner join v2 on v1_k = v2_k inner join v3 inner join v4 on v3_k = v4_k and name1 = name3 and name2 = name4;
+  plan: |
+
+    Project(v1_k="v1_k", v2_k="v2_k", v3_k="v3_k", v4_k="v4_k")
+      HashJoin(condition="v4_k = v3_k AND v2_k = v1_k", type="inner")
+        HashJoin(condition="name2 = name4", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `v2_k`, `name2` FROM `v2` AS `v2`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v4_[00-15]", shardCount=16, sql="SELECT `v4_k`, `name4` FROM `v4` AS `v4`")
+        HashJoin(condition="name3 = name1", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v1", shardCount=4, sql="SELECT `v1_k`, `name1` FROM `v1` AS `v1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `v3_k`, `name3` FROM `v3` AS `v3`")
+
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(v1,v3) HASH_JOIN(v2,v4) HASH_JOIN((v2,v4),(v1,v3)) */
+    select v1_k, v2_k, v3_k, v4_k from v1, v2, v3, v4 where v1_k = v2_k and v3_k = v4_k and name1 = name3 and name2 = name4;
+  plan: |
+
+    Project(v1_k="v1_k", v2_k="v2_k", v3_k="v3_k", v4_k="v4_k")
+      HashJoin(condition="v4_k = v3_k AND v2_k = v1_k", type="inner")
+        HashJoin(condition="name2 = name4", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `v2_k`, `name2` FROM `v2` AS `v2`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v4_[00-15]", shardCount=16, sql="SELECT `v4_k`, `name4` FROM `v4` AS `v4`")
+        HashJoin(condition="name3 = name1", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v1", shardCount=4, sql="SELECT `v1_k`, `name1` FROM `v1` AS `v1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `v3_k`, `name3` FROM `v3` AS `v3`")
+
+-
+  sql: |
+    /*+TDDL:SEMI_NL_JOIN(l3,l4) HASH_JOIN(l2,(l3,l4))*/ select * from l2 join l3 on l2.name = l3.name where l3.id+1 in
+    (select id from l4);
+  plan: |
+    HashJoin(condition="name = name", type="inner")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].l2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `l2` AS `l2`")
+      SemiNLJoin(condition="id + 1 = id", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l3_[00-11]", shardCount=12, sql="SELECT `id`, `name`, `create_time` FROM `l3` AS `l3`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].l4_[00-15]", shardCount=16, sql="SELECT `id` FROM `l4` AS `l4`")

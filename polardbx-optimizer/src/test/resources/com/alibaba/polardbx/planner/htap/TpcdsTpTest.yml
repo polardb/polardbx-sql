@@ -1,0 +1,56 @@
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_DIRECT_PLAN=false,ENABLE_POST_PLANNER=false)*/
+    SELECT inv_item_sk,
+           `item`.`i_product_name`,
+           `item`.`i_brand`,
+           `item`.`i_class`,
+           `item`.`i_category`,
+           `inventory`.`inv_quantity_on_hand`
+    FROM `inventory` AS `inventory`
+    INNER JOIN `date_dim` AS `date_dim` ON (((`date_dim`.`d_date_sk` = 2450815)
+                                             AND (`inventory`.`inv_date_sk` = `date_dim`.`d_date_sk`))
+                                            AND (`inventory`.`inv_date_sk` = 2450815))
+    INNER JOIN `item` AS `item` ON (`inventory`.`inv_item_sk` = `item`.`i_item_sk`)
+    INNER JOIN `warehouse` AS `warehouse` ON (`inventory`.`inv_warehouse_sk` = `warehouse`.`w_warehouse_sk`)
+    AND inv_item_sk IN (17989,
+                        17990,
+                        17996);
+
+
+  plan: |
+    LogicalView(tables="optest_0000.inventory,date_dim,item,warehouse", sql="SELECT `inventory`.`inv_item_sk`, `item`.`i_product_name`, `item`.`i_brand`, `item`.`i_class`, `item`.`i_category`, `inventory`.`inv_quantity_on_hand` FROM `inventory` AS `inventory` INNER JOIN `date_dim` AS `date_dim` ON ((((`date_dim`.`d_date_sk` = 2450815) AND (`inventory`.`inv_date_sk` = `date_dim`.`d_date_sk`)) AND (`inventory`.`inv_date_sk` = 2450815)) AND (`inventory`.`inv_item_sk` IN(17989, 17990, 17996))) INNER JOIN `item` AS `item` ON (`inventory`.`inv_item_sk` = `item`.`i_item_sk`) INNER JOIN `warehouse` AS `warehouse` ON (`inventory`.`inv_warehouse_sk` = `warehouse`.`w_warehouse_sk`)")
+
+- sql: |
+        /*+TDDL:cmd_extra(enable_direct_plan=false)*/
+        SELECT ca_address_sk,
+           c_last_name,
+           c_first_name,
+           s_store_name,
+           ca_state,
+           s_state,
+           i_color,
+           i_current_price,
+           i_manager_id,
+           i_units,
+           i_size
+        FROM store_sales,
+         store_returns,
+         store,
+         item,
+         customer,
+         customer_address
+        WHERE ss_ticket_number = sr_ticket_number
+        AND ss_item_sk = sr_item_sk
+        AND ss_customer_sk = c_customer_sk
+        AND ss_item_sk = i_item_sk
+        AND ss_store_sk = s_store_sk
+        AND c_birth_country = ca_country
+        AND s_zip = ca_zip
+        AND c_customer_sk = 45335
+        AND ca_address_sk IN (651,
+                            835,
+                            918);
+
+  plan: |
+    LogicalView(tables="optest_0000.store_sales,store_returns,store,item,customer,customer_address", sql="SELECT `customer_address`.`ca_address_sk`, `customer`.`c_last_name`, `customer`.`c_first_name`, `store`.`s_store_name`, `customer_address`.`ca_state`, `store`.`s_state`, `item`.`i_color`, `item`.`i_current_price`, `item`.`i_manager_id`, `item`.`i_units`, `item`.`i_size` FROM `store_sales` AS `store_sales` INNER JOIN `store_returns` AS `store_returns` ON (((`store_sales`.`ss_customer_sk` = 45335) AND (`store_sales`.`ss_ticket_number` = `store_returns`.`sr_ticket_number`)) AND (`store_sales`.`ss_item_sk` = `store_returns`.`sr_item_sk`)) INNER JOIN `store` AS `store` ON (`store_sales`.`ss_store_sk` = `store`.`s_store_sk`) INNER JOIN `item` AS `item` ON ((`store_returns`.`sr_item_sk` = `item`.`i_item_sk`) AND (`store_sales`.`ss_item_sk` = `item`.`i_item_sk`)) INNER JOIN `customer` AS `customer` ON ((`customer`.`c_customer_sk` = 45335) AND (`store_sales`.`ss_customer_sk` = `customer`.`c_customer_sk`)) INNER JOIN `customer_address` AS `customer_address` ON (((`customer`.`c_birth_country` = `customer_address`.`ca_country`) AND (`store`.`s_zip` = `customer_address`.`ca_zip`)) AND (`customer_address`.`ca_address_sk` IN(651, 835, 918)))")
+

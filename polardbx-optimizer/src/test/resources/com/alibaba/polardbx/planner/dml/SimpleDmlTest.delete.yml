@@ -1,0 +1,129 @@
+- sql: |
+    delete from test_hash_tb where id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE FROM `test_hash_tb` WHERE (`id` = ?)")
+
+- sql: |
+    delete ignore from test_hash_tb where id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE IGNORE FROM `test_hash_tb` WHERE (`id` = ?)")
+
+- sql: |
+    delete low_priority quick from test_hash_tb where id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE LOW_PRIORITY QUICK FROM `test_hash_tb` WHERE (`id` = ?)")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_tb;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="DELETE FROM `test_hash_tb`")
+
+- sql: |
+    delete from test_hash_tb where id in (select id from test_hash_ta);
+
+  plan: |
+
+    logicalmodifyview(tables="[0000-0003].test_hash_tb,test_hash_ta", shardcount=4, sql="delete from `test_hash_tb` where (`id` in (select `id` from `test_hash_ta` as `test_hash_ta`))")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_tb order by id;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="DELETE FROM `test_hash_tb`")
+
+- sql: |
+    delete from test_hash_tb limit 10;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_hash_tb")
+      MergeSort(sort="", fetch=?0)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` LIMIT ? FOR UPDATE")
+
+- sql: |
+    delete from test_hash_tb order by id limit 10;
+
+  plan: |
+
+    LogicalModify(TYPE="DELETE", TABLES="optest.test_hash_tb")
+      MergeSort(sort="id ASC", fetch=?0)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id` LIMIT ? FOR UPDATE")
+
+- sql: |
+    delete from test_hash_tb where id = 1 limit 10;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE FROM `test_hash_tb` WHERE (`id` = ?) LIMIT ?")
+
+- sql: |
+    delete from test_hash_tb where id = 1 order by name limit 10;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE FROM `test_hash_tb` WHERE (`id` = ?) ORDER BY `name` LIMIT ?")
+
+- sql: |
+    delete test_hash_tb where id = 1 order by name limit 10;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE FROM `test_hash_tb` WHERE (`id` = ?) ORDER BY `name` LIMIT ?")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_single;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_single", sql="DELETE FROM `test_single`")
+
+- sql: |
+    delete from test_single where name = 'test';
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_single", sql="DELETE FROM `test_single` WHERE (`name` = ?)", params="test")
+
+- sql: |
+    delete from test_single where name = 'test' order by name;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_single", sql="DELETE FROM `test_single` WHERE (`name` = ?) ORDER BY `name`", params="test")
+
+- sql: |
+    delete from test_single where name = 'test' order by name limit 10;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_single", sql="DELETE FROM `test_single` WHERE (`name` = ?) ORDER BY `name` LIMIT ?", params="test,10")
+
+- sql: |
+    delete from test_hash_tb where id in (select id from test_hash_ta where id > 10);
+
+  plan: |
+
+    logicalmodifyview(tables="[0000-0003].test_hash_tb,test_hash_ta", shardcount=4, sql="delete from `test_hash_tb` where (`id` in (select `id` from `test_hash_ta` as `test_hash_ta` where (`id` > ?)))")
+
+- sql: |
+    delete from optest.test_hash_tb where optest.test_hash_tb.id = 1 order by optest.test_hash_tb.name limit 10;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE FROM `test_hash_tb` WHERE (`id` = ?) ORDER BY `name` LIMIT ?")
+
+- sql: |
+    delete from optest.test_single where optest.test_single.name = 'test' order by optest.test_single.name limit 10;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_single", sql="DELETE FROM `test_single` WHERE (`name` = ?) ORDER BY `name` LIMIT ?", params="test,10")

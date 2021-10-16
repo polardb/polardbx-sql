@@ -1,0 +1,91 @@
+- sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id1,t_shard_id2)*/
+    select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    Gather(parallel=true)
+      Project(id="id", parallel=true)
+        ParallelHashJoin(condition="id = id", type="inner")
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1`", parallel=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2`", parallel=true)
+
+
+- sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id2,t_shard_id1)*/
+    select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    Gather(parallel=true)
+      Project(id="id0", parallel=true)
+        ParallelHashJoin(condition="id = id", type="inner")
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2`", parallel=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1`", parallel=true)
+
+
+- sql: |
+    /*+TDDL:HASH_JOIN(t1,t2)*/
+    select * from t1, t2 where t1.id = t2.id and t1.name > t2.name
+
+  plan: |
+
+    Gather(parallel=true)
+      ParallelHashJoin(condition="id = id AND name > name", type="inner")
+        LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`", parallel=true)
+        LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2`", parallel=true)
+
+- sql: |
+    /*+TDDL:HASH_JOIN(t1,t2)*/
+    select * from t1 left join t2 on t1.id = t2.id and t1.name > t2.name
+
+  plan: |
+
+    Gather(parallel=true)
+      ParallelHashJoin(condition="id = id AND name > name", type="left")
+        LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`", parallel=true)
+        LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2`", parallel=true)
+
+- sql: |
+    /*+TDDL:HASH_JOIN(t1,t2)*/
+    select * from t1 right join t2 on t1.id = t2.id and t1.name > t2.name
+
+  plan: |
+
+    Gather(parallel=true)
+      ParallelHashJoin(condition="id = id AND name > name", type="right")
+        LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`", parallel=true)
+        LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2`", parallel=true)
+

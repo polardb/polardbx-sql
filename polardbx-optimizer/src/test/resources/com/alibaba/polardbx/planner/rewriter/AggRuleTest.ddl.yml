@@ -1,0 +1,14 @@
+user_log:
+  CREATE TABLE user_log(
+  userId int,
+  name varchar(30),
+  operation varchar(30),
+  actionDate varchar(30)
+  ) dbpartition by hash(userId) tbpartition by HASH(actionDate) tbpartitions 7;
+
+test_tb:
+  CREATE TABLE test_tb(
+  a int,
+  b bigint,
+  c int
+  ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;

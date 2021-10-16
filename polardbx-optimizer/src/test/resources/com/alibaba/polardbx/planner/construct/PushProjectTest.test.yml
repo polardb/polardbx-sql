@@ -1,0 +1,48 @@
+-
+  sql: |
+    select /* +TDDL: construct() push_pj("distinct bigint_test") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT DISTINCT `bigint_test` FROM `test_table_a` AS `test_table_a`")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_pj("count(distinct *)") add_un()*/ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT COUNT(DISTINCT *) AS `count(DISTINCT *)` FROM `test_table_a` AS `test_table_a`")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_pj("(select bigint_test from test_table_b where pk = 100001 limit 1) as 'value from another table'") add_un()*/ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_b_[00-27],test_table_a_[00-27]", shardCount=28, sql="SELECT (((SELECT `test_table_b`.`bigint_test` FROM `test_table_b` AS `test_table_b` WHERE (`test_table_b`.`pk` = 100001) LIMIT 1 OFFSET 0))) AS `value from another table` FROM `test_table_a` AS `test_table_a`")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_pj("bigint_test as id") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `bigint_test` AS `id` FROM `test_table_a` AS `test_table_a`")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_pj("-456.789E-123 as 'just for test'") add_un()*/ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT -4.56789E-121 AS `just for test` FROM `test_table_a` AS `test_table_a`")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_pj("bigint_test as \"id\"") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `bigint_test` AS `id` FROM `test_table_a` AS `test_table_a`")
+

@@ -1,0 +1,142 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+    <parent>
+        <groupId>com.alibaba.polardbx</groupId>
+        <artifactId>polardbx</artifactId>
+        <version>5.4.12-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <groupId>com.alibaba.polardbx</groupId>
+    <artifactId>polardbx-optimizer</artifactId>
+    <packaging>jar</packaging>
+    <name>${project.artifactId} module for polardbx ${project.version}</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-gms</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-rule</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-rpc</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-parser</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>cglib</groupId>-->
+<!--            <artifactId>cglib-nodep</artifactId>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>com.clearspring.analytics</groupId>-->
+<!--            <artifactId>stream</artifactId>-->
+<!--            <version>${stream.version}</version>-->
+<!--        </dependency>-->
+        <!--<dependency>-->
+        <!--<groupId>com.github.luben</groupId>-->
+        <!--<artifactId>zstd-jni</artifactId>-->
+        <!--<version>1.4.0-1</version>-->
+        <!--</dependency>-->
+        <!-- Test libs -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>com.sun</groupId>-->
+<!--            <artifactId>tools</artifactId>-->
+<!--            <version>${sum.tools.version}</version>-->
+<!--        </dependency>-->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-calcite</artifactId>
+            <version>${project.version}</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>commons-logging</artifactId>
+                    <groupId>commons-logging</groupId>
+                </exclusion>
+                <exclusion>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>polardbx-common</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid</artifactId>
+            <version>${druid.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>jul-to-slf4j</artifactId>
+            <version>${jul-to.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.clearspring.analytics</groupId>
+            <artifactId>stream</artifactId>
+            <version>${stream.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>${snakeyaml.version}</version>
+        </dependency>
+        <!--        <dependency>-->
+        <!--            <groupId>com.alibaba.polardbx</groupId>-->
+        <!--            <artifactId>polardbx-calcite</artifactId>-->
+        <!--            <classifier>tests</classifier>-->
+        <!--            <scope>test</scope>-->
+        <!--        </dependency>-->
+        <dependency>
+            <groupId>net.hydromatic</groupId>
+            <artifactId>foodmart-data-hsqldb</artifactId>
+            <version>0.3</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.hydromatic</groupId>
+            <artifactId>scott-data-hsqldb</artifactId>
+            <version>0.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.hsqldb</groupId>
+            <artifactId>hsqldb</artifactId>
+            <version>2.3.3</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+</project>

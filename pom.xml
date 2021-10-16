@@ -1,0 +1,458 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.alibaba.polardbx</groupId>
+    <artifactId>polardbx</artifactId>
+    <packaging>pom</packaging>
+    <name>root module for polardbx ${project.version}</name>
+    <version>5.4.12-SNAPSHOT</version>
+    <!-- <parent> <groupId>org.sonatype.oss</groupId> <artifactId>oss-parent</artifactId>
+        <version>7</version> </parent> -->
+
+    <developers>
+        <developer>
+            <name>agapple</name>
+            <url>http://agapple.iteye.com</url>
+            <email>jianghang115@gmail.com</email>
+            <timezone>8</timezone>
+        </developer>
+        <developer>
+            <name>mengshi</name>
+            <url>https://github.com/mengshi</url>
+            <email>sunmengsh@gmail.com</email>
+            <timezone>8</timezone>
+        </developer>
+    </developers>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
+
+
+    <repositories>
+        <repository>
+            <id>java.net</id>
+            <url>http://download.java.net/maven/2/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!--maven properties -->
+        <maven.test.skip>false</maven.test.skip>
+        <downloadSources>true</downloadSources>
+        <!-- compiler settings properties -->
+        <java_source_version>1.8</java_source_version>
+        <java_target_version>1.8</java_target_version>
+        <file_encoding>UTF-8</file_encoding>
+        <!-- Log libs -->
+        <slf4j_version>1.7.21</slf4j_version>
+        <jcl_version>1.1</jcl_version>
+        <log4j_version>1.2.16</log4j_version>
+        <logback_version>1.2.3</logback_version>
+        <groovy_version>2.1.9</groovy_version>
+        <mysql_connector_version>5.1.49</mysql_connector_version>
+        <!-- Test libs -->
+        <lombok.version>1.18.10</lombok.version>
+        <jackson.version>2.9.8</jackson.version>
+
+        <open.jdk.version>0.2</open.jdk.version>
+        <sigar.version>1.6.4</sigar.version>
+        <jul-to.version>1.7.9</jul-to.version>
+
+        <javax.servlet-api.version>3.1.0</javax.servlet-api.version>
+        <stream.version>2.9.5</stream.version>
+<!--        <sum.tools.version>1.8</sum.tools.version>-->
+        <snakeyaml.version>1.19</snakeyaml.version>
+        <java-ipv6.version>0.17</java-ipv6.version>
+
+        <!-- mpp -->
+        <jgrapht.version>0.9.0</jgrapht.version>
+        <airlift.units.version>1.0</airlift.units.version>
+        <google.guice.version>4.0</google.guice.version>
+        <validation.api.version>1.1.0.Final</validation.api.version>
+        <javax.inject.version>1</javax.inject.version>
+        <joda-to-java-time-bridge.version>3</joda-to-java-time-bridge.version>
+        <aircompressor.version>0.4</aircompressor.version>
+        <resolver.version>1.3</resolver.version>
+        <airline.version>0.7</airline.version>
+        <discovery.version>1.29</discovery.version>
+        <drill.freemarker.maven.plugin.version>1.17.0</drill.freemarker.maven.plugin.version>
+        <codegen.compile.skip>false</codegen.compile.skip>
+        <codegen.clean.skip>false</codegen.clean.skip>
+        <codegen.phase>generate-sources</codegen.phase>
+
+        <!-- calcite -->
+        <avatica.core.version>1.10.0</avatica.core.version>
+        <calcite-linq4j.version>1.14.0</calcite-linq4j.version>
+        <avatica-serve.version>1.9.0</avatica-serve.version>
+        <commons-dbcp.version>1.4</commons-dbcp.version>
+        <commons-lang3.version>3.8.1</commons-lang3.version>
+        <commons-codec.version>1.11</commons-codec.version>
+        <jsr305.version>1.3.9</jsr305.version>
+        <h2.version>1.4.185</h2.version>
+        <sketches-core.version>0.9.0</sketches-core.version>
+        <aggdesigner-algorithm.version>6.0</aggdesigner-algorithm.version>
+        <data-hsqldb.version>0.3</data-hsqldb.version>
+        <hsqldb.version>2.3.3</hsqldb.version>
+        <foodmart-queries.version>0.4.1</foodmart-queries.version>
+        <quidem.version>0.8</quidem.version>
+        <scott-data-hsqldb.version>0.1</scott-data-hsqldb.version>
+        <janino.version>3.0.8</janino.version>
+        <java-diff.version>1.1</java-diff.version>
+        <hamcrest-core.version>1.3</hamcrest-core.version>
+        <sqlline.version>1.1.9</sqlline.version>
+        <esri-geometry-api.version>2.0.0</esri-geometry-api.version>
+
+        <!-- qatest -->
+        <junit_version>4.12</junit_version>
+        <feed4junit.version>1.2.0</feed4junit.version>
+        <jUnitParams.version>1.1.1</jUnitParams.version>
+        <truth.version>1.0</truth.version>
+        <jackson-mapper-asl.version>1.9.13</jackson-mapper-asl.version>
+        <dtafEx.version>0.0.2-SNAPSHOT</dtafEx.version>
+        <ddl-parser.version>1.0.2</ddl-parser.version>
+        <test.junit.hamcrest.version>1.1</test.junit.hamcrest.version>
+        <sshtester.version>0.2.8</sshtester.version>
+        <xml-apis.version>1.4.01</xml-apis.version>
+        <spring_version>2.5.6.SEC03</spring_version>
+        <mockito.verison>2.23.4</mockito.verison>
+        <ibatis-sqlmap.version>2.3.4.726</ibatis-sqlmap.version>
+
+        <!-- for common -->
+        <commons-beanutils.version>1.9.2</commons-beanutils.version>
+        <commons-lang.version>2.6</commons-lang.version>
+        <commons-io.version>2.4</commons-io.version>
+        <commons-pool.version>1.6</commons-pool.version>
+        <guava.version>27.0.1-jre</guava.version>
+        <fastjson.version>1.2.67</fastjson.version>
+        <druid.version>1.1.24</druid.version>
+        <netty.version>4.1.44.Final</netty.version>
+        <protobuf.version>3.11.1</protobuf.version>
+        <protobuf-java-format.version>1.4</protobuf-java-format.version>
+        <grpc.version>1.30.0</grpc.version>
+
+        <!-- for common -->
+        <log4j-api.version>2.5</log4j-api.version>
+        <antlr4.version>4.7</antlr4.version>
+        <commons-dbutils.version>1.6</commons-dbutils.version>
+        <joda-time.version>2.9.9</joda-time.version>
+        <jmh-core.version>1.21</jmh-core.version>
+<!--        <hive-serde.version>3.0.0</hive-serde.version>-->
+        <trove4j.version>3.0.3</trove4j.version>
+        <aliyun-sdk-oss.version>2.8.2</aliyun-sdk-oss.version>
+        <odps-sdk-udf.version>0.17.3</odps-sdk-udf.version>
+
+        <!-- for ssl private key parser -->
+        <bouncycastle.version>1.60</bouncycastle.version>
+    </properties>
+
+    <modules>
+        <module>polardbx-common</module>
+        <module>polardbx-net</module>
+        <module>polardbx-gms</module>
+        <module>polardbx-rule</module>
+        <module>polardbx-calcite</module>
+        <module>polardbx-optimizer</module>
+        <module>polardbx-transaction</module>
+        <module>polardbx-executor</module>
+        <module>polardbx-server</module>
+        <module>polardbx-rpc</module>
+        <module>polardbx-parser</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Common libs -->
+            <dependency>
+                <groupId>com.alibaba.wisp</groupId>
+                <artifactId>wisp-api</artifactId>
+                <version>${wisp-api.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-beanutils</groupId>
+                <artifactId>commons-beanutils</artifactId>
+                <version>${commons-beanutils.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>commons-lang</groupId>
+                <artifactId>commons-lang</artifactId>
+                <version>${commons-lang.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons-io.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-pool</groupId>
+                <artifactId>commons-pool</artifactId>
+                <version>${commons-pool.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>fastjson</artifactId>
+                <version>${fastjson.version}</version>
+            </dependency>
+            <!-- Private X protocol client -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-all</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.googlecode.protobuf-java-format</groupId>
+                <artifactId>protobuf-java-format</artifactId>
+                <version>${protobuf-java-format.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.codehaus.groovy</groupId>
+                <artifactId>groovy-all</artifactId>
+                <version>${groovy_version}</version>
+            </dependency>
+            <!-- driver -->
+            <dependency>
+                <groupId>mysql</groupId>
+                <artifactId>mysql-connector-java</artifactId>
+                <version>${mysql_connector_version}</version>
+            </dependency>
+            <!-- Log libs -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j_version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>jcl-over-slf4j</artifactId>
+                <version>${slf4j_version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-log4j12</artifactId>
+                <version>${slf4j_version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>commons-logging</groupId>
+                <artifactId>commons-logging-api</artifactId>
+                <version>${jcl_version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>log4j</groupId>
+                <artifactId>log4j</artifactId>
+                <version>${log4j_version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback_version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- Test libs -->
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>${junit_version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+
+            <!-- 3th-party dependencies -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-core</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jdk8</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>${commons-lang3.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-codec</groupId>
+                <artifactId>commons-codec</artifactId>
+                <version>${commons-codec.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>2.3</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>2.3</version>
+                <configuration>
+                    <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                    <filesets>
+                        <fileset>
+                            <directory>target</directory>
+                            <includes>
+                                <include>**</include>
+                            </includes>
+                            <excludes>
+                                <skip>!${codegen.clean.skip}</skip>
+                                <exclude>
+                                    **/generated-sources/com/alibaba/polardbx/executor/operator/expression/vectorized/
+                                </exclude>
+                            </excludes>
+                        </fileset>
+                    </filesets>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>2.9.1</version>
+                <configuration>
+                    <encoding>${file_encoding}</encoding>
+                    <charset>${file_encoding}</charset>
+                    <aggregate>true</aggregate>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>2.3.2</version>
+                <configuration>
+                    <excludes>
+                        <skip>!${codegen.compile.skip}</skip>
+                        <exclude>**/generated-sources/com/alibaba/polardbx/executor/operator/expression/vectorized/
+                        </exclude>
+                    </excludes>
+                    <source>${java_source_version}</source>
+                    <target>${java_target_version}</target>
+                    <encoding>${file_encoding}</encoding>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M4</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/*NoRunTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-eclipse-plugin</artifactId>
+                <version>2.5.1</version>
+                <configuration>
+                    <additionalConfig>
+                        <file>
+                            <name>.settings/org.eclipse.core.resources.prefs</name>
+                            <content>
+                                <![CDATA[eclipse.preferences.version=1${line.separator}encoding/<project>=${file_encoding}${line.separator}]]>
+                            </content>
+                        </file>
+                    </additionalConfig>
+                </configuration>
+            </plugin>
+        </plugins>
+        <sourceDirectory>src/main/java</sourceDirectory>
+        <testSourceDirectory>src/test/java</testSourceDirectory>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>**/*</include>
+                </includes>
+                <excludes>
+                    <exclude>**/.svn/</exclude>
+                </excludes>
+            </resource>
+        </resources>
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+                <includes>
+                    <include>**/*</include>
+                </includes>
+                <excludes>
+                    <exclude>**/.svn/</exclude>
+                </excludes>
+            </testResource>
+        </testResources>
+    </build>
+    <!-- <distributionManagement> <snapshotRepository> <id>sonatype-nexus-snapshots</id>
+        <name>Sonatype Nexus Snapshots</name> <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+        </snapshotRepository> <repository> <id>sonatype-nexus-staging</id> <name>Nexus
+        Release Repository</name> <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository> </distributionManagement> -->
+    <distributionManagement>
+        <repository>
+            <id>releases</id>
+            <name>taobao mirror</name>
+            <url>http://mvnrepo.alibaba-inc.com/mvn/releases</url>
+        </repository>
+        <snapshotRepository>
+            <id>snapshots</id>
+            <name>taobao mirror snapshots</name>
+            <url>http://mvnrepo.alibaba-inc.com/mvn/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
+</project>

@@ -1,0 +1,23 @@
+-
+  sql: |
+    select count(*) from test_hash_tb a join test_hash_tb b where a.id=b.id and a.id=1;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb]", sql="SELECT COUNT(*) AS `count(*)` FROM ? AS `a` INNER JOIN ? AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = 1))")
+
+-
+  sql: |
+    select count(*) from test_hash_tb a join test_hash_tb b where a.id=b.id and a.id=1 group by a.name;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb]", sql="SELECT COUNT(*) AS `count(*)` FROM ? AS `a` INNER JOIN ? AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = 1)) GROUP BY `a`.`name`")
+
+-
+  sql: |
+    select count(*) from test_hash_tb a join test_hash_tb b where a.id=b.id and a.id=1 group by a.name order by count(*);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb]", sql="SELECT COUNT(*) AS `count(*)` FROM ? AS `a` INNER JOIN ? AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = 1)) GROUP BY `a`.`name` ORDER BY COUNT(*)")

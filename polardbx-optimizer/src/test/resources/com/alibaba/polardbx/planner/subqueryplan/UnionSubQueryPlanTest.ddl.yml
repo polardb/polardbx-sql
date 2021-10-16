@@ -1,0 +1,64 @@
+test_hash_tb:
+  CREATE TABLE `test_hash_tb` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tb2:
+  CREATE TABLE `test_hash_tb2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+
+test_hash_tb3:
+  CREATE TABLE `test_hash_tb3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+
+test_hash_tb4:
+  CREATE TABLE `test_hash_tb4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`name`) tbpartitions 2;
+  

@@ -1,0 +1,142 @@
+- sql: |
+    select b, c, avg(a) from test_tb group by grouping sets(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=null, a=a, $e=1}, {b=null, c=c, a=a, $e=2}")
+          LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `b`, `c`, `a` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    select a, GROUP_ID() as g, COUNT(*) as c from test_tb group by grouping sets(a, (), ())
+
+  plan: |
+
+    project(a="a", g="g", c="c")
+      project(a="a", g="case(=($1, 0), 0, 0)", c="c")
+        logicalagg(group="a,$e", c="count()")
+          expand(projects="{a=a, $e=0}, {a=null, $e=1}")
+            logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a` from `test_tb` as `test_tb`")
+
+- sql: |
+    select a, b, GROUP_ID() as g, COUNT(*) as c from test_tb group by grouping sets(a, ()), grouping sets(b, ())
+
+  plan: |
+
+    project(a="a", b="b", g="g", c="c")
+      project(a="a", b="b", g="case(=($2, 0), 0, =($2, 1), 0, =($2, 2), 0, 0)", c="c")
+        logicalagg(group="a,b,$e", c="count()")
+          expand(projects="{a=a, b=b, $e=0}, {a=a, b=null, $e=1}, {a=null, b=b, $e=2}, {a=null, b=null, $e=3}")
+            logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tb` as `test_tb`")
+
+- sql: |
+    select b, c, avg(a), group_id() as g, grouping(b) as gb, grouping(c) as gc, grouping_id(b) as gib, GROUPING_ID(b, c) as gid from test_tb  group by cube(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4", g="CASE(=($2, 0), 0, =($2, 1), 0, =($2, 2), 0, 0)", gb="CASE(=($2, 0), 0, =($2, 1), 0, =($2, 2), 1, 1)", gc="CASE(=($2, 0), 0, =($2, 1), 1, =($2, 2), 0, 1)", gib="CASE(=($2, 0), 0, =($2, 1), 0, =($2, 2), 1, 1)", gid="CASE(=($2, 0), 0, =($2, 1), 1, =($2, 2), 2, 3)")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=c, a=a, $e=2}, {b=null, c=null, a=a, $e=3}")
+          LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `b`, `c`, `a` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    select b, c, avg(a) from test_tb group by rollup(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=null, a=a, $e=3}")
+          LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `b`, `c`, `a` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    select b, c, avg(a) from test_tb group by rollup(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=null, a=a, $e=3}")
+          LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `b`, `c`, `a` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    select b, c, avg(a), grouping(b) from test_tb group by b, c
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f2 / $f3", grouping(b)="0")
+      LogicalAgg(group="b,c", $f2="SUM(a)", $f3="COUNT(a)")
+        LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `b`, `c`, `a` FROM `test_tb` AS `test_tb`")
+
+
+- sql: |
+    select b, c, avg(a) from single_test_tb group by grouping sets(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=null, a=a, $e=1}, {b=null, c=c, a=a, $e=2}")
+          LogicalView(tables="optest_0000.single_test_tb", sql="SELECT `b`, `c`, `a` FROM `single_test_tb` AS `single_test_tb`")
+
+- sql: |
+    select a, GROUP_ID() as g, COUNT(*) as c from single_test_tb group by grouping sets(a, (), ())
+
+  plan: |
+
+    project(a="a", g="g", c="c")
+      project(a="a", g="case(=($1, 0), 0, 0)", c="c")
+        logicalagg(group="a,$e", c="count()")
+          expand(projects="{a=a, $e=0}, {a=null, $e=1}")
+            logicalview(tables="optest_0000.single_test_tb", sql="select `a` from `single_test_tb` as `single_test_tb`")
+
+- sql: |
+    select a, b, GROUP_ID() as g, COUNT(*) as c from single_test_tb group by grouping sets(a, ()), grouping sets(b, ())
+
+  plan: |
+
+    project(a="a", b="b", g="g", c="c")
+      project(a="a", b="b", g="case(=($2, 0), 0, =($2, 1), 0, =($2, 2), 0, 0)", c="c")
+        logicalagg(group="a,b,$e", c="count()")
+          expand(projects="{a=a, b=b, $e=0}, {a=a, b=null, $e=1}, {a=null, b=b, $e=2}, {a=null, b=null, $e=3}")
+            logicalview(tables="optest_0000.single_test_tb", sql="select `a`, `b` from `single_test_tb` as `single_test_tb`")
+
+- sql: |
+    select b, c, avg(a), group_id() as g, grouping(b) as gb, grouping(c) as gc, grouping_id(b) as gib, GROUPING_ID(b, c) as gid from single_test_tb  group by cube(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4", g="CASE(=($2, 0), 0, =($2, 1), 0, =($2, 2), 0, 0)", gb="CASE(=($2, 0), 0, =($2, 1), 0, =($2, 2), 1, 1)", gc="CASE(=($2, 0), 0, =($2, 1), 1, =($2, 2), 0, 1)", gib="CASE(=($2, 0), 0, =($2, 1), 0, =($2, 2), 1, 1)", gid="CASE(=($2, 0), 0, =($2, 1), 1, =($2, 2), 2, 3)")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=c, a=a, $e=2}, {b=null, c=null, a=a, $e=3}")
+          LogicalView(tables="optest_0000.single_test_tb", sql="SELECT `b`, `c`, `a` FROM `single_test_tb` AS `single_test_tb`")
+
+- sql: |
+    select b, c, avg(a) from single_test_tb group by rollup(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=null, a=a, $e=3}")
+          LogicalView(tables="optest_0000.single_test_tb", sql="SELECT `b`, `c`, `a` FROM `single_test_tb` AS `single_test_tb`")
+
+- sql: |
+    select b, c, avg(a) from single_test_tb group by rollup(b, c)
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f3 / $f4")
+      LogicalAgg(group="b,c,$e", $f3="SUM(a)", $f4="COUNT(a)")
+        Expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=null, a=a, $e=3}")
+          LogicalView(tables="optest_0000.single_test_tb", sql="SELECT `b`, `c`, `a` FROM `single_test_tb` AS `single_test_tb`")
+
+- sql: |
+    select b, c, avg(a), grouping(b) from single_test_tb group by b, c
+
+  plan: |
+
+    Project(b="b", c="c", avg(a)="$f2 / $f3", grouping(b)="0")
+      LogicalAgg(group="b,c", $f2="SUM(a)", $f3="COUNT(a)")
+        LogicalView(tables="optest_0000.single_test_tb", sql="SELECT `b`, `c`, `a` FROM `single_test_tb` AS `single_test_tb`")

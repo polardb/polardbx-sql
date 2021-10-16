@@ -1,0 +1,45 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.alibaba.polardbx</groupId>
+        <artifactId>polardbx</artifactId>
+        <version>5.4.12-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <groupId>com.alibaba.polardbx</groupId>
+    <artifactId>polardbx-rule</artifactId>
+    <packaging>jar</packaging>
+    <name>${project.artifactId} module for polardbx ${project.version}</name>
+    <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+		<dependency>
+			<groupId>${project.groupId}</groupId>
+			<artifactId>polardbx-gms</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-net</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy-all</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+        <!-- Test libs -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,44 @@
+#//
+#// 1. 注意：所有SQL后边必须要跟分号";"结尾；
+#// 2. 每个plan文件，必须是一个Sql，对应Plan;
+#// 3. sql的内容必须另起一行, sql可以分多行写，但必须要以分号结束, "sql:"与sql内容间不能有空行；
+#// 4. plan的内容必须另起一行,并放在最后，"plan:"与plan内容间不能有空行；
+#// 5. 必须先是写sql, 再写plan, 顺序不能变;
+#// 
+#
+#// @desc 
+#// 测试2层嵌套的相关联条件子查询，但查询直接报错，无法产生执行计划 
+#// 
+sql: |
+  select a.id, a.name
+  from 
+  	test_hash_tb a 
+  where a.id = 5 
+  	and 
+  		( 
+  				a.create_time>'2017-12-12 12:12:12' 
+  			or 
+  				( 
+  					a.id in ( 
+  						select id 
+  						from test_hash_tb2 b 
+  						where b.id <= a.id
+  							and b.create_time < '2018-12-12 12:12:12' 
+  					)
+  				) 
+  		);
+
+
+plan: |
+  Project(id="id", name="name")
+    Filter(condition="create_time > '2017-12-12 12:12:12' OR APPLY_BOOLEAN")
+      CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+        LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 5)")
+        Filter(condition="id <= $cor0.id")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`create_time` < '2018-12-12 12:12:12')")
+  cache node:
+
+  LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 5)")
+  Gather(concurrent=true)
+    LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`create_time` < '2018-12-12 12:12:12')")

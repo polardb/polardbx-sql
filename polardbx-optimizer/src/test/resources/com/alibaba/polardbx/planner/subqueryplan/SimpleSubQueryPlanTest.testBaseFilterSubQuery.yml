@@ -1,0 +1,399 @@
+- sql: |
+    select a.id, a.name
+    from test_hash_tb a 
+    where a.id in ( select id from test_hash_tb2 b where a.name=b.name )
+
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT `id` FROM (SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2`) AS `t` WHERE ((`test_hash_tb`.`id` = `id`) AND (`test_hash_tb`.`name` = `name`))))")
+
+- sql: |
+    /*+TDDL:SEMI_HASH_JOIN(test_hash_tb,test_hash_tb2)*/
+    select count(id)
+    from test_hash_tb a
+    where exists ( select id from test_hash_tb2 b where a.name=b.name )
+
+  plan: |
+
+    HashAgg(count(id)="COUNT(id)")
+      SemiHashJoin(condition="name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- sql: |
+    select a.id, a.name
+    from
+      test_hash_tb a
+    where a.id = 5
+      and
+        (
+            a.create_time>'2017-12-12 12:12:12'
+          or
+            (
+              a.id in (
+                select id
+                from test_hash_tb2 b
+                where a.name=b.name
+              )
+            ) );
+
+
+  plan: |
+    Project(id="id", name="name")
+      Filter(condition="create_time > '2017-12-12 12:12:12' OR APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 5)")
+          Project($f0="id")
+            Filter(condition="$cor0.name = name")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+    cache node:
+
+    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 5)")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- sql: |
+    select * from test_hash_tb where name in ('sun','meng') and id in (select id from test_hash_tb);
+
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`name` IN('sun', 'meng')) AND (`id` IN (SELECT `id` FROM `test_hash_tb` AS `test_hash_tb0`)))")
+
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
+           a.name,
+           ( a.id IN
+              ( SELECT id
+               FROM test_tb5 b
+               WHERE a.name=b.name ) ) AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+  plan: |
+    LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, (`id` = SOME (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`))) AS `sub` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
+           a.name,
+           ( a.id IN
+              ( SELECT id
+               FROM test_tb5 b
+               WHERE a.name=b.name ) ) AS sub,
+           ( a.id IN
+              ( SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name ) ) AS sub1
+    FROM test_tb6 a
+    WHERE a.id = 5
+  plan: |
+    CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+      LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, (`id` = SOME (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`))) AS `$f9` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+      Project($f0="id")
+        Filter(condition="$cor0.name = name")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+    cache node:
+
+    LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, (`id` = SOME (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`))) AS `$f9` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
+           a.name,
+           ( a.id >
+              ( SELECT id
+               FROM test_tb5 b
+               WHERE a.name=b.name ) ) AS sub,
+              ( SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name )  AS sub1
+    FROM test_tb6 a
+    WHERE a.id = 5
+  plan: |
+    Project(id="id", name="name", sub="id > $f9", sub1="id0", cor=[$cor0])
+      SemiBKAJoin(condition="name = name", type="left")
+        LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (((SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`)))) AS `$f9` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
+           a.name,
+           ifnull( a.id >any
+              ( SELECT id
+               FROM test_tb5 b
+               WHERE a.name=b.name ) )  AS sub,
+              ( SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name )  AS sub1
+    FROM test_tb6 a
+    WHERE a.id = 5
+  plan: |
+    Project(id="id", name="name", sub="IFNULL($f9)", sub1="id0", cor=[$cor0])
+      SemiBKAJoin(condition="name = name", type="left")
+        LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (`id` > SOME (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`))) AS `$f9` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
+           a.name,
+           a.id<100 or ( a.id >
+              ( SELECT id
+               FROM test_tb5 b
+               WHERE a.name=b.name ) )  AS sub,
+              ( SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name )  AS sub1
+    FROM test_tb6 a
+    WHERE a.id = 5
+  plan: |
+    Project(id="id", name="name", sub="id < 100 OR id > $f9", sub1="id0", cor=[$cor0])
+      SemiBKAJoin(condition="name = name", type="left")
+        LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (((SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`)))) AS `$f9` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
+           a.name,
+           a.id<100 or ( a.id >all
+              ( SELECT id
+               FROM test_tb5 b
+               WHERE a.name=b.name ) )  AS sub,
+              ( SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name )  AS sub1
+    FROM test_tb6 a
+    WHERE a.id = 5
+  plan: |
+    Project(id="id", name="name", sub="id < 100 OR $f9", sub1="id0", cor=[$cor0])
+      SemiBKAJoin(condition="name = name", type="left")
+        LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`))) AS `$f9` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
+           a.name,
+           a.id<100 and ( a.id >all
+              ( SELECT id
+               FROM test_tb5 b
+               WHERE a.name=b.name ) )  AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+  plan: |
+    LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, ((`id` < 100) AND (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t0` WHERE (`t`.`name` = `name`)))) AS `sub` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE (`id` = 5)) AS `t`")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/
+    SELECT a.id,
+           a.name,
+           a.id<100
+    AND (a.id >ALL
+           (SELECT id
+            FROM test_tb5 b
+            WHERE a.name=b.name)) AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+      AND a.id >ALL
+        (SELECT id
+         FROM test_tb5 b
+         WHERE a.name=b.name)
+  plan: |
+    LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, ((`id` < 100) AND (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb50`) AS `t3` WHERE (`t2`.`name` = `name`)))) AS `sub` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE ((`id` = 5) AND (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t` WHERE (TRUE AND (`test_tb6`.`name` = `name`)))))) AS `t2`")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/
+    SELECT a.id,
+           a.name,
+           (a.id<100
+    AND
+      (SELECT id
+       FROM test_hash_tb b
+       WHERE a.name=b.name)) AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+      AND a.id >ALL
+        (SELECT id
+         FROM test_tb5 b
+         WHERE a.name=b.name)
+  plan: |
+    Project(id="id", name="name", sub="id < 100 AND id0", cor=[$cor1])
+      SemiBKAJoin(condition="name = name", type="left")
+        LogicalView(tables="optest_0000.test_tb6,test_tb5", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE ((`id` = 5) AND (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t` WHERE (TRUE AND (`test_tb6`.`name` = `name`)))))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/
+    SELECT a.id,
+           a.name,
+           (a.id<100
+    AND
+      (SELECT id
+       FROM test_hash_tb b
+       WHERE a.name=b.name)) AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+      or a.id >ALL
+        (SELECT id
+         FROM test_tb5 b
+         WHERE a.name=b.name)
+  plan: |
+    Project(id="id", name="name", sub="id < 100 AND id0", cor=[$cor1])
+      SemiBKAJoin(condition="name = name", type="left")
+        LogicalView(tables="optest_0000.test_tb6,test_tb5", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE ((`id` = 5) OR (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t` WHERE (`test_tb6`.`name` = `name`))))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/
+    SELECT a.id,
+           a.name,
+           (a.id<100
+            AND
+              (SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name)) AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+      OR a.id >ALL
+        (SELECT id
+         FROM test_tb5 b
+         WHERE a.name=b.name)
+      OR a.id >ALL
+        (SELECT id
+         FROM test_hash_tb c
+         WHERE a.name=c.name)
+  plan: |
+    Project(id="id", name="name", sub="id < 100 AND id0", cor=[$cor2])
+      SemiBKAJoin(condition="name = name", type="left")
+        Project(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6")
+          Filter(condition="id = 5 OR $f9 OR APPLY_BOOLEAN")
+            CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=GREATER_THAN, type=ANTI)
+              LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t` WHERE (`test_tb6`.`name` = `name`))) AS `$f9` FROM `test_tb6` AS `test_tb6`")
+              Project(id="id")
+                Filter(condition="$cor0.name = name")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+    cache node:
+
+    LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (`id` > ALL (SELECT `id` FROM (SELECT `id`, `name` FROM `test_tb5` AS `test_tb5`) AS `t` WHERE (`test_tb6`.`name` = `name`))) AS `$f9` FROM `test_tb6` AS `test_tb6`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/
+    SELECT a.id,
+           a.name,
+           (a.id<100
+            AND
+              (SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name)) AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+      OR a.id =
+        (SELECT id
+         FROM test_tb5 b)
+      OR a.id >ALL
+        (SELECT id
+         FROM test_hash_tb c
+         WHERE a.name=c.name)
+  plan: |
+    Project(id="id", name="name", sub="id < 100 AND id0", cor=[$cor1])
+      SemiBKAJoin(condition="name = name", type="left")
+        Project(id="id", name="name", create_time="create_time", int_col1="int_col1", int_col2="int_col2", int_col3="int_col3", int_col4="int_col4", int_col5="int_col5", int_col6="int_col6")
+          Filter(condition="id = 5 OR id = $f9 OR APPLY_BOOLEAN")
+            CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=GREATER_THAN, type=ANTI)
+              LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (((SELECT `id` FROM `test_tb5` AS `test_tb5`))) AS `$f9` FROM `test_tb6` AS `test_tb6`")
+              Project(id="id")
+                Filter(condition="$cor0.name = name")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+    cache node:
+
+    LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6`, (((SELECT `id` FROM `test_tb5` AS `test_tb5`))) AS `$f9` FROM `test_tb6` AS `test_tb6`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+
+- sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false*/
+    SELECT a.id,
+           a.name,
+           (a.id<100
+            AND
+              (SELECT id
+               FROM test_hash_tb b
+               WHERE a.name=b.name)) AS sub
+    FROM test_tb6 a
+    WHERE a.id = 5
+      OR a.id =any
+        (SELECT count(id)
+         FROM test_tb5 b)
+
+  plan: |
+    Project(id="id", name="name", sub="id < 100 AND id0", cor=[$cor0])
+      SemiBKAJoin(condition="name = name", type="left")
+        LogicalView(tables="optest_0000.test_tb6,test_tb5", sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_tb6` AS `test_tb6` WHERE ((`id` = 5) OR (`id` = SOME (SELECT COUNT(`id`) AS `count(id)` FROM `test_tb5` AS `test_tb5`)))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` IN (...))")
+
+- sql: |
+    SELECT
+      (SELECT 1 IS NULL AS `layer_0_column_0`
+       FROM `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` AS `t1`
+       WHERE (ROW(`layer_1_column_0`, `layer_1_column_0`, `layer_1_column_0`) IN
+                (SELECT layer_1_column_0,
+                        layer_1_column_0,
+                        layer_1_column_0
+                 FROM `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` AS `t2`
+                 WHERE ! (((`layer_1_column_0` > '2013-03-22')))))
+       ORDER BY `layer_0_column_0` DESC LIMIT 0,
+                                              1) AS `select_column_0`
+    FROM
+      (SELECT 68 IS NULL AS `layer_1_column_0`
+       FROM `select_partition_interger`
+       WHERE ((`tinyint_1bit_test` <= 6))
+         AND ((`date_test` > '2014-02-12'))) AS `layer_0_table`
+    WHERE ((`layer_1_column_0` BETWEEN 49 AND 13))
+      AND ((80 > `layer_1_column_0`))
+      AND ((98 <= 87))
+      AND ((`layer_1_column_0` = 'cdefeed'))
+      AND ((`layer_1_column_0` BETWEEN '2011-06-22' AND '2013-09-02'))
+      AND ((`layer_1_column_0` NOT BETWEEN 27 AND 81));
+  plan: |
+    Project(select_column_0="layer_0_column_0", cor=[$cor6])
+      CorrelateApply(cor=$cor6, leftConditions=[], opKind=null, type=LEFT)
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].select_partition_interger_[00-11]", shardCount=12, sql="SELECT (68 IS NULL) AS `layer_1_column_0` FROM `select_partition_interger` AS `select_partition_interger` WHERE ((((((((`tinyint_1bit_test` <= 6) AND (`date_test` > '2014-02-12')) AND ((68 IS NULL) BETWEEN 49 AND 13)) AND (80 > (68 IS NULL))) AND (98 <= 87)) AND ((68 IS NULL) = 'cdefeed')) AND ((68 IS NULL) BETWEEN '2011-06-22' AND '2013-09-02')) AND ((68 IS NULL) NOT BETWEEN 27 AND 81))")
+        TopN(sort="layer_0_column_0 DESC", offset=0, fetch=1)
+          Project(layer_0_column_0="IS NULL(1)")
+            SemiNLJoin(condition="$cor6.layer_1_column_0 = layer_1_column_0 AND $cor6.layer_1_column_0 = layer_1_column_00 AND $cor6.layer_1_column_0 = layer_1_column_01", type="semi")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardCount=12, sql="SELECT `pk` FROM `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` AS `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")
+              Project(layer_1_column_0="$cor6.layer_1_column_0", layer_1_column_00="$cor6.layer_1_column_0", layer_1_column_01="$cor6.layer_1_column_0")
+                Filter(condition="NOT($cor6.layer_1_column_0 > '2013-03-22')")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardCount=12, sql="SELECT `pk` FROM `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` AS `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardCount=12, sql="SELECT `pk` FROM `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` AS `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardCount=12, sql="SELECT `pk` FROM `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` AS `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")

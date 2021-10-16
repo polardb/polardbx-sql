@@ -1,0 +1,41 @@
+v1:
+  CREATE TABLE `v1` (
+  `id` int(11) NOT NULL,
+  `v1_k` int(11) NOT NULL,
+  `name1` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 1;
+
+v2:
+  CREATE TABLE `v2` (
+  `id` int(11) NOT NULL,
+  `v2_k` int(11) NOT NULL,
+  `name2` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 2;
+
+v3:
+  CREATE TABLE `v3` (
+  `id` int(11) NOT NULL,
+  `v3_k` int(11) NOT NULL,
+  `name3` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 3;
+
+v4:
+  CREATE TABLE `v4` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`ID`) TBPARTITIONS 4;
+
+

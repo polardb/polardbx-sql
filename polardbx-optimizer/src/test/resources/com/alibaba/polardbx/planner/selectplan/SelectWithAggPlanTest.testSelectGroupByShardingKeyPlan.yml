@@ -1,0 +1,10 @@
+sql: |
+  select count(*) 
+  from test_hash_tb4 a 
+  where a.name='xx' group by a.id;
+
+
+plan: |
+
+  Gather(concurrent=true)
+    LogicalView(tables="[0000-0003].test_hash_tb4", shardCount=4, sql="SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb4` AS `test_hash_tb4` WHERE (`name` = 'xx') GROUP BY `id`")

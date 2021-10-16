@@ -1,0 +1,457 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.group.jdbc;
+
+import com.alibaba.polardbx.atom.TAtomDataSource;
+import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.logger.LoggerInit;
+import com.alibaba.polardbx.common.model.DBType;
+import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.version.Version;
+import com.alibaba.polardbx.group.config.OptimizedGroupConfigManager;
+import com.alibaba.polardbx.group.config.Weight;
+import com.alibaba.polardbx.rpc.compatible.XDataSource;
+
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.StringTokenizer;
+import java.util.logging.Logger;
+
+/**
+ * @author 梦实 2017年12月12日 下午2:01:21
+ * @since 5.0.0
+ */
+public class TGroupDataSource extends AbstractLifecycle implements IDataSource, Lifecycle {
+
+    public static final String VERSION = "2.4.1";
+    private OptimizedGroupConfigManager configManager;
+
+    /**
+     * 下面三个为一组，支持本地配置
+     */
+    private String dsKeyAndWeightCommaArray;
+    private DataSourceFetcher dataSourceFetcher;
+    private DBType dbType = DBType.MYSQL;
+    private String schemaName;
+    private String appName;                                                              // app名字
+    private String unitName;  // 单元化名字
+    private String dbGroupKey;
+    private String fullDbGroupKey = null;                                          // dataId
+
+    private boolean stressTestValid = false;
+
+    // 下面两个字段当建立实际的DataSource时必须传递过去
+    // jdbc规范: DataSource刚建立时LogWriter为null
+    private PrintWriter out = null;
+    // jdbc规范: DataSource刚建立时LoginTimeout为0
+    private int seconds = 0;
+
+    private String url = null;
+
+    private MasterSlave masterSlave = MasterSlave.MASTER_ONLY;
+
+    private boolean enforceMaster = false;
+
+    @Deprecated
+    public TGroupDataSource() {
+    }
+
+    public TGroupDataSource(String dbGroupKey, String schemaName, String appName, String unitName) {
+        this.dbGroupKey = dbGroupKey;
+        this.appName = appName;
+        this.schemaName = schemaName;
+        if (unitName != null) {
+            unitName = unitName.trim();
+        }
+        this.unitName = unitName;
+    }
+
+    /**
+     * 基于dbGroupKey、appName来初始化多个TAtomDataSource
+     */
+    @Override
+    public void doInit() {
+        Version.checkVersion();
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("--------------");
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("TGroupDataSource start init");
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("appName is: " + appName);
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("unitName is: " + unitName);
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info("dbGroupKey is: " + this.dbGroupKey);
+
+        if (url != null && !"".equalsIgnoreCase(url)) {
+            parseUrl(url);
+        }
+
+        if (dsKeyAndWeightCommaArray != null) {
+            // 本地配置方式：dsKeyAndWeightCommaArray + dataSourceFetcher + dyType
+            DataSourceFetcher wrapper = new DataSourceFetcher() {
+
+                @Override
+                public TAtomDataSource getDataSource(String key) {
+                    return dataSourceFetcher.getDataSource(key);
+                }
+
+            };
+            List<DataSourceWrapper> dss = OptimizedGroupConfigManager.buildDataSourceWrapper(dsKeyAndWeightCommaArray,
+                wrapper);
+            init(dss);
+        } else {
+            checkProperties();
+            configManager = new OptimizedGroupConfigManager(this);
+            configManager.init();
+        }
+
+    }
+
+    public void init(DataSourceWrapper... dataSourceWrappers) {
+        init(Arrays.asList(dataSourceWrappers));
+    }
+
+    public void init(List<DataSourceWrapper> dataSourceWrappers) {
+        configManager = new OptimizedGroupConfigManager(this);
+        configManager.init(dataSourceWrappers);
+        isInited = true;
+    }
+
+    /**
+     * 如果构造的是TAtomDataSource，必须检查dbGroupKey、appName两个属性的值是否合法
+     */
+    private void checkProperties() {
+        if (dbGroupKey == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SET_GROUPKEY);
+        }
+        dbGroupKey = dbGroupKey.trim();
+        if (dbGroupKey.length() < 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SET_GROUPKEY);
+        }
+
+        if (appName == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SET_APPNAME);
+        }
+        appName = appName.trim();
+        if (appName.length() < 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SET_APPNAME);
+        }
+
+    }
+
+    /**
+     * 危险接口。一般用于测试。应用也可以直接通过该接口重置数据源配置
+     */
+    public void resetDbGroup(String configInfo) {
+        configManager.resetDbGroup(configInfo);
+    }
+
+    @Override
+    public TGroupDirectConnection getConnection() throws SQLException {
+        return getConnection(masterSlave);
+    }
+
+    @Override
+    public TGroupDirectConnection getConnection(MasterSlave masterSlave) throws SQLException {
+
+        if (!isInited() && url != null) {// 没有经过正常参数启动且URL不为空时，则尝试使用URL启动
+            parseUrl(url);
+            init();
+        }
+
+        TGroupDirectConnection connection = new TGroupDirectConnection(this, masterSlave);
+        connection.setStressTestValid(stressTestValid);
+        return connection;
+    }
+
+    private void parseUrl(String url) {
+        if (!url.startsWith("jdbc:tddl:tgroupdatasource")) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "不支持的URL，请使用jdbc:tddl:tgroupdatasource:前缀");
+        }
+
+        int beginningOfSlashes = url.indexOf("//");
+
+        int index = url.indexOf("?");
+        String hostStuff;
+        String configNames;
+        String propsIter;
+        Properties urlProps = new Properties();
+        if (index != -1) {
+            hostStuff = url.substring(index + 1);
+            url = url.substring(0, index);
+            StringTokenizer slashIndex = new StringTokenizer(hostStuff, "&");
+
+            while (slashIndex.hasMoreTokens()) {
+                String numHosts = slashIndex.nextToken();
+                int propertiesTransformClassName = com.mysql.jdbc.StringUtils.indexOfIgnoreCase(0, numHosts, "=");
+                configNames = null;
+                propsIter = null;
+                if (propertiesTransformClassName != -1) {
+                    configNames = numHosts.substring(0, propertiesTransformClassName);
+                    if (propertiesTransformClassName + 1 < numHosts.length()) {
+                        propsIter = numHosts.substring(propertiesTransformClassName + 1);
+                    }
+                }
+
+                if (propsIter != null && propsIter.length() > 0 && configNames != null && configNames.length() > 0) {
+
+                    try {
+                        urlProps.put(configNames, URLDecoder.decode(propsIter, "UTF-8"));
+                    } catch (UnsupportedEncodingException var21) {
+                        urlProps.put(configNames, URLDecoder.decode(propsIter));
+                    } catch (NoSuchMethodError var22) {
+                        urlProps.put(configNames, URLDecoder.decode(propsIter));
+                    }
+                }
+            }
+        }
+
+        String nameStr = url.substring(beginningOfSlashes + 2);
+        int slashIndex = nameStr.indexOf("/");
+        appName = nameStr.substring(0, slashIndex);
+        dbGroupKey = nameStr.substring(slashIndex + 1);
+
+        LoggerInit.TDDL_DYNAMIC_CONFIG.info(
+            "parse tgroupdatasource by url:" + this.url + ", get appname:" + appName + ", dbGroupKey:" + dbGroupKey);
+    }
+
+    @Override
+    public IConnection getConnection(String username, String password) throws SQLException {
+        return getConnection(username, password, masterSlave);
+    }
+
+    public IConnection getConnection(String username, String password, MasterSlave master) throws SQLException {
+
+        if (!isInited() && url != null) {// 没有经过正常参数启动且URL不为空时，则尝试使用URL启动
+            parseUrl(url);
+            init();
+        }
+
+        TGroupDirectConnection connection = new TGroupDirectConnection(this, master, username, password);
+        connection.setStressTestValid(stressTestValid);
+        return connection;
+    }
+
+    @Override
+    public PrintWriter getLogWriter() throws SQLException {
+        return out;
+    }
+
+    @Override
+    public void setLogWriter(PrintWriter out) throws SQLException {
+        this.out = out;
+    }
+
+    @Override
+    public int getLoginTimeout() throws SQLException {
+        return seconds;
+    }
+
+    @Override
+    public void setLoginTimeout(int seconds) throws SQLException {
+        this.seconds = seconds;
+    }
+
+    public String getUnitName() {
+        return unitName;
+    }
+
+    public void setUnitName(String unitName) {
+
+        if (unitName != null) {
+            unitName = unitName.trim();
+        }
+        this.unitName = unitName;
+    }
+
+    public String getAppName() {
+
+        return appName;
+    }
+
+    public void setAppName(String appName) {
+        if (appName != null) {
+            appName = appName.trim();
+        }
+        this.appName = appName;
+    }
+
+    public String getDbGroupKey() {
+        return dbGroupKey;
+    }
+
+    public void setDbGroupKey(String dbGroupKey) {
+        if (dbGroupKey != null) {
+            dbGroupKey = dbGroupKey.trim();
+        }
+
+        this.dbGroupKey = dbGroupKey;
+    }
+
+    public void setDsKeyAndWeightCommaArray(String dsKeyAndWeightCommaArray) {
+        this.dsKeyAndWeightCommaArray = dsKeyAndWeightCommaArray;
+    }
+
+    public void setDataSourceFetcher(DataSourceFetcher dataSourceFetcher) {
+        this.dataSourceFetcher = dataSourceFetcher;
+    }
+
+    public void setDbType(DBType dbType) {
+        this.dbType = dbType;
+    }
+
+    public String getDsKeyAndWeightCommaArray() {
+        return dsKeyAndWeightCommaArray;
+    }
+
+    @Override
+    public boolean isWrapperFor(Class<?> iface) throws SQLException {
+        return iface.isAssignableFrom(this.getClass());
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T unwrap(Class<T> iface) throws SQLException {
+        try {
+            return (T) this;
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public DBType getDbType() {
+        return dbType;
+    }
+
+    /**
+     * 销毁数据源，慎用
+     */
+    public void destroyDataSource() {
+        destroy();
+    }
+
+    @Override
+    protected void doDestroy() {
+
+        if (configManager != null) {
+            configManager.destroyDataSource();
+        }
+    }
+
+    public boolean isStressTestValid() {
+        return stressTestValid;
+    }
+
+    public void setStressTestValid(boolean stressTestValid) {
+        this.stressTestValid = stressTestValid;
+    }
+
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+        throw new UnsupportedOperationException("getParentLogger");
+    }
+
+    public Map<TAtomDataSource, Weight> getAtomDataSourceWeights() {
+        Map<TAtomDataSource, Weight> atomDataSources = new HashMap<TAtomDataSource, Weight>();
+
+        for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+            atomDataSources.put(wrapper.getWrappedDataSource(), wrapper.getWeight());
+        }
+        return atomDataSources;
+    }
+
+    public List<TAtomDataSource> getAtomDataSources() {
+        List<TAtomDataSource> atomDataSources = new ArrayList<TAtomDataSource>(
+            this.configManager.getDataSourceWrapperMap().size());
+
+        for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+            atomDataSources.add(wrapper.getWrappedDataSource());
+        }
+        return atomDataSources;
+    }
+
+    public TAtomDataSource getAtomDataSourceOfIndexZero() {
+        TAtomDataSource ds = null;
+        for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+            if (wrapper.getDataSourceIndex() == 0) {
+                ds = wrapper.getWrappedDataSource();
+                break;
+            }
+        }
+        return ds;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public OptimizedGroupConfigManager getConfigManager() {
+        return configManager;
+    }
+
+    public String getSchemaName() {
+        return schemaName;
+    }
+
+    public void setSchemaName(String schemaName) {
+        this.schemaName = schemaName;
+    }
+
+    public boolean isEnforceMaster() {
+        return enforceMaster;
+    }
+
+    public void setEnforceMaster(boolean enforceMaster) {
+        this.enforceMaster = enforceMaster;
+    }
+
+    public boolean isXDataSource() {
+        for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+            if (!(wrapper.getWrappedDataSource().getDataSource() instanceof XDataSource)) {
+                throw new AssertionError("unreachable");
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Get instance id of underlying write node
+     *
+     * @return instance id (HOST:PORT)
+     */
+    public String getWriteInstanceId() {
+        String instanceId = null;
+        for (Map.Entry<TAtomDataSource, Weight> entry : getAtomDataSourceWeights().entrySet()) {
+            if (entry.getValue().w != 0) {
+                instanceId = entry.getKey().getHost() + ":" + entry.getKey().getPort();
+                break;
+            }
+        }
+        return instanceId;
+    }
+}

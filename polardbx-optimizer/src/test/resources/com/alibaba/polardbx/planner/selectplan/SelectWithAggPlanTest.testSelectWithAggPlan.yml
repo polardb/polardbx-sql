@@ -1,0 +1,11 @@
+sql: |
+  select count(id) 
+  from test_hash_tb a 
+  where a.name='xx';
+
+
+plan: |
+
+  HashAgg(count(id)="SUM(count(id))")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT COUNT(`id`) AS `count(id)` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")

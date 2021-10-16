@@ -1,0 +1,109 @@
+-
+  sql: |
+    select * from test_hash_tb a left join test_hash_single b on a.id=b.id where b.id=2;
+
+  plan: |
+
+    HashJoin(condition="id = id", type="inner")
+      LogicalView(tables="optest_0002.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?)")
+      LogicalView(tables="optest_0000.test_hash_single", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_single` AS `test_hash_single` WHERE (`id` = ?)")
+
+-
+  sql: |
+    select * from test_hash_tb a left join test_hash_single b on a.id=b.id where a.id=2;
+
+  plan: |
+
+    HashJoin(condition="id = id", type="left")
+      LogicalView(tables="optest_0002.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?)")
+      LogicalView(tables="optest_0000.test_hash_single", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_single` AS `test_hash_single` WHERE (`id` = ?)")
+
+-
+  sql: |
+    select a.id from test_hash_tb a left join test_hash_broadcast b on a.id=b.id where b.id=2 limit 5,10;
+
+  plan: |
+
+    LogicalView(tables="optest_0002.test_hash_tb,test_hash_broadcast", sql="SELECT `test_hash_tb`.`id` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_broadcast` AS `test_hash_broadcast` ON (((`test_hash_tb`.`id` = ?) AND (`test_hash_broadcast`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_hash_broadcast`.`id`)) LIMIT ? OFFSET ?")
+
+-
+  sql: |
+    select a.id from test_hash_tb a left join test_hash_broadcast b on a.id=b.id where a.id=2 limit 5,10;
+
+  plan: |
+
+    LogicalView(tables="optest_0002.test_hash_tb,test_hash_broadcast", sql="SELECT `test_hash_tb`.`id` FROM `test_hash_tb` AS `test_hash_tb` LEFT JOIN `test_hash_broadcast` AS `test_hash_broadcast` ON (`test_hash_tb`.`id` = `test_hash_broadcast`.`id`) WHERE (`test_hash_tb`.`id` = ?) LIMIT ? OFFSET ?")
+
+-
+  sql: |
+    select * from test_hash_tb a left join test_hash_single b on a.id=b.id and a.id=2;
+
+  plan: |
+
+    HashJoin(condition="id = id AND id = ?0", type="left")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+      LogicalView(tables="optest_0000.test_hash_single", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_single` AS `test_hash_single`")
+
+-
+  sql: |
+    select * from test_hash_tb a left join test_hash_single b on a.id=b.id and b.id=2;
+
+  plan: |
+
+    HashJoin(condition="id = id", type="left")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+      LogicalView(tables="optest_0000.test_hash_single", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_single` AS `test_hash_single` WHERE (`id` = ?)")
+
+-
+  sql: |
+    select * from test_hash_tb a left join test_hash_tb2 b on a.id=b.id and a.id=2;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb2`.`id` AS `id0`, `test_hash_tb2`.`name` AS `name0`, `test_hash_tb2`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` LEFT JOIN `test_hash_tb2` AS `test_hash_tb2` ON ((`test_hash_tb`.`id` = `test_hash_tb2`.`id`) AND (`test_hash_tb`.`id` = ?))")
+
+-
+  sql: |
+    select * from test_hash_tb a left join test_hash_tb2 b on a.id=b.id where a.id=2;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` FROM ? AS `a` LEFT JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`a`.`id` = ?)")
+
+-
+  sql: |
+    select * from test_hash_tb a left join test_hash_tb2 b on a.id=b.id where b.id=2;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` FROM ? AS `a` LEFT JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`b`.`id` = ?)")
+
+-
+  sql: |
+    select a.id from test_hash_tb a left join test_hash_tb2 b on a.id=b.id where a.id=2 limit 5,10;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id` AS `id` FROM ? AS `a` LEFT JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`a`.`id` = ?) LIMIT ? OFFSET ?")
+
+-
+  sql: |
+    select a.id from test_hash_tb a left join test_hash_tb2 b on a.id=b.id where a.name="xx";
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `test_hash_tb`.`id` FROM `test_hash_tb` AS `test_hash_tb` LEFT JOIN `test_hash_tb2` AS `test_hash_tb2` ON (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) WHERE (`test_hash_tb`.`name` = ?)")
+
+-
+  sql: |
+    select * from (select t2.name as id from test_hash_tb t1 join test_hash_tb t2 on t1.id=t2.id) a where a.id = 3;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb0`.`name` AS `id` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) WHERE (`test_hash_tb0`.`name` = ?)")
+

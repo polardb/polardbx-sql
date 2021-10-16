@@ -1,0 +1,12 @@
+#    select /*+TDDL({'type':'full','vtab':'test_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+#    pk from test_table_a;
+#
+#    Gather(concurrent=true)
+#      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `test_table_a`.`pk` FROM `test_table_a`")
+
+- sql: |
+    replace /*+TDDL({'type':'direct','vtab':'test_table_a','dbid':'optest_0001','realtabs':['test_table_a_07','test_table_a_08','test_table_a_09']}) */
+    into test_table_a(bigint_test) values(2);
+
+  plan: |
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs

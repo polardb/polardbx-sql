@@ -1,0 +1,212 @@
+- sql: |
+    select * from tddl_users u order by name;
+
+  plan: |
+
+    LogicalSort(sort="name ASC")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    select * from tddl_users u order by name limit 10
+
+  plan: |
+
+    LogicalSort(sort="name ASC", offset=0, fetch=10)
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    SELECT count(*) FROM tddl_users as u join tddl_orders as o on u.id=o.user_id
+
+  plan: |
+
+    LogicalAgg(count(*)="COUNT()")
+      LogicalJoin(condition="id = user_id", type="inner")
+        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id` FROM `tddl_users` AS `tddl_users`")
+        LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `user_id` FROM `tddl_orders` AS `tddl_orders`")
+
+- sql: |
+    select * from tddl_users u limit 10;
+
+  plan: |
+
+    Limit(offset=0, fetch=10)
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    SELECT count(*) FROM tddl_users as u join tddl_orders as o on u.id=o.user_id
+
+  plan: |
+
+    LogicalAgg(count(*)="COUNT()")
+      LogicalJoin(condition="id = user_id", type="inner")
+        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id` FROM `tddl_users` AS `tddl_users`")
+        LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `user_id` FROM `tddl_orders` AS `tddl_orders`")
+
+- sql: |
+    SELECT * FROM tddl_orders as o where o.user_id in (select id from tddl_users u)
+
+  plan: |
+
+    LogicalSemiJoin(condition="user_id = id", type="semi")
+      LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders`")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    SELECT * FROM tddl_users as u join tddl_orders as o on u.id=o.user_id where u.id=1
+
+  plan: |
+
+    LogicalJoin(condition="id = user_id", type="inner")
+      LogicalView(tables="optest_0000.TDDL_USERS_01", sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users` WHERE (`id` = 1)")
+      LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders` WHERE (`user_id` = 1)")
+
+- sql: |
+    SELECT * FROM tddl_users as u join tddl_orders as o on u.id=o.user_id where o.id=1
+
+  plan: |
+
+    Project(id0="id0", name0="name0", id="id", user_id="user_id", name="name")
+      LogicalJoin(condition="id = user_id", type="inner")
+        LogicalView(tables="optest_0000.TDDL_ORDERS_01", sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders` WHERE (`id` = 1)")
+        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    SELECT * FROM tddl_users as u join tddl_orders as o on u.id=o.user_id where u.name='1'
+
+  plan: |
+    LogicalJoin(condition="id = user_id", type="inner")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users` WHERE (`name` = '1')")
+      LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders`")
+
+
+- sql: |
+    SELECT * FROM tddl_users as u join tddl_orders as o on u.id=o.user_id
+
+  plan: |
+
+    LogicalJoin(condition="id = user_id", type="inner")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+      LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders`")
+
+- sql: |
+    select avg(id) ,name from tddl_users u group by name order by avg(id)
+
+  plan: |
+
+    Project(avg(id)="avg(id)", name="name")
+      LogicalSort(sort="avg(id) ASC")
+        Project(name="name", avg(id)="$f1 / $f2")
+          LogicalAgg(group="name", $f1="SUM($f1)", $f2="SUM($f2)")
+            LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `name`, SUM(`id`) AS `$f1`, COUNT(`id`) AS `$f2` FROM `tddl_users` AS `tddl_users` GROUP BY `name`")
+
+- sql: |
+    SELECT * FROM tddl_users as u join tddl_address as a on u.id=a.user_id
+
+  plan: |
+
+    LogicalView(tables="[0000-0003].tddl_users_[00-11],tddl_address_[00-11]", shardCount=12, sql="SELECT `tddl_users`.`id`, `tddl_users`.`name`, `tddl_address`.`id` AS `id0`, `tddl_address`.`user_id`, `tddl_address`.`name` AS `name0` FROM `tddl_users` AS `tddl_users` INNER JOIN `tddl_address` AS `tddl_address` ON (`tddl_users`.`id` = `tddl_address`.`user_id`)")
+
+- sql: |
+    SELECT * FROM tddl_users as t where id=1
+
+  plan: |
+
+    LogicalView(tables="optest_0000.TDDL_USERS_01", sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users` WHERE (`id` = 1)")
+
+- sql: |
+    SELECT * FROM tddl_users as u where exists (select id from tddl_orders o where o.user_id=u.id)
+
+  plan: |
+
+    LogicalSemiJoin(condition="user_id = id", type="semi")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+      LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders`")
+
+- sql: |
+    SELECT * FROM tddl_orders as o where o.user_id not in (select id from tddl_users u)
+
+  plan: |
+
+    LogicalSemiJoin(condition="user_id = id", type="anti")
+      LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `id`, `user_id`, `name` FROM `tddl_orders` AS `tddl_orders`")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    SELECT * FROM tddl_users as u where u.id in (select user_id from tddl_orders o)
+
+  plan: |
+
+    LogicalSemiJoin(condition="id = user_id", type="semi")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+      LogicalView(tables="[0000-0003].tddl_orders_[00-11]", shardCount=12, sql="SELECT `user_id` FROM `tddl_orders` AS `tddl_orders`")
+
+- sql: |
+    select avg(id)  from tddl_users u
+
+  plan: |
+
+    Project(avg(id)="$f0 / $f1")
+      LogicalAgg($f0="SUM($f0)", $f1="SUM($f1)")
+        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT SUM(`id`) AS `$f0`, COUNT(`id`) AS `$f1` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    select count(*) from tddl_users u group by name;
+
+  plan: |
+
+    Project(count(*)="count(*)")
+      LogicalAgg(group="name", count(*)="SUM(count(*))")
+        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `name`, COUNT(*) AS `count(*)` FROM `tddl_users` AS `tddl_users` GROUP BY `name`")
+
+- sql: |
+    SELECT * FROM tddl_users
+
+  plan: |
+
+    LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `id`, `name` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    select * from tddl_users where id in (1,2,3);
+
+  plan: |
+
+    logicalsemijoin(condition="id = expr$0", type="semi")
+      logicalview(tables="[0000-0003].tddl_users_[00-11]", shardcount=12, sql="select `id`, `name` from `tddl_users` as `tddl_users`")
+      dynamicvalues(tuples=[{ 1 }, { 2 }, { 3 }])
+
+- sql: |
+    select avg(id) ,name from tddl_users u group by name
+
+  plan: |
+
+    Project(avg(id)="$f1 / $f2", name="name")
+      LogicalAgg(group="name", $f1="SUM($f1)", $f2="SUM($f2)")
+        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `name`, SUM(`id`) AS `$f1`, COUNT(`id`) AS `$f2` FROM `tddl_users` AS `tddl_users` GROUP BY `name`")
+
+- sql: |
+    select count(*) from tddl_users u;
+
+  plan: |
+
+    LogicalAgg(count(*)="SUM(count(*))")
+      LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT COUNT(*) AS `count(*)` FROM `tddl_users` AS `tddl_users`")
+
+- sql: |
+    select name,count(*) from tddl_users group by name order by count(*);
+
+  plan: |
+
+    LogicalSort(sort="count(*) ASC")
+      LogicalAgg(group="name", count(*)="SUM(count(*))")
+        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `name`, COUNT(*) AS `count(*)` FROM `tddl_users` AS `tddl_users` GROUP BY `name`")
+
+- sql: |
+    select count(*) from tddl_users group by name order by count(*);
+
+  plan: |
+
+    LogicalSort(sort="count(*) ASC")
+      Project(count(*)="count(*)")
+        LogicalAgg(group="name", count(*)="SUM(count(*))")
+          LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `name`, COUNT(*) AS `count(*)` FROM `tddl_users` AS `tddl_users` GROUP BY `name`")
+

@@ -1,0 +1,20 @@
+test_hash_tb:
+  10000
+
+test_hash_tb.name.cardinality:
+  10000
+
+test_hash_tb2:
+  10000
+
+test_hash_tb2.name.cardinality:
+  10000
+
+test_broadcast:
+  10000
+
+test_broadcast.name.cardinality:
+  10000
+
+test_hash_tb4:
+  10000

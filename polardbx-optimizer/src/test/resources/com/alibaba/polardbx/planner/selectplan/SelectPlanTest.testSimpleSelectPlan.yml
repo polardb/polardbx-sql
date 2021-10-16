@@ -1,0 +1,66 @@
+- sql: |
+    select id
+    from test_hash_tb a
+    where a.name='xx';
+
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx')")
+
+- sql: |
+    SELECT COUNT(*)
+    FROM test_hash_tb
+    WHERE !(id BETWEEN name AND 62)
+
+  plan: |
+
+    HashAgg(COUNT(*)="SUM(COUNT(*))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT COUNT(*) AS `COUNT(*)` FROM `test_hash_tb` AS `test_hash_tb` WHERE (NOT (`id` BETWEEN `name` AND 62))")
+
+- sql: |
+    SELECT * FROM func_group_t1_68 WHERE pk<2
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].func_group_t1_68_[00-14]", shardCount=15, sql="SELECT `pk`, `i` FROM `func_group_t1_68` AS `func_group_t1_68` WHERE (`pk` < 2)")
+
+- sql: |
+    /*+TDDL:enable_broadcast_random_read=false*/ select((yearweek(timestamp_test  ))  >(66) )as A, null as B  from corona_select_broadcast   GROUP BY  1, 2     order by 1,2  limit 24,15 ;
+
+  plan: |
+    LogicalView(tables="optest_0000.corona_select_broadcast", sql="SELECT (YEARWEEK(`corona_select_broadcast`.`timestamp_test`) > 66) AS `A`, NULL AS `B` FROM `corona_select_broadcast` AS `corona_select_broadcast` GROUP BY (YEARWEEK(`corona_select_broadcast`.`timestamp_test`) > 66), NULL ORDER BY 1, 2 LIMIT 15 OFFSET 24")
+
+- sql: |
+    select * from  performance_schema.global_variables;
+
+  plan: |
+    VirtualView(virtualViewType="GLOBAL_VARIABLES")
+
+- sql: |
+    select * from  performance_schema.session_variables;
+
+  plan: |
+    VirtualView(virtualViewType="SESSION_VARIABLES")
+
+- sql: |
+    select * from  performance_schema.global_status;
+
+  plan: |
+    VirtualView(virtualViewType="GLOBAL_STATUS")
+
+- sql: |
+    select * from  performance_schema.session_status;
+
+  plan: |
+    VirtualView(virtualViewType="SESSION_STATUS")
+
+- sql: |
+    select * from test_hash_tb where name not REGEXP '^.+_[0-9]+$'
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` NOT REGEXP '^.+_[0-9]+$')")

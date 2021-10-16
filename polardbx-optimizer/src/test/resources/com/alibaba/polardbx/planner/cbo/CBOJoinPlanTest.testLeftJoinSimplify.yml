@@ -1,0 +1,16 @@
+-
+  sql: |
+    /*+TDDL: HASH_JOIN(v3,v2) HASH_JOIN((v3,v2),v1) */
+    select v1_k, v2_k, v3_k from v1 left join v2 on v1_k = v2_k inner join v3 on v2_k = v3_k;
+  plan: |
+
+    Project(v1_k="v1_k", v2_k="v2_k", v3_k="v3_k")
+      HashJoin(condition="v1_k = v2_k", type="inner")
+        Project(v2_k="v2_k", v3_k="v3_k")
+          HashJoin(condition="v2_k = v3_k", type="inner")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `v3_k` FROM `v3` AS `v3`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `v2_k` FROM `v2` AS `v2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].v1", shardCount=4, sql="SELECT `v1_k` FROM `v1` AS `v1`")

@@ -1,0 +1,118 @@
+test_table_a:
+  CREATE TABLE `test_table_a` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+test_table_b:
+  CREATE TABLE `test_table_b` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+test_table_c:
+  CREATE TABLE `test_table_c` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST
+
+test_table_d:
+  CREATE TABLE `test_table_d` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  GLOBAL INDEX d_i_1(bigint_test) COVERING(varchar_test_p255) DBPARTITION BY HASH(bigint_test) TBPARTITION BY HASH(bigint_test) TBPARTITIONS 7,
+  GLOBAL UNIQUE INDEX d_i_2(c1) COVERING(c2, c3) DBPARTITION BY HASH(c1) TBPARTITION BY HASH(c1) TBPARTITIONS 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+t1:
+  CREATE TABLE `t1` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  GLOBAL INDEX t1_i_a(c3) COVERING(c5, c6) DBPARTITION BY HASH(c3) TBPARTITION BY HASH(c3) TBPARTITIONS 7,
+  GLOBAL UNIQUE INDEX t1_i_b(c2) COVERING(c5) DBPARTITION BY HASH(c2) TBPARTITION BY HASH(c2) TBPARTITIONS 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(c1) TBPARTITION BY HASH(c1) TBPARTITIONS 7
+
+t2:
+  CREATE TABLE `t2` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  GLOBAL INDEX t2_i_a(c3) COVERING(c5, c6) DBPARTITION BY HASH(c3) TBPARTITION BY HASH(c3) TBPARTITIONS 7,
+  GLOBAL UNIQUE INDEX t2_i_b(c1) COVERING(c5) DBPARTITION BY HASH(c1) TBPARTITION BY HASH(c1) TBPARTITIONS 7
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(c2) TBPARTITION BY HASH(c2) TBPARTITIONS 2
+
+t3:
+  CREATE TABLE `t3` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  GLOBAL INDEX t3_i_a(c3) COVERING(c5, c6) DBPARTITION BY HASH(c3) TBPARTITION BY HASH(c3) TBPARTITIONS 7,
+  GLOBAL UNIQUE INDEX t3_i_b(c2) COVERING(c5) DBPARTITION BY HASH(c2) TBPARTITION BY HASH(c2) TBPARTITIONS 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(c1) TBPARTITION BY HASH(c1) TBPARTITIONS 7
+
+seller_tbl:
+  CREATE TABLE `seller_tbl` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `order_id` varchar(100) DEFAULT NULL,
+  `seller_id` varchar(100) DEFAULT NULL,
+  `buyer_id` varchar(100) DEFAULT NULL,
+  `username` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8  dbpartition by hash(`seller_id`)
+
+buyer_tbl:
+  CREATE TABLE `buyer_tbl` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `order_id` varchar(100) DEFAULT NULL,
+  `seller_id` varchar(100) DEFAULT NULL,
+  `buyer_id` varchar(100) DEFAULT NULL,
+  `username` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  GLOBAL INDEX `g_i_seller`(`seller_id`) COVERING (`username`) DBPARTITION BY HASH(`seller_id`) TBPARTITION BY HASH(`seller_id`) TBPARTITIONS 3
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8  dbpartition by hash(`buyer_id`)
+

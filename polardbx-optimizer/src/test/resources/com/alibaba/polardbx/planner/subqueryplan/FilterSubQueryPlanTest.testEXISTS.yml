@@ -1,0 +1,877 @@
+- #// @desc
+  #// IN,?????????????, ??? ???
+  sql: |
+    select a.id
+    from 
+      test_hash_tb a
+    where 
+       EXISTS (
+                  select id     
+                  from test_hash_tb2 b
+                  WHERE a.id=b.id
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`test_hash_tb`.`id` = `id`)))")
+
+- #// @desc
+  #// IN,?????????????? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  WHERE a.id=b.id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (`a`.`id` = `b`.`id`)))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024 and a.id=b.id
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`test_hash_tb`.`id` = `id`) AND (`int_col4` > 1024))))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where int_col4>1024 and  a.id=b.id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`b`.`int_col4` > 1024) AND (`a`.`id` = `b`.`id`))))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by?? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+      EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024 and  a.id=b.id
+                  order by int_col3
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`test_hash_tb`.`id` = `id`) AND (`int_col4` > 1024))))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by?? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where int_col4>1024 and  a.id=b.id
+                  order by int_col3
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`b`.`int_col4` > 1024) AND (`a`.`id` = `b`.`id`)) ORDER BY `b`.`int_col3`))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by ?? agg?? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024 and  a.id=b.id
+                  group by id
+                  order by id
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT * FROM (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024)) AS `t0` WHERE (`test_hash_tb`.`id` = `id`)))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by ?? agg ?? limit?? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024 and  a.id=b.id
+                  group by id
+                  order by id
+                  limit 10,2
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[], opKind=null, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          TopN(sort="id ASC", offset=10, fetch=2)
+            Filter(condition="$cor0.id = id")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024)")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024)")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by ?? agg ?? limit?? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where int_col4>1024 and  a.id=b.id
+                  group by id
+                  order by id
+                  limit 10,2
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`b`.`int_col4` > 1024) AND (`a`.`id` = `b`.`id`)) GROUP BY `b`.`id` ORDER BY `id` LIMIT 2 OFFSET 10))")
+
+- #// @desc
+  #// IN,?????????????????? ??
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(test_hash_tb,test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select int_col1
+                  from test_hash_tb2 b
+                  where a.id=b.int_col1
+                )
+
+  plan: |
+
+    SemiHashJoin(condition="id = int_col1", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- #// @desc
+  #// IN,?????????????????? ??
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select int_col1
+                  from test_hash_tb6 b
+                  where a.id=b.int_col1
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE (`a`.`id` = `b`.`int_col1`)))")
+
+- #// @desc
+  #// IN,???????????????, where?? ???
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(test_hash_tb,test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select int_col1
+                  from test_hash_tb2 b
+                  where int_col1>3 and a.id=b.int_col1
+                )
+
+  plan: |
+
+    SemiHashJoin(condition="id = int_col1", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` > 3)")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3)")
+
+- #// @desc
+  #// IN,???????????????, where?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select int_col1
+                  from test_hash_tb6 b
+                  where int_col1>3 and a.id=b.int_col1
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE ((`b`.`int_col1` > 3) AND (`a`.`id` = `b`.`int_col1`))))")
+
+- #// @desc
+  #// IN,???????????????, where , agg?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select count(*)
+                  from test_hash_tb2 b
+                  where int_col1>3 and a.id=b.int_col3
+                  group by int_col3
+                )
+
+  plan: |
+
+    MaterializedSemiJoin(condition="id = int_col3", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (...))")
+      Project(int_col3="int_col3")
+        HashAgg(group="int_col3", count(*)="SUM(count(*))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col3`, COUNT(*) AS `count(*)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3) GROUP BY `int_col3`")
+
+- #// @desc
+  #// IN,???????????????, where , agg?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select count(*)
+                  from test_hash_tb6 b
+                  where int_col1>3 and a.id=b.int_col4
+                  group by int_col4
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb6` AS `b` WHERE ((`b`.`int_col1` > 3) AND (`a`.`id` = `b`.`int_col4`)) GROUP BY `b`.`int_col4`))")
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select count(*)
+                  from test_hash_tb2 b
+                  where int_col1>3 and a.id=b.int_col4
+                  group by int_col4
+                  order by int_col4
+                )
+
+  plan: |
+
+    MaterializedSemiJoin(condition="id = int_col4", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (...))")
+      Project(int_col4="int_col4")
+        HashAgg(group="int_col4", count(*)="SUM(count(*))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col4`, COUNT(*) AS `count(*)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3) GROUP BY `int_col4`")
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select count(*)
+                  from test_hash_tb6 b
+                  where int_col1>3 and a.id=b.int_col1
+                  group by int_col1
+                  order by int_col1
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb6` AS `b` WHERE ((`b`.`int_col1` > 3) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1`))")
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by , limit?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS(
+                  select count(*)
+                  from test_hash_tb2 b
+                  where int_col1>3 and a.id=b.int_col1
+                  group by int_col1
+                  order by int_col1
+                  limit 4
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[], opKind=null, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          Project($f0="count(*)", $f1="int_col1")
+            TopN(sort="int_col1 ASC", offset=0, fetch=4)
+              HashAgg(group="int_col1", count(*)="COUNT()")
+                Filter(condition="$cor0.id = int_col1")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3)")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3)")
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by , limit?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select count(*)
+                  from test_hash_tb6 b
+                  where int_col1>3 and a.id=b.int_col1
+                  group by int_col1
+                  order by int_col1
+                  limit 4
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb6` AS `b` WHERE ((`b`.`int_col1` > 3) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1` LIMIT 4 OFFSET 0))")
+
+- #// @desc
+  #// IN,????????????????
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where a.name=b.name and a.id=b.id
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`test_hash_tb`.`name` = `name`) AND (`test_hash_tb`.`id` = `id`))))")
+
+- #// @desc
+  #// IN,?????????????????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where a.name=b.name and a.id=b.id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`name` = `b`.`name`) AND (`a`.`id` = `b`.`id`))))")
+
+- #// @desc
+  #// IN,????????????, where?????
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where a.name=b.name and int_col5 < 30 and a.id=b.id
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (((`test_hash_tb`.`name` = `name`) AND (`test_hash_tb`.`id` = `id`)) AND (`int_col5` < 30))))")
+
+- #// @desc
+  #// IN,????????????, where??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where a.name=b.name and int_col5 < 30 and a.id=b.id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`name` = `b`.`name`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`))))")
+
+- #// @desc
+  #// IN,????????????, where , agg?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where a.id=b.id and int_col5 < 30 and a.id=b.id
+                  group by id
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT * FROM (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col5` < 30)) AS `t0` WHERE (`test_hash_tb`.`id` = `id`)))")
+
+- #// @desc
+  #// IN,????????????, where , agg?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where a.id=b.id and int_col5 < 30 and a.id=b.id
+                  group by id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`)) GROUP BY `b`.`id`))")
+
+- #// @desc
+  #// IN,????????????, where , agg , limit ?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where a.id=b.id and int_col5 < 30 and a.id=b.id
+                  group by id
+                  having id!=1
+                  limit 100
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[], opKind=null, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          Limit(offset=0, fetch=100)
+            Filter(condition="$cor0.id = id")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+
+- #// @desc
+  #// IN,????????????, where , agg , limit??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where a.id=b.id and int_col5 < 30 and a.id=b.id
+                  group by id
+                  having id!=1
+                  limit 100
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`)) GROUP BY `b`.`id` HAVING (`id` <> 1) LIMIT 100 OFFSET 0))")
+
+- #// @desc
+  #// IN,????????????, where , agg , limit?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb2 b
+                  where a.id=b.id and int_col5 < 30 and a.id=b.id
+                  group by id
+                  having id!=1
+                  order by id
+                  limit 100
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor, leftConditions=[], opKind=null, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          TopN(sort="id ASC", offset=0, fetch=100)
+            Filter(condition="$cor.id = id")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+
+- #// @desc
+  #// IN,????????????, where , agg , limit?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select id
+                  from test_hash_tb6 b
+                  where a.id=b.id and int_col5 < 30 and a.id=b.id
+                  group by id
+                  having id!=1
+                  order by id
+                  limit 100
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`)) GROUP BY `b`.`id` HAVING (`id` <> 1) ORDER BY `id` LIMIT 100 OFFSET 0))")
+
+- #// @desc
+  #// IN,??????????????????
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(test_hash_tb,test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select int_col1
+                  from test_hash_tb2 b
+                  where a.name=b.name and a.id=b.int_col1
+                )
+
+  plan: |
+
+    Project(id="id")
+      SemiHashJoin(condition="name = name AND id = int_col1", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `name`, `int_col1` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- #// @desc
+  #// IN,???????????????????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select int_col1
+                  from test_hash_tb6 b
+                  where a.name=b.name and a.id=b.id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`name` = `b`.`name`) AND (`a`.`id` = `b`.`id`))))")
+
+- #// @desc
+  #// IN,??????????????, where?????
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(test_hash_tb,test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select int_col1, int_col4
+                  from test_hash_tb2 b
+                  where a.name=b.name and int_col1>2048 and a.id=b.int_col4
+                )
+
+  plan: |
+
+    Project(id="id")
+      SemiHashJoin(condition="name = name AND id = int_col4", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `name`, `int_col4` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+
+- #// @desc
+  #// IN,??????????????, where??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select int_col1
+                  from test_hash_tb6 b
+                  where a.name=b.name and int_col1>2048 and a.id=b.id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`name` = `b`.`name`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`id`))))")
+
+- #// @desc
+  #// IN,??????????????, where , group by?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select sum(int_col2)
+                  from test_hash_tb2 b
+                  where a.int_col1=b.int_col1 and int_col1>2048 and a.id=b.int_col1
+                  group by int_col1
+                )
+
+  plan: |
+
+    Project(id="id")
+      MaterializedSemiJoin(condition="int_col1 = int_col1 AND id = int_col1", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((`id` > 2048) AND (`int_col1` > 2048)) AND (((`int_col1`, `id`)) IN (...)))")
+        Project(int_col1="int_col1")
+          HashAgg(group="int_col1", sum(int_col2)="SUM(sum(int_col2))")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, SUM(`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048) GROUP BY `int_col1`")
+
+- #// @desc
+  #// IN,??????????????, where , group by?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select sum(int_col2)
+                  from test_hash_tb6 b
+                  where a.int_col1=b.int_col1 and int_col1>2048 and a.id=b.int_col1
+                  group by int_col1
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1`))")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select sum(int_col2)
+                  from test_hash_tb2 b
+                  where a.int_col1=b.int_col1 and int_col1>2048 and a.id=b.int_col1
+                  group by int_col1
+                  order by int_col1
+                )
+
+  plan: |
+
+    Project(id="id")
+      MaterializedSemiJoin(condition="int_col1 = int_col1 AND id = int_col1", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((`id` > 2048) AND (`int_col1` > 2048)) AND (((`int_col1`, `id`)) IN (...)))")
+        Project(int_col1="int_col1")
+          HashAgg(group="int_col1", sum(int_col2)="SUM(sum(int_col2))")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, SUM(`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048) GROUP BY `int_col1`")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select sum(int_col2)
+                  from test_hash_tb6 b
+                  where a.int_col1=b.int_col1 and int_col1>2048 and a.id=b.int_col1
+                  group by int_col1
+                  order by int_col1
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1`))")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by , limit?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       EXISTS (
+                  select sum(int_col2)
+                  from test_hash_tb2 b
+                  where a.int_col1=b.int_col1 and int_col1>2048 and a.id=b.int_col1
+                  group by int_col1
+                  order by int_col1
+                  limit 1111, 2399
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor, leftConditions=[], opKind=null, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb`")
+          Project($f0="sum(int_col2)", $f1="int_col1")
+            TopN(sort="int_col1 ASC", offset=1111, fetch=2399)
+              HashAgg(group="int_col1", sum(int_col2)="SUM(int_col2)")
+                Filter(condition="$cor.int_col1 = int_col1 AND $cor.id = int_col1")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by , limit??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       EXISTS (
+                  select sum(int_col2)
+                  from test_hash_tb6 b
+                  where a.int_col1=b.int_col1 and int_col1>2048 and a.id=b.int_col1
+                  group by int_col1
+                  order by int_col1
+                  limit 1111, 2399
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1` LIMIT 2399 OFFSET 1111))")
+
+-
+
+  sql: |
+
+    SELECT id-int_col2
+    FROM test_hash_tb5
+    WHERE EXISTS
+        (SELECT 1
+         FROM test_hash_tb5 AS x
+         WHERE x.int_col2<test_hash_tb5.int_col2)
+    ORDER BY 1
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb5", sql="SELECT (`test_hash_tb5`.`id` - `test_hash_tb5`.`int_col2`) AS `id - int_col2` FROM `test_hash_tb5` AS `test_hash_tb5` WHERE (EXISTS (SELECT 1 FROM `test_hash_tb5` AS `x` WHERE (`x`.`int_col2` < `test_hash_tb5`.`int_col2`))) ORDER BY 1")
+
+-
+
+  sql: |
+
+    SELECT id-int_col2
+    FROM test_hash_tb5
+    WHERE EXISTS
+        (SELECT 1
+         FROM test_hash_tb5 AS x
+         WHERE x.int_col2<test_hash_tb5.int_col2)
+    ORDER BY 1
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb5", sql="SELECT (`test_hash_tb5`.`id` - `test_hash_tb5`.`int_col2`) AS `id - int_col2` FROM `test_hash_tb5` AS `test_hash_tb5` WHERE (EXISTS (SELECT 1 FROM `test_hash_tb5` AS `x` WHERE (`x`.`int_col2` < `test_hash_tb5`.`int_col2`))) ORDER BY 1")
+
+
+# not support cross schema test
+#-
+#
+#  sql: |
+#
+#    SELECT id-int_col2
+#    FROM test_hash_tb5
+#    WHERE EXISTS
+#        (SELECT 1
+#         FROM testschema.test_hash_tb1 AS x
+#         WHERE x.int_col2<test_hash_tb5.int_col2)
+#         or create_time>now()
+#    ORDER BY 1
+#
+#  plan: |
+#    LogicalView(tables="test_hash_tb5,test_hash_tb1", sql="SELECT (`id` - `int_col2`) AS `id - int_col2` FROM (SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb5` AS `test_hash_tb5` WHERE ((EXISTS (SELECT `id`, `name`, `int_col2`, `create_time` FROM `test_hash_tb1` AS `test_hash_tb1` WHERE (`int_col2` < `test_hash_tb5`.`int_col2`))) OR (`create_time` > NOW()))) AS `t0` ORDER BY (`id` - `int_col2`)")
+#

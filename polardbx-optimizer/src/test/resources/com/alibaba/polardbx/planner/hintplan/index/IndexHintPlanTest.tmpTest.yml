@@ -1,0 +1,17 @@
+#    select /*+TDDL({'type':'full','vtab':'test_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+#    pk from test_table_a;
+#
+#    Gather(concurrent=true)
+#      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `test_table_a`.`pk` FROM `test_table_a`")
+
+- sql: |
+
+    select /*+TDDL:index(a,d_i_2)*/ c1, text_test from test_table_d a where c1 = 3;
+
+  plan: |
+
+    Project(c1="c1", text_test="text_test")
+      BKAJoin(condition="pk = pk", type="inner")
+        IndexScan(tables="optest_0001.d_i_2_3", sql="SELECT `pk`, `c1` FROM `d_i_2` AS `d_i_2` WHERE (`c1` = ?)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_table_d_[00-27]", shardCount=28, sql="SELECT `pk`, `text_test` FROM `test_table_d` AS `test_table_d` WHERE ((`c1` = ?) AND (`pk` IN (...)))")

@@ -1,0 +1,648 @@
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk = 100001") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.test_table_a_13", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` = 100001)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("varchar_test_p255 like '%a%' is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`varchar_test_p255` LIKE '%a%') IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk <> 100001 is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` <> 100001) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk between 100001 and 200002") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` BETWEEN 100001 AND 200002)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 100001 is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > 100001) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("varchar_test_p255 is not null") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`varchar_test_p255` IS NOT NULL)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk between 100001 and 200002) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` BETWEEN 100001 AND 200002) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk > 100001 and pk < 200002 or pk = 200003)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (((`pk` > 100001) AND (`pk` < 200002)) OR (`pk` = 200003)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and (pk < 200002 or pk = 200003) or (pk in (1,2,3,4,5) and bigint_test > 20)) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) OR ((`pk` IN (1, 2, 3, 4, 5)) AND (`bigint_test` > 20))) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and pk < 200002) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (((`pk` > 100001) AND (`pk` < 200002)) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not exists(select a.pk from test_table_a a join test_table_b b on a.pk > b.pk WHERE b.pk = 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT EXISTS (SELECT `a`.`pk` FROM `test_table_a` AS `a` INNER JOIN `test_table_b` AS `b` ON (`a`.`pk` > `b`.`pk`) WHERE (`b`.`pk` = 100001)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk > 100001 and (pk < 200002 or pk = 200003) and (varchar_test_p255 is null or bigint_test > 20))") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) AND ((`varchar_test_p255` IS NULL) OR (`bigint_test` > 20))))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk > 100001 and (pk < 200002 or pk = 200003) or (pk in (1,2,3,4,5) and bigint_test > 20))") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) OR ((`pk` IN (1, 2, 3, 4, 5)) AND (`bigint_test` > 20))))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 100001") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` > 100001)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk in (1,2,3,4,5)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` IN (1, 2, 3, 4, 5))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk < 100001") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` < 100001)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk <> 100001") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <> 100001)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 200001 or pk < 100002") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > 200001) OR (`pk` < 100002))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 200001 or pk < 100002) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (((`pk` > 200001) OR (`pk` < 100002)) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk <> 100001 is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` <> 100001) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > all(select pk from test_table_b b WHERE b.pk = 100001) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001))) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("varchar_test_p255 not like '%a%'") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`varchar_test_p255` NOT LIKE '%a%')")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > any(select pk from test_table_b b WHERE b.pk = 100001) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001))) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk < 100001 is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` < 100001) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(varchar_test_p255 is not null) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`varchar_test_p255` IS NOT NULL) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("varchar_test_p255 like '%a%' is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`varchar_test_p255` LIKE '%a%') IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk not between 100001 and 200002") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` NOT BETWEEN 100001 AND 200002)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk >= 100001 is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` >= 100001) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk in (1,2,3,4,5) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` IN (1, 2, 3, 4, 5)) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 100001 is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > 100001) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > all(select pk from test_table_b b WHERE b.pk = 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` > ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 100001 and pk < 200002") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > 100001) AND (`pk` < 200002))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > any(select pk from test_table_b b WHERE b.pk = 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` > SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk >= 100001") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` >= 100001)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk <= 100001") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <= 100001)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not pk > 100001") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` > 100001))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 200001 or pk < 100002) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (((`pk` > 200001) OR (`pk` < 100002)) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and pk < 200002 or pk = 200003) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((((`pk` > 100001) AND (`pk` < 200002)) OR (`pk` = 200003)) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 100001 and (pk < 200002 or pk = 200003) and (varchar_test_p255 is null or bigint_test > 20)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) AND ((`varchar_test_p255` IS NULL) OR (`bigint_test` > 20)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 100001 and (pk < 200002 or pk = 200003) or (pk in (1,2,3,4,5) and bigint_test > 20)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) OR ((`pk` IN (1, 2, 3, 4, 5)) AND (`bigint_test` > 20)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("varchar_test_p255 is null") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`varchar_test_p255` IS NULL)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and (pk < 200002 or pk = 200003) or (pk in (1,2,3,4,5) and bigint_test > 20)) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) OR ((`pk` IN (1, 2, 3, 4, 5)) AND (`bigint_test` > 20))) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk > all(select pk from test_table_b b WHERE b.pk = 100001))") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` > ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001))))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk > 100001 and pk < 200002)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT ((`pk` > 100001) AND (`pk` < 200002)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not (pk > any(select pk from test_table_b b WHERE b.pk = 100001))") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` > SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001))))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk >= 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` >= 100001))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk <= 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` <= 100001))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and (pk < 200002 or pk = 200003) and (varchar_test_p255 is null or bigint_test > 20)) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) AND ((`varchar_test_p255` IS NULL) OR (`bigint_test` > 20))) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk <= 100001 is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` <= 100001) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and (pk < 200002 or pk = 200003) and (varchar_test_p255 is null or bigint_test > 20)) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((((`pk` > 100001) AND ((`pk` < 200002) OR (`pk` = 200003))) AND ((`varchar_test_p255` IS NULL) OR (`bigint_test` > 20))) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("varchar_test_p255 like '%a%'") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`varchar_test_p255` LIKE '%a%')")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE TRUE")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk = 100001) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` = 100001) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE FALSE")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk = 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` = 100001))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(varchar_test_p255 is null) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`varchar_test_p255` IS NULL) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(varchar_test_p255 is not null)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`varchar_test_p255` IS NOT NULL))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > 100001 and pk < 200002 or pk = 200003") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (((`pk` > 100001) AND (`pk` < 200002)) OR (`pk` = 200003))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("exists(select b.pk from test_table_b b where test_table_a.pk = b.pk and b.pk = 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.test_table_a_13,test_table_b_13", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (EXISTS (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE ((`test_table_a`.`pk` = `b`.`pk`) AND (`b`.`pk` = 100001))))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(varchar_test_p255 is not null) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`varchar_test_p255` IS NOT NULL) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk < 100001 is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` < 100001) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk > 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` > 100001))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk not in (1,2,3,4,5)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` NOT IN (1, 2, 3, 4, 5))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk < 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` < 100001))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk <> 100001)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`pk` <> 100001))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(pk > 200001 or pk < 100002)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT ((`pk` > 200001) OR (`pk` < 100002)))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and pk < 200002) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (((`pk` > 100001) AND (`pk` < 200002)) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(varchar_test_p255 is null) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`varchar_test_p255` IS NULL) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > any(select pk from test_table_b b WHERE b.pk = 100001) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001))) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk <= 100001 is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` <= 100001) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk between 100001 and 200002) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` BETWEEN 100001 AND 200002) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("exists(select b.pk from test_table_a a join test_table_b b on a.pk > b.pk WHERE b.pk = 100001) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((EXISTS (SELECT `b`.`pk` FROM `test_table_a` AS `a` INNER JOIN `test_table_b` AS `b` ON (`a`.`pk` > `b`.`pk`) WHERE (`b`.`pk` = 100001))) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk > all(select pk from test_table_b b WHERE b.pk = 100001) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` > ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001))) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk in (1,2,3,4,5) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` IN (1, 2, 3, 4, 5)) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("exists(select a.pk from test_table_a a join test_table_b b on a.pk > b.pk WHERE b.pk = 100001) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27],test_table_b_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((EXISTS (SELECT `a`.`pk` FROM `test_table_a` AS `a` INNER JOIN `test_table_b` AS `b` ON (`a`.`pk` > `b`.`pk`) WHERE (`b`.`pk` = 100001))) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk = 100001) is false") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` = 100001) IS FALSE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("not(varchar_test_p255 is null)") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (NOT (`varchar_test_p255` IS NULL))")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("pk >= 100001 is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((`pk` >= 100001) IS TRUE)")
+
+-
+  sql: |
+    select /* +TDDL: construct() push_ft("(pk > 100001 and pk < 200002 or pk = 200003) is true") add_un() */ * from test_table_a
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE ((((`pk` > 100001) AND (`pk` < 200002)) OR (`pk` = 200003)) IS TRUE)")
+

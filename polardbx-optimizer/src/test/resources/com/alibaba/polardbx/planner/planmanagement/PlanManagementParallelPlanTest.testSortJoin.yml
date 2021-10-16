@@ -1,0 +1,40 @@
+- sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id1,t_shard_id2)*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2 where t_shard_id1.name = t_shard_id2.name order by t_shard_id1.id;
+
+  plan: |
+
+    Project(id="id")
+      HashJoin(condition="name = name", type="inner")
+        MergeSort(sort="id ASC")
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1` ORDER BY `id`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id2,t_shard_id1)*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2 where t_shard_id1.name = t_shard_id2.name order by t_shard_id2.id;
+
+  plan: |
+
+    Project(id="id0")
+      HashJoin(condition="name = name", type="inner")
+        MergeSort(sort="id ASC")
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id2` AS `t_shard_id2` ORDER BY `id`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
+
+- sql: |
+    /*+TDDL:HASH_JOIN(t_shard_id1,t_shard_id2)*/
+    select t_shard_id1.id from t_shard_id1, t_shard_id2 where t_shard_id1.name = t_shard_id2.name order by t_shard_id2.id, t_shard_id1.id;
+
+  plan: |
+
+    Project(id="id")
+      MemSort(sort="id0 ASC,id ASC")
+        Gather(parallel=true)
+          Project(id="id", id0="id0", parallel=true)
+            ParallelHashJoin(condition="name = name", type="inner")
+              LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`", parallel=true)
+              LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id2` AS `t_shard_id2`", parallel=true)
+

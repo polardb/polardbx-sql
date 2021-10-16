@@ -1,0 +1,82 @@
+-
+  sql: |
+    select * from test_hash_tb a join test_hash_tb b where a.id=b.id and a.name="xx";
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` AS `id0`, `test_hash_tb0`.`name` AS `name0`, `test_hash_tb0`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`))")
+
+-
+  sql: |
+    select * from test_hash_tb a join test_hash_tb b where a.id=b.id and a.id="xx";
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_hash_tb, test_hash_tb]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` FROM ? AS `a` INNER JOIN ? AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = 'xx'))")
+
+-
+  sql: |
+    select a.id from test_hash_tb a join test_hash_tb b where a.id=b.id and a.name="xx";
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`))")
+
+-
+  sql: |
+    select * from test_hash_tb a join test_hash_tb b on a.id=b.id where a.name="xx";
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` AS `id0`, `test_hash_tb0`.`name` AS `name0`, `test_hash_tb0`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`))")
+
+-
+  sql: |
+    select * from test_hash_tb a join test_Hash_tb b on a.id=b.id where a.name="xx";
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_Hash_tb0`.`id` AS `id0`, `test_Hash_tb0`.`name` AS `name0`, `test_Hash_tb0`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_Hash_tb` AS `test_Hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_Hash_tb0`.`id`))")
+-
+  sql: |
+    select * from test_hash_tb a join test_hash_tb b on a.id=b.id where a.id="xx";
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_hash_tb, test_hash_tb]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time` FROM ? AS `a` INNER JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) WHERE (`a`.`id` = 'xx')")
+
+-
+  sql: |
+    select a.id from test_hash_tb a join test_hash_tb b on a.id=b.id where a.name="xx";
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`))")
+
+-
+  sql: |
+    select a.id from test_hash_tb a join test_hash_tb b on a.id=b.id where a.name="xx" limit 5,10;
+
+  plan: |
+
+    MergeSort(sort="", offset=5, fetch=10)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`)) LIMIT 15")
+
+-
+  sql: |
+    select count(*) from test_broadcast t2, test_hash_tb t1, test_hash_tb2 t3
+      where t1.name = t2.name and t2.id = t3.id;
+
+  plan: |
+
+    HashAgg(count(*)="SUM(count(*))")
+      BKAJoin(condition="id = id0", type="inner")
+        HashAgg(group="id0", count(*)="SUM(count(*))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb,test_broadcast", shardCount=4, sql="SELECT `test_broadcast`.`id` AS `id0`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_broadcast` AS `test_broadcast` ON (`test_hash_tb`.`name` = `test_broadcast`.`name`) GROUP BY `test_broadcast`.`id`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`id` IN (...))")

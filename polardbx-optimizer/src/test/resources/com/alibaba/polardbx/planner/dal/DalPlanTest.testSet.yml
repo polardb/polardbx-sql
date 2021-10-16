@@ -1,0 +1,205 @@
+# Set
+
+## set names
+-
+  sql: |
+    set names gbk
+  plan: |
+    LogicalSet(sql="SET NAMES gbk")
+
+-
+  sql: |
+    set names default
+  plan: |
+    LogicalSet(sql="SET NAMES DEFAULT")
+
+-
+  sql: |
+    set names gbk collate gbk_chinese_ci
+  plan: |
+    LogicalSet(sql="SET NAMES 'gbk' COLLATE 'gbk_chinese_ci'")
+
+## set character set
+-
+  sql: |
+    set character set 'gbk'
+  plan: |
+    LogicalSet(sql="SET CHARACTER SET 'gbk'")
+
+-
+  sql: |
+    set character set default
+  plan: |
+    LogicalSet(sql="SET CHARACTER SET DEFAULT")
+
+## set transaction
+-
+  sql: |
+    set TRANSACTION READ WRITE
+  plan: |
+    LogicalSet(sql="SET TRANSACTION READ WRITE")
+
+-
+  sql: |
+    set TRANSACTION READ ONLY
+  plan: |
+    LogicalSet(sql="SET TRANSACTION READ ONLY")
+
+-
+  sql: |
+    set TRANSACTION ISOLATION LEVEL REPEATABLE READ
+  plan: |
+    LogicalSet(sql="SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+
+-
+  sql: |
+    set TRANSACTION ISOLATION LEVEL READ COMMITTED
+  plan: |
+    LogicalSet(sql="SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+
+-
+  sql: |
+    set TRANSACTION ISOLATION LEVEL SERIALIZABLE
+  plan: |
+    LogicalSet(sql="SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+
+-
+  sql: |
+    set global TRANSACTION ISOLATION LEVEL SERIALIZABLE
+  plan: |
+    LogicalSet(sql="SET GLOBAL TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+
+-
+  sql: |
+    set SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE
+  plan: |
+    LogicalSet(sql="SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+
+-
+  sql: |
+    set SESSION TRANSACTION policy 7
+  plan: |
+    LogicalSet(sql="SET SESSION TRANSACTION POLICY 7")
+
+## set system variables
+-
+  sql: |
+    set autocommit = 0;
+  plan: |
+    LogicalSet(sql="SET AUTOCOMMIT = 0")
+
+-
+  sql: |
+    set autocommit = ON;
+  plan: |
+    LogicalSet(sql="SET AUTOCOMMIT = ON")
+
+-
+  sql: |
+    set autocommit = false;
+  plan: |
+    LogicalSet(sql="SET AUTOCOMMIT = FALSE")
+
+-
+  sql: |
+    set global autocommit = 0;
+  plan: |
+    LogicalSet(sql="SET @@GLOBAL.AUTOCOMMIT = 0")
+
+-
+  sql: |
+    set session autocommit = 0;
+  plan: |
+    LogicalSet(sql="SET @@AUTOCOMMIT = 0")
+
+-
+  sql: |
+    set @@global.autocommit = 0;
+  plan: |
+    LogicalSet(sql="SET @@GLOBAL.AUTOCOMMIT = 0")
+
+-
+  sql: |
+    set @@session.autocommit = 0;
+  plan: |
+    LogicalSet(sql="SET @@AUTOCOMMIT = 0")
+
+-
+  sql: |
+    set @@autocommit = 0;
+  plan: |
+    LogicalSet(sql="SET @@AUTOCOMMIT = 0")
+
+
+-
+  sql: |
+    set @@autocommit = 0, SQL_SAFE_UPDATES = TRUE;
+  plan: |
+    LogicalSet(sql="SET @@AUTOCOMMIT = 0, SQL_SAFE_UPDATES = TRUE")
+
+-
+  sql: |
+    set @@autocommit = 0, @@SQL_SAFE_UPDATES = TRUE;
+  plan: |
+    LogicalSet(sql="SET @@AUTOCOMMIT = 0, @@SQL_SAFE_UPDATES = TRUE")
+
+-
+  sql: |
+    set SQL_SAFE_UPDATES = true;
+  plan: |
+    LogicalSet(sql="SET SQL_SAFE_UPDATES = TRUE")
+
+-
+  sql: |
+    set NET_WRITE_TIMEOUT = true;
+  plan: |
+    LogicalSet(sql="SET NET_WRITE_TIMEOUT = TRUE")
+
+-
+  sql: |
+    set SQL_LOG_BIN = true;
+  plan: |
+    LogicalSet(sql="SET SQL_LOG_BIN = TRUE")
+
+-
+  sql: |
+    set CHARACTER_SET_CLIENT = utf8;
+  plan: |
+    LogicalSet(sql="SET CHARACTER_SET_CLIENT = utf8")
+
+-
+  sql: |
+    SET drds_transaction_policy = 'TDDL';
+  plan: |
+    LogicalSet(sql="SET DRDS_TRANSACTION_POLICY = 'TDDL'")
+
+-
+  sql: |
+    set trans.policy = TDDL;
+  plan: |
+    LogicalSet(sql="SET TRANS.POLICY = TDDL")
+
+-
+  sql: |
+    set trans.timeout = 0;
+  plan: |
+    LogicalSet(sql="SET TRANS.TIMEOUT = 0")
+
+-
+  sql: |
+    set trans.mode = LOCK;
+  plan: |
+    LogicalSet(sql="SET TRANS.MODE = LOCK")
+
+## set user define variables
+-
+  sql: |
+    set @a = 3;
+  plan: |
+    LogicalSet(sql="SET @a = 3")
+
+-
+  sql: |
+    set @a = 3; set @b = @a
+  plan: |
+    LogicalSet(sql="SET @a = 3")

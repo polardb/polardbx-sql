@@ -1,0 +1,85 @@
+# HINT in front of statement
+
+# JSON formatted Direct HINT
+
+# SELECT
+## replace dbid and partial table name
+- sql: |
+    /*+TDDL({'type':'direct','vtab':'hint_d_table_a, hint_d_table_b','dbid':'optest_0001','realtabs':['hint_d_table_a_07, hint_d_table_b_07','hint_d_table_a_08, hint_d_table_b_08','hint_d_table_a_09, hint_d_table_b_09']}) */
+    select a.pk, b.bigint_test, c.pk as c_pk from hint_d_table_a a join hint_d_table_c c on a.pk = c.pk join hint_d_table_b b on c.pk = b.pk;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.hint_d_table_a_[07-09],hint_d_table_c,hint_d_table_b_[07-09]", shardCount=3, sql="SELECT `a`.`pk`, `b`.`bigint_test`, `c`.`pk` AS `c_pk` FROM `hint_d_table_a` AS `a` INNER JOIN `hint_d_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`) INNER JOIN `hint_d_table_b` AS `b` ON (`c`.`pk` = `b`.`pk`)")
+
+- sql: |
+    /*+TDDL({'type':'condition','vtab':'hint_d_table_a, hint_d_table_b','params':[{'expr':['pk=1:long']}]})*/
+    select a.pk, b.bigint_test, c.text_test from hint_d_table_a a join hint_d_table_c c on a.pk = c.pk join hint_d_table_b b on a.pk = b.pk;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.hint_d_table_a_01,hint_d_table_c,hint_d_table_b_01", sql="SELECT `a`.`pk`, `b`.`bigint_test`, `c`.`text_test` FROM `hint_d_table_a` AS `a` INNER JOIN `hint_d_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`) INNER JOIN `hint_d_table_b` AS `b` ON (`a`.`pk` = `b`.`pk`)")
+
+- sql: |
+    /*+TDDL({'type':'full','vtab':'hint_d_table_a, hint_d_table_b','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    select a.pk, b.bigint_test, c.text_test from hint_d_table_a a join hint_d_table_c c on a.pk = c.pk join hint_d_table_b b on b.pk = c.pk;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].hint_d_table_a_[00-27],hint_d_table_c,hint_d_table_b_[00-27]", shardCount=28, sql="SELECT `a`.`pk`, `b`.`bigint_test`, `c`.`text_test` FROM `hint_d_table_a` AS `a` INNER JOIN `hint_d_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`) INNER JOIN `hint_d_table_b` AS `b` ON (`b`.`pk` = `c`.`pk`)")
+
+- sql: |
+    /*+TDDL({'type':'direct','vtab':'hint_d_table_a','dbid':'optest_0001','realtabs':['hint_d_table_a_07','hint_d_table_a_08','hint_d_table_a_09']}) */
+    update hint_d_table_a set bigint_test=3 where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="optest_0001.hint_d_table_a_[07-09]", shardCount=3, sql="UPDATE `hint_d_table_a` AS `hint_d_table_a` SET `bigint_test` = 3 WHERE (`pk` = 100003)")
+
+- sql: |
+    /*+TDDL({'type':'condition','vtab':'vtabxxx','params':[{'relation':'and','expr':['pk>4','pk<10'],'paramtype':'long'},{'expr':['bigint_test=1:long']}]})*/
+    update hint_d_table_a set bigint_test=3 where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0000-0003].hint_d_table_a_[00-27]", shardCount=28, sql="UPDATE `hint_d_table_a` AS `hint_d_table_a` SET `bigint_test` = 3 WHERE (`pk` = 100003)")
+
+- sql: |
+    /*+TDDL({'type':'full','vtab':'hint_d_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    update hint_d_table_a set bigint_test=3 where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0000-0003].hint_d_table_a_[00-27]", shardCount=28, sql="UPDATE `hint_d_table_a` AS `hint_d_table_a` SET `bigint_test` = 3 WHERE (`pk` = 100003)")
+
+- sql: |
+    /*+TDDL({'type':'direct','vtab':'hint_d_table_a','dbid':'optest_0001','realtabs':['hint_d_table_a_07','hint_d_table_a_08','hint_d_table_a_09']}) */
+    delete from hint_d_table_a where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="optest_0001.hint_d_table_a_[07-09]", shardCount=3, sql="DELETE FROM `hint_d_table_a` WHERE (`pk` = 100003)")
+
+- sql: |
+    /*+TDDL({'type':'condition','vtab':'vtabxxx','params':[{'relation':'and','expr':['pk>4','pk<10'],'paramtype':'long'},{'expr':['bigint_test=1:long']}]})*/
+    delete from hint_d_table_a where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0000-0003].hint_d_table_a_[00-27]", shardCount=28, sql="DELETE FROM `hint_d_table_a` WHERE (`pk` = 100003)")
+
+- sql: |
+    /*+TDDL({'type':'full','vtab':'hint_d_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    DELETE from hint_d_table_a where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0000-0003].hint_d_table_a_[00-27]", shardCount=28, sql="DELETE FROM `hint_d_table_a` WHERE (`pk` = 100003)")

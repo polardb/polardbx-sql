@@ -1,0 +1,13 @@
+bmsql_history:
+  CREATE TABLE `bmsql_history` (
+  `hist_id` int(11) DEFAULT NULL,
+  `h_c_id` int(11) DEFAULT NULL,
+  `h_c_d_id` int(11) DEFAULT NULL,
+  `h_c_w_id` int(11) DEFAULT NULL,
+  `h_d_id` int(11) DEFAULT NULL,
+  `h_w_id` int(11) DEFAULT NULL,
+  `h_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `h_amount` decimal(6, 2) DEFAULT NULL,
+  `h_data` varchar(24) DEFAULT NULL,
+  KEY `auto_shard_key_h_w_id` USING BTREE (`h_w_id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8  dbpartition by hash(`h_w_id`)

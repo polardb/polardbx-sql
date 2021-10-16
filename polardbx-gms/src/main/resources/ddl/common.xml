@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="character_sets">
+        <Create><![CDATA[
+            create table if not exists `character_sets` (
+              `id` bigint unsigned not null auto_increment,
+              `character_set_name` varchar(32) not null,
+              `default_collate_name` varchar(32) not null,
+              `description` varchar(60) default null,
+              `maxlen` bigint(3) not null default '0',
+              primary key(`id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="collations">
+        <Create><![CDATA[
+            create table if not exists `collations` (
+              `id` bigint unsigned not null auto_increment,
+              `collation_name` varchar(32) not null,
+              `character_set_name` varchar(32) not null,
+              `is_default` varchar(3) default null,
+              `is_compiled` varchar(3) not null,
+              `sortlen` bigint(3) not null default '0',
+              primary key(`id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="collation_character_set_applicability">
+        <Create><![CDATA[
+            create table if not exists `collation_character_set_applicability` (
+              `id` bigint unsigned not null auto_increment,
+              `collation_name` varchar(32) not null,
+              `character_set_name` varchar(32) not null,
+              primary key(`id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="engines">
+        <Create><![CDATA[
+            create table if not exists `engines` (
+              `id` bigint unsigned not null auto_increment,
+              `engine` varchar(64) not null,
+              `support` varchar(8) not null,
+              `comment` varchar(80) default null,
+              `transactions` varchar(3) default null,
+              `xa` varchar(3) default null,
+              `savepoints` varchar(3) default null,
+              primary key(`id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="global_variables">
+        <Create><![CDATA[
+            create table if not exists `global_variables` (
+              `id` bigint unsigned not null auto_increment,
+              `variable_name` varchar(64) not null,
+              `variable_value` varchar(1024) default null,
+              primary key(`id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="session_variables">
+        <Create><![CDATA[
+            create table if not exists `session_variables` (
+              `id` bigint unsigned not null auto_increment,
+              `variable_name` varchar(64) not null,
+              `variable_value` varchar(1024) default null,
+              primary key(`id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

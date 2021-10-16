@@ -1,0 +1,290 @@
+{
+    "castToDecimalOperators": [
+    {
+     "classHeader": "Cast",
+     "functionNames": "\"CastToDecimal\",\"ConvertToDecimal\"",
+     "types": [
+       {
+         "inputDataType": "Long",
+         "outputDataType": "Decimal",
+         "inputVectorType": "LongBlock",
+         "outputVectorType": "DecimalBlock",
+         "inputType": "long",
+         "outputType": "Decimal"
+       },
+      {
+        "inputDataType": "Integer",
+        "outputDataType": "Decimal",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "int",
+        "outputType": "Decimal"
+      },
+      {
+        "inputDataType": "UInteger",
+        "outputDataType": "Decimal",
+        "inputVectorType": "LongBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "long",
+        "outputType": "Decimal"
+      },
+      {
+        "inputDataType": "TinyInt",
+        "outputDataType": "Decimal",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "short",
+        "outputType": "Decimal"
+      },
+      {
+        "inputDataType": "UTinyInt",
+        "outputDataType": "Decimal",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "short",
+        "outputType": "Decimal"
+      },
+      {
+        "inputDataType": "SmallInt",
+        "outputDataType": "Decimal",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "short",
+        "outputType": "Decimal"
+      },
+      {
+        "inputDataType": "USmallInt",
+        "outputDataType": "Decimal",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "int",
+        "outputType": "Decimal"
+      },
+      {
+        "inputDataType": "MediumInt",
+        "outputDataType": "Decimal",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "int",
+        "outputType": "Decimal"
+      },
+      {
+        "inputDataType": "UMediumInt",
+        "outputDataType": "Decimal",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "DecimalBlock",
+        "inputType": "int",
+        "outputType": "Decimal"
+      }
+       ]
+    }
+    ],
+    "castToSignedOperators": [
+    {
+     "classHeader": "Cast",
+     "functionNames": "\"CastToSigned\",\"ConvertToSigned\"",
+     "types": [
+       {
+         "inputDataType": "Long",
+         "outputDataType": "Long",
+         "inputVectorType": "LongBlock",
+         "outputVectorType": "LongBlock",
+         "inputType": "long",
+         "outputType": "Long"
+       },
+      {
+        "inputDataType": "Integer",
+        "outputDataType": "Long",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "int",
+        "outputType": "Long"
+      },
+      {
+        "inputDataType": "UInteger",
+        "outputDataType": "Long",
+        "inputVectorType": "LongBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "long",
+        "outputType": "Long"
+      },
+      {
+        "inputDataType": "TinyInt",
+        "outputDataType": "Long",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "short",
+        "outputType": "Long"
+      },
+      {
+        "inputDataType": "UTinyInt",
+        "outputDataType": "Long",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "short",
+        "outputType": "Long"
+      },
+      {
+        "inputDataType": "SmallInt",
+        "outputDataType": "Long",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "short",
+        "outputType": "Long"
+      },
+      {
+        "inputDataType": "USmallInt",
+        "outputDataType": "Long",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "int",
+        "outputType": "Long"
+      },
+      {
+        "inputDataType": "MediumInt",
+        "outputDataType": "Long",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "int",
+        "outputType": "Long"
+      },
+      {
+        "inputDataType": "UMediumInt",
+        "outputDataType": "Long",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "int",
+        "outputType": "Long"
+      }
+      {
+        "inputDataType": "ULong",
+        "outputDataType": "Long",
+        "inputVectorType": "ULongBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "long",
+        "outputType": "Long"
+      }
+      {
+        "inputDataType": "Double",
+        "outputDataType": "Long",
+        "inputVectorType": "DoubleBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "double",
+        "outputType": "Long"
+      }
+      {
+        "inputDataType": "Float",
+        "outputDataType": "Long",
+        "inputVectorType": "FloatBlock",
+        "outputVectorType": "LongBlock",
+        "inputType": "float",
+        "outputType": "Long"
+      }
+       ]
+    }
+    ],
+    "castToUnsignedOperators": [
+    {
+     "classHeader": "Cast",
+     "functionNames": "\"CastToUnsigned\",\"ConvertToUnsigned\"",
+     "types": [
+       {
+         "inputDataType": "Long",
+         "outputDataType": "ULong",
+         "inputVectorType": "LongBlock",
+         "outputVectorType": "ULongBlock",
+         "inputType": "long",
+         "outputType": "ULong"
+       },
+      {
+        "inputDataType": "Integer",
+        "outputDataType": "ULong",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "int",
+        "outputType": "ULong"
+      },
+      {
+        "inputDataType": "UInteger",
+        "outputDataType": "ULong",
+        "inputVectorType": "LongBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "long",
+        "outputType": "ULong"
+      },
+      {
+        "inputDataType": "TinyInt",
+        "outputDataType": "ULong",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "short",
+        "outputType": "ULong"
+      },
+      {
+        "inputDataType": "UTinyInt",
+        "outputDataType": "ULong",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "short",
+        "outputType": "ULong"
+      },
+      {
+        "inputDataType": "SmallInt",
+        "outputDataType": "ULong",
+        "inputVectorType": "ShortBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "short",
+        "outputType": "ULong"
+      },
+      {
+        "inputDataType": "USmallInt",
+        "outputDataType": "ULong",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "int",
+        "outputType": "ULong"
+      },
+      {
+        "inputDataType": "MediumInt",
+        "outputDataType": "ULong",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "int",
+        "outputType": "ULong"
+      },
+      {
+        "inputDataType": "UMediumInt",
+        "outputDataType": "ULong",
+        "inputVectorType": "IntegerBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "int",
+        "outputType": "ULong"
+      }
+      {
+        "inputDataType": "ULong",
+        "outputDataType": "ULong",
+        "inputVectorType": "ULongBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "long",
+        "outputType": "ULong"
+      }
+      {
+        "inputDataType": "Double",
+        "outputDataType": "ULong",
+        "inputVectorType": "DoubleBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "double",
+        "outputType": "ULong"
+      }
+      {
+        "inputDataType": "Float",
+        "outputDataType": "ULong",
+        "inputVectorType": "FloatBlock",
+        "outputVectorType": "ULongBlock",
+        "inputType": "float",
+        "outputType": "ULong"
+      }
+       ]
+    }
+    ]
+}

@@ -1,0 +1,9 @@
+sql: |
+  select distinct id
+  from test_hash_tb4 a;
+
+
+plan: |
+
+  Gather(concurrent=true)
+    LogicalView(tables="[0000-0003].test_hash_tb4", shardCount=4, sql="SELECT `id` FROM `test_hash_tb4` AS `test_hash_tb4`")

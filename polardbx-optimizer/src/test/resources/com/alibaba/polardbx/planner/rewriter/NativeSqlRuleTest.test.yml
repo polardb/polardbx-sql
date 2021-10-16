@@ -1,0 +1,6 @@
+- sql: |
+    select userid from (select * from user_log) a where a.userid!=3
+
+  plan: |
+    LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `userId` AS `userid` FROM `user_log` AS `user_log` WHERE (`userId` <> 3)")
+

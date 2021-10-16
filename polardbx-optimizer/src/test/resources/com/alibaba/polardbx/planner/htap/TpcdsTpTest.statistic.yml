@@ -1,0 +1,908 @@
+call_center:
+  6
+catalog_page:
+  11729
+catalog_returns:
+  131204
+catalog_sales:
+  1885830
+customer:
+  98492
+customer_address:
+  49369
+customer_demographics:
+  1911871
+date_dim:
+  72540
+dbgen_version:
+  0
+household_demographics:
+  7311
+income_band:
+  20
+inventory:
+  11497899
+item:
+  18000
+promotion:
+  300
+reason:
+  35
+ship_mode:
+  20
+store:
+  12
+store_returns:
+  303829
+store_sales:
+  3347232
+time_dim:
+  86138
+warehouse:
+  5
+web_page:
+  60
+web_returns:
+  74300
+web_sales:
+  742812
+web_site:
+  30
+call_center.cc_call_center_id.cardinality:
+  3
+call_center.cc_call_center_sk.cardinality:
+  6
+call_center.cc_city.cardinality:
+  1
+call_center.cc_class.cardinality:
+  3
+call_center.cc_closed_date_sk.cardinality:
+  0
+call_center.cc_company.cardinality:
+  4
+call_center.cc_company_name.cardinality:
+  3
+call_center.cc_country.cardinality:
+  1
+call_center.cc_county.cardinality:
+  1
+call_center.cc_division.cardinality:
+  4
+call_center.cc_division_name.cardinality:
+  2
+call_center.cc_employees.cardinality:
+  6
+call_center.cc_gmt_offset.cardinality:
+  1
+call_center.cc_hours.cardinality:
+  2
+call_center.cc_manager.cardinality:
+  3
+call_center.cc_market_manager.cardinality:
+  3
+call_center.cc_mkt_class.cardinality:
+  4
+call_center.cc_mkt_desc.cardinality:
+  5
+call_center.cc_mkt_id.cardinality:
+  3
+call_center.cc_name.cardinality:
+  3
+call_center.cc_open_date_sk.cardinality:
+  2
+call_center.cc_rec_end_date.cardinality:
+  4
+call_center.cc_rec_start_date.cardinality:
+  4
+call_center.cc_sq_ft.cardinality:
+  5
+call_center.cc_state.cardinality:
+  1
+call_center.cc_street_name.cardinality:
+  3
+call_center.cc_street_number.cardinality:
+  3
+call_center.cc_street_type.cardinality:
+  3
+call_center.cc_suite_number.cardinality:
+  3
+call_center.cc_tax_percentage.cardinality:
+  4
+call_center.cc_zip.cardinality:
+  1
+catalog_page.cp_catalog_number.cardinality:
+  109
+catalog_page.cp_catalog_page_id.cardinality:
+  11662
+catalog_page.cp_catalog_page_number.cardinality:
+  108
+catalog_page.cp_catalog_page_sk.cardinality:
+  11653
+catalog_page.cp_department.cardinality:
+  1
+catalog_page.cp_description.cardinality:
+  11593
+catalog_page.cp_end_date_sk.cardinality:
+  97
+catalog_page.cp_start_date_sk.cardinality:
+  91
+catalog_page.cp_type.cardinality:
+  3
+catalog_returns.cr_call_center_sk.cardinality:
+  6
+catalog_returns.cr_catalog_page_sk.cardinality:
+  6507
+catalog_returns.cr_fee.cardinality:
+  9949
+catalog_returns.cr_item_sk.cardinality:
+  17833
+catalog_returns.cr_net_loss.cardinality:
+  106492
+catalog_returns.cr_order_number.cardinality:
+  111617
+catalog_returns.cr_reason_sk.cardinality:
+  35
+catalog_returns.cr_refunded_addr_sk.cardinality:
+  41302
+catalog_returns.cr_refunded_cash.cardinality:
+  92657
+catalog_returns.cr_refunded_cdemo_sk.cardinality:
+  109339
+catalog_returns.cr_refunded_customer_sk.cardinality:
+  64233
+catalog_returns.cr_refunded_hdemo_sk.cardinality:
+  7200
+catalog_returns.cr_returned_date_sk.cardinality:
+  2050
+catalog_returns.cr_returned_time_sk.cardinality:
+  69552
+catalog_returns.cr_returning_addr_sk.cardinality:
+  45500
+catalog_returns.cr_returning_cdemo_sk.cardinality:
+  131204
+catalog_returns.cr_returning_customer_sk.cardinality:
+  86694
+catalog_returns.cr_returning_hdemo_sk.cardinality:
+  7200
+catalog_returns.cr_return_amount.cardinality:
+  103685
+catalog_returns.cr_return_amt_inc_tax.cardinality:
+  112463
+catalog_returns.cr_return_quantity.cardinality:
+  100
+catalog_returns.cr_return_ship_cost.cardinality:
+  77252
+catalog_returns.cr_return_tax.cardinality:
+  28098
+catalog_returns.cr_reversed_charge.cardinality:
+  67155
+catalog_returns.cr_ship_mode_sk.cardinality:
+  20
+catalog_returns.cr_store_credit.cardinality:
+  65978
+catalog_returns.cr_warehouse_sk.cardinality:
+  5
+catalog_sales.cs_bill_addr_sk.cardinality:
+  88668
+catalog_sales.cs_bill_cdemo_sk.cardinality:
+  322207
+catalog_sales.cs_bill_customer_sk.cardinality:
+  174477
+catalog_sales.cs_bill_hdemo_sk.cardinality:
+  7231
+catalog_sales.cs_call_center_sk.cardinality:
+  6
+catalog_sales.cs_catalog_page_sk.cardinality:
+  8364
+catalog_sales.cs_coupon_amt.cardinality:
+  95041
+catalog_sales.cs_ext_discount_amt.cardinality:
+  365856
+catalog_sales.cs_ext_list_price.cardinality:
+  491622
+catalog_sales.cs_ext_sales_price.cardinality:
+  364476
+catalog_sales.cs_ext_ship_cost.cardinality:
+  271880
+catalog_sales.cs_ext_tax.cardinality:
+  96011
+catalog_sales.cs_ext_wholesale_cost.cardinality:
+  393483
+catalog_sales.cs_item_sk.cardinality:
+  24058
+catalog_sales.cs_list_price.cardinality:
+  42075
+catalog_sales.cs_net_paid.cardinality:
+  378453
+catalog_sales.cs_net_paid_inc_ship.cardinality:
+  466967
+catalog_sales.cs_net_paid_inc_ship_tax.cardinality:
+  562535
+catalog_sales.cs_net_paid_inc_tax.cardinality:
+  453781
+catalog_sales.cs_net_profit.cardinality:
+  417002
+catalog_sales.cs_order_number.cardinality:
+  336659
+catalog_sales.cs_promo_sk.cardinality:
+  300
+catalog_sales.cs_quantity.cardinality:
+  100
+catalog_sales.cs_sales_price.cardinality:
+  32101
+catalog_sales.cs_ship_addr_sk.cardinality:
+  88265
+catalog_sales.cs_ship_cdemo_sk.cardinality:
+  321852
+catalog_sales.cs_ship_customer_sk.cardinality:
+  175475
+catalog_sales.cs_ship_date_sk.cardinality:
+  1935
+catalog_sales.cs_ship_hdemo_sk.cardinality:
+  7249
+catalog_sales.cs_ship_mode_sk.cardinality:
+  20
+catalog_sales.cs_sold_date_sk.cardinality:
+  1830
+catalog_sales.cs_sold_time_sk.cardinality:
+  141678
+catalog_sales.cs_warehouse_sk.cardinality:
+  5
+catalog_sales.cs_wholesale_cost.cardinality:
+  9992
+customer.c_birth_country.cardinality:
+  211
+customer.c_birth_day.cardinality:
+  31
+customer.c_birth_month.cardinality:
+  12
+customer.c_birth_year.cardinality:
+  69
+customer.c_current_addr_sk.cardinality:
+  43174
+customer.c_current_cdemo_sk.cardinality:
+  95780
+customer.c_current_hdemo_sk.cardinality:
+  7200
+customer.c_customer_id.cardinality:
+  99531
+customer.c_customer_sk.cardinality:
+  99093
+customer.c_email_address.cardinality:
+  96909
+customer.c_first_name.cardinality:
+  4113
+customer.c_first_sales_date_sk.cardinality:
+  3651
+customer.c_first_shipto_date_sk.cardinality:
+  3651
+customer.c_last_name.cardinality:
+  4977
+customer.c_last_review_date.cardinality:
+  366
+customer.c_login.cardinality:
+  0
+customer.c_preferred_cust_flag.cardinality:
+  2
+customer.c_salutation.cardinality:
+  6
+customer_address.ca_address_id.cardinality:
+  49755
+customer_address.ca_address_sk.cardinality:
+  49730
+customer_address.ca_city.cardinality:
+  679
+customer_address.ca_country.cardinality:
+  1
+customer_address.ca_county.cardinality:
+  1846
+customer_address.ca_gmt_offset.cardinality:
+  6
+customer_address.ca_location_type.cardinality:
+  3
+customer_address.ca_state.cardinality:
+  51
+customer_address.ca_street_name.cardinality:
+  6874
+customer_address.ca_street_number.cardinality:
+  1000
+customer_address.ca_street_type.cardinality:
+  20
+customer_address.ca_suite_number.cardinality:
+  75
+customer_address.ca_zip.cardinality:
+  3706
+customer_demographics.cd_credit_rating.cardinality:
+  4
+customer_demographics.cd_demo_sk.cardinality:
+  1889340
+customer_demographics.cd_dep_college_count.cardinality:
+  7
+customer_demographics.cd_dep_count.cardinality:
+  7
+customer_demographics.cd_dep_employed_count.cardinality:
+  7
+customer_demographics.cd_education_status.cardinality:
+  7
+customer_demographics.cd_gender.cardinality:
+  2
+customer_demographics.cd_marital_status.cardinality:
+  5
+customer_demographics.cd_purchase_estimate.cardinality:
+  20
+date_dim.d_current_day.cardinality:
+  1
+date_dim.d_current_month.cardinality:
+  2
+date_dim.d_current_quarter.cardinality:
+  2
+date_dim.d_current_week.cardinality:
+  1
+date_dim.d_current_year.cardinality:
+  2
+date_dim.d_date.cardinality:
+  72601
+date_dim.d_date_id.cardinality:
+  72356
+date_dim.d_date_sk.cardinality:
+  72737
+date_dim.d_day_name.cardinality:
+  7
+date_dim.d_dom.cardinality:
+  31
+date_dim.d_dow.cardinality:
+  7
+date_dim.d_first_dom.cardinality:
+  2403
+date_dim.d_following_holiday.cardinality:
+  2
+date_dim.d_fy_quarter_seq.cardinality:
+  801
+date_dim.d_fy_week_seq.cardinality:
+  10436
+date_dim.d_fy_year.cardinality:
+  201
+date_dim.d_holiday.cardinality:
+  2
+date_dim.d_last_dom.cardinality:
+  2402
+date_dim.d_month_seq.cardinality:
+  2403
+date_dim.d_moy.cardinality:
+  12
+date_dim.d_qoy.cardinality:
+  4
+date_dim.d_quarter_name.cardinality:
+  801
+date_dim.d_quarter_seq.cardinality:
+  801
+date_dim.d_same_day_lq.cardinality:
+  72401
+date_dim.d_same_day_ly.cardinality:
+  72698
+date_dim.d_weekend.cardinality:
+  2
+date_dim.d_week_seq.cardinality:
+  10436
+date_dim.d_year.cardinality:
+  201
+dbgen_version.dv_cmdline_args.cardinality:
+  0
+dbgen_version.dv_create_date.cardinality:
+  0
+dbgen_version.dv_create_time.cardinality:
+  0
+dbgen_version.dv_version.cardinality:
+  0
+household_demographics.hd_buy_potential.cardinality:
+  6
+household_demographics.hd_demo_sk.cardinality:
+  7209
+household_demographics.hd_dep_count.cardinality:
+  10
+household_demographics.hd_income_band_sk.cardinality:
+  20
+household_demographics.hd_vehicle_count.cardinality:
+  6
+income_band.ib_income_band_sk.cardinality:
+  20
+income_band.ib_lower_bound.cardinality:
+  20
+income_band.ib_upper_bound.cardinality:
+  20
+inventory.inv_date_sk.cardinality:
+  261
+inventory.inv_item_sk.cardinality:
+  29300
+inventory.inv_quantity_on_hand.cardinality:
+  1001
+inventory.inv_warehouse_sk.cardinality:
+  5
+item.i_brand.cardinality:
+  712
+item.i_brand_id.cardinality:
+  950
+item.i_category.cardinality:
+  10
+item.i_category_id.cardinality:
+  10
+item.i_class.cardinality:
+  99
+item.i_class_id.cardinality:
+  16
+item.i_color.cardinality:
+  92
+item.i_container.cardinality:
+  1
+item.i_current_price.cardinality:
+  3224
+item.i_formulation.cardinality:
+  15189
+item.i_item_desc.cardinality:
+  15087
+item.i_item_id.cardinality:
+  8999
+item.i_item_sk.cardinality:
+  17821
+item.i_manager_id.cardinality:
+  100
+item.i_manufact.cardinality:
+  995
+item.i_manufact_id.cardinality:
+  997
+item.i_product_name.cardinality:
+  17760
+item.i_rec_end_date.cardinality:
+  3
+item.i_rec_start_date.cardinality:
+  4
+item.i_size.cardinality:
+  7
+item.i_units.cardinality:
+  21
+item.i_wholesale_cost.cardinality:
+  2012
+promotion.p_channel_catalog.cardinality:
+  1
+promotion.p_channel_demo.cardinality:
+  1
+promotion.p_channel_details.cardinality:
+  296
+promotion.p_channel_dmail.cardinality:
+  2
+promotion.p_channel_email.cardinality:
+  1
+promotion.p_channel_event.cardinality:
+  1
+promotion.p_channel_press.cardinality:
+  1
+promotion.p_channel_radio.cardinality:
+  1
+promotion.p_channel_tv.cardinality:
+  1
+promotion.p_cost.cardinality:
+  1
+promotion.p_discount_active.cardinality:
+  1
+promotion.p_end_date_sk.cardinality:
+  267
+promotion.p_item_sk.cardinality:
+  292
+promotion.p_promo_id.cardinality:
+  298
+promotion.p_promo_name.cardinality:
+  10
+promotion.p_promo_sk.cardinality:
+  299
+promotion.p_purpose.cardinality:
+  1
+promotion.p_response_target.cardinality:
+  1
+promotion.p_start_date_sk.cardinality:
+  269
+reason.r_reason_desc.cardinality:
+  34
+reason.r_reason_id.cardinality:
+  35
+reason.r_reason_sk.cardinality:
+  35
+ship_mode.sm_carrier.cardinality:
+  20
+ship_mode.sm_code.cardinality:
+  4
+ship_mode.sm_contract.cardinality:
+  20
+ship_mode.sm_ship_mode_id.cardinality:
+  20
+ship_mode.sm_ship_mode_sk.cardinality:
+  20
+ship_mode.sm_type.cardinality:
+  6
+store.s_city.cardinality:
+  2
+store.s_closed_date_sk.cardinality:
+  3
+store.s_company_id.cardinality:
+  1
+store.s_company_name.cardinality:
+  1
+store.s_country.cardinality:
+  1
+store.s_county.cardinality:
+  1
+store.s_division_id.cardinality:
+  1
+store.s_division_name.cardinality:
+  1
+store.s_floor_space.cardinality:
+  10
+store.s_geography_class.cardinality:
+  1
+store.s_gmt_offset.cardinality:
+  1
+store.s_hours.cardinality:
+  2
+store.s_manager.cardinality:
+  9
+store.s_market_desc.cardinality:
+  10
+store.s_market_id.cardinality:
+  7
+store.s_market_manager.cardinality:
+  9
+store.s_number_employees.cardinality:
+  10
+store.s_rec_end_date.cardinality:
+  3
+store.s_rec_start_date.cardinality:
+  4
+store.s_state.cardinality:
+  1
+store.s_store_id.cardinality:
+  6
+store.s_store_name.cardinality:
+  10
+store.s_store_sk.cardinality:
+  12
+store.s_street_name.cardinality:
+  12
+store.s_street_number.cardinality:
+  10
+store.s_street_type.cardinality:
+  9
+store.s_suite_number.cardinality:
+  12
+store.s_tax_precentage.cardinality:
+  4
+store.s_zip.cardinality:
+  2
+store_returns.sr_addr_sk.cardinality:
+  52612
+store_returns.sr_cdemo_sk.cardinality:
+  282868
+store_returns.sr_customer_sk.cardinality:
+  101606
+store_returns.sr_fee.cardinality:
+  9954
+store_returns.sr_hdemo_sk.cardinality:
+  7200
+store_returns.sr_item_sk.cardinality:
+  18490
+store_returns.sr_net_loss.cardinality:
+  127080
+store_returns.sr_reason_sk.cardinality:
+  35
+store_returns.sr_refunded_cash.cardinality:
+  106285
+store_returns.sr_returned_date_sk.cardinality:
+  2000
+store_returns.sr_return_amt.cardinality:
+  120234
+store_returns.sr_return_amt_inc_tax.cardinality:
+  153365
+store_returns.sr_return_quantity.cardinality:
+  100
+store_returns.sr_return_ship_cost.cardinality:
+  85660
+store_returns.sr_return_tax.cardinality:
+  28418
+store_returns.sr_return_time_sk.cardinality:
+  34433
+store_returns.sr_reversed_charge.cardinality:
+  75196
+store_returns.sr_store_credit.cardinality:
+  74543
+store_returns.sr_store_sk.cardinality:
+  6
+store_returns.sr_ticket_number.cardinality:
+  216671
+store_sales.ss_addr_sk.cardinality:
+  110661
+store_sales.ss_cdemo_sk.cardinality:
+  562887
+store_sales.ss_coupon_amt.cardinality:
+  129669
+store_sales.ss_customer_sk.cardinality:
+  260579
+store_sales.ss_ext_discount_amt.cardinality:
+  129669
+store_sales.ss_ext_list_price.cardinality:
+  646692
+store_sales.ss_ext_sales_price.cardinality:
+  455236
+store_sales.ss_ext_tax.cardinality:
+  103392
+store_sales.ss_ext_wholesale_cost.cardinality:
+  560539
+store_sales.ss_hdemo_sk.cardinality:
+  7209
+store_sales.ss_item_sk.cardinality:
+  25099
+store_sales.ss_list_price.cardinality:
+  27811
+store_sales.ss_net_paid.cardinality:
+  476656
+store_sales.ss_net_paid_inc_tax.cardinality:
+  593747
+store_sales.ss_net_profit.cardinality:
+  537985
+store_sales.ss_promo_sk.cardinality:
+  300
+store_sales.ss_quantity.cardinality:
+  100
+store_sales.ss_sales_price.cardinality:
+  26146
+store_sales.ss_sold_date_sk.cardinality:
+  1823
+store_sales.ss_sold_time_sk.cardinality:
+  93677
+store_sales.ss_store_sk.cardinality:
+  6
+store_sales.ss_ticket_number.cardinality:
+  617493
+store_sales.ss_wholesale_cost.cardinality:
+  10009
+time_dim.t_am_pm.cardinality:
+  2
+time_dim.t_hour.cardinality:
+  24
+time_dim.t_meal_time.cardinality:
+  3
+time_dim.t_minute.cardinality:
+  60
+time_dim.t_second.cardinality:
+  60
+time_dim.t_shift.cardinality:
+  3
+time_dim.t_sub_shift.cardinality:
+  4
+time_dim.t_time.cardinality:
+  85766
+time_dim.t_time_id.cardinality:
+  85960
+time_dim.t_time_sk.cardinality:
+  85766
+warehouse.w_city.cardinality:
+  2
+warehouse.w_country.cardinality:
+  1
+warehouse.w_county.cardinality:
+  1
+warehouse.w_gmt_offset.cardinality:
+  1
+warehouse.w_state.cardinality:
+  1
+warehouse.w_street_name.cardinality:
+  5
+warehouse.w_street_number.cardinality:
+  5
+warehouse.w_street_type.cardinality:
+  4
+warehouse.w_suite_number.cardinality:
+  5
+warehouse.w_warehouse_id.cardinality:
+  5
+warehouse.w_warehouse_name.cardinality:
+  5
+warehouse.w_warehouse_sk.cardinality:
+  5
+warehouse.w_warehouse_sq_ft.cardinality:
+  5
+warehouse.w_zip.cardinality:
+  2
+web_page.wp_access_date_sk.cardinality:
+  42
+web_page.wp_autogen_flag.cardinality:
+  2
+web_page.wp_char_count.cardinality:
+  49
+web_page.wp_creation_date_sk.cardinality:
+  9
+web_page.wp_customer_sk.cardinality:
+  23
+web_page.wp_image_count.cardinality:
+  6
+web_page.wp_link_count.cardinality:
+  19
+web_page.wp_max_ad_count.cardinality:
+  5
+web_page.wp_rec_end_date.cardinality:
+  3
+web_page.wp_rec_start_date.cardinality:
+  4
+web_page.wp_type.cardinality:
+  7
+web_page.wp_url.cardinality:
+  1
+web_page.wp_web_page_id.cardinality:
+  30
+web_page.wp_web_page_sk.cardinality:
+  59
+web_returns.wr_account_credit.cardinality:
+  45377
+web_returns.wr_fee.cardinality:
+  9938
+web_returns.wr_item_sk.cardinality:
+  16983
+web_returns.wr_net_loss.cardinality:
+  61601
+web_returns.wr_order_number.cardinality:
+  49598
+web_returns.wr_reason_sk.cardinality:
+  35
+web_returns.wr_refunded_addr_sk.cardinality:
+  41436
+web_returns.wr_refunded_cash.cardinality:
+  56743
+web_returns.wr_refunded_cdemo_sk.cardinality:
+  70301
+web_returns.wr_refunded_customer_sk.cardinality:
+  60024
+web_returns.wr_refunded_hdemo_sk.cardinality:
+  7200
+web_returns.wr_returned_date_sk.cardinality:
+  2117
+web_returns.wr_returned_time_sk.cardinality:
+  56705
+web_returns.wr_returning_addr_sk.cardinality:
+  41467
+web_returns.wr_returning_cdemo_sk.cardinality:
+  70321
+web_returns.wr_returning_customer_sk.cardinality:
+  60035
+web_returns.wr_returning_hdemo_sk.cardinality:
+  7200
+web_returns.wr_return_amt.cardinality:
+  59894
+web_returns.wr_return_amt_inc_tax.cardinality:
+  63437
+web_returns.wr_return_quantity.cardinality:
+  100
+web_returns.wr_return_ship_cost.cardinality:
+  53971
+web_returns.wr_return_tax.cardinality:
+  21456
+web_returns.wr_reversed_charge.cardinality:
+  46048
+web_returns.wr_web_page_sk.cardinality:
+  60
+web_sales.ws_bill_addr_sk.cardinality:
+  44039
+web_sales.ws_bill_cdemo_sk.cardinality:
+  85813
+web_sales.ws_bill_customer_sk.cardinality:
+  59310
+web_sales.ws_bill_hdemo_sk.cardinality:
+  7242
+web_sales.ws_coupon_amt.cardinality:
+  74970
+web_sales.ws_ext_discount_amt.cardinality:
+  288885
+web_sales.ws_ext_list_price.cardinality:
+  432296
+web_sales.ws_ext_sales_price.cardinality:
+  286838
+web_sales.ws_ext_ship_cost.cardinality:
+  202448
+web_sales.ws_ext_tax.cardinality:
+  70668
+web_sales.ws_ext_wholesale_cost.cardinality:
+  313325
+web_sales.ws_item_sk.cardinality:
+  19813
+web_sales.ws_list_price.cardinality:
+  32415
+web_sales.ws_net_paid.cardinality:
+  301259
+web_sales.ws_net_paid_inc_ship.cardinality:
+  399740
+web_sales.ws_net_paid_inc_ship_tax.cardinality:
+  548517
+web_sales.ws_net_paid_inc_tax.cardinality:
+  388433
+web_sales.ws_net_profit.cardinality:
+  341778
+web_sales.ws_order_number.cardinality:
+  87926
+web_sales.ws_promo_sk.cardinality:
+  300
+web_sales.ws_quantity.cardinality:
+  100
+web_sales.ws_sales_price.cardinality:
+  25271
+web_sales.ws_ship_addr_sk.cardinality:
+  43949
+web_sales.ws_ship_cdemo_sk.cardinality:
+  85865
+web_sales.ws_ship_customer_sk.cardinality:
+  59593
+web_sales.ws_ship_date_sk.cardinality:
+  1950
+web_sales.ws_ship_hdemo_sk.cardinality:
+  7229
+web_sales.ws_ship_mode_sk.cardinality:
+  20
+web_sales.ws_sold_date_sk.cardinality:
+  1823
+web_sales.ws_sold_time_sk.cardinality:
+  52824
+web_sales.ws_warehouse_sk.cardinality:
+  5
+web_sales.ws_web_page_sk.cardinality:
+  60
+web_sales.ws_web_site_sk.cardinality:
+  30
+web_sales.ws_wholesale_cost.cardinality:
+  9901
+web_site.web_city.cardinality:
+  2
+web_site.web_class.cardinality:
+  1
+web_site.web_close_date_sk.cardinality:
+  10
+web_site.web_company_id.cardinality:
+  5
+web_site.web_company_name.cardinality:
+  5
+web_site.web_country.cardinality:
+  1
+web_site.web_county.cardinality:
+  1
+web_site.web_gmt_offset.cardinality:
+  1
+web_site.web_manager.cardinality:
+  24
+web_site.web_market_manager.cardinality:
+  26
+web_site.web_mkt_class.cardinality:
+  25
+web_site.web_mkt_desc.cardinality:
+  25
+web_site.web_mkt_id.cardinality:
+  6
+web_site.web_name.cardinality:
+  5
+web_site.web_open_date_sk.cardinality:
+  15
+web_site.web_rec_end_date.cardinality:
+  3
+web_site.web_rec_start_date.cardinality:
+  4
+web_site.web_site_id.cardinality:
+  15
+web_site.web_site_sk.cardinality:
+  30
+web_site.web_state.cardinality:
+  1
+web_site.web_street_name.cardinality:
+  28
+web_site.web_street_number.cardinality:
+  24
+web_site.web_street_type.cardinality:
+  15
+web_site.web_suite_number.cardinality:
+  25
+web_site.web_tax_percentage.cardinality:
+  9
+web_site.web_zip.cardinality:
+  2

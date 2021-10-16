@@ -1,0 +1,219 @@
+# one sharding table
+- sql: |
+    update test_hash_ta a set a.name = "a" where a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_ta", sql="UPDATE `test_hash_ta` AS `test_hash_ta` SET `name` = ? WHERE (`id` = ?)")
+
+- sql: |
+    update test_hash_ta a, test_hash_ta b set b.name = "a" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_ta", sql="UPDATE `test_hash_ta` AS `test_hash_ta` INNER JOIN `test_hash_ta` AS `test_hash_ta0` ON (((`test_hash_ta`.`id` = ?) AND (`test_hash_ta0`.`id` = ?)) AND (`test_hash_ta`.`id` = `test_hash_ta0`.`id`)) SET `test_hash_ta0`.`name` = ?")
+
+- sql: |
+    update test_broadcast a, test_broadcast b set b.name = "a" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast", sql="UPDATE `test_broadcast` AS `a`, `test_broadcast` AS `b` SET `b`.`name` = ? WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="a,1")
+
+- sql: |
+    update test_hash_tb, test_hash_ta set test_hash_ta.name = "a" where test_hash_ta.id = test_hash_tb.id;
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].test_hash_tb,test_hash_ta", shardCount=4, sql="UPDATE `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_ta` AS `test_hash_ta` ON (`test_hash_tb`.`id` = `test_hash_ta`.`id`) SET `test_hash_ta`.`name` = ?")
+
+- sql: |
+    update test_hash_tb b, test_hash_ta a set a.name = "a" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb,test_hash_ta", sql="UPDATE `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_ta` AS `test_hash_ta` ON (((`test_hash_tb`.`id` = ?) AND (`test_hash_ta`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_hash_ta`.`id`)) SET `test_hash_ta`.`name` = ?")
+
+- sql: |
+    update test_hash_tb as test_hash_ta, test_hash_ta as test_hash_tb set test_hash_tb.name = "a" where test_hash_ta.id = test_hash_tb.id and test_hash_tb.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb,test_hash_ta", sql="UPDATE `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_ta` AS `test_hash_ta` ON (((`test_hash_tb`.`id` = ?) AND (`test_hash_ta`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_hash_ta`.`id`)) SET `test_hash_ta`.`name` = ?")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,FORBID_EXECUTE_DML_ALL=false)*/
+    update test_hash_tb a, test_hash_ta b set a.name = "a";
+
+  plan: |
+
+    LogicalModify(TYPE="UPDATE", SET="test_hash_tb.name=?0")
+      Project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time", EXPR$0="?0")
+        NlJoin(condition="true", type="inner")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` FOR UPDATE")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` FOR UPDATE")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    update test_broadcast a, test_hash_tb b set a.name = "a" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="UPDATE", SET="test_broadcast.name=?0")
+      LogicalView(tables="optest_0001.test_hash_tb,test_broadcast", sql="SELECT `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_tb`.`id` AS `id0`, `test_hash_tb`.`name` AS `name0`, `test_hash_tb`.`create_time` AS `create_time0`, ? FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_broadcast` AS `test_broadcast` ON (((`test_broadcast`.`id` = ?) AND (`test_hash_tb`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_broadcast`.`id`)) FOR UPDATE")
+
+- sql: |
+    update test_broadcast a, test_hash_tb b set b.name = "a" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0001.test_hash_tb,test_broadcast", sql="UPDATE `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_broadcast` AS `test_broadcast` ON (((`test_broadcast`.`id` = ?) AND (`test_hash_tb`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_broadcast`.`id`)) SET `test_hash_tb`.`name` = ?")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    update test_broadcast a, test_hash_tb b set a.name = "a", b.name = "b" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="UPDATE", SET="test_broadcast.name=?0, test_hash_tb.name=?1")
+      LogicalView(tables="optest_0001.test_hash_tb,test_broadcast", sql="SELECT `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_tb`.`id` AS `id0`, `test_hash_tb`.`name` AS `name0`, `test_hash_tb`.`create_time` AS `create_time0`, ?, ? FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_broadcast` AS `test_broadcast` ON (((`test_broadcast`.`id` = ?) AND (`test_hash_tb`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_broadcast`.`id`)) FOR UPDATE")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    update test_single a, test_hash_tb b set b.name = "a" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="UPDATE", SET="test_hash_tb.name=?0")
+      Project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time", EXPR$0="?0")
+        HashJoin(condition="id = id", type="inner")
+          LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?) FOR UPDATE")
+          LogicalView(tables="optest_0000.test_single", sql="SELECT `id`, `name`, `create_time` FROM `test_single` AS `test_single` WHERE (`id` = ?) FOR UPDATE")
+
+- sql: |
+    update test_single a join test_hash_tb b set b.name = "a" where a.id = b.id and a.id = 0;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_single, test_hash_tb]", sql="UPDATE ? AS `a` INNER JOIN ? AS `b` SET `b`.`name` = ? WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="`test_single`,`test_hash_tb`,a,0")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    update test_single a, test_hash_tb b set a.name = "a", b.name = "b" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalModify(TYPE="UPDATE", SET="test_single.name=?0, test_hash_tb.name=?1")
+      Project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time", EXPR$0="?0", EXPR$1="?1")
+        HashJoin(condition="id = id", type="inner")
+          LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?) FOR UPDATE")
+          LogicalView(tables="optest_0000.test_single", sql="SELECT `id`, `name`, `create_time` FROM `test_single` AS `test_single` WHERE (`id` = ?) FOR UPDATE")
+
+- sql: |
+    update test_broadcast a, test_broadcast_b b set a.name = "a" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast_b", sql="UPDATE `test_broadcast` AS `a`, `test_broadcast_b` AS `b` SET `a`.`name` = ? WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="a,1")
+
+- sql: |
+    update test_broadcast a, test_broadcast_b b set b.name = "b" where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast_b", sql="UPDATE `test_broadcast` AS `a`, `test_broadcast_b` AS `b` SET `b`.`name` = ? WHERE ((`a`.`id` = `b`.`id`) AND (`a`.`id` = ?))", params="b,1")
+
+- sql: |
+    update test_hash_ta a join (select name, id from test_hash_tb b where b.name = "c" and b.id = 1) b set a.name = b.name where a.id = b.id;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_ta, test_hash_tb]", sql="UPDATE ? AS `a` INNER JOIN (SELECT `b`.`name` AS `name`, `b`.`id` AS `id` FROM ? AS `b` WHERE ((`b`.`name` = ?) AND (`b`.`id` = ?))) AS `b` SET `a`.`name` = `b`.`name` WHERE (`a`.`id` = `b`.`id`)", params="`test_hash_ta`,`test_hash_tb`,c,1")
+
+- sql: |
+    update test_broadcast a join (select name, id from test_broadcast b where b.name = "c" and b.id = 1) b set a.name = b.name where a.id = b.id;
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_broadcast,test_broadcast", sql="UPDATE `test_broadcast` AS `a` INNER JOIN (SELECT `b`.`name` AS `name`, `b`.`id` AS `id` FROM `test_broadcast` AS `b` WHERE ((`b`.`name` = ?) AND (`b`.`id` = ?))) AS `b` SET `a`.`name` = `b`.`name` WHERE (`a`.`id` = `b`.`id`)", params="c,1")
+
+- sql: |
+    update test_hash_tb a join (select name, id from test_broadcast b where b.name = "c" and b.id = 1) b set a.name = b.name where a.id = b.id;
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_broadcast]", sql="UPDATE ? AS `a` INNER JOIN (SELECT `b`.`name` AS `name`, `b`.`id` AS `id` FROM ? AS `b` WHERE ((`b`.`name` = ?) AND (`b`.`id` = ?))) AS `b` SET `a`.`name` = `b`.`name` WHERE (`a`.`id` = `b`.`id`)", params="`test_hash_tb`,`test_broadcast`,c,1")
+
+- sql: |
+    update test_broadcast a join (select name, id from test_hash_ta b where b.name = "c" and b.id = 1) b set a.name = b.name where a.id = b.id;
+
+  plan: |
+
+    LogicalModify(TYPE="UPDATE", SET="test_broadcast.name=$3")
+      LogicalView(tables="optest_0001.test_hash_ta,test_broadcast", sql="SELECT `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `t`.`name` AS `name0`, `t`.`id` AS `id0`, `t`.`name` FROM (SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` WHERE ((`name` = ?) AND (`id` = ?))) AS `t` INNER JOIN `test_broadcast` AS `test_broadcast` ON (`t`.`id` = `test_broadcast`.`id`) FOR UPDATE")
+
+  # Modify sharding key
+
+# Modify sharding key of primary
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN = true)*/
+    update test_hash_tb a set a.id = "3", a.name = "b" where a.id = 1;
+
+  plan: |
+
+    LogicalRelocate(TYPE=UPDATE, SET="test_hash_tb.id=?0, test_hash_tb.name=?1", RELOCATE="test_hash_tb")
+      LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time`, ?, ? FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?) FOR UPDATE")
+
+  # Modify sharding key of primary and not gsi
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN = true)*/
+    update t1 a set a.c1 = 1 where a.c1 = 3;
+
+  plan: |
+
+    LogicalRelocate(TYPE=UPDATE, SET="t1.c1=?0", RELOCATE="t1", UPDATE="t1_i_a, t1_i_b")
+      LogicalView(tables="optest_0000.t1_03", sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`, ? FROM `t1` AS `t1` WHERE (`c1` = ?) FOR UPDATE")
+
+  # Modify sharding key of primary and one gsi
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN = true)*/
+    update t1 a set a.c1 = 1, a.c2 = 2 where a.c1 = 3;
+
+  plan: |
+
+    LogicalRelocate(TYPE=UPDATE, SET="t1.c1=?0, t1.c2=?1", RELOCATE="t1, t1_i_b", UPDATE="t1_i_a")
+      LogicalView(tables="optest_0000.t1_03", sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`, ?, ? FROM `t1` AS `t1` WHERE (`c1` = ?) FOR UPDATE")
+
+  # Modify sharding key of one gsi not primary and skip another gsi
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN = true)*/
+    update t1 a set a.c3 = 1, a.c6 = 2 where a.c3 = 3;
+
+  plan: |
+
+    LogicalRelocate(TYPE=UPDATE, SET="t1.c3=?0, t1.c6=?1", RELOCATE="t1_i_a", UPDATE="t1")
+      Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8", EXPR$0="?0", EXPR$1="?1")
+        BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+          IndexScan(tables="optest_0000.t1_i_a_03", sql="SELECT `pk`, `c1`, `c3`, `c5`, `c6` FROM `t1_i_a` AS `t1_i_a` WHERE (`c3` = ?) FOR UPDATE")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c2`, `c4`, `c7`, `c8` FROM `t1` AS `t1` WHERE ((`c3` = ?) AND (`pk` IN (...))) FOR UPDATE")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN = true)*/
+    update test_hash_ta a join test_hash_tb b on a.id = b.id set a.id = b.id * 2;
+
+  plan: |
+
+    LogicalRelocate(TYPE=UPDATE, SET="test_hash_ta.id=*($3, ?0)", RELOCATE="test_hash_ta")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_ta,test_hash_tb", shardCount=4, sql="SELECT `test_hash_ta`.`id`, `test_hash_ta`.`name`, `test_hash_ta`.`create_time`, `test_hash_tb`.`id` AS `id0`, `test_hash_tb`.`name` AS `name0`, `test_hash_tb`.`create_time` AS `create_time0`, (`test_hash_tb`.`id` * ?) FROM `test_hash_ta` AS `test_hash_ta` INNER JOIN `test_hash_tb` AS `test_hash_tb` ON (`test_hash_ta`.`id` = `test_hash_tb`.`id`) FOR UPDATE")
+
+# Fastsql bug fixed
+- sql: |
+    update self_join_t1 a join self_join_t1 b on a.c1 = b.c1 and a.pk > b.pk set a.pk = a.pk * 2, b.pk = b.pk * 5
+
+  plan: |
+
+    LogicalModifyView(tables="[0000-0003].self_join_t1", shardCount=4, sql="UPDATE `self_join_t1` AS `self_join_t1` INNER JOIN `self_join_t1` AS `self_join_t10` ON ((`self_join_t1`.`c1` = `self_join_t10`.`c1`) AND (`self_join_t1`.`pk` > `self_join_t10`.`pk`)) SET `self_join_t1`.`pk` = (`self_join_t1`.`pk` * ?) , `self_join_t10`.`pk` = (`self_join_t10`.`pk` * ?)")

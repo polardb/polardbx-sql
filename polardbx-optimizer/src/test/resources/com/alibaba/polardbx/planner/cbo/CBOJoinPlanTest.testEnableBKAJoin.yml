@@ -1,0 +1,78 @@
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t_shard_id1,t_shard_id2)*/
+    select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    Project(id="id")
+      BKAJoin(condition="id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2` WHERE (`name` IN (...))")
+
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t_shard_id2,t_shard_id1)*/
+    select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    Project(id="id0")
+      BKAJoin(condition="id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1` WHERE (`name` IN (...))")
+    
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t_shard_id1,t_shard_id2) BKA_JOIN((t_shard_id1,t_shard_id2),t_shard_id3)*/
+    select a.name from
+          t_shard_id1 a left join t_shard_id2 b on a.name = b.name and a.create_time = '2010-10-10 12:59:59' 
+      left join t_shard_id3 c on a.create_time = c.create_time and c.name = 'xy'
+
+  plan: |
+
+    Project(name="name")
+      BKAJoin(condition="create_time = create_time", type="left")
+        BKAJoin(condition="name = name AND =", type="left")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name`, `create_time`, (`create_time` = '2010-10-10 12:59:59') AS `=` FROM `t_shard_id1` AS `t_shard_id1`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` FROM `t_shard_id2` AS `t_shard_id2` WHERE (`name` IN (...))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id3", shardCount=4, sql="SELECT `create_time` FROM `t_shard_id3` AS `t_shard_id3` WHERE ((`name` = 'xy') AND (`create_time` IN (...)))")

@@ -1,0 +1,62 @@
+- sql: |
+   select * FROM nation2 as nation WHERE nation.n_name <= 'FEGYPT' and nation.n_nationkey BETWEEN 3.0074010680984125 AND 4.826269631113;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="nation2[p3,p8]", shardcount=2, sql="select `n_nationkey`, `n_name`, `n_regionkey`, `n_comment` from `nation2` as `nation2` where ((`n_name` <= 'fegypt') and (`n_nationkey` between 3.0074010680984125 and 4.826269631113))")
+    
+- sql: |
+    select pk1 from t_rng_cols where pk1 between 100 and 350 and pk2 between 1000 and 2000 ;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="t_rng_cols[p1,p2,p3]", shardcount=3, sql="select `pk1` from `t_rng_cols` as `t_rng_cols` where ((`pk1` between 100 and 350) and (`pk2` between 1000 and 2000))")
+
+
+- sql: |
+    select a,b,c,d from random_pruning_test where ((b <= 5000) AND (b <= 4000)) OR ((c >= 10000) AND (a = 200)) order by a,b,c;
+
+  plan: |
+    mergesort(sort="a asc,b asc,c asc")
+      logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where (((`b` <= 5000) and (`b` <= 4000)) or ((`c` >= 10000) and (`a` = 200))) order by `a`, `b`, `c`")
+    
+
+
+- sql: |
+     select a,b,c,d from random_pruning_test where ((a < 100) OR (b < 2000) OR (b > 1000) OR (c <= 30000)) AND (b <= 3000) AND ((b >= 1000) OR (c <= 10000) OR (a > 900)) order by a,b,c
+
+  plan: |
+    mergesort(sort="a asc,b asc,c asc")
+      logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where ((((((`a` < 100) or (`b` < 2000)) or (`b` > 1000)) or (`c` <= 30000)) and (`b` <= 3000)) and (((`b` >= 1000) or (`c` <= 10000)) or (`a` > 900))) order by `a`, `b`, `c`")
+
+
+
+- sql: |
+     select a,b,c,d from random_pruning_test where (((c <= 70000) OR (c >= 70000) OR (b > 8000) OR (a < 900)) AND (a >= 700)) OR (a >= 200) OR (c <= 30000) OR (c = 80000)
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where ((((((((`c` <= 70000) or (`c` >= 70000)) or (`b` > 8000)) or (`a` < 900)) and (`a` >= 700)) or (`a` >= 200)) or (`c` <= 30000)) or (`c` = 80000))")
+
+
+
+- sql: |
+    select a,b,c,d from random_pruning_test where (((b <= 7000) OR ((b >= 3000) OR (c < 80000) OR (b < 5000)) OR (b < 9000) OR (c >= 40000) OR (b >= 5000) OR (b < 1000) OR (a <= 300)) AND (((c > 70000) AND (b = 6000) AND (c > 80000) AND (c >= 30000)) AND (a = 700)) AND (a <= 300)) OR (b < 4000) order by a,b,c;
+
+  plan: |
+    mergesort(sort="a asc,b asc,c asc")
+      logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where ((((((((((((((((`b` <= 7000) or (`b` >= 3000)) or (`c` < 80000)) or (`b` < 5000)) or (`b` < 9000)) or (`c` >= 40000)) or (`b` >= 5000)) or (`b` < 1000)) or (`a` <= 300)) and (`c` > 70000)) and (`b` = 6000)) and (`c` > 80000)) and (`c` >= 30000)) and (`a` = 700)) and (`a` <= 300)) or (`b` < 4000)) order by `a`, `b`, `c`")
+
+
+- sql: |
+    select pk1 from t_rng_cols where ((pk1 between 100 and 350) and (pk2 between 1000 and 2000)) or pk3=5;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="t_rng_cols[p0,p1,p2,p3,p4]", shardcount=5, sql="select `pk1` from `t_rng_cols` as `t_rng_cols` where (((`pk1` between 100 and 350) and (`pk2` between 1000 and 2000)) or (`pk3` = 5))")
+    
+- sql: |
+     select a,b,c,d from random_pruning_test where (( b > 5000) AND ( b >= 7000) AND ( c < 50000)) OR (( a <= 500) AND ( b <= 8000)) OR ( b > 9000) OR ( c < 90000) OR ( a = 800)
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where (((((((`b` > 5000) and (`b` >= 7000)) and (`c` < 50000)) or ((`a` <= 500) and (`b` <= 8000))) or (`b` > 9000)) or (`c` < 90000)) or (`a` = 800))")

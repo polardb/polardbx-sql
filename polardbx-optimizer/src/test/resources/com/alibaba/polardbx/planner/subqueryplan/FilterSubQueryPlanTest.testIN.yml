@@ -1,0 +1,922 @@
+- #// @desc
+  #// IN,?????????????, ??? ???
+  sql: |
+    select a.id
+    from 
+      test_hash_tb a
+    where 
+       a.id in ( 
+                  select id     
+                  from test_hash_tb2 b
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2`))")
+
+- #// @desc
+  #// IN,?????????????? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b`))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024)))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where int_col4>1024
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (`b`.`int_col4` > 1024)))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by?? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024
+                  order by int_col3
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          Project($f0="$f0")
+            MergeSort(sort="$f1 ASC")
+              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` AS `$f0`, `int_col3` AS `$f1` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024) ORDER BY `int_col3`")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+    Project($f0="$f0")
+      MergeSort(sort="$f1 ASC")
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` AS `$f0`, `int_col3` AS `$f1` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024) ORDER BY `int_col3`")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by?? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where int_col4>1024
+                  order by int_col3
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (`b`.`int_col4` > 1024) ORDER BY `b`.`int_col3`))")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by ?? agg?? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024
+                  group by id
+                  order by id
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          MergeSort(sort="$f0 ASC")
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024) ORDER BY `id`")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+    MergeSort(sort="$f0 ASC")
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024) ORDER BY `id`")
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by ?? agg ?? limit?? ??? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where int_col4>1024
+                  group by id
+                  order by id
+                  limit 10,2
+                )
+
+  plan: |
+
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          MergeSort(sort="$f0 ASC", offset=10, fetch=2)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024) ORDER BY `id` LIMIT 12")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+    MergeSort(sort="$f0 ASC", offset=10, fetch=2)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024) ORDER BY `id` LIMIT 12")
+
+
+- #// @desc
+  #// IN,?????????????, ?????? where ?????? order by ?? agg ?? limit?? ???? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where int_col4>1024
+                  group by id
+                  order by id
+                  limit 10,2
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (`b`.`int_col4` > 1024) GROUP BY `b`.`id` ORDER BY `id` LIMIT 2 OFFSET 10))")
+
+- #// @desc
+  #// IN,?????????????????? ??
+  sql: |
+    /*+TDDL:MATERIALIZED_SEMI_JOIN(test_hash_tb, test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb2 b
+                )
+
+  plan: |
+
+    MaterializedSemiJoin(condition="id = int_col1", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (...))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- #// @desc
+  #// IN,?????????????????? ??
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb6 b
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b`))")
+
+- #// @desc
+  #// IN,???????????????, where?? ???
+  sql: |
+    /*+TDDL:MATERIALIZED_SEMI_JOIN(test_hash_tb, test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb2 b
+                  where int_col1>3
+                )
+
+  plan: |
+
+    MaterializedSemiJoin(condition="id = int_col1", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`id` > 3) AND (`id` IN (...)))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3)")
+
+- #// @desc
+  #// IN,???????????????, where?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb6 b
+                  where int_col1>3
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE (`b`.`int_col1` > 3)))")
+
+- #// @desc
+  #// IN,???????????????, where , agg?? ???
+  sql: |
+    /*+TDDL:MATERIALIZED_SEMI_JOIN(test_hash_tb, test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select count(*)
+                  from test_hash_tb2 b
+                  where int_col1>3
+                  group by id
+                )
+
+  plan: |
+
+    MaterializedSemiJoin(condition="id = count(*)", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (...))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3) GROUP BY `id`")
+
+
+- #// @desc
+  #// IN,???????????????, where , agg?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select count(*)
+                  from test_hash_tb6 b
+                  where int_col1>3
+                  group by id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb6` AS `b` WHERE (`b`.`int_col1` > 3) GROUP BY `b`.`id`))")
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select count(*)
+                  from test_hash_tb2 b
+                  where int_col1>3
+                  group by id
+                  order by id
+                )
+
+  plan: |
+
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          Project($f0="count(*)")
+            MergeSort(sort="id ASC")
+              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3) GROUP BY `id` ORDER BY `id`")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+    Project($f0="count(*)")
+      MergeSort(sort="id ASC")
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3) GROUP BY `id` ORDER BY `id`")
+
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select count(*)
+                  from test_hash_tb6 b
+                  where int_col1>3
+                  group by id
+                  order by id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb6` AS `b` WHERE (`b`.`int_col1` > 3) GROUP BY `b`.`id` ORDER BY `b`.`id`))")
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by , limit?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select count(*)
+                  from test_hash_tb2 b
+                  where int_col1>3
+                  group by id
+                  order by id
+                  limit 4
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          Project($f0="count(*)")
+            MergeSort(sort="id ASC", offset=0, fetch=4)
+              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3) GROUP BY `id` ORDER BY `id` LIMIT 4")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+    Project($f0="count(*)")
+      MergeSort(sort="id ASC", offset=0, fetch=4)
+        LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, COUNT(*) AS `count(*)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 3) GROUP BY `id` ORDER BY `id` LIMIT 4")
+
+
+- #// @desc
+  #// IN,???????????????, where , agg , order by , limit?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select count(*)
+                  from test_hash_tb6 b
+                  where int_col1>3
+                  group by id
+                  order by id
+                  limit 4
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb6` AS `b` WHERE (`b`.`int_col1` > 3) GROUP BY `b`.`id` ORDER BY `b`.`id` LIMIT 4 OFFSET 0))")
+
+- #// @desc
+  #// IN,????????????????
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where a.name=b.name
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT `id` FROM (SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2`) AS `t` WHERE ((`test_hash_tb`.`id` = `id`) AND (`test_hash_tb`.`name` = `name`))))")
+
+- #// @desc
+  #// IN,?????????????????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where a.name=b.name
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (`a`.`name` = `b`.`name`)))")
+
+- #// @desc
+  #// IN,????????????, where?????
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where a.name=b.name and int_col5 < 30
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT `id` FROM (SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col5` < 30)) AS `t0` WHERE ((`test_hash_tb`.`id` = `id`) AND (`test_hash_tb`.`name` = `name`))))")
+
+- #// @desc
+  #// IN,????????????, where??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where a.name=b.name and int_col5 < 30
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`name` = `b`.`name`) AND (`b`.`int_col5` < 30))))")
+
+- #// @desc
+  #// IN,????????????, where , agg?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where a.id=b.id and int_col5 < 30
+                  group by id
+                )
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN (SELECT * FROM (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col5` < 30)) AS `t0` WHERE (`test_hash_tb`.`id` = `id`)))")
+
+- #// @desc
+  #// IN,????????????, where , agg?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where a.id=b.id and int_col5 < 30
+                  group by id
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) GROUP BY `b`.`id`))")
+
+- #// @desc
+  #// IN,????????????, where , agg , limit ?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where a.id=b.id and int_col5 < 30
+                  group by id
+                  having id!=1
+                  limit 100
+                )
+
+  plan: |
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          Limit(offset=0, fetch=100)
+            Filter(condition="$cor0.id = id")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+
+- #// @desc
+  #// IN,????????????, where , agg , limit??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where a.id=b.id and int_col5 < 30
+                  group by id
+                  having id!=1
+                  limit 100
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) GROUP BY `b`.`id` HAVING (`id` <> 1) LIMIT 100 OFFSET 0))")
+
+
+- #// @desc
+  #// IN,????????????, where , agg , limit?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb2 b
+                  where a.id=b.id and int_col5 < 30
+                  group by id
+                  having id!=1
+                  order by id
+                  limit 100
+                )
+
+  plan: |
+
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+          TopN(sort="id ASC", offset=0, fetch=100)
+            Filter(condition="$cor0.id = id")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col5` < 30) AND (`id` <> 1))")
+
+- #// @desc
+  #// IN,????????????, where , agg , limit?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select id
+                  from test_hash_tb6 b
+                  where a.id=b.id and int_col5 < 30
+                  group by id
+                  having id!=1
+                  order by id
+                  limit 100
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) GROUP BY `b`.`id` HAVING (`id` <> 1) ORDER BY `id` LIMIT 100 OFFSET 0))")
+
+- #// @desc
+  #// IN,??????????????????
+  sql: |
+    /*+TDDL:MATERIALIZED_SEMI_JOIN(test_hash_tb, test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb2 b
+                  where a.name=b.name
+                )
+
+  plan: |
+
+    Project(id="id")
+      MaterializedSemiJoin(condition="id = int_col1 AND name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((`id`, `name`)) IN (...))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+
+- #// @desc
+  #// IN,???????????????????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb6 b
+                  where a.name=b.name
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE (`a`.`name` = `b`.`name`)))")
+
+- #// @desc
+  #// IN,??????????????, where?????
+  sql: |
+    /*+TDDL:MATERIALIZED_SEMI_JOIN(test_hash_tb, test_hash_tb2)*/
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb2 b
+                  where a.name=b.name and int_col1>2048
+                )
+
+  plan: |
+    Project(id="id")
+      MaterializedSemiJoin(condition="id = int_col1 AND name = name", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`id` > 2048) AND (((`id`, `name`)) IN (...)))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `name` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+
+- #// @desc
+  #// IN,??????????????, where??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select int_col1
+                  from test_hash_tb6 b
+                  where a.name=b.name and int_col1>2048
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`name` = `b`.`name`) AND (`b`.`int_col1` > 2048))))")
+
+- #// @desc
+  #// IN,??????????????, where , group by?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select sum(int_col2)
+                  from test_hash_tb2 b
+                  where a.int_col1=b.int_col1 and int_col1>2048
+                  group by int_col1
+                )
+
+  plan: |
+
+    Project(id="id")
+      SemiHashJoin(condition="id = sum(int_col2) AND int_col1 = int_col1", type="semi")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`int_col1` > 2048)")
+        Project(sum(int_col2)="sum(int_col2)", int_col1="int_col1")
+          HashAgg(group="int_col1", sum(int_col2)="SUM(sum(int_col2))")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, SUM(`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048) GROUP BY `int_col1`")
+
+- #// @desc
+  #// IN,??????????????, where , group by?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select sum(int_col2)
+                  from test_hash_tb6 b
+                  where a.int_col1=b.int_col1 and int_col1>2048
+                  group by int_col1
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) GROUP BY `b`.`int_col1`))")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select sum(int_col2)
+                  from test_hash_tb2 b
+                  where a.int_col1=b.int_col1 and int_col1>2048
+                  group by int_col1
+                  order by int_col1
+                )
+
+  plan: |
+
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb`")
+          Project($f0="sum(int_col2)")
+            MemSort(sort="int_col1 ASC")
+              HashAgg(group="int_col1", sum(int_col2)="SUM(int_col2)")
+                Filter(condition="$cor0.int_col1 = int_col1")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by?? ????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select sum(int_col2)
+                  from test_hash_tb6 b
+                  where a.int_col1=b.int_col1 and int_col1>2048
+                  group by int_col1
+                  order by int_col1
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1`))")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by , limit?? ???
+  sql: |
+    select a.id
+    from
+      test_hash_tb a
+    where
+       a.id in (
+                  select sum(int_col2)
+                  from test_hash_tb2 b
+                  where a.int_col1=b.int_col1 and int_col1>2048
+                  group by int_col1
+                  order by int_col1
+                  limit 1111, 2399
+                )
+
+  plan: |
+
+    Project(id="id")
+      Filter(condition="APPLY_BOOLEAN")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb`")
+          Project($f0="sum(int_col2)")
+            TopN(sort="int_col1 ASC", offset=1111, fetch=2399)
+              HashAgg(group="int_col1", sum(int_col2)="SUM(int_col2)")
+                Filter(condition="$cor0.int_col1 = int_col1")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb`")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+
+- #// @desc
+  #// IN,??????????????, where , group by , order by , limit??????
+  sql: |
+    select a.id
+    from
+      test_hash_tb5 a
+    where
+       a.id in (
+                  select sum(int_col2)
+                  from test_hash_tb6 b
+                  where a.int_col1=b.int_col1 and int_col1>2048
+                  group by int_col1
+                  order by int_col1
+                  limit 1111, 2399
+                )
+
+  plan: |
+
+    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (`a`.`id` IN (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE ((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1` LIMIT 2399 OFFSET 1111))")
+
+-
+ sql: |
+  SELECT pk,
+       varchar_test
+  FROM select_dml_1_no_pk_no_uk AS t1
+  WHERE varchar_test IN
+    ( SELECT varchar_test
+     FROM select_dml_6_one_pk_no_uk_partition_by_pk AS t2
+     WHERE t1.varchar_test IN
+         ( SELECT varchar_test
+          FROM select_dml_18_one_pk_one_uk_one_ugsi AS t3
+          WHERE t2.varchar_test = varchar_test
+            OR date_test >= '2003-04-05'
+            AND (char_test BETWEEN 'nihaore' AND 'word23')
+            AND (year_test NOT BETWEEN '2013' AND '2019') ) )
+ plan: |
+  Project(pk="pk", varchar_test="varchar_test")
+    Filter(condition="APPLY_BOOLEAN")
+      CorrelateApply(cor=$cor1, leftConditions=[$1], opKind=EQUALS, type=SEMI)
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].select_dml_1_no_pk_no_uk_[00-11]", shardCount=12, sql="SELECT `pk`, `varchar_test` FROM `select_dml_1_no_pk_no_uk` AS `select_dml_1_no_pk_no_uk`")
+        Project($f0="varchar_test")
+          Filter(condition="APPLY_BOOLEAN")
+            CorrelateApply(cor=$cor0, leftConditions=[$cor1.varchar_test], opKind=EQUALS, type=SEMI)
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].select_dml_6_one_pk_no_uk_partition_by_pk_[00-11]", shardCount=12, sql="SELECT `varchar_test` FROM `select_dml_6_one_pk_no_uk_partition_by_pk` AS `select_dml_6_one_pk_no_uk_partition_by_pk`")
+              Project($f0="varchar_test")
+                Filter(condition="$cor0.varchar_test = varchar_test OR (date_test >= '2003-04-05' AND BETWEEN ASYMMETRIC($1, 'nihaore', 'word23') AND NOT BETWEEN ASYMMETRIC($3, '2013', '2019'))")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].select_dml_18_one_pk_one_uk_one_ugsi_[00-11]", shardCount=12, sql="SELECT `varchar_test`, `char_test`, `date_test`, `year_test` FROM `select_dml_18_one_pk_one_uk_one_ugsi` AS `select_dml_18_one_pk_one_uk_one_ugsi`")
+  cache node:
+
+  Gather(concurrent=true)
+    LogicalView(tables="[0000-0003].select_dml_1_no_pk_no_uk_[00-11]", shardCount=12, sql="SELECT `pk`, `varchar_test` FROM `select_dml_1_no_pk_no_uk` AS `select_dml_1_no_pk_no_uk`")
+  Gather(concurrent=true)
+    LogicalView(tables="[0000-0003].select_dml_6_one_pk_no_uk_partition_by_pk_[00-11]", shardCount=12, sql="SELECT `varchar_test` FROM `select_dml_6_one_pk_no_uk_partition_by_pk` AS `select_dml_6_one_pk_no_uk_partition_by_pk`")
+  Gather(concurrent=true)
+    LogicalView(tables="[0000-0003].select_dml_18_one_pk_one_uk_one_ugsi_[00-11]", shardCount=12, sql="SELECT `varchar_test`, `char_test`, `date_test`, `year_test` FROM `select_dml_18_one_pk_one_uk_one_ugsi` AS `select_dml_18_one_pk_one_uk_one_ugsi`")
+
+
+-
+  sql: |
+    select * from l4 where a in (select t4.a from t4 where t4.a = 1 or t4.a = 2);
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0000.l4_[01,02],t4_[01,02]", shardCount=2, sql="SELECT `a` FROM `l4` AS `l4` WHERE (`a` IN (SELECT `a` FROM `t4` AS `t4` WHERE ((`a` = 1) OR (`a` = 2))))")

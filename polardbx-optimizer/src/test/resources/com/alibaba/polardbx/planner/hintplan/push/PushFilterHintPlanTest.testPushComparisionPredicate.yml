@@ -1,0 +1,59 @@
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk = 100001")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="optest_0001.test_table_a_13", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` = 100001)")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk < 100001")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` < 100001)")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk > 100001")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` > 100001)")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk <= 100001")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <= 100001)")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk >= 100001")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` >= 100001)")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk <> 100001")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` <> 100001)")

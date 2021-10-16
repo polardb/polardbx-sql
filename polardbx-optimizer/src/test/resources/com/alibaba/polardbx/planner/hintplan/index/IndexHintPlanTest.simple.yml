@@ -1,0 +1,189 @@
+- sql: |
+
+    select /*+TDDL:index(test_table_d,d_i_2)*/ c1, text_test from test_table_d a where c1 = 3;
+
+  plan: |
+
+    Project(c1="c1", text_test="text_test")
+      BKAJoin(condition="pk = pk", type="inner")
+        IndexScan(tables="optest_0001.d_i_2_3", sql="SELECT `pk`, `c1` FROM `d_i_2` AS `d_i_2` WHERE (`c1` = ?)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_table_d_[00-27]", shardCount=28, sql="SELECT `pk`, `text_test` FROM `test_table_d` AS `test_table_d` WHERE ((`c1` = ?) AND (`pk` IN (...)))")
+
+  # support alias
+- sql: |
+
+    select /*+TDDL:index(a,d_i_2)*/ c1, text_test from test_table_d a where c1 = 3;
+
+  plan: |
+
+    Project(c1="c1", text_test="text_test")
+      BKAJoin(condition="pk = pk", type="inner")
+        IndexScan(tables="optest_0001.d_i_2_3", sql="SELECT `pk`, `c1` FROM `d_i_2` AS `d_i_2` WHERE (`c1` = ?)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_table_d_[00-27]", shardCount=28, sql="SELECT `pk`, `text_test` FROM `test_table_d` AS `test_table_d` WHERE ((`c1` = ?) AND (`pk` IN (...)))")
+
+- sql: |
+
+    /*+TDDL:index(t1, t1_i_a) index(T1, t1_i_b) index(a, t1_i_c) BKA_JOIN(t1_i_a, t1) NL_JOIN((t1_i_a, t1), t2)*/ select * from t1 a  join t2 b  where a.c2 = 1  and b.c2 = 1;
+
+  plan: |
+
+    NlJoin(condition="true", type="inner")
+      Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+          Gather(concurrent=true)
+            IndexScan(tables="[0000-0003].t1_i_a_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c3`, `c5`, `c6` FROM `t1_i_a` AS `t1_i_a`")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c2`, `c4`, `c7`, `c8` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+      LogicalView(tables="optest_0000.t2_1", sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE (`c2` = ?)")
+
+
+- sql: |
+
+    /*+TDDL:master() index(a, t1_i_a) index(T1, t1_i_b) BKA_JOIN(t1_i_b, t1) NL_JOIN((t1_i_b, t1), t2)*/ select * from (select * from t1 )a  join t2 b  where a.c2 = 1  and b.c2 = 1;
+
+  plan: |
+
+    NlJoin(condition="true", type="inner")
+      Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+          IndexScan(tables="optest_0000.t1_i_b_1", sql="SELECT `pk`, `c1`, `c2`, `c5` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+      LogicalView(tables="optest_0000.t2_1", sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE (`c2` = ?)")
+
+- sql: |
+
+    /*+TDDL:construct(a) index(a, t1_i_a) index(T1, t1_i_b) BKA_JOIN(t1_i_b, t1) NL_JOIN((t1_i_b, t1), t2)*/ select * from (select * from t1 )a  join t2 b  where a.c2 = 1  and b.c2 = 1;
+
+  plan: |
+
+    NlJoin(condition="true", type="inner")
+      Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+          IndexScan(tables="optest_0000.t1_i_b_1", sql="SELECT `pk`, `c1`, `c2`, `c5` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+      LogicalView(tables="optest_0000.t2_1", sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE (`c2` = ?)")
+
+  # ignore illegal index
+- sql: |
+
+    select /*+TDDL:index(test_table_d, test_table_c)*/ c1, text_test from test_table_d a where c1 = 3;
+
+  plan: |
+
+    Project(c1="c1", text_test="text_test")
+      BKAJoin(condition="pk = pk", type="inner")
+        IndexScan(tables="optest_0001.d_i_2_3", sql="SELECT `pk`, `c1` FROM `d_i_2` AS `d_i_2` WHERE (`c1` = ?)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_table_d_[00-27]", shardCount=28, sql="SELECT `pk`, `text_test` FROM `test_table_d` AS `test_table_d` WHERE ((`c1` = ?) AND (`pk` IN (...)))")
+
+- sql: |
+
+    /*+TDDL:index(a, t1_i_c) index(T1, t1_i_b)*/ select * from t1 a  join t2 b  where a.c2 = 1  and b.c2 = 1;
+
+  plan: |
+
+    Project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
+      NlJoin(condition="true", type="inner")
+        LogicalView(tables="optest_0000.t2_1", sql="SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE (`c2` = ?)")
+        Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+          BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+            IndexScan(tables="optest_0000.t1_i_b_1", sql="SELECT `pk`, `c1`, `c2`, `c5` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+
+- sql: |
+
+    select c1, c7 from t1 a force index(t1_i_b) where c2 = 3;
+
+  plan: |
+
+    Project(c1="c1", c7="c7")
+      BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+        IndexScan(tables="optest_0001.t1_i_b_3", sql="SELECT `pk`, `c1` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c7` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+
+- sql: |
+
+    /*+TDDL:cmd_extra(ENABLE_HASH_JOIN=false,ENABLE_SEMI_HASH_JOIN=false)  NL_JOIN(t1_i_b,(t1_i_a,t1))*/
+    select a.c1, b.c7 from t1 a force index(t1_i_b) join t1 b force index(t1_i_a) on a.c2 = b.c2 where a.c2 = 3;
+
+  plan: |
+    Project(c1="c1", c7="c7")
+      NlJoin(condition="c2 = c2", type="inner")
+        IndexScan(tables="optest_0001.t1_i_b_3", sql="SELECT `c1`, `c2` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+        Project(c2="c2", c7="c7")
+          BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+            Gather(concurrent=true)
+              IndexScan(tables="[0000-0003].t1_i_a_[00-27]", shardCount=28, sql="SELECT `pk`, `c1` FROM `t1_i_a` AS `t1_i_a`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c2`, `c7` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+
+- sql: |
+
+    select c1, c7 from t1 a force index(test_table_c) where c2 = 3;
+
+  plan: |
+
+    Project(c1="c1", c7="c7")
+      BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+        IndexScan(tables="optest_0001.t1_i_b_3", sql="SELECT `pk`, `c1` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c7` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+
+
+  # ignore unsupported index
+- sql: |
+
+    select c1, c7 from t1 a use index(t1_i_b) where c2 = 3;
+
+  plan: |
+
+    Project(c1="c1", c7="c7")
+      BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+        IndexScan(tables="optest_0001.t1_i_b_3", sql="SELECT `pk`, `c1` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c7` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+
+- sql: |
+
+    select c1, c7 from t1 a ignore index(t1_i_b) where c2 = 3;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `c1`, `c7` FROM `t1` AS `t1` WHERE (`c2` = ?)")
+
+- sql: |
+
+    /*+TDDL:cmd_extra(ENABLE_HASH_JOIN=false,ENABLE_SEMI_HASH_JOIN=false) BKA_JOIN(t1_i_a,t1) NL_JOIN(t1_i_b,(t1_i_a,t1))*/
+    select a.c1, b.c7 from t1 a force index(t1_i_b) join t1 b force index(t1_i_a) on a.c2 = b.c2 where a.c2 = 3;
+
+  plan: |
+
+    Project(c1="c1", c7="c7")
+      NlJoin(condition="c2 = c2", type="inner")
+        IndexScan(tables="optest_0001.t1_i_b_3", sql="SELECT `c1`, `c2` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+        Project(c2="c2", c7="c7")
+          BKAJoin(condition="pk = pk AND c1 <=> c1", type="inner")
+            Gather(concurrent=true)
+              IndexScan(tables="[0000-0003].t1_i_a_[00-27]", shardCount=28, sql="SELECT `pk`, `c1` FROM `t1_i_a` AS `t1_i_a`")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].t1_[00-27]", shardCount=28, sql="SELECT `pk`, `c1`, `c2`, `c7` FROM `t1` AS `t1` WHERE ((`c2` = ?) AND (`pk` IN (...)))")
+
+- sql: |
+    /*+TDDL: HASH_JOIN(seller_tbl, g_i_seller)*/
+    select a.username from buyer_tbl a force index(g_i_seller), seller_tbl b where a.seller_id=b.seller_id and a.buyer_id = '561';
+
+  plan: |
+
+    Project(username="username")
+      HashJoin(condition="seller_id = seller_id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].seller_tbl", shardCount=4, sql="SELECT `seller_id` FROM `seller_tbl` AS `seller_tbl`")
+        Gather(concurrent=true)
+          IndexScan(tables="[0000-0003].g_i_seller_[00-11]", shardCount=12, sql="SELECT `seller_id`, `username` FROM `g_i_seller` AS `g_i_seller` WHERE (`buyer_id` = ?)")

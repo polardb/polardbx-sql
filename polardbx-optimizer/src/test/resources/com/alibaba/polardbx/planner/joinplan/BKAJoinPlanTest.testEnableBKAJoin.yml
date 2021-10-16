@@ -1,0 +1,123 @@
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t_shard_id1, t_shard_id2)*/ select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    Project(id="id")
+      BKAJoin(condition="id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2` WHERE (`name` IN (...))")
+
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t_shard_id1, t_shard_id2)*/ select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+    where a.id=5
+
+  plan: |
+    Project(id="id")
+      BKAJoin(condition="id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1` WHERE (`name` = 5)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2` WHERE ((`name` = 5) AND (`name` IN (...)))")
+
+-
+  sql: |
+    /*+TDDL:BKA_JOIN((t_shard_id1,t_shard_business_id), t_shard_name)*/ select
+      c.name,
+      case b.business_id
+        when 0 then '预处理'
+        when 1 then '待付款'
+        when 91 then '终止' end   as  '状态',
+      case a.id
+        when 0 then '正常'
+        when 4 then '退货中' end  as '冻结状态'
+      from t_shard_id1 a left join t_shard_business_id b on a.id = b.business_id left join t_shard_name c on c.name = b.name where a.id in ("100002", "100003");
+
+  plan: |
+
+    Project(name="name", 状态="CASE", 冻结状态="CASE2")
+      BKAJoin(condition="name = name0", type="left")
+        Gather(concurrent=true)
+          LogicalView(tables="[0002,0003].t_shard_id1,t_shard_business_id", shardCount=2, sql="SELECT `t_shard_business_id`.`name` AS `name0`, (CASE WHEN (`t_shard_business_id`.`business_id` = 0) THEN '预处理' WHEN (`t_shard_business_id`.`business_id` = 1) THEN '待付款' WHEN (`t_shard_business_id`.`business_id` = 91) THEN '终止' ELSE NULL END) AS `CASE`, (CASE WHEN (`t_shard_id1`.`id` = 0) THEN '正常' WHEN (`t_shard_id1`.`id` = 4) THEN '退货中' ELSE NULL END) AS `CASE2` FROM `t_shard_id1` AS `t_shard_id1` LEFT JOIN `t_shard_business_id` AS `t_shard_business_id` ON (`t_shard_id1`.`id` = `t_shard_business_id`.`business_id`) WHERE (`t_shard_id1`.`id` IN('100002', '100003'))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `name` FROM `t_shard_name` AS `t_shard_name` WHERE (`name` IN (...))")
+
+-
+  sql: |
+    select * from t_shard_id1 a join (select id + 1 as id, name from t_shard_business_id) b on a.id = b.id ;
+
+  plan: |
+
+    Project(id="id0", name="name0", create_time="create_time", id0="id", name0="name")
+      BKAJoin(condition="id = id", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_business_id", shardCount=4, sql="SELECT (`id` + 1) AS `id`, `name` FROM `t_shard_business_id` AS `t_shard_business_id`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1` WHERE (`id` IN (...))")
+
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t_shard_business_id,t_shard_id1)*/ select * from t_shard_id1 a join (select count(*) as id, name from t_shard_business_id group by name) b on a.name = b.name ;
+
+  plan: |
+
+    Project(id0="id0", name0="name0", create_time="create_time", id="id", name="name")
+      BKAJoin(condition="name = name", type="inner")
+        HashAgg(group="name", id="SUM(id)")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].t_shard_business_id", shardCount=4, sql="SELECT `name`, COUNT(*) AS `id` FROM `t_shard_business_id` AS `t_shard_business_id` GROUP BY `name`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t_shard_id1` AS `t_shard_id1` WHERE (`name` IN (...))")
+
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t_shard_name, t_composite_pk_shard_id)*/ select a.id
+    from
+      t_composite_pk_shard_id a
+    join
+      t_shard_name b
+    on a.id=b.id and a.id1=b.name
+
+  plan: |
+    Project(id="id0")
+      BKAJoin(condition="id = id AND name = id1", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_name` AS `t_shard_name`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].t_composite_pk_shard_id", shardCount=4, sql="SELECT `id`, `id1` FROM `t_composite_pk_shard_id` AS `t_composite_pk_shard_id` WHERE (((`id`, `id1`)) IN (...))")

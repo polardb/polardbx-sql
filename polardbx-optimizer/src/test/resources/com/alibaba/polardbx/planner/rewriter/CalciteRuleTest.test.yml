@@ -1,0 +1,136 @@
+- sql: |
+    select  name from user_log union select name from emp
+
+  plan: |
+    UnionDistinct(concurrent=true)
+      LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name` FROM `user_log` AS `user_log`")
+      LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `name` FROM `emp` AS `emp`")
+
+- sql: |
+    select userId, name from emp where userId > 10 and name like 'jack%'
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `userId`, `name` FROM `emp` AS `emp` WHERE ((`userId` > 10) AND (`name` LIKE 'jack%'))")
+
+- sql: |
+    select * from (select * from user_log) a  where a.userid!=3
+
+  plan: |
+    LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log` WHERE (`userId` <> 3)")
+
+- sql: |
+    select distinct userid from user_log group by userid having userid!=3
+
+  plan: |
+    LogicalAgg(group="userid")
+      LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `userId` FROM `user_log` AS `user_log` WHERE (`userId` <> 3) GROUP BY `userId`")
+
+- sql: |
+    select userId, name from emp order by userId limit 5, 10
+
+  plan: |
+    LogicalSort(sort="userId ASC", offset=5, fetch=10)
+      LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `userId`, `name` FROM `emp` AS `emp`")
+
+- sql: |
+    select userId, name from emp order by userId
+
+  plan: |
+    LogicalSort(sort="userId ASC")
+      LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `userId`, `name` FROM `emp` AS `emp`")
+
+- sql: |
+    select  name, count(userid) from user_log group by name
+
+  plan: |
+    LogicalAgg(group="name", count(userid)="SUM(count(userid))")
+      LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, COUNT(`userId`) AS `count(userid)` FROM `user_log` AS `user_log` GROUP BY `name`")
+
+- sql: |
+    select userId, name from emp order by userId limit 10
+
+  plan: |
+    LogicalSort(sort="userId ASC", offset=0, fetch=10)
+      LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `userId`, `name` FROM `emp` AS `emp`")
+
+- sql: |
+    select  * from user_log where userid = 1 order by name limit 0
+
+  plan: |
+    Values(table="dual")
+
+- sql: |
+    select
+      case when false then cast(2.1 as decimal)
+       else cast(1 as decimal) end as newcol
+    from emp
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT (CASE WHEN FALSE THEN CAST(2.1 AS DECIMAL(65, 0)) ELSE CAST(1 AS DECIMAL(65, 0)) END) AS `newcol` FROM `emp` AS `emp`")
+
+- sql: |
+    select * from user_log where true and userid=3
+
+  plan: |
+    LogicalView(tables="optest_0003.user_log_[0-6]", shardCount=7, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log` WHERE (`userId` = 3)")
+
+- sql: |
+    select userId, name from emp
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `userId`, `name` FROM `emp` AS `emp`")
+
+- sql: |
+    select * from (select * from user_log) a  where  a.userid=1
+
+  plan: |
+    LogicalView(tables="optest_0001.user_log_[0-6]", shardCount=7, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log` WHERE (`userId` = 1)")
+
+- sql: |
+    select  * from user_log where userid = 1 order by name
+
+  plan: |
+    LogicalSort(sort="name ASC")
+      LogicalView(tables="optest_0001.user_log_[0-6]", shardCount=7, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log` WHERE (`userId` = 1)")
+
+- sql: |
+    select 1, userId +1, * from emp
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT 1 AS `1`, (`userId` + 1) AS `userId + 1`, `userId`, `name`, `operation`, `actionDate` FROM `emp` AS `emp`")
+
+- sql: |
+    select  * from user_log a join emp b on a.userid=b.userid
+
+  plan: |
+    LogicalJoin(condition="userId = userId", type="inner")
+      LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log`")
+      LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `userId`, `name`, `operation`, `actionDate` FROM `emp` AS `emp`")
+
+- sql: |
+    select  * from user_log where userid = 1
+
+  plan: |
+    LogicalView(tables="optest_0001.user_log_[0-6]", shardCount=7, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log` WHERE (`userId` = 1)")
+
+- sql: |
+    select distinct userid from user_log group by userid having userid!=3
+
+  plan: |
+    LogicalAgg(group="userid")
+      LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `userId` FROM `user_log` AS `user_log` WHERE (`userId` <> 3) GROUP BY `userId`")
+
+- sql: |
+    select  * from user_log where userid = 1
+
+  plan: |
+    LogicalView(tables="optest_0001.user_log_[0-6]", shardCount=7, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log` WHERE (`userId` = 1)")
+
+- sql: |
+    select  * from user_log a join emp b on a.userid=b.userid
+
+  plan: |
+    LogicalJoin(condition="userId = userId", type="inner")
+      LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `userId`, `userId2`, `name`, `operation`, `actionDate` FROM `user_log` AS `user_log`")
+      LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT `userId`, `name`, `operation`, `actionDate` FROM `emp` AS `emp`")
+

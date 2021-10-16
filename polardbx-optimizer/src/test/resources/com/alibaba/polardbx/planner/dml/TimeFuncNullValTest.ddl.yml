@@ -1,0 +1,70 @@
+week_tbl:
+  CREATE TABLE `week_tbl` (
+          `id`int(10) NOT NULL,
+          `k` int(10)  NOT NULL,
+          `c` datetime NULL ,
+          PRIMARY KEY (id)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(k) tbpartition by week(c) tbpartitions 7;
+  
+
+mm_tbl:
+  CREATE TABLE `mm_tbl` (
+          `id` int(10) NOT NULL,
+          `k` int(10) NOT NULL,
+          `c` datetime NULL,
+          PRIMARY KEY (`id`),
+          KEY `auto_shard_key_c` USING BTREE (`c`),
+          KEY `auto_shard_key_k` USING BTREE (`k`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(`k`) tbpartition by mm(`c`) tbpartitions 12; 
+
+dd_tbl:
+  CREATE TABLE `dd_tbl` (
+          `id` int(10) NOT NULL,
+          `k` int(10) NOT NULL,
+          `c` datetime NULL,
+          PRIMARY KEY (`id`),
+          KEY `auto_shard_key_c` USING BTREE (`c`),
+          KEY `auto_shard_key_k` USING BTREE (`k`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(`k`) tbpartition by dd(`c`) tbpartitions 31;
+
+mmdd_tbl:
+  CREATE TABLE `mmdd_tbl` (
+          `id` int(10) NOT NULL,
+          `k` int(10) NOT NULL,
+          `c` datetime NULL,
+          PRIMARY KEY (`id`),
+          KEY `auto_shard_key_c` USING BTREE (`c`),
+          KEY `auto_shard_key_k` USING BTREE (`k`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(`k`) tbpartition by mmdd(`c`) tbpartitions 365;
+
+yyyymm_tbl:
+  CREATE TABLE `yyyymm_tbl` (
+          `id` int(10) NOT NULL,
+          `k` int(10) NOT NULL,
+          `c` datetime NULL,
+          PRIMARY KEY (`id`),
+          KEY `auto_shard_key_c` USING BTREE (`c`),
+          KEY `auto_shard_key_k` USING BTREE (`k`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(`k`) tbpartition by yyyymm(`c`) tbpartitions 4;
+
+
+yyyydd_tbl:
+  CREATE TABLE `yyyydd_tbl` (
+          `id` int(10) NOT NULL,
+          `k` int(10) NOT NULL,
+          `c` datetime NULL,
+          PRIMARY KEY (`id`),
+          KEY `auto_shard_key_c` USING BTREE (`c`),
+          KEY `auto_shard_key_k` USING BTREE (`k`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(`k`) tbpartition by yyyydd(`c`) tbpartitions 4;
+
+yyyyweek_tbl:
+  CREATE TABLE `yyyyweek_tbl` (
+          `id` int(10) NOT NULL,
+          `k` int(10) NOT NULL,
+          `c` datetime NULL,
+          PRIMARY KEY (`id`),
+          KEY `auto_shard_key_c` USING BTREE (`c`),
+          KEY `auto_shard_key_k` USING BTREE (`k`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 dbpartition by hash(`k`) tbpartition by yyyyweek(`c`) tbpartitions 4;
+

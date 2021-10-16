@@ -1,0 +1,12 @@
+sql: |
+  select avg(id)
+  from test_hash_tb a 
+  where a.name='xx' group by a.name;
+
+
+plan: |
+
+  Project(avg(id)="$f1 / $f2")
+    HashAgg(group="name", $f1="SUM($f1)", $f2="SUM($f2)")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, SUM(`id`) AS `$f1`, COUNT(`id`) AS `$f2` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') GROUP BY `name`")

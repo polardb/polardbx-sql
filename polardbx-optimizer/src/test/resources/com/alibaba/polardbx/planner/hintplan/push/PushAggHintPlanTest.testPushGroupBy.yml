@@ -1,0 +1,49 @@
+# Agg function, Group by, Having condition
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, count(distinct bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, COUNT(DISTINCT `bigint_test`) AS `count(DISTINCT bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'count(distinct bigint_test)',
+      group_by = "pk")
+    add_un()*/ pk from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, COUNT(DISTINCT `bigint_test`) AS `count(DISTINCT bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'count(distinct varchar_test_p255) as c',
+      group_by = "pk, bigint_test"
+      having   = 'count(distinct varchar_test_p255) > 10')
+    add_un()*/ pk from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, COUNT(DISTINCT `varchar_test_p255`) AS `c` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`, `bigint_test` HAVING (COUNT(DISTINCT `varchar_test_p255`) > 10)")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("pk")
+    push_agg(
+      group_by = "")
+    add_un()*/ pk, count(distinct bigint_test) as c from test_table_a group by pk having count(distinct bigint_test) > 200;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk` FROM `test_table_a` AS `test_table_a`")

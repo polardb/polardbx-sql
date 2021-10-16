@@ -1,0 +1,374 @@
+- sql: |
+    select 1 from emp e right join dept_broadcast d on d.deptno = e.empno
+
+  plan: |
+    project(1="1")
+      logicaljoin(condition="deptno = empno", type="right")
+        logicalview(tables="[0000-0003].emp_[00-27]", shardcount=28, sql="select `empno` from `emp` as `emp`")
+        logicalview(tables="optest_0000.dept_broadcast", sql="select `deptno` from `dept_broadcast` as `dept_broadcast`")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where e.ename = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'Charlie')")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where e.ename = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'Charlie')")
+
+- sql: |
+    select 1 from dept_broadcast d left join emp e on d.deptno = e.empno
+
+  plan: |
+    project(1="1")
+      logicaljoin(condition="deptno = empno", type="left")
+        logicalview(tables="optest_0000.dept_broadcast", sql="select `deptno` from `dept_broadcast` as `dept_broadcast`")
+        logicalview(tables="[0000-0003].emp_[00-27]", shardcount=28, sql="select `empno` from `emp` as `emp`")
+
+- sql: |
+    select 1 from emp e join dept_broadcast d on d.deptno = e.empno
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[00-27],dept_broadcast", shardCount=28, sql="SELECT 1 AS `1` FROM `emp` AS `emp` INNER JOIN `dept_broadcast` AS `dept_broadcast` ON (`emp`.`EMPNO` = `dept_broadcast`.`DEPTNO`)")
+
+- sql: |
+    select 1 from dept d, emp e where d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="true", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `EMPNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno and e.ename = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO AND =", type="right")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, (`ENAME` = 'Charlie') AS `=` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="left")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where e.ename is NULL
+
+  plan: |
+    Project(1="1")
+      Filter(condition="IS NULL(ENAME)")
+        LogicalJoin(condition="DEPTNO = DEPTNO", type="left")
+          LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+          LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `ENAME`, `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where e.ename is NOT NULL
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` IS NOT NULL)")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where e.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="right")
+        LogicalView(tables="optest_0000.dept_05", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 5)")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`DEPTNO` = 5)")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where d.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="optest_0000.dept_05", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 5)")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`DEPTNO` = 5)")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno and d.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="right")
+        LogicalView(tables="optest_0000.dept_05", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 5)")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d join emp e on d.deptno = e.empno
+
+  plan: |
+    LogicalView(tables="[0000-0003].dept_[00-27],emp_[00-27]", shardCount=28, sql="SELECT 1 AS `1` FROM `dept` AS `dept` INNER JOIN `emp` AS `emp` ON (`dept`.`DEPTNO` = `emp`.`EMPNO`)")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno and d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO AND =", type="left")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, (`NAME` = 'Charlie') AS `=` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.empno
+
+  plan: |
+    LogicalView(tables="[0000-0003].dept_[00-27],emp_[00-27]", shardCount=28, sql="SELECT 1 AS `1` FROM `dept` AS `dept` LEFT JOIN `emp` AS `emp` ON (`dept`.`DEPTNO` = `emp`.`EMPNO`)")
+
+- sql: |
+    select 1 from emp_single e, dept_single d where e.deptno = d.deptno
+
+  plan: |
+    LogicalView(tables="optest_0000.emp_single,dept_single", sql="SELECT 1 FROM `emp_single` AS `e`, `dept_single` AS `d` WHERE (`e`.`DEPTNO` = `d`.`DEPTNO`)")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="left")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d, emp e where d.deptno = e.deptno and d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d join emp e on d.deptno = e.deptno and d.name = 'Charlie' and e.ename = 'White'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'White')")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno and e.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO AND =", type="right")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, (`DEPTNO` = 5) AS `=` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from emp_single e, dept_broadcast d where e.deptno = d.deptno
+
+  plan: |
+    LogicalView(tables="optest_0000.emp_single,dept_broadcast", sql="SELECT 1 FROM `emp_single` AS `e`, `dept_broadcast` AS `d` WHERE (`e`.`DEPTNO` = `d`.`DEPTNO`)")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno and d.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO AND =", type="left")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, (`DEPTNO` = 5) AS `=` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.empno
+
+  plan: |
+    LogicalView(tables="[0000-0003].dept_[00-27],emp_[00-27]", shardCount=28, sql="SELECT 1 AS `1` FROM `dept` AS `dept` RIGHT JOIN `emp` AS `emp` ON (`dept`.`DEPTNO` = `emp`.`EMPNO`)")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where d.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="left")
+        LogicalView(tables="optest_0000.dept_05", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 5)")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`DEPTNO` = 5)")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno where e.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="optest_0000.dept_05", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 5)")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`DEPTNO` = 5)")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno and e.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="left")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`DEPTNO` = 5)")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where e.ename = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="right")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'Charlie')")
+
+- sql: |
+    select 1 from dept0 d join emp0 e on d.deptno = e.empno
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = EMPNO", type="inner")
+        LogicalView(tables="[0000-0003].dept0_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept0` AS `dept0`")
+        LogicalView(tables="[0000-0003].emp0_[00-23]", shardCount=24, sql="SELECT `EMPNO` FROM `emp0` AS `emp0`")
+
+- sql: |
+    select 1 from dept d join emp e on d.deptno = e.deptno
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno and e.ename = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="left")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'Charlie')")
+
+- sql: |
+    select 1 from dept d left join emp e on d.deptno = e.deptno and e.ename = 'Charlie' and d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO AND =", type="left")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, (`NAME` = 'Charlie') AS `=` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'Charlie')")
+
+- sql: |
+    select 1 from dept_broadcast d right join emp e on d.deptno = e.empno
+
+  plan: |
+    LogicalView(tables="[0000-0003].dept_broadcast,emp_[00-27]", shardCount=28, sql="SELECT 1 AS `1` FROM `dept_broadcast` AS `dept_broadcast` RIGHT JOIN `emp` AS `emp` ON (`dept_broadcast`.`DEPTNO` = `emp`.`EMPNO`)")
+
+- sql: |
+    select e.sal + b.comm from emp e inner join bonus b on e.ename = b.ename and e.deptno = 10
+
+  plan: |
+    Project(e.sal + b.comm="SAL + COMM")
+      LogicalJoin(condition="ENAME = ENAME", type="inner")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `ENAME`, `SAL` FROM `emp` AS `emp` WHERE (`DEPTNO` = 10)")
+        LogicalView(tables="optest_0000.bonus", sql="SELECT `ENAME`, `COMM` FROM `bonus` AS `bonus`")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno and d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="right")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno and e.ename = 'Charlie' and d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO AND =", type="right")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, (`ENAME` = 'Charlie') AS `=` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where d.name = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from emp e left join dept_broadcast d on d.deptno = e.empno
+
+  plan: |
+    LogicalView(tables="[0000-0003].emp_[00-27],dept_broadcast", shardCount=28, sql="SELECT 1 AS `1` FROM `emp` AS `emp` LEFT JOIN `dept_broadcast` AS `dept_broadcast` ON (`emp`.`EMPNO` = `dept_broadcast`.`DEPTNO`)")
+
+- sql: |
+    select 1 from dept d, emp e where d.deptno = e.deptno and d.name = 'Charlie' and e.ename = 'White'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` = 'Charlie')")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'White')")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where e.ename = 'Charlie'
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="right")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept`")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`ENAME` = 'Charlie')")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where d.name is NULL
+
+  plan: |
+    Project(1="1")
+      Filter(condition="IS NULL(NAME)")
+        LogicalJoin(condition="DEPTNO = DEPTNO", type="right")
+          LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO`, `NAME` FROM `dept` AS `dept`")
+          LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d right join emp e on d.deptno = e.deptno where d.name is NOT NULL
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="[0000-0003].dept_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`NAME` IS NOT NULL)")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp`")
+
+- sql: |
+    select 1 from dept d join emp e on d.deptno = e.deptno and d.deptno = 5
+
+  plan: |
+    Project(1="1")
+      LogicalJoin(condition="DEPTNO = DEPTNO", type="inner")
+        LogicalView(tables="optest_0000.dept_05", sql="SELECT `DEPTNO` FROM `dept` AS `dept` WHERE (`DEPTNO` = 5)")
+        LogicalView(tables="[0000-0003].emp_[00-27]", shardCount=28, sql="SELECT `DEPTNO` FROM `emp` AS `emp` WHERE (`DEPTNO` = 5)")
+

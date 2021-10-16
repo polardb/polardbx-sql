@@ -1,0 +1,1122 @@
+sql0: select * from test where integer_test > integer_test or integer_test < 1
+tree0: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql1: select * from test where integer_test > u_integer_test or integer_test < 1
+tree1: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql2: select * from test where integer_test > tinyint_test or integer_test < 1
+tree2: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql3: select * from test where integer_test > u_tinyint_test or integer_test < 1
+tree3: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql4: select * from test where integer_test > smallint_test or integer_test < 1
+tree4: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql5: select * from test where integer_test > u_smallint_test or integer_test < 1
+tree5: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql6: select * from test where integer_test > mediumint_test or integer_test < 1
+tree6: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql7: select * from test where integer_test > u_mediumint_test or integer_test < 1
+tree7: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql8: select * from test where integer_test > bigint_test or integer_test < 1
+tree8: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql9: select * from test where integer_test > float_test or integer_test < 1
+tree9: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql10: select * from test where integer_test > double_test or integer_test < 1
+tree10: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTIntegerColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql11: select * from test where u_integer_test > integer_test or integer_test < 1
+tree11: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql12: select * from test where u_integer_test > u_integer_test or integer_test <
+  1
+tree12: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql13: select * from test where u_integer_test > tinyint_test or integer_test < 1
+tree13: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql14: select * from test where u_integer_test > u_tinyint_test or integer_test <
+  1
+tree14: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql15: select * from test where u_integer_test > smallint_test or integer_test < 1
+tree15: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql16: select * from test where u_integer_test > u_smallint_test or integer_test <
+  1
+tree16: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql17: select * from test where u_integer_test > mediumint_test or integer_test <
+  1
+tree17: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql18: select * from test where u_integer_test > u_mediumint_test or integer_test
+  < 1
+tree18: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql19: select * from test where u_integer_test > bigint_test or integer_test < 1
+tree19: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql20: select * from test where u_integer_test > float_test or integer_test < 1
+tree20: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql21: select * from test where u_integer_test > double_test or integer_test < 1
+tree21: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUIntegerColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql22: select * from test where tinyint_test > integer_test or integer_test < 1
+tree22: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql23: select * from test where tinyint_test > u_integer_test or integer_test < 1
+tree23: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql24: select * from test where tinyint_test > tinyint_test or integer_test < 1
+tree24: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql25: select * from test where tinyint_test > u_tinyint_test or integer_test < 1
+tree25: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql26: select * from test where tinyint_test > smallint_test or integer_test < 1
+tree26: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql27: select * from test where tinyint_test > u_smallint_test or integer_test < 1
+tree27: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql28: select * from test where tinyint_test > mediumint_test or integer_test < 1
+tree28: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql29: select * from test where tinyint_test > u_mediumint_test or integer_test <
+  1
+tree29: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql30: select * from test where tinyint_test > bigint_test or integer_test < 1
+tree30: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql31: select * from test where tinyint_test > float_test or integer_test < 1
+tree31: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql32: select * from test where tinyint_test > double_test or integer_test < 1
+tree32: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTTinyIntColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql33: select * from test where u_tinyint_test > integer_test or integer_test < 1
+tree33: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql34: select * from test where u_tinyint_test > u_integer_test or integer_test <
+  1
+tree34: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql35: select * from test where u_tinyint_test > tinyint_test or integer_test < 1
+tree35: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql36: select * from test where u_tinyint_test > u_tinyint_test or integer_test <
+  1
+tree36: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql37: select * from test where u_tinyint_test > smallint_test or integer_test < 1
+tree37: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql38: select * from test where u_tinyint_test > u_smallint_test or integer_test <
+  1
+tree38: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql39: select * from test where u_tinyint_test > mediumint_test or integer_test <
+  1
+tree39: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql40: select * from test where u_tinyint_test > u_mediumint_test or integer_test
+  < 1
+tree40: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql41: select * from test where u_tinyint_test > bigint_test or integer_test < 1
+tree41: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql42: select * from test where u_tinyint_test > float_test or integer_test < 1
+tree42: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql43: select * from test where u_tinyint_test > double_test or integer_test < 1
+tree43: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUTinyIntColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql44: select * from test where smallint_test > integer_test or integer_test < 1
+tree44: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql45: select * from test where smallint_test > u_integer_test or integer_test < 1
+tree45: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql46: select * from test where smallint_test > tinyint_test or integer_test < 1
+tree46: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql47: select * from test where smallint_test > u_tinyint_test or integer_test < 1
+tree47: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql48: select * from test where smallint_test > smallint_test or integer_test < 1
+tree48: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql49: select * from test where smallint_test > u_smallint_test or integer_test <
+  1
+tree49: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql50: select * from test where smallint_test > mediumint_test or integer_test < 1
+tree50: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql51: select * from test where smallint_test > u_mediumint_test or integer_test <
+  1
+tree51: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql52: select * from test where smallint_test > bigint_test or integer_test < 1
+tree52: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql53: select * from test where smallint_test > float_test or integer_test < 1
+tree53: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql54: select * from test where smallint_test > double_test or integer_test < 1
+tree54: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTSmallIntColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql55: select * from test where u_smallint_test > integer_test or integer_test < 1
+tree55: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql56: select * from test where u_smallint_test > u_integer_test or integer_test <
+  1
+tree56: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql57: select * from test where u_smallint_test > tinyint_test or integer_test < 1
+tree57: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql58: select * from test where u_smallint_test > u_tinyint_test or integer_test <
+  1
+tree58: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql59: select * from test where u_smallint_test > smallint_test or integer_test <
+  1
+tree59: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql60: select * from test where u_smallint_test > u_smallint_test or integer_test
+  < 1
+tree60: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql61: select * from test where u_smallint_test > mediumint_test or integer_test <
+  1
+tree61: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql62: select * from test where u_smallint_test > u_mediumint_test or integer_test
+  < 1
+tree62: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql63: select * from test where u_smallint_test > bigint_test or integer_test < 1
+tree63: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql64: select * from test where u_smallint_test > float_test or integer_test < 1
+tree64: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql65: select * from test where u_smallint_test > double_test or integer_test < 1
+tree65: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUSmallIntColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql66: select * from test where mediumint_test > integer_test or integer_test < 1
+tree66: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql67: select * from test where mediumint_test > u_integer_test or integer_test <
+  1
+tree67: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql68: select * from test where mediumint_test > tinyint_test or integer_test < 1
+tree68: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql69: select * from test where mediumint_test > u_tinyint_test or integer_test <
+  1
+tree69: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql70: select * from test where mediumint_test > smallint_test or integer_test < 1
+tree70: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql71: select * from test where mediumint_test > u_smallint_test or integer_test <
+  1
+tree71: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql72: select * from test where mediumint_test > mediumint_test or integer_test <
+  1
+tree72: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql73: select * from test where mediumint_test > u_mediumint_test or integer_test
+  < 1
+tree73: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql74: select * from test where mediumint_test > bigint_test or integer_test < 1
+tree74: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql75: select * from test where mediumint_test > float_test or integer_test < 1
+tree75: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql76: select * from test where mediumint_test > double_test or integer_test < 1
+tree76: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTMediumIntColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql77: select * from test where u_mediumint_test > integer_test or integer_test <
+  1
+tree77: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql78: select * from test where u_mediumint_test > u_integer_test or integer_test
+  < 1
+tree78: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql79: select * from test where u_mediumint_test > tinyint_test or integer_test <
+  1
+tree79: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql80: select * from test where u_mediumint_test > u_tinyint_test or integer_test
+  < 1
+tree80: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql81: select * from test where u_mediumint_test > smallint_test or integer_test <
+  1
+tree81: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql82: select * from test where u_mediumint_test > u_smallint_test or integer_test
+  < 1
+tree82: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql83: select * from test where u_mediumint_test > mediumint_test or integer_test
+  < 1
+tree83: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql84: select * from test where u_mediumint_test > u_mediumint_test or integer_test
+  < 1
+tree84: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql85: select * from test where u_mediumint_test > bigint_test or integer_test < 1
+tree85: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql86: select * from test where u_mediumint_test > float_test or integer_test < 1
+tree86: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql87: select * from test where u_mediumint_test > double_test or integer_test < 1
+tree87: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTUMediumIntColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql88: select * from test where bigint_test > integer_test or integer_test < 1
+tree88: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql89: select * from test where bigint_test > u_integer_test or integer_test < 1
+tree89: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql90: select * from test where bigint_test > tinyint_test or integer_test < 1
+tree90: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql91: select * from test where bigint_test > u_tinyint_test or integer_test < 1
+tree91: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql92: select * from test where bigint_test > smallint_test or integer_test < 1
+tree92: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql93: select * from test where bigint_test > u_smallint_test or integer_test < 1
+tree93: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql94: select * from test where bigint_test > mediumint_test or integer_test < 1
+tree94: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql95: select * from test where bigint_test > u_mediumint_test or integer_test < 1
+tree95: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql96: select * from test where bigint_test > bigint_test or integer_test < 1
+tree96: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql97: select * from test where bigint_test > float_test or integer_test < 1
+tree97: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql98: select * from test where bigint_test > double_test or integer_test < 1
+tree98: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTLongColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql99: select * from test where float_test > integer_test or integer_test < 1
+tree99: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql100: select * from test where float_test > u_integer_test or integer_test < 1
+tree100: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql101: select * from test where float_test > tinyint_test or integer_test < 1
+tree101: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql102: select * from test where float_test > u_tinyint_test or integer_test < 1
+tree102: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql103: select * from test where float_test > smallint_test or integer_test < 1
+tree103: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql104: select * from test where float_test > u_smallint_test or integer_test < 1
+tree104: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql105: select * from test where float_test > mediumint_test or integer_test < 1
+tree105: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql106: select * from test where float_test > u_mediumint_test or integer_test < 1
+tree106: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql107: select * from test where float_test > bigint_test or integer_test < 1
+tree107: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql108: select * from test where float_test > float_test or integer_test < 1
+tree108: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql109: select * from test where float_test > double_test or integer_test < 1
+tree109: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTFloatColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql110: select * from test where double_test > integer_test or integer_test < 1
+tree110: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql111: select * from test where double_test > u_integer_test or integer_test < 1
+tree111: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColUIntegerColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { UIntegerType, 2 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql112: select * from test where double_test > tinyint_test or integer_test < 1
+tree112: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { TinyIntType, 6 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql113: select * from test where double_test > u_tinyint_test or integer_test < 1
+tree113: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColUTinyIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql114: select * from test where double_test > smallint_test or integer_test < 1
+tree114: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { SmallIntType, 9 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql115: select * from test where double_test > u_smallint_test or integer_test < 1
+tree115: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColUSmallIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { USmallIntType, 10 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql116: select * from test where double_test > mediumint_test or integer_test < 1
+tree116: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { MediumIntType, 11 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql117: select * from test where double_test > u_mediumint_test or integer_test <
+  1
+tree117: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColUMediumIntColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql118: select * from test where double_test > bigint_test or integer_test < 1
+tree118: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColLongColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { LongType, 14 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql119: select * from test where double_test > float_test or integer_test < 1
+tree119: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColFloatColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { FloatType, 16 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }
+sql120: select * from test where double_test > double_test or integer_test < 1
+tree120: |
+  └ OrVectorizedExpression, { [Filter], -1 }
+     └ FilterGTDoubleColDoubleColVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+        └ InputRefVectorizedExpression, { DoubleType, 17 }
+     └ FilterLTIntegerColLongConstVectorizedExpression, { [Filter], -1 }
+        └ InputRefVectorizedExpression, { IntegerType, 1 }
+        └ LiteralVectorizedExpression, { LongType, 25 }

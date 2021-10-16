@@ -1,0 +1,10 @@
+- sql: |
+    select id 
+    from test_hash_tb a 
+    where a.name='xx' limit 5;
+
+
+  plan: |
+
+    MergeSort(sort="", offset=0, fetch=5)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') LIMIT 5")

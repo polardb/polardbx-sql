@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="binlog_polarx_command">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `binlog_polarx_command` (
+            `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            `cmd_id` varchar(40) NOT NULL COMMENT '命令请求id，如果某种类型的命令只需要发送一次，cmd_id设置为常数0',
+            `cmd_type` varchar(32) NOT NULL DEFAULT '' COMMENT '命令类型',
+            `cmd_request` TEXT DEFAULT NULL COMMENT '命令请求内容',
+            `cmd_reply` TEXT DEFAULT NULL COMMENT '命令响应内容',
+            `cmd_status` BIGINT(10) NOT NULL DEFAULT 0 COMMENT '命令处理状态,0-待处理，1-处理成功，2-处理失败',
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `uk_cmd_id_type` (`cmd_id`,`cmd_type`),
+            KEY `idx_gmt_modified` (`gmt_modified`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

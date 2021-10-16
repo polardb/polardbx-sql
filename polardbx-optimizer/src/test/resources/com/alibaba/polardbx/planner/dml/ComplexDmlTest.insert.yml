@@ -1,0 +1,494 @@
+- sql: |
+    insert into test_hash_tb values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb]", sql="INSERT INTO ? (`id`, `name`, `create_time`) VALUES(?, ?, CAST(? AS DATETIME))", params="`test_hash_tb`,1,a,?")
+
+# Table without primary key
+
+- sql: |
+    insert into test_tb_without_pk(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_01`,1,a,?")
+
+- sql: |
+    insert ignore into test_tb_without_pk(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="INSERT IGNORE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_01`,1,a,?")
+
+- sql: |
+    replace into test_tb_without_pk(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="REPLACE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_01`,1,a,?")
+
+- sql: |
+    insert into test_tb_without_pk(c1, c5, c8) values(1, 'a', now()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_01`,1,a,?")
+
+- sql: |
+    insert into test_tb_without_pk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_02]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_03]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_03`,3,c")
+
+- sql: |
+    insert ignore into test_tb_without_pk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="INSERT IGNORE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_02]", sql="INSERT IGNORE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_03]", sql="INSERT IGNORE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_03`,3,c")
+
+- sql: |
+    replace into test_tb_without_pk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="REPLACE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_02]", sql="REPLACE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_03]", sql="REPLACE INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_03`,3,c")
+
+- sql: |
+    insert into test_tb_without_pk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_01]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_02]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_03]", sql="INSERT INTO ? (`c1`, `c5`, `c8`) VALUES(?, ?, UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_03`,3,c")
+
+# Table without primary key and has unique key
+
+- sql: |
+    insert into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+
+- sql: |
+    insert ignore into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+
+- sql: |
+    replace into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+
+- sql: |
+    insert into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+
+- sql: |
+    insert into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_has_uk_03`,3,c")
+
+- sql: |
+    insert ignore into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="INSERT IGNORE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_has_uk_03`,3,c")
+
+- sql: |
+    replace into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="REPLACE INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_without_pk_has_uk_03`,3,c")
+
+- sql: |
+    insert into test_tb_without_pk_has_uk(c1, c5, c8) values(1, 'a', now()), (2, 'b', current_timestamp()), (3, 'c', unix_timestamp()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_01]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_01`,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_02]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_02`,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_without_pk_has_uk_03]", sql="INSERT INTO ? (`id`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_without_pk_has_uk_03`,3,c")
+
+# Table with auto_increment primary key and has no unique key
+
+- sql: |
+    insert into test_tb_pk_auto_increment(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_01`,1,1,a,?")
+
+- sql: |
+    insert ignore into test_tb_pk_auto_increment(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_01`,2,1,a,?")
+
+- sql: |
+    replace into test_tb_pk_auto_increment(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_01`,3,1,a,?")
+
+- sql: |
+    insert into test_tb_pk_auto_increment(c1, c5, c8) values(1, 'a', now()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_auto_increment_01`,4,1,a,?")
+
+- sql: |
+    insert into test_tb_pk_auto_increment(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_01`,5,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_02]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_pk_auto_increment_02`,6,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_03]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_pk_auto_increment_03`,7,3,c")
+
+- sql: |
+    insert ignore into test_tb_pk_auto_increment(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_01`,8,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_02]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_pk_auto_increment_02`,9,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_03]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_pk_auto_increment_03`,10,3,c")
+
+- sql: |
+    replace into test_tb_pk_auto_increment(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_01`,11,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_02]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_pk_auto_increment_02`,12,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_03]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_pk_auto_increment_03`,13,3,c")
+
+- sql: |
+    insert into test_tb_pk_auto_increment(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_auto_increment_01`,14,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_02]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_auto_increment_02`,15,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_03]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_auto_increment_03`,16,3,c")
+
+# Table with primary key, no unique key, no auto_increment, no default value
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_no_default(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    insert ignore into test_tb_pk_no_auto_increment_no_default(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_no_default(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_no_default(c1, c5, c8) values(1, 'a', now()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_no_default(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_no_default(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+
+# Table with primary key, no unique key, no auto_increment, default 1
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_01`,1,a,?")
+
+- sql: |
+    insert ignore into test_tb_pk_no_auto_increment_default_1(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_01`,1,a,?")
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_default_1(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_01`,1,a,?")
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1(c1, c5, c8) values(1, 'a', now()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_no_auto_increment_default_1_01`,1,a,?")
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_01`,0,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_02]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_pk_no_auto_increment_default_1_02`,NULL,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_03]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_pk_no_auto_increment_default_1_03`,3,c")
+
+- sql: |
+    insert ignore into test_tb_pk_no_auto_increment_default_1(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_01`,0,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_02]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_pk_no_auto_increment_default_1_02`,NULL,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_03]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_pk_no_auto_increment_default_1_03`,3,c")
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_default_1(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_01`,0,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_02]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP)", params="`test_tb_pk_no_auto_increment_default_1_02`,NULL,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_03]", sql="REPLACE INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP())", params="`test_tb_pk_no_auto_increment_default_1_03`,3,c")
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_01]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CAST(? AS DATETIME)) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_no_auto_increment_default_1_01`,0,1,a,?")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_02]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(?, ?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_no_auto_increment_default_1_02`,NULL,2,b")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_03]", sql="INSERT INTO ? (`pk`, `c1`, `c5`, `c8`) VALUES(1, ?, ?, UNIX_TIMESTAMP()) ON DUPLICATE KEY UPDATE `c8` = VALUES(`c8`)", params="`test_tb_pk_no_auto_increment_default_1_03`,3,c")
+
+
+# Table with primary key, with unique key, with auto_increment, with ugsi
+
+
+- sql: |
+    insert into test_tb_pk_auto_increment_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_with_ugsi_01`,1,1,NULL,NULL,NULL,a,?")
+
+- sql: |
+    insert ignore into test_tb_pk_auto_increment_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_with_ugsi_01`,2,1,NULL,NULL,NULL,a,?")
+
+- sql: |
+    replace into test_tb_pk_auto_increment_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_auto_increment_with_ugsi_01`,3,1,NULL,NULL,NULL,a,?")
+
+- sql: |
+    insert into test_tb_pk_auto_increment_with_ugsi(c1, c5, c8) values(1, 'a', 2 + 3) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, NULL, NULL, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_auto_increment_with_ugsi_01`,4,1,NULL,NULL,NULL,a,5,5")
+
+- sql: |
+    insert into test_tb_pk_auto_increment_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_01`,5,1,NULL,NULL,NULL,a,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_02]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_02`,6,2,NULL,NULL,NULL,b,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_03]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_03`,7,3,NULL,NULL,NULL,c,5")
+
+- sql: |
+    insert ignore into test_tb_pk_auto_increment_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3)
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_01`,8,1,NULL,NULL,NULL,a,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_02]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_02`,9,2,NULL,NULL,NULL,b,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_03]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_03`,10,3,NULL,NULL,NULL,c,5")
+
+- sql: |
+    replace into test_tb_pk_auto_increment_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_01`,11,1,NULL,NULL,NULL,a,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_02]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_02`,12,2,NULL,NULL,NULL,b,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_03]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_auto_increment_with_ugsi_03`,13,3,NULL,NULL,NULL,c,5")
+
+- sql: |
+    insert into test_tb_pk_auto_increment_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_auto_increment_with_ugsi_01`,14,1,NULL,NULL,NULL,a,NULL,NULL,5,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_02]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_auto_increment_with_ugsi_02`,15,2,NULL,NULL,NULL,b,NULL,NULL,5,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_auto_increment_with_ugsi_03]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_auto_increment_with_ugsi_03`,16,3,NULL,NULL,NULL,c,NULL,NULL,5,5")
+
+# Table with primary key, with unique key, no auto_increment, no default value, with gusi
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_no_default_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    insert ignore into test_tb_pk_no_auto_increment_no_default_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_no_default_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_no_default_with_ugsi(c1, c5, c8) values(1, 'a', now()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_no_default_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp());
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_no_default_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', now()), (null, 2, 'b', current_timestamp()), (default, 3, 'c', unix_timestamp()) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    ERR-CODE: [PXC-4518][ERR_VALIDATE] : Column 'pk' has no default value and does not allow NULLs
+
+
+# Table with primary key, with unique key, no auto_increment, default 1, with gusi
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,1,1,NULL,NULL,NULL,a,?")
+
+- sql: |
+    insert ignore into test_tb_pk_no_auto_increment_default_1_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,1,1,NULL,NULL,NULL,a,?")
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_default_1_with_ugsi(c1, c5, c8) values(1, 'a', now());
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, CAST(? AS DATETIME))", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,1,1,NULL,NULL,NULL,a,?")
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1_with_ugsi(c1, c5, c8) values(1, 'a', 2 + 3) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, NULL, NULL, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,1,1,NULL,NULL,NULL,a,5,5")
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,0,1,NULL,NULL,NULL,a,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_02]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_02`,NULL,2,NULL,NULL,NULL,b,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_03]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_03`,1,3,NULL,NULL,NULL,c,5")
+
+- sql: |
+    insert ignore into test_tb_pk_no_auto_increment_default_1_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,0,1,NULL,NULL,NULL,a,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_02]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_02`,NULL,2,NULL,NULL,NULL,b,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_03]", sql="INSERT IGNORE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_03`,1,3,NULL,NULL,NULL,c,5")
+
+- sql: |
+    replace into test_tb_pk_no_auto_increment_default_1_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,0,1,NULL,NULL,NULL,a,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_02]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_02`,NULL,2,NULL,NULL,NULL,b,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_03]", sql="REPLACE INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?)", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_03`,1,3,NULL,NULL,NULL,c,5")
+
+- sql: |
+    insert into test_tb_pk_no_auto_increment_default_1_with_ugsi(pk, c1, c5, c8) values(0, 1, 'a', 2 + 3), (null, 2, 'b', 2 + 3), (default, 3, 'c', 2 + 3) on duplicate key update c8=values(c8);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_01]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_01`,0,1,NULL,NULL,NULL,a,NULL,NULL,5,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_02]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_02`,NULL,2,NULL,NULL,NULL,b,NULL,NULL,5,5")
+    PhyTableOperation(tables="optest_0000.[test_tb_pk_no_auto_increment_default_1_with_ugsi_03]", sql="INSERT INTO ? (`pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `c8` = ?", params="`test_tb_pk_no_auto_increment_default_1_with_ugsi_03`,1,3,NULL,NULL,NULL,c,NULL,NULL,5,5")

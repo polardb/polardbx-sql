@@ -1,0 +1,118 @@
+# JSON formatted Full HINT
+
+# SELECT
+## single table replacement
+- sql: |
+    select /*+TDDL({'type':'full','vtab':'hint_c_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    pk from hint_c_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].hint_c_table_a_[00-27]", shardCount=28, sql="SELECT `hint_c_table_a`.`pk` FROM `hint_c_table_a` AS `hint_c_table_a`")
+
+- sql: |
+    select /*+TDDL({'type':'full','vtab':'hint_c_table_a,hint_c_table_b','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    a.pk, b.bigint_test from hint_c_table_a a join hint_c_table_b b on a.pk = b.pk;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].hint_c_table_a_[00-27],hint_c_table_b_[00-27]", shardCount=28, sql="SELECT `a`.`pk`, `b`.`bigint_test` FROM `hint_c_table_a` AS `a` INNER JOIN `hint_c_table_b` AS `b` ON (`a`.`pk` = `b`.`pk`)")
+
+- sql: |
+    select /*+TDDL({'type':'full','vtab':'hint_c_table_a, hint_c_table_b','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    a.pk, b.bigint_test, c.text_test from hint_c_table_a a join hint_c_table_c c on a.pk = c.pk join hint_c_table_b b on b.pk = c.pk;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].hint_c_table_a_[00-27],hint_c_table_c,hint_c_table_b_[00-27]", shardCount=28, sql="SELECT `a`.`pk`, `b`.`bigint_test`, `c`.`text_test` FROM `hint_c_table_a` AS `a` INNER JOIN `hint_c_table_c` AS `c` ON (`a`.`pk` = `c`.`pk`) INNER JOIN `hint_c_table_b` AS `b` ON (`b`.`pk` = `c`.`pk`)")
+
+- sql: |
+    insert /*+TDDL({'type':'full','vtab':'hint_c_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    into hint_c_table_a(bigint_test) values(2), (3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_00]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_00`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_01]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_01`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_02]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_02`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_03]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_03`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_04]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_04`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_05]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_05`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_06]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_06`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_07]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_07`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_08]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_08`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_09]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_09`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_10]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_10`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_11]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_11`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_12]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_12`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_13]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_13`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_14]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_14`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_15]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_15`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_16]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_16`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_17]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_17`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_18]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_18`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_19]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_19`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_20]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_20`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_21]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_21`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_22]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_22`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_23]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_23`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_24]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_24`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_25]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_25`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_26]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_26`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_27]", sql="INSERT INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_27`")
+
+- sql: |
+    replace /*+TDDL({'type':'full','vtab':'hint_c_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    into hint_c_table_a(bigint_test) values(2), (3);
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_00]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_00`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_01]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_01`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_02]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_02`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_03]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_03`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_04]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_04`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_05]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_05`")
+    PhyTableOperation(tables="optest_0000.[hint_c_table_a_06]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_06`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_07]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_07`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_08]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_08`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_09]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_09`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_10]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_10`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_11]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_11`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_12]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_12`")
+    PhyTableOperation(tables="optest_0001.[hint_c_table_a_13]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_13`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_14]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_14`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_15]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_15`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_16]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_16`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_17]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_17`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_18]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_18`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_19]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_19`")
+    PhyTableOperation(tables="optest_0002.[hint_c_table_a_20]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_20`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_21]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_21`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_22]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_22`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_23]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_23`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_24]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_24`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_25]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_25`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_26]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_26`")
+    PhyTableOperation(tables="optest_0003.[hint_c_table_a_27]", sql="REPLACE INTO ? (`pk`, `bigint_test`) VALUES(NULL, 2),(NULL, 3)", params="`hint_c_table_a_27`")
+
+- sql: |
+    update /*+TDDL({'type':'full','vtab':'hint_c_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    hint_c_table_a set bigint_test=3 where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0000-0003].hint_c_table_a_[00-27]", shardCount=28, sql="UPDATE `hint_c_table_a` AS `hint_c_table_a` SET `bigint_test` = 3 WHERE (`pk` = 100003)")
+
+- sql: |
+    DELETE /*+TDDL({'type':'full','vtab':'hint_c_table_a','extra':{'MERGE_CONCURRENT':'FALSE'}})*/
+    from hint_c_table_a where pk = 100003;
+
+  plan: |
+
+    AffectedRowsSum(Concurrent:=true)
+      LogicalModifyView(tables="[0000-0003].hint_c_table_a_[00-27]", shardCount=28, sql="DELETE FROM `hint_c_table_a` WHERE (`pk` = 100003)")

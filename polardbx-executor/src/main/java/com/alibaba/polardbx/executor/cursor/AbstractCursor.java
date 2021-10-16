@@ -1,0 +1,115 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.executor.cursor;
+
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.core.row.Row;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @author mengshi.sunmengshi 2013-11-29 下午2:39:33
+ * @since 5.0.0
+ */
+public abstract class AbstractCursor extends StatisticsCursor {
+
+    protected List<ColumnMeta> returnColumns = null;
+    protected volatile boolean inited = false;
+    protected boolean isFinished = false;
+    protected Row currRow = null;
+    protected boolean cursorClosed = false;
+
+    public AbstractCursor(boolean enableOperatorMetric) {
+        super(enableOperatorMetric);
+    }
+
+    @Override
+    public final Row next() {
+        if (!inited) {
+            init();
+        }
+        Row nextRow = null;
+        if (enableOperatorMetric) {
+            startProcessStat();
+            nextRow = doNext();
+            endProcessStat(nextRow != null ? 1 : 0);
+        } else {
+            nextRow = doNext();
+        }
+        currRow = nextRow;
+        return nextRow;
+    }
+
+    protected Row doNext() {
+        GeneralUtil.checkInterrupted();
+        throw new IllegalArgumentException("null object");
+    }
+
+    public final void init() {
+        if (!inited) {
+            synchronized (this) {
+                if (!inited) {
+                    if (!enableOperatorMetric) {
+                        doInit();
+                    } else {
+                        startInitStat();
+                        doInit();
+                        endInitStat();
+                    }
+                    inited = true;
+                }
+            }
+        }
+    }
+
+    protected void doInit() {
+        inited = true;
+    }
+
+    @Override
+    public List<ColumnMeta> getReturnColumns() {
+        return returnColumns;
+    }
+
+    @Override
+    public final List<Throwable> close(List<Throwable> exceptions) {
+
+        List<Throwable> ex = new ArrayList<>();
+        if (!cursorClosed) {
+            synchronized (this) {
+                if (!cursorClosed) {
+                    if (enableOperatorMetric) {
+                        startCloseStat();
+                        ex = doClose(exceptions);
+                        endCloseStat();
+                    } else {
+                        ex = doClose(exceptions);
+                    }
+                    cursorClosed = true;
+                }
+            }
+        }
+        return ex;
+    }
+
+    protected List<Throwable> doClose(List<Throwable> exceptions) {
+        return exceptions;
+    }
+
+}

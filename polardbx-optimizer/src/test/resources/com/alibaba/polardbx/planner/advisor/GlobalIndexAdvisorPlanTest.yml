@@ -1,0 +1,268 @@
+- sql: |
+    SELECT sum(l_extendedprice) / 7.0 AS avg_yearly
+    FROM lineitem,
+         part
+    WHERE p_partkey = l_partkey
+      AND p_brand = 'Brand#23'
+      AND p_container = 'MED BOX'
+      AND l_quantity <
+        (SELECT 0.2 * avg(`l_quantity`)
+         FROM lineitem
+         WHERE l_partkey = p_partkey);
+
+  plan: |
+    Project(avg_yearly="$f0 / 7.0")
+      HashAgg($f0="SUM(l_extendedprice)")
+        Filter(condition="l_quantity < 0.2 * f16w0$o0")
+          SortWindow(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", f4w0$o0="window#0AVG($2)", Reference Windows="window#0=window(partition {1} order by [] range between UNBOUNDED PRECEDING and UNBOUNDED PRECEDING aggs [AVG($2)])")
+            MemSort(sort="l_partkey ASC")
+              BKAJoin(condition="l_partkey = p_partkey", type="inner")
+                Gather(concurrent=true)
+                  LogicalView(tables="[0000-0003].part_[00-15]", shardCount=16, sql="SELECT `p_partkey` FROM `part` AS `part` WHERE ((`p_brand` = 'Brand#23') AND (`p_container` = 'MED BOX'))")
+                Project(l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice")
+                  bkajoin(condition="l_linenumber = l_linenumber and l_orderkey = l_orderkey", type="inner")
+                    Gather(concurrent=true)
+                      IndexScan(tables="[0000-0003].lineitem__what_if_gsi_l_partkey_[00-15]", shardCount=16, sql="SELECT `l_linenumber`, `l_orderkey`, `l_partkey` FROM `lineitem__what_if_gsi_l_partkey` AS `lineitem__what_if_gsi_l_partkey` WHERE (`l_partkey` IN (...))")
+                    Gather(concurrent=true)
+                      LogicalView(tables="[0000-0003].lineitem_[00-15]", shardCount=16, sql="SELECT `l_orderkey`, `l_linenumber`, `l_quantity`, `l_extendedprice` FROM `lineitem` AS `lineitem` WHERE (((`l_linenumber`, `l_orderkey`)) IN (...))")
+
+- sql: |
+    select * from (select
+      ps_partkey,
+      sum(ps_supplycost * ps_availqty) as value
+    from
+      partsupp,
+      supplier,
+      nation
+    where
+      ps_suppkey = s_suppkey
+      and s_nationkey = n_nationkey
+      and n_name = 'GERMANY'
+    group by
+      ps_partkey
+      )
+    where
+      value > (
+        select
+          sum(ps_supplycost * ps_availqty) * 0.0001
+        from
+          partsupp,
+          supplier,
+          nation
+        where
+          ps_suppkey = s_suppkey
+          and s_nationkey = n_nationkey and n_name = 'GERMANY'
+      )
+    order by
+      value desc;
+
+  plan: |
+    MemSort(sort="value DESC")
+      Project(ps_partkey="ps_partkey", value="value")
+        NlJoin(condition="value > $f0 * 0.0001", type="inner")
+          HashAgg(group="ps_partkey", value="SUM(__*__)")
+            BKAJoin(condition="ps_suppkey = s_suppkey", type="inner")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].supplier_[00-15],nation", shardCount=16, sql="SELECT `supplier`.`s_suppkey` FROM `supplier` AS `supplier` INNER JOIN `nation` AS `nation` ON ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) AND (`nation`.`n_name` = 'GERMANY'))")
+              Project(ps_partkey="ps_partkey", ps_suppkey="ps_suppkey", __*__="ps_supplycost * ps_availqty")
+                BKAJoin(condition="ps_partkey = ps_partkey AND ps_suppkey = ps_suppkey", type="inner")
+                  Gather(concurrent=true)
+                    IndexScan(tables="[0000-0003].partsupp__what_if_gsi_ps_suppkey_[00-15]", shardCount=16, sql="SELECT `ps_partkey`, `ps_suppkey` FROM `partsupp__what_if_gsi_ps_suppkey` AS `partsupp__what_if_gsi_ps_suppkey` WHERE (`ps_suppkey` IN (...))")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].partsupp_[00-15]", shardCount=16, sql="SELECT `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost` FROM `partsupp` AS `partsupp` WHERE (((`ps_partkey`, `ps_suppkey`)) IN (...))")
+          HashAgg($f0="SUM(__*__)")
+            BKAJoin(condition="ps_suppkey = s_suppkey", type="inner")
+              Gather(concurrent=true)
+                LogicalView(tables="[0000-0003].supplier_[00-15],nation", shardCount=16, sql="SELECT `supplier`.`s_suppkey` FROM `supplier` AS `supplier` INNER JOIN `nation` AS `nation` ON ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) AND (`nation`.`n_name` = 'GERMANY'))")
+              Project(ps_suppkey="ps_suppkey", __*__="ps_supplycost * ps_availqty")
+                BKAJoin(condition="ps_partkey = ps_partkey AND ps_suppkey = ps_suppkey", type="inner")
+                  Gather(concurrent=true)
+                    IndexScan(tables="[0000-0003].partsupp__what_if_gsi_ps_suppkey_[00-15]", shardCount=16, sql="SELECT `ps_partkey`, `ps_suppkey` FROM `partsupp__what_if_gsi_ps_suppkey` AS `partsupp__what_if_gsi_ps_suppkey` WHERE (`ps_suppkey` IN (...))")
+                  Gather(concurrent=true)
+                    LogicalView(tables="[0000-0003].partsupp_[00-15]", shardCount=16, sql="SELECT `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost` FROM `partsupp` AS `partsupp` WHERE (((`ps_partkey`, `ps_suppkey`)) IN (...))")
+
+- sql: |
+    select
+    sum(l_extendedprice * (1 - l_discount) ) as revenue
+    from
+    lineitem,
+    part where
+    (
+
+    p_partkey = l_partkey
+    and p_brand = 'Brand#12'
+    and p_container in ( 'SM CASE', 'SM BOX', 'SM PACK', 'SM PKG') and l_quantity >= 1 and l_quantity <= 1 + 10 and p_size between 1 and 5
+    and l_shipmode in ('AIR', 'AIR REG')
+    and l_shipinstruct = 'DELIVER IN PERSON'
+
+    ) or (
+
+    p_partkey = l_partkey
+    and p_brand = 'Brand#23'
+    and p_container in ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK') and l_quantity >= 10 and l_quantity <= 20 + 10 and p_size between 1 and 10
+    and l_shipmode in ('AIR', 'AIR REG')
+    and l_shipinstruct = 'DELIVER IN PERSON'
+
+    ) or
+    (
+
+    p_partkey = l_partkey
+    and p_brand = 'Brand#34'
+    and p_container in ( 'LG CASE', 'LG BOX', 'LG PACK', 'LG PKG') and l_quantity >= 20 and l_quantity <= 20 + 10 and p_size between 1 and 15
+    and l_shipmode in ('AIR', 'AIR REG')
+    and l_shipinstruct = 'DELIVER IN PERSON'
+
+    );
+
+  plan: |
+    HashAgg(revenue="SUM(__*__)")
+      BKAJoin(condition="p_partkey = l_partkey AND ((p_partkey = l_partkey AND = AND IN AND >= AND <= AND BETWEEN ASYMMETRIC AND IN AND =) OR (p_partkey = l_partkey AND =4 AND IN5 AND >=6 AND <=7 AND BETWEEN ASYMMETRIC6 AND IN AND =) OR (p_partkey = l_partkey AND =7 AND IN8 AND >=8 AND <=7 AND BETWEEN ASYMMETRIC9 AND IN AND =))", type="inner")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].part_[00-15]", shardCount=16, sql="SELECT `p_partkey`, (`p_brand` = 'Brand#12') AS `=`, (`p_container` IN('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')) AS `IN`, (`p_size` BETWEEN 1 AND 5) AS `BETWEEN ASYMMETRIC`, (`p_brand` = 'Brand#23') AS `=4`, (`p_container` IN('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK')) AS `IN5`, (`p_size` BETWEEN 1 AND 10) AS `BETWEEN ASYMMETRIC6`, (`p_brand` = 'Brand#34') AS `=7`, (`p_container` IN('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG')) AS `IN8`, (`p_size` BETWEEN 1 AND 15) AS `BETWEEN ASYMMETRIC9` FROM `part` AS `part` WHERE (((((`p_brand` = 'Brand#12') AND (`p_container` IN('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG'))) AND (`p_size` BETWEEN 1 AND 5)) OR (((`p_brand` = 'Brand#23') AND (`p_container` IN('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK'))) AND (`p_size` BETWEEN 1 AND 10))) OR (((`p_brand` = 'Brand#34') AND (`p_container` IN('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG'))) AND (`p_size` BETWEEN 1 AND 15)))")
+        Project(l_partkey="l_partkey", __*__="l_extendedprice * 1 - l_discount", >=="l_quantity >= 1", <=="l_quantity <= 1 + 10", IN="l_shipmode IN ROW('AIR', 'AIR REG')", =="l_shipinstruct = 'DELIVER IN PERSON'", >=6="l_quantity >= 10", <=7="l_quantity <= 20 + 10", >=8="l_quantity >= 20")
+          bkajoin(condition="l_linenumber = l_linenumber and l_orderkey = l_orderkey", type="inner")
+            Gather(concurrent=true)
+              IndexScan(tables="[0000-0003].lineitem__what_if_gsi_l_partkey_[00-15]", shardCount=16, sql="SELECT `l_linenumber`, `l_orderkey`, `l_partkey` FROM `lineitem__what_if_gsi_l_partkey` AS `lineitem__what_if_gsi_l_partkey` WHERE (`l_partkey` IN (...))")
+            Gather(concurrent=true)
+              LogicalView(tables="[0000-0003].lineitem_[00-15]", shardCount=16, sql="SELECT `l_orderkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_shipinstruct`, `l_shipmode` FROM `lineitem` AS `lineitem` WHERE (((((((`l_quantity` >= 1) AND (`l_quantity` <= (1 + 10))) AND (`l_shipmode` IN('AIR', 'AIR REG'))) AND (`l_shipinstruct` = 'DELIVER IN PERSON')) OR ((((`l_quantity` >= 10) AND (`l_quantity` <= (20 + 10))) AND (`l_shipmode` IN('AIR', 'AIR REG'))) AND (`l_shipinstruct` = 'DELIVER IN PERSON'))) OR ((((`l_quantity` >= 20) AND (`l_quantity` <= (20 + 10))) AND (`l_shipmode` IN('AIR', 'AIR REG'))) AND (`l_shipinstruct` = 'DELIVER IN PERSON'))) AND (((`l_linenumber`, `l_orderkey`)) IN (...)))")
+
+- sql: |
+    select * from orders where o_custkey = 1;
+  plan: |
+    Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment")
+      bkajoin(condition="o_orderkey = o_orderkey", type="inner")
+        IndexScan(tables="optest_0001.orders__what_if_gsi_o_custkey", sql="SELECT `o_custkey`, `o_orderkey` FROM `orders__what_if_gsi_o_custkey` AS `orders__what_if_gsi_o_custkey` WHERE (`o_custkey` = 1)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].orders_[00-15]", shardCount=16, sql="SELECT `o_orderkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` FROM `orders` AS `orders` WHERE ((`o_custkey` = 1) AND (`o_orderkey` IN (...)))")
+
+-
+  sql: |
+    SELECT *
+    FROM test_index_join
+    JOIN test_index a ON a.k1 = test_index_join.k
+    JOIN test_index b ON b.k1 = test_index_join.k
+    ORDER BY test_index_join.id LIMIT 100;
+
+  plan: |
+
+    limit(offset=0, fetch=100)
+      project(id="id", k="k", id0="id1", k1="k10", k2="k20", value="value0", d1="d10", d2="d20", d3="d30", d4="d40", d5="d50", id1="id0", k10="k1", k20="k2", value0="value", d10="d1", d20="d2", d30="d3", d40="d4", d50="d5")
+        bkajoin(condition="k1 = k1 and k = k1", type="inner")
+          bkajoin(condition="k1 = k", type="inner")
+            mergesort(sort="id asc")
+              logicalview(tables="[0000-0003].test_index_join", shardcount=4, sql="select `id`, `k` from `test_index_join` as `test_index_join` order by `id`")
+            project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5")
+              bkajoin(condition="id = id", type="inner")
+                gather(concurrent=true)
+                  indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` where (`k1` in (...))")
+                gather(concurrent=true)
+                  logicalview(tables="[0000-0003].test_index", shardcount=4, sql="select `id`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index` as `test_index` where (`id` in (...))")
+          project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5")
+            bkajoin(condition="id = id", type="inner")
+              gather(concurrent=true)
+                indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` where (`k1` in (...))")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].test_index", shardcount=4, sql="select `id`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index` as `test_index` where (`id` in (...))")
+
+-
+  sql: |
+    select * from orders where o_comment != 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq'  and o_custkey in (select c_custkey from customer where c_name = 'Customer#00000112')
+
+  plan: |
+    MaterializedSemiJoin(condition="o_custkey = c_custkey", type="semi")
+      Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment")
+        bkajoin(condition="o_orderkey = o_orderkey", type="inner")
+          Gather(concurrent=true)
+            IndexScan(tables="[0000-0003].orders__what_if_gsi_o_custkey_[00-15]", shardCount=16, sql="SELECT `o_custkey`, `o_orderkey` FROM `orders__what_if_gsi_o_custkey` AS `orders__what_if_gsi_o_custkey` WHERE (`o_custkey` IN (...))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].orders_[00-15]", shardCount=16, sql="SELECT `o_orderkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` FROM `orders` AS `orders` WHERE ((`o_comment` <> 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') AND (`o_orderkey` IN (...)))")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].customer_[00-15]", shardCount=16, sql="SELECT `c_custkey` FROM `customer` AS `customer` WHERE (`c_name` = 'Customer#00000112')")
+
+-
+  sql: |
+    SELECT * FROM customer left JOIN (select * from orders where o_comment != 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') a ON o_custkey = c_custkey  WHERE c_name = 'Customer#00000112'
+
+  plan: |
+    BKAJoin(condition="o_custkey = c_custkey", type="left")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].customer_[00-15]", shardCount=16, sql="SELECT `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` FROM `customer` AS `customer` WHERE (`c_name` = 'Customer#00000112')")
+      Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment")
+        bkajoin(condition="o_orderkey = o_orderkey", type="inner")
+          Gather(concurrent=true)
+            IndexScan(tables="[0000-0003].orders__what_if_gsi_o_custkey_[00-15]", shardCount=16, sql="SELECT `o_custkey`, `o_orderkey` FROM `orders__what_if_gsi_o_custkey` AS `orders__what_if_gsi_o_custkey` WHERE (`o_custkey` IN (...))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].orders_[00-15]", shardCount=16, sql="SELECT `o_orderkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` FROM `orders` AS `orders` WHERE ((`o_comment` <> 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') AND (`o_orderkey` IN (...)))")
+
+-
+  sql: |
+    SELECT * FROM customer where c_custkey in (select o_custkey from orders where o_comment != 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') and c_name = 'Customer#00000112'
+
+  plan: |
+    SemiBKAJoin(condition="c_custkey = o_custkey", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].customer_[00-15]", shardCount=16, sql="SELECT `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` FROM `customer` AS `customer` WHERE (`c_name` = 'Customer#00000112')")
+      Project(o_custkey="o_custkey")
+        bkajoin(condition="o_orderkey = o_orderkey", type="inner")
+          Gather(concurrent=true)
+            IndexScan(tables="[0000-0003].orders__what_if_gsi_o_custkey_[00-15]", shardCount=16, sql="SELECT `o_custkey`, `o_orderkey` FROM `orders__what_if_gsi_o_custkey` AS `orders__what_if_gsi_o_custkey` WHERE (`o_custkey` IN (...))")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].orders_[00-15]", shardCount=16, sql="SELECT `o_orderkey` FROM `orders` AS `orders` WHERE ((`o_comment` <> 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') AND (`o_orderkey` IN (...)))")
+
+  # 3. order by 利用索引的顺序
+- sql: |
+    select * from test_index order by k1 limit 10;
+
+  plan: |
+    Project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5")
+      BKAJoin(condition="id = id", type="inner")
+        MergeSort(sort="k1 ASC", offset=0, fetch=10)
+          IndexScan(tables="[0000-0003].test_index__what_if_gsi_k1", shardCount=4, sql="SELECT `id`, `k1` FROM `test_index__what_if_gsi_k1` AS `test_index__what_if_gsi_k1` ORDER BY `k1` LIMIT 10")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_index", shardCount=4, sql="SELECT `id`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (`id` IN (...))")
+
+- sql: |
+    select * from test_index order by k2 limit 10;
+
+  plan: |
+    Project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5")
+      BKAJoin(condition="id = id", type="inner")
+        MergeSort(sort="k2 ASC", offset=0, fetch=10)
+          IndexScan(tables="[0000-0003].test_index__what_if_gsi_k2", shardCount=4, sql="SELECT `id`, `k2` FROM `test_index__what_if_gsi_k2` AS `test_index__what_if_gsi_k2` ORDER BY `k2` LIMIT 10")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_index", shardCount=4, sql="SELECT `id`, `k1`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (`id` IN (...))")
+
+  # 1.3. GSI DO NOT SUPPORT Index Merge recommendation
+#- sql: |
+#    select * from test_index where k2 = 10 or k1 = 10;
+#
+#  plan: |
+#    Project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5")
+#      BKAJoin(condition="id = id", type="inner")
+#        Gather(concurrent=true)
+#          IndexScan(tables="optest_0000.test_index__what_if_gsi_k1_k2", sql="SELECT `id`, `k1`, `k2` FROM `test_index__what_if_gsi_k1_k2` AS `test_index__what_if_gsi_k1_k2` WHERE ((`k2` = 10) OR (`k1` = 10))")
+#        Gather(concurrent=true)
+#          LogicalView(tables="[0000-0003].test_index", shardCount=4, sql="SELECT `id`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (((`k2` = 10) OR (`k1` = 10)) AND (`id` IN (...)))")
+
+  # 6. MIN/MAX 聚合函数利用索引
+- sql: |
+    select min(k1), max(k1) from test_index;
+
+  plan: |
+    HashAgg(min(k1)="MIN(min(k1))", max(k1)="MAX(max(k1))")
+      Gather(concurrent=true)
+        IndexScan(tables="[0000-0003].test_index__what_if_gsi_k1", shardCount=4, sql="SELECT MIN(`k1`) AS `min(k1)`, MAX(`k1`) AS `max(k1)` FROM `test_index__what_if_gsi_k1` AS `test_index__what_if_gsi_k1`")
+
+  # 7. GSI join index
+- sql: |
+    /*+TDDL:cmd_extra(enable_post_planner=false)*/select a.*, b.k2,b.value from test_index a join test_index b on a.k1 = b.k2 where a.id = 1;
+
+  plan: |
+    Project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5", k20="k20", value0="value0")
+      BKAJoin(condition="id0 = id", type="inner")
+        BKAJoin(condition="k2 = k1", type="inner")
+          LogicalView(tables="optest_0001.test_index", sql="SELECT `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (`id` = 1)")
+          Gather(concurrent=true)
+            IndexScan(tables="[0000-0003].test_index__what_if_gsi_k2", shardCount=4, sql="SELECT `id`, `k2` FROM `test_index__what_if_gsi_k2` AS `test_index__what_if_gsi_k2` WHERE (`k2` IN (...))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_index", shardCount=4, sql="SELECT `id`, `value` FROM `test_index` AS `test_index` WHERE (`id` IN (...))")

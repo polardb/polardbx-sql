@@ -1,0 +1,52 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.optimizer.chunk;
+
+/**
+ * Object Block Builder (designed for very special cases e.g. tuple)
+ *
+ */
+public class ObjectBlockBuilder extends ReferenceBlockBuilder<Object> {
+
+    public ObjectBlockBuilder(int capacity) {
+        super(capacity);
+    }
+
+    @Override
+    public Object getObject(int position) {
+        return isNull(position) ? null : getReference(position);
+    }
+
+    @Override
+    public Block build() {
+        return new ObjectBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null, values.elements());
+    }
+
+    @Override
+    public void writeObject(Object value) {
+        if (value == null) {
+            appendNull();
+            return;
+        }
+        writeReference(value);
+    }
+
+    @Override
+    public BlockBuilder newBlockBuilder() {
+        return new ObjectBlockBuilder(getCapacity());
+    }
+}

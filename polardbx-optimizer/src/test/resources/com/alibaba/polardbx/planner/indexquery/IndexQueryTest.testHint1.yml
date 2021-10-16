@@ -1,0 +1,123 @@
+-
+  sql: |
+    select id from t as a force index(name_1);
+
+  plan: |
+
+    LogicalView(tables="optest_0000.t", sql="SELECT `a`.`id` FROM `t` AS `a` FORCE INDEX(NAME_1)")
+
+-
+  sql: |
+    select id from t force index(name_1);
+
+  plan: |
+
+    LogicalView(tables="optest_0000.t", sql="SELECT `t`.`id` FROM `t` AS `t` FORCE INDEX(NAME_1)")
+
+-
+  sql: |
+    select id from abc as a force index(name_1);
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].abc_[0-7]", shardCount=8, sql="SELECT `id` FROM `abc` AS `abc` FORCE INDEX(NAME_1)")
+
+-
+  sql: |
+    select id from abc force index(name_1);
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].abc_[0-7]", shardCount=8, sql="SELECT `id` FROM `abc` AS `abc` FORCE INDEX(NAME_1)")
+
+-
+  sql: |
+    select sum(CASE WHEN a.purchase_times=1 THEN 1 else 0 END ) oneCustomersNum, sum(CASE WHEN a.purchase_times=1 THEN a.payment else 0 END ) onceMoney, sum(CASE WHEN a.purchase_times=1 THEN a.interval_day else 0 END ) oneIntervalDay, sum(CASE WHEN a.purchase_times=2 THEN 1 else 0 END ) twoCustomersNum, sum(CASE WHEN a.purchase_times=2 THEN a.payment else 0 END ) twoMoney, sum(CASE WHEN a.purchase_times=2 THEN a.interval_day else 0 END ) twoIntervalDay, sum(CASE WHEN a.purchase_times=3 THEN 1 else 0 END ) threeCustomersNum, sum(CASE WHEN a.purchase_times=3 THEN a.payment else 0 END ) threeMoney, sum(CASE WHEN a.purchase_times=3 THEN a.interval_day else 0 END ) threeIntervalDay, sum(CASE WHEN a.purchase_times=4 THEN 1 else 0 END ) fourCustomersNum, sum(CASE WHEN a.purchase_times=4 THEN a.payment else 0 END ) fourMoney, sum(CASE WHEN a.purchase_times=4 THEN a.interval_day else 0 END ) fourIntervalDay, sum(CASE WHEN a.purchase_times=5 THEN 1 else 0 END ) fiveCustomersNum, sum(CASE WHEN a.purchase_times=5 THEN a.payment else 0 END ) fiveMoney, sum(CASE WHEN a.purchase_times=5 THEN a.interval_day else 0 END ) fiveIntervalDay from t_buyer_day a force index (sellerId_during) WHERE a.sellerId = 3234284498 and a.pay_trades>0 and ( a.during = str_to_date('2018-01-10', '%Y-%m-%d') );
+
+  plan: |
+
+    LogicalView(tables="optest_0001.t_buyer_day_2", sql="SELECT SUM((CASE WHEN (`purchase_times` = 1) THEN 1 ELSE 0 END)) AS `oneCustomersNum`, SUM((CASE WHEN (`purchase_times` = 1) THEN `payment` ELSE 0 END)) AS `onceMoney`, SUM((CASE WHEN (`purchase_times` = 1) THEN `interval_day` ELSE 0 END)) AS `oneIntervalDay`, SUM((CASE WHEN (`purchase_times` = 2) THEN 1 ELSE 0 END)) AS `twoCustomersNum`, SUM((CASE WHEN (`purchase_times` = 2) THEN `payment` ELSE 0 END)) AS `twoMoney`, SUM((CASE WHEN (`purchase_times` = 2) THEN `interval_day` ELSE 0 END)) AS `twoIntervalDay`, SUM((CASE WHEN (`purchase_times` = 3) THEN 1 ELSE 0 END)) AS `threeCustomersNum`, SUM((CASE WHEN (`purchase_times` = 3) THEN `payment` ELSE 0 END)) AS `threeMoney`, SUM((CASE WHEN (`purchase_times` = 3) THEN `interval_day` ELSE 0 END)) AS `threeIntervalDay`, SUM((CASE WHEN (`purchase_times` = 4) THEN 1 ELSE 0 END)) AS `fourCustomersNum`, SUM((CASE WHEN (`purchase_times` = 4) THEN `payment` ELSE 0 END)) AS `fourMoney`, SUM((CASE WHEN (`purchase_times` = 4) THEN `interval_day` ELSE 0 END)) AS `fourIntervalDay`, SUM((CASE WHEN (`purchase_times` = 5) THEN 1 ELSE 0 END)) AS `fiveCustomersNum`, SUM((CASE WHEN (`purchase_times` = 5) THEN `payment` ELSE 0 END)) AS `fiveMoney`, SUM((CASE WHEN (`purchase_times` = 5) THEN `interval_day` ELSE 0 END)) AS `fiveIntervalDay` FROM `t_buyer_day` AS `t_buyer_day` FORCE INDEX(SELLERID_DURING) WHERE (((`sellerId` = 3234284498) AND (`pay_trades` > 0)) AND (`during` = STR_TO_DATE('2018-01-10', '%Y-%m-%d')))")
+
+-
+  sql: |
+    /*+TDDL:BKA_JOIN(t,abc)*/
+    select t.id from abc force index(name_1) join t force index(name_2) on t.id = abc.id;
+
+  plan: |
+
+    Project(id="id")
+      BKAJoin(condition="id = id", type="inner")
+        LogicalView(tables="optest_0000.t", sql="SELECT `id` FROM `t` AS `t`")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].abc_[0-7]", shardCount=8, sql="SELECT `id` FROM `abc` AS `abc` FORCE INDEX(NAME_1) WHERE (`id` IN (...))")
+
+-
+  sql: |
+    select t.id from abc force index(name_1) join t force index(name_2) on t.id = abc.id where t.id in(select purchase_times from t_buyer_day a force index (sellerId_during) WHERE a.sellerId = 3234284498);
+
+  plan: |
+
+    Project(id0="id")
+      BKAJoin(condition="id = id", type="inner")
+        SemiHashJoin(condition="id = purchase_times", type="semi")
+          LogicalView(tables="optest_0000.t", sql="SELECT `id` FROM `t` AS `t`")
+          LogicalView(tables="optest_0001.t_buyer_day_2", sql="SELECT `purchase_times` FROM `t_buyer_day` AS `t_buyer_day` FORCE INDEX(SELLERID_DURING) WHERE (`sellerId` = 3234284498)")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].abc_[0-7]", shardCount=8, sql="SELECT `id` FROM `abc` AS `abc` FORCE INDEX(NAME_1) WHERE (`id` IN (...))")
+
+-
+  sql: |
+    select a.id
+    from
+      test_hash_tb a force index(tht_1)
+    where
+      a.id > 5
+      and ( a.int_col1=1
+           or ( a.int_col2=1
+                and ( a.int_col3=1
+                          or ( a.int_col4=1 and  a.int_col5=5 and ( a.int_col6=6
+                                                                      or
+                                                                     a.id in (select id from test_hash_tb3 force index(tht_3))
+                                                                   )
+                             )
+                    )
+               )
+
+           )
+
+  plan: |
+
+    Project(id="id")
+      Filter(condition="int_col1 = 1 OR (int_col2 = 1 AND (int_col3 = 1 OR (int_col4 = 1 AND int_col5 = 5 AND (int_col6 = 6 OR APPLY_BOOLEAN))))")
+        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` > 5)")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb3` AS `test_hash_tb3`")
+    cache node:
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` > 5)")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb3` AS `test_hash_tb3`")
+
+-
+  sql: |
+    select a.id
+    from
+      test_hash_tb a USE index for join(tht_1) ignore index (tht_2,tht_3)
+    where
+      a.id > 5
+      and ( a.int_col1=1
+           or ( a.int_col2=1
+                and ( a.int_col3=1
+                    )
+               )
+
+           )
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`id` > 5) AND ((`int_col1` = 1) OR ((`int_col2` = 1) AND (`int_col3` = 1))))")

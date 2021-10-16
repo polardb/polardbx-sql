@@ -1,0 +1,13 @@
+sql: |
+  select count(*),a.name from (select *
+  from test_hash_tb a 
+  where a.name='xx') a group by a.name order by count(*);
+
+
+plan: |
+
+  Project(count(*)="count(*)", name="name")
+    MemSort(sort="count(*) ASC")
+      HashAgg(group="name", count(*)="SUM(count(*))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`name` = 'xx') GROUP BY `name`")

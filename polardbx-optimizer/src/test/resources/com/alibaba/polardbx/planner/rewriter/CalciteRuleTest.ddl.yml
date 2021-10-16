@@ -1,0 +1,16 @@
+user_log:
+  CREATE TABLE user_log(
+  userId int,
+  userId2 int,
+  name varchar(30),
+  operation tinyint(1),
+  actionDate varchar(30)
+  ) dbpartition by hash(userId) tbpartition by HASH(actionDate) tbpartitions 7;
+
+emp:
+  CREATE TABLE emp(
+  userId int,
+  name varchar(30),
+  operation tinyint(1),
+  actionDate varchar(30)
+  ) dbpartition by hash(userId) tbpartition by HASH(actionDate) tbpartitions 7;

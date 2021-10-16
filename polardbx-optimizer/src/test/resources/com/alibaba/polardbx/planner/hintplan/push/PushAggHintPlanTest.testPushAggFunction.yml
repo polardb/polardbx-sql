@@ -1,0 +1,132 @@
+# Agg function, Group by, Having condition
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, count(bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, COUNT(`bigint_test`) AS `count(bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, sum(bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, SUM(`bigint_test`) AS `sum(bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, max(bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, MAX(`bigint_test`) AS `max(bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, min(bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, MIN(`bigint_test`) AS `min(bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, avg(bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, AVG(`bigint_test`) AS `avg(bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, count(distinct bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, COUNT(DISTINCT `bigint_test`) AS `count(DISTINCT bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, sum(distinct bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, SUM(DISTINCT `bigint_test`) AS `sum(DISTINCT bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, max(distinct bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, MAX(DISTINCT `bigint_test`) AS `max(DISTINCT bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, min(distinct bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, MIN(DISTINCT `bigint_test`) AS `min(DISTINCT bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, avg(distinct bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, AVG(DISTINCT `bigint_test`) AS `avg(DISTINCT bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, count(bigint_test), sum(bigint_test), max(bigint_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, COUNT(`bigint_test`) AS `count(bigint_test)`, SUM(`bigint_test`) AS `sum(bigint_test)`, MAX(`bigint_test`) AS `max(bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")

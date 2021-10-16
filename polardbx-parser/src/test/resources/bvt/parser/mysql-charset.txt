@@ -1,0 +1,5 @@
+select _binary 'hello,¡²ÃÔ!' hello,
+       _binary X'A1B2C3D4' hex,
+       _binary 'è‹ŸğŸ˜' å²‚,
+       _utf8 'è‹ŸğŸ˜' å²‚,
+       _binary 'ab¡²\'12ÃÔ\\%$¥¶' special

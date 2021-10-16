@@ -1,0 +1,9 @@
+data: {
+    mathOperators:             tdd(../data/ArithmeticOperators.tdd),
+    cmpOperators:             tdd(../data/ComparisonOperators.tdd),
+    logicalOperators:             tdd(../data/LogicalOperators.tdd),
+    castOperators:             tdd(../data/CastOperators.tdd),
+}
+freemarkerLinks: {
+    includes: includes/
+}

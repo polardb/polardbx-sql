@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="feature_usage_statistics">
+        <Create><![CDATA[
+            create table if not exists `feature_usage_statistics` (
+              `gmt_create` datetime default current_timestamp,
+              `gmt_modified` datetime default current_timestamp on update current_timestamp,
+              `name` varchar(128) not null,
+              `val` bigint not null default 0,
+              `extra` longtext default null,
+              primary key(`name`)
+            ) charset=utf8mb4
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

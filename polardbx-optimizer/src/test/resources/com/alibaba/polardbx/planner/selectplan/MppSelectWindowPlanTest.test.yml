@@ -1,0 +1,167 @@
+- sql: |
+    select *,
+         sum(id2) over () ow1
+        from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {} order by [] range between UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING aggs [SUM($1)])")
+      Exchange(distribution=single, collation=[])
+        LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin`")
+- sql: |
+    select *,
+         sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+         sum(id3) over (partition by id1 order by id3 desc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2 
+        from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] rows between $4 PRECEDING and $4 FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        Exchange(distribution=hash[0], collation=[])
+          SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] rows between $3 PRECEDING and $3 FOLLOWING aggs [SUM($1)])", constants="[1]")
+            Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+              LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc RANGE BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+     sum(id3) over (partition by id1 order by id3 desc RANGE BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2 
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] range between $4 PRECEDING and $4 FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        Exchange(distribution=hash[0], collation=[])
+          SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] range between $3 PRECEDING and $3 FOLLOWING aggs [SUM($1)])", constants="[1]")
+            Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+              LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 ROWS BETWEEN 1 PRECEDING AND UNBOUNDED FOLLOWING) ow1,
+     sum(id3) over (partition by id1 ROWS BETWEEN 1 PRECEDING AND UNBOUNDED FOLLOWING) ow2
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", f4w0$o1="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [] rows between $3 PRECEDING and UNBOUNDED FOLLOWING aggs [SUM($1), SUM($2)])", constants="[1]")
+      Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
+        LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+     sum(id3) over (partition by id1 order by id3 desc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2 
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] rows between $4 PRECEDING and $4 FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        Exchange(distribution=hash[0], collation=[])
+          SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] rows between $3 PRECEDING and $3 FOLLOWING aggs [SUM($1)])", constants="[1]")
+            Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+              LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc RANGE BETWEEN 1 PRECEDING AND UNBOUNDED FOLLOWING) ow1,
+     sum(id3) over (partition by id1 order by id3 desc RANGE BETWEEN 1 PRECEDING AND UNBOUNDED FOLLOWING) ow2 
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] range between $4 PRECEDING and UNBOUNDED FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        Exchange(distribution=hash[0], collation=[])
+          SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] range between $3 PRECEDING and UNBOUNDED FOLLOWING aggs [SUM($1)])", constants="[1]")
+            Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+              LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN UNBOUNDED PRECEDING AND 1 FOLLOWING) ow1,
+     sum(id3) over (partition by id1 order by id3 desc ROWS BETWEEN UNBOUNDED PRECEDING AND 1 FOLLOWING) ow2 
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] rows between UNBOUNDED PRECEDING and $4 FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        Exchange(distribution=hash[0], collation=[])
+          SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] rows between UNBOUNDED PRECEDING and $3 FOLLOWING aggs [SUM($1)])", constants="[1]")
+            Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+              LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc RANGE BETWEEN UNBOUNDED PRECEDING AND 1 FOLLOWING) ow1,
+     sum(id3) over (partition by id1 order by id3 desc RANGE BETWEEN UNBOUNDED PRECEDING AND 1 FOLLOWING) ow2 
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] range between UNBOUNDED PRECEDING and $4 FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        Exchange(distribution=hash[0], collation=[])
+          SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] range between UNBOUNDED PRECEDING and $3 FOLLOWING aggs [SUM($1)])", constants="[1]")
+            Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+              LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+     sum(id3) over (partition by id1 order by id3 desc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2 
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] rows between $4 PRECEDING and $4 FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        Exchange(distribution=hash[0], collation=[])
+          SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] rows between $3 PRECEDING and $3 FOLLOWING aggs [SUM($1)])", constants="[1]")
+            Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+              LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select *,
+     avg(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+     count(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2,
+     row_number() over (partition by id1 order by id2) ow3,
+     rank() over (partition by id1 order by id2) ow4,
+     sum(id3) over (partition by id1 order by id2) ow4
+    from testwin;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o1="f4w0$o1", f5w1$o0="f5w1$o0", f6w1$o1="f6w1$o1", f7w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] range between UNBOUNDED PRECEDING and CURRENT ROW aggs [SUM($2)])")
+      Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+        SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o1="f4w0$o1", f5w0$o0="window#0ROW_NUMBER()", f6w0$o1="window#0RANK($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] rows between UNBOUNDED PRECEDING and CURRENT ROW aggs [ROW_NUMBER(), RANK($1)])")
+          Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+            SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0AVG($1)", f4w0$o1="window#0COUNT($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] rows between $3 PRECEDING and $3 FOLLOWING aggs [AVG($1), COUNT($1)])", constants="[1]")
+              Exchange(distribution=hash[0], collation=[0 ASC-nulls-first, 1 ASC-nulls-first])
+                LogicalView(tables="[0000-0003].testwin", shardCount=4, sql="SELECT `id1`, `id2`, `id3` FROM `testwin` AS `testwin` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select 
+     avg(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+     count(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2,
+     row_number() over (partition by id1 order by id2) ow3,
+     rank() over (partition by id1 order by id2) ow4,
+     sum(id3) over (partition by id1 order by id2) ow4,*
+    from testwin join select_base_one_multi_db_multi_tb on select_base_one_multi_db_multi_tb.pk = testwin.id1 where select_base_one_multi_db_multi_tb.pk in (1,2) and testwin.id1 < 10;
+
+  plan: |
+
+    project(ow1="f21w0$o0", ow2="f22w0$o1", ow3="f23w1$o0", ow4="f24w1$o1", ow40="f25w2$o0", id1="id1", id2="id2", id3="id3", pk="pk", varchar_test="varchar_test", integer_test="integer_test", char_test="char_test", tinyint_test="tinyint_test", tinyint_1bit_test="tinyint_1bit_test", smallint_test="smallint_test", mediumint_test="mediumint_test", bit_test="bit_test", bigint_test="bigint_test", float_test="float_test", double_test="double_test", decimal_test="decimal_test", date_test="date_test", time_test="time_test", datetime_test="datetime_test", timestamp_test="timestamp_test", year_test="year_test")
+      sortwindow(id1="id1", id2="id2", id3="id3", pk="pk", varchar_test="varchar_test", integer_test="integer_test", char_test="char_test", tinyint_test="tinyint_test", tinyint_1bit_test="tinyint_1bit_test", smallint_test="smallint_test", mediumint_test="mediumint_test", bit_test="bit_test", bigint_test="bigint_test", float_test="float_test", double_test="double_test", decimal_test="decimal_test", date_test="date_test", time_test="time_test", datetime_test="datetime_test", timestamp_test="timestamp_test", year_test="year_test", f21w0$o0="f21w0$o0", f22w0$o1="f22w0$o1", f23w1$o0="f23w1$o0", f24w1$o1="f24w1$o1", f25w0$o0="window#0sum($2)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] range between unbounded preceding and current row aggs [sum($2)])")
+        exchange(distribution=hash[0], collation=[0 asc-nulls-first, 1 asc-nulls-first])
+          sortwindow(id1="id1", id2="id2", id3="id3", pk="pk", varchar_test="varchar_test", integer_test="integer_test", char_test="char_test", tinyint_test="tinyint_test", tinyint_1bit_test="tinyint_1bit_test", smallint_test="smallint_test", mediumint_test="mediumint_test", bit_test="bit_test", bigint_test="bigint_test", float_test="float_test", double_test="double_test", decimal_test="decimal_test", date_test="date_test", time_test="time_test", datetime_test="datetime_test", timestamp_test="timestamp_test", year_test="year_test", f21w0$o0="f21w0$o0", f22w0$o1="f22w0$o1", f23w0$o0="window#0row_number()", f24w0$o1="window#0rank($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number(), rank($1)])")
+            exchange(distribution=hash[0], collation=[0 asc-nulls-first, 1 asc-nulls-first])
+              sortwindow(id1="id1", id2="id2", id3="id3", pk="pk", varchar_test="varchar_test", integer_test="integer_test", char_test="char_test", tinyint_test="tinyint_test", tinyint_1bit_test="tinyint_1bit_test", smallint_test="smallint_test", mediumint_test="mediumint_test", bit_test="bit_test", bigint_test="bigint_test", float_test="float_test", double_test="double_test", decimal_test="decimal_test", date_test="date_test", time_test="time_test", datetime_test="datetime_test", timestamp_test="timestamp_test", year_test="year_test", f21w0$o0="window#0avg($1)", f22w0$o1="window#0count($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between $21 preceding and $21 following aggs [avg($1), count($1)])", constants="[1]")
+                exchange(distribution=hash[0], collation=[0 asc-nulls-first, 1 asc-nulls-first])
+                  bkajoin(condition="id1 = pk", type="inner")
+                    logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2`, `id3` from `testwin` as `testwin` where ((`id1` < 10) and (`id1` in(1, 2))) order by `id1`, `id2`")
+                    logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk`, `varchar_test`, `integer_test`, `char_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where (((`pk` in(1, 2)) and (`pk` < 10)) and (`pk` in (...)))")

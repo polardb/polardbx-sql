@@ -1,0 +1,100 @@
+#// @desc
+#// 两个子查询做JOIN操作， on条件含有拆分键 a.id=b.id,将a.id=1推向b表
+#// 整个JOIN可下推
+#//
+- sql: |
+    select
+    	a.id,
+    	a.name
+    from
+    	( select * from test_hash_tb   ) a
+
+    	join
+
+    	( select * from test_hash_tb2  ) b
+
+    	on b.id=a.id and a.id=1;
+
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb`) AS `a` INNER JOIN (SELECT `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` FROM ? AS `test_hash_tb2`) AS `b` ON ((`b`.`id` = `a`.`id`) AND (`a`.`id` = 1))")
+
+- sql: |
+    select
+    	a.id,
+    	a.name
+    from
+    	( select * from test_hash_tb  limit 4 ) a
+
+    	join
+
+    	( select * from test_hash_tb2 limit 5  ) b
+
+    	on b.id=a.id and a.id=1;
+
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb` LIMIT 4 OFFSET 0) AS `a` INNER JOIN (SELECT `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` FROM ? AS `test_hash_tb2` LIMIT 5 OFFSET 0) AS `b` ON ((`b`.`id` = `a`.`id`) AND (`a`.`id` = 1))")
+
+- sql: |
+    select
+      a.id,
+      a.name
+    from
+      ( select * from test_hash_tb where int_col3=5  ) a
+
+      join
+
+      ( select * from test_hash_tb2 where id=2 ) b
+
+      on b.id=a.id;
+
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb` WHERE (`test_hash_tb`.`int_col3` = 5)) AS `a` INNER JOIN (SELECT `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` FROM ? AS `test_hash_tb2` WHERE (`test_hash_tb2`.`id` = 2)) AS `b` ON (`b`.`id` = `a`.`id`)")
+
+- sql: |
+    select 
+      a.id, 
+      a.name
+    from 
+      ( select * from test_hash_tb where int_col3=5  ) a 
+
+      join 
+
+      ( select * from test_hash_tb2 where id=2 ) b
+
+      on b.name=a.name and a.name='abc';
+
+
+  plan: |
+
+    Project(id="id", name="name0")
+      BKAJoin(condition="name = name", type="inner")
+        LogicalView(tables="optest_0002.test_hash_tb2", sql="SELECT `name` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`id` = 2) AND (`name` = 'abc'))")
+        Gather(concurrent=true)
+          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((`int_col3` = 5) AND (`name` = 'abc')) AND (`name` IN (...)))")
+
+- sql: |
+    select a.id, a.name
+    from
+      ( select * from test_hash_tb where int_col3=5  ) a
+
+      join
+
+      ( select * from test_hash_tb4 where id=2 ) b
+
+      on b.name=a.name
+    where
+      a.id=b.id
+      and b.name='xx'
+      and a.int_col1 = b.int_col2
+      and a.int_col3 = a.int_col1;
+
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb4_0]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb` WHERE (`test_hash_tb`.`int_col3` = 5)) AS `a` INNER JOIN (SELECT `test_hash_tb4`.`id`, `test_hash_tb4`.`name`, `test_hash_tb4`.`create_time`, `test_hash_tb4`.`int_col1`, `test_hash_tb4`.`int_col2`, `test_hash_tb4`.`int_col3`, `test_hash_tb4`.`int_col4`, `test_hash_tb4`.`int_col5`, `test_hash_tb4`.`int_col6` FROM ? AS `test_hash_tb4` WHERE (`test_hash_tb4`.`id` = 2)) AS `b` ON (`b`.`name` = `a`.`name`) WHERE ((((`a`.`id` = `b`.`id`) AND (`b`.`name` = 'xx')) AND (`a`.`int_col1` = `b`.`int_col2`)) AND (`a`.`int_col3` = `a`.`int_col1`))")

@@ -1,0 +1,10 @@
+sql: |
+  select distinct name
+  from test_hash_tb4;
+
+
+plan: |
+
+  HashAgg(group="name")
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb4", shardCount=4, sql="SELECT `name` FROM `test_hash_tb4` AS `test_hash_tb4` GROUP BY `name`")

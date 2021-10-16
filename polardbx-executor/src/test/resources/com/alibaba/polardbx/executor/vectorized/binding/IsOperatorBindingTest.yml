@@ -1,0 +1,768 @@
+sql0: select integer_test IS NULL from test
+tree0: |
+  └ IsNullIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql1: select u_integer_test IS NULL from test
+tree1: |
+  └ IsNullUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql2: select tinyint_test IS NULL from test
+tree2: |
+  └ IsNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql3: select u_tinyint_test IS NULL from test
+tree3: |
+  └ IsNullUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql4: select smallint_test IS NULL from test
+tree4: |
+  └ IsNullSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql5: select u_smallint_test IS NULL from test
+tree5: |
+  └ IsNullUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql6: select mediumint_test IS NULL from test
+tree6: |
+  └ IsNullMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql7: select u_mediumint_test IS NULL from test
+tree7: |
+  └ IsNullUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql8: select bigint_test IS NULL from test
+tree8: |
+  └ IsNullLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql9: select u_bigint_test IS NULL from test
+tree9: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql10: select varchar_test IS NULL from test
+tree10: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql11: select char_test IS NULL from test
+tree11: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql12: select blob_test IS NULL from test
+tree12: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql13: select tinyint_1bit_test IS NULL from test
+tree13: |
+  └ IsNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql14: select bit_test IS NULL from test
+tree14: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql15: select float_test IS NULL from test
+tree15: |
+  └ IsNullFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql16: select double_test IS NULL from test
+tree16: |
+  └ IsNullDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql17: select decimal_test IS NULL from test
+tree17: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql18: select date_test IS NULL from test
+tree18: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql19: select time_test IS NULL from test
+tree19: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql20: select datetime_test IS NULL from test
+tree20: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql21: select timestamp_test IS NULL from test
+tree21: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql22: select year_test IS NULL from test
+tree22: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql23: select mediumtext_test IS NULL from test
+tree23: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }
+sql24: select integer_test IS NOT NULL from test
+tree24: |
+  └ IsNotNullIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql25: select u_integer_test IS NOT NULL from test
+tree25: |
+  └ IsNotNullUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql26: select tinyint_test IS NOT NULL from test
+tree26: |
+  └ IsNotNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql27: select u_tinyint_test IS NOT NULL from test
+tree27: |
+  └ IsNotNullUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql28: select smallint_test IS NOT NULL from test
+tree28: |
+  └ IsNotNullSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql29: select u_smallint_test IS NOT NULL from test
+tree29: |
+  └ IsNotNullUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql30: select mediumint_test IS NOT NULL from test
+tree30: |
+  └ IsNotNullMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql31: select u_mediumint_test IS NOT NULL from test
+tree31: |
+  └ IsNotNullUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql32: select bigint_test IS NOT NULL from test
+tree32: |
+  └ IsNotNullLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql33: select u_bigint_test IS NOT NULL from test
+tree33: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql34: select varchar_test IS NOT NULL from test
+tree34: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql35: select char_test IS NOT NULL from test
+tree35: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql36: select blob_test IS NOT NULL from test
+tree36: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql37: select tinyint_1bit_test IS NOT NULL from test
+tree37: |
+  └ IsNotNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql38: select bit_test IS NOT NULL from test
+tree38: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql39: select float_test IS NOT NULL from test
+tree39: |
+  └ IsNotNullFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql40: select double_test IS NOT NULL from test
+tree40: |
+  └ IsNotNullDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql41: select decimal_test IS NOT NULL from test
+tree41: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql42: select date_test IS NOT NULL from test
+tree42: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql43: select time_test IS NOT NULL from test
+tree43: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql44: select datetime_test IS NOT NULL from test
+tree44: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql45: select timestamp_test IS NOT NULL from test
+tree45: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql46: select year_test IS NOT NULL from test
+tree46: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql47: select mediumtext_test IS NOT NULL from test
+tree47: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }
+sql48: select integer_test IS TRUE from test
+tree48: |
+  └ IsTrueIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql49: select u_integer_test IS TRUE from test
+tree49: |
+  └ IsTrueUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql50: select tinyint_test IS TRUE from test
+tree50: |
+  └ IsTrueTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql51: select u_tinyint_test IS TRUE from test
+tree51: |
+  └ IsTrueUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql52: select smallint_test IS TRUE from test
+tree52: |
+  └ IsTrueSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql53: select u_smallint_test IS TRUE from test
+tree53: |
+  └ IsTrueUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql54: select mediumint_test IS TRUE from test
+tree54: |
+  └ IsTrueMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql55: select u_mediumint_test IS TRUE from test
+tree55: |
+  └ IsTrueUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql56: select bigint_test IS TRUE from test
+tree56: |
+  └ IsTrueLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql57: select u_bigint_test IS TRUE from test
+tree57: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql58: select varchar_test IS TRUE from test
+tree58: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql59: select char_test IS TRUE from test
+tree59: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql60: select blob_test IS TRUE from test
+tree60: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql61: select tinyint_1bit_test IS TRUE from test
+tree61: |
+  └ IsTrueTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql62: select bit_test IS TRUE from test
+tree62: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql63: select float_test IS TRUE from test
+tree63: |
+  └ IsTrueFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql64: select double_test IS TRUE from test
+tree64: |
+  └ IsTrueDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql65: select decimal_test IS TRUE from test
+tree65: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql66: select date_test IS TRUE from test
+tree66: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql67: select time_test IS TRUE from test
+tree67: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql68: select datetime_test IS TRUE from test
+tree68: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql69: select timestamp_test IS TRUE from test
+tree69: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql70: select year_test IS TRUE from test
+tree70: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql71: select mediumtext_test IS TRUE from test
+tree71: |
+  └ [BuiltIn].IsTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }
+sql72: select integer_test IS FALSE from test
+tree72: |
+  └ IsFalseIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql73: select u_integer_test IS FALSE from test
+tree73: |
+  └ IsFalseUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql74: select tinyint_test IS FALSE from test
+tree74: |
+  └ IsFalseTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql75: select u_tinyint_test IS FALSE from test
+tree75: |
+  └ IsFalseUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql76: select smallint_test IS FALSE from test
+tree76: |
+  └ IsFalseSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql77: select u_smallint_test IS FALSE from test
+tree77: |
+  └ IsFalseUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql78: select mediumint_test IS FALSE from test
+tree78: |
+  └ IsFalseMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql79: select u_mediumint_test IS FALSE from test
+tree79: |
+  └ IsFalseUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql80: select bigint_test IS FALSE from test
+tree80: |
+  └ IsFalseLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql81: select u_bigint_test IS FALSE from test
+tree81: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql82: select varchar_test IS FALSE from test
+tree82: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql83: select char_test IS FALSE from test
+tree83: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql84: select blob_test IS FALSE from test
+tree84: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql85: select tinyint_1bit_test IS FALSE from test
+tree85: |
+  └ IsFalseTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql86: select bit_test IS FALSE from test
+tree86: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql87: select float_test IS FALSE from test
+tree87: |
+  └ IsFalseFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql88: select double_test IS FALSE from test
+tree88: |
+  └ IsFalseDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql89: select decimal_test IS FALSE from test
+tree89: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql90: select date_test IS FALSE from test
+tree90: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql91: select time_test IS FALSE from test
+tree91: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql92: select datetime_test IS FALSE from test
+tree92: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql93: select timestamp_test IS FALSE from test
+tree93: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql94: select year_test IS FALSE from test
+tree94: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql95: select mediumtext_test IS FALSE from test
+tree95: |
+  └ [BuiltIn].IsFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }
+sql96: select integer_test IS UNKNOWN from test
+tree96: |
+  └ IsNullIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql97: select u_integer_test IS UNKNOWN from test
+tree97: |
+  └ IsNullUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql98: select tinyint_test IS UNKNOWN from test
+tree98: |
+  └ IsNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql99: select u_tinyint_test IS UNKNOWN from test
+tree99: |
+  └ IsNullUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql100: select smallint_test IS UNKNOWN from test
+tree100: |
+  └ IsNullSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql101: select u_smallint_test IS UNKNOWN from test
+tree101: |
+  └ IsNullUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql102: select mediumint_test IS UNKNOWN from test
+tree102: |
+  └ IsNullMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql103: select u_mediumint_test IS UNKNOWN from test
+tree103: |
+  └ IsNullUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql104: select bigint_test IS UNKNOWN from test
+tree104: |
+  └ IsNullLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql105: select u_bigint_test IS UNKNOWN from test
+tree105: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql106: select varchar_test IS UNKNOWN from test
+tree106: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql107: select char_test IS UNKNOWN from test
+tree107: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql108: select blob_test IS UNKNOWN from test
+tree108: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql109: select tinyint_1bit_test IS UNKNOWN from test
+tree109: |
+  └ IsNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql110: select bit_test IS UNKNOWN from test
+tree110: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql111: select float_test IS UNKNOWN from test
+tree111: |
+  └ IsNullFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql112: select double_test IS UNKNOWN from test
+tree112: |
+  └ IsNullDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql113: select decimal_test IS UNKNOWN from test
+tree113: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql114: select date_test IS UNKNOWN from test
+tree114: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql115: select time_test IS UNKNOWN from test
+tree115: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql116: select datetime_test IS UNKNOWN from test
+tree116: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql117: select timestamp_test IS UNKNOWN from test
+tree117: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql118: select year_test IS UNKNOWN from test
+tree118: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql119: select mediumtext_test IS UNKNOWN from test
+tree119: |
+  └ [BuiltIn].IsNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }
+sql120: select integer_test IS NOT FALSE from test
+tree120: |
+  └ IsNotFalseIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql121: select u_integer_test IS NOT FALSE from test
+tree121: |
+  └ IsNotFalseUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql122: select tinyint_test IS NOT FALSE from test
+tree122: |
+  └ IsNotFalseTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql123: select u_tinyint_test IS NOT FALSE from test
+tree123: |
+  └ IsNotFalseUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql124: select smallint_test IS NOT FALSE from test
+tree124: |
+  └ IsNotFalseSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql125: select u_smallint_test IS NOT FALSE from test
+tree125: |
+  └ IsNotFalseUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql126: select mediumint_test IS NOT FALSE from test
+tree126: |
+  └ IsNotFalseMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql127: select u_mediumint_test IS NOT FALSE from test
+tree127: |
+  └ IsNotFalseUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql128: select bigint_test IS NOT FALSE from test
+tree128: |
+  └ IsNotFalseLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql129: select u_bigint_test IS NOT FALSE from test
+tree129: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql130: select varchar_test IS NOT FALSE from test
+tree130: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql131: select char_test IS NOT FALSE from test
+tree131: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql132: select blob_test IS NOT FALSE from test
+tree132: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql133: select tinyint_1bit_test IS NOT FALSE from test
+tree133: |
+  └ IsNotFalseTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql134: select bit_test IS NOT FALSE from test
+tree134: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql135: select float_test IS NOT FALSE from test
+tree135: |
+  └ IsNotFalseFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql136: select double_test IS NOT FALSE from test
+tree136: |
+  └ IsNotFalseDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql137: select decimal_test IS NOT FALSE from test
+tree137: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql138: select date_test IS NOT FALSE from test
+tree138: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql139: select time_test IS NOT FALSE from test
+tree139: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql140: select datetime_test IS NOT FALSE from test
+tree140: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql141: select timestamp_test IS NOT FALSE from test
+tree141: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql142: select year_test IS NOT FALSE from test
+tree142: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql143: select mediumtext_test IS NOT FALSE from test
+tree143: |
+  └ [BuiltIn].IsNotFalse, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }
+sql144: select integer_test IS NOT TRUE from test
+tree144: |
+  └ IsNotTrueIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql145: select u_integer_test IS NOT TRUE from test
+tree145: |
+  └ IsNotTrueUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql146: select tinyint_test IS NOT TRUE from test
+tree146: |
+  └ IsNotTrueTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql147: select u_tinyint_test IS NOT TRUE from test
+tree147: |
+  └ IsNotTrueUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql148: select smallint_test IS NOT TRUE from test
+tree148: |
+  └ IsNotTrueSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql149: select u_smallint_test IS NOT TRUE from test
+tree149: |
+  └ IsNotTrueUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql150: select mediumint_test IS NOT TRUE from test
+tree150: |
+  └ IsNotTrueMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql151: select u_mediumint_test IS NOT TRUE from test
+tree151: |
+  └ IsNotTrueUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql152: select bigint_test IS NOT TRUE from test
+tree152: |
+  └ IsNotTrueLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql153: select u_bigint_test IS NOT TRUE from test
+tree153: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql154: select varchar_test IS NOT TRUE from test
+tree154: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql155: select char_test IS NOT TRUE from test
+tree155: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql156: select blob_test IS NOT TRUE from test
+tree156: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql157: select tinyint_1bit_test IS NOT TRUE from test
+tree157: |
+  └ IsNotTrueTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql158: select bit_test IS NOT TRUE from test
+tree158: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql159: select float_test IS NOT TRUE from test
+tree159: |
+  └ IsNotTrueFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql160: select double_test IS NOT TRUE from test
+tree160: |
+  └ IsNotTrueDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql161: select decimal_test IS NOT TRUE from test
+tree161: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql162: select date_test IS NOT TRUE from test
+tree162: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql163: select time_test IS NOT TRUE from test
+tree163: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql164: select datetime_test IS NOT TRUE from test
+tree164: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql165: select timestamp_test IS NOT TRUE from test
+tree165: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql166: select year_test IS NOT TRUE from test
+tree166: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql167: select mediumtext_test IS NOT TRUE from test
+tree167: |
+  └ [BuiltIn].IsNotTrue, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }
+sql168: select integer_test IS NOT UNKNOWN from test
+tree168: |
+  └ IsNotNullIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { IntegerType, 1 }
+sql169: select u_integer_test IS NOT UNKNOWN from test
+tree169: |
+  └ IsNotNullUIntegerColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UIntegerType, 2 }
+sql170: select tinyint_test IS NOT UNKNOWN from test
+tree170: |
+  └ IsNotNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 6 }
+sql171: select u_tinyint_test IS NOT UNKNOWN from test
+tree171: |
+  └ IsNotNullUTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UTinyIntType, 7 }
+sql172: select smallint_test IS NOT UNKNOWN from test
+tree172: |
+  └ IsNotNullSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { SmallIntType, 9 }
+sql173: select u_smallint_test IS NOT UNKNOWN from test
+tree173: |
+  └ IsNotNullUSmallIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { USmallIntType, 10 }
+sql174: select mediumint_test IS NOT UNKNOWN from test
+tree174: |
+  └ IsNotNullMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { MediumIntType, 11 }
+sql175: select u_mediumint_test IS NOT UNKNOWN from test
+tree175: |
+  └ IsNotNullUMediumIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { UMediumIntType, 12 }
+sql176: select bigint_test IS NOT UNKNOWN from test
+tree176: |
+  └ IsNotNullLongColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { LongType, 14 }
+sql177: select u_bigint_test IS NOT UNKNOWN from test
+tree177: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { ULongType, 15 }
+sql178: select varchar_test IS NOT UNKNOWN from test
+tree178: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 3 }
+sql179: select char_test IS NOT UNKNOWN from test
+tree179: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 4 }
+sql180: select blob_test IS NOT UNKNOWN from test
+tree180: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BlobType, 5 }
+sql181: select tinyint_1bit_test IS NOT UNKNOWN from test
+tree181: |
+  └ IsNotNullTinyIntColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TinyIntType, 8 }
+sql182: select bit_test IS NOT UNKNOWN from test
+tree182: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { BitType, 13 }
+sql183: select float_test IS NOT UNKNOWN from test
+tree183: |
+  └ IsNotNullFloatColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { FloatType, 16 }
+sql184: select double_test IS NOT UNKNOWN from test
+tree184: |
+  └ IsNotNullDoubleColVectorizedExpression, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DoubleType, 17 }
+sql185: select decimal_test IS NOT UNKNOWN from test
+tree185: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DecimalType, 18 }
+sql186: select date_test IS NOT UNKNOWN from test
+tree186: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateType, 19 }
+sql187: select time_test IS NOT UNKNOWN from test
+tree187: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimeType, 20 }
+sql188: select datetime_test IS NOT UNKNOWN from test
+tree188: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { DateTimeType, 21 }
+sql189: select timestamp_test IS NOT UNKNOWN from test
+tree189: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { TimestampType, 22 }
+sql190: select year_test IS NOT UNKNOWN from test
+tree190: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { YearType, 23 }
+sql191: select mediumtext_test IS NOT UNKNOWN from test
+tree191: |
+  └ [BuiltIn].IsNotNull, { LongType, 25 }
+     └ InputRefVectorizedExpression, { StringType, 24 }

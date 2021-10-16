@@ -1,0 +1,9 @@
+- sql: |
+    select /* +TDDL: construct()
+    push_ft("pk between 100001 and 200002")
+    add_un() */ * from test_table_a
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` BETWEEN 100001 AND 200002)")

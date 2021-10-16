@@ -1,0 +1,195 @@
+- sql: |
+    select * from lineitem where l_orderkey = 1;
+
+  plan: |
+    LogicalView(tables="lineitem[p3]", sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` = 1)")
+
+- sql: |
+    select * from lineitem where l_orderkey in (1,2,3);
+
+  plan: |
+    MaterializedSemiJoin(condition="l_orderkey = expr$0", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` IN (...))")
+      DynamicValues(tuples=[{ 1 }, { 2 }, { 3 }])
+
+
+- sql: |
+    select * from lineitem where l_orderkey between 8 and 11
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="lineitem[p1,p3]", shardCount=2, sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` BETWEEN 8 AND 11)")
+
+- sql: |
+    select * from t_ab_hash where a = 1 and b = 1
+
+  plan: |
+    logicalview(tables="t_ab_hash[p4]", sql="select `a`, `b` from `t_ab_hash` as `t_ab_hash` where ((`a` = 1) and (`b` = 1))")
+
+
+- sql: |
+    select * from t_ab_range where a = 1 and b = 1
+
+  plan: |
+    LogicalView(tables="t_ab_range[p0]", sql="SELECT `a`, `b` FROM `t_ab_range` AS `t_ab_range` WHERE ((`a` = 1) AND (`b` = 1))")
+
+- sql: |
+    select * from t_ab_list where a = 1 and b = 1
+
+  plan: |
+    LogicalView(tables="t_ab_list[]", shardCount=0, sql="SELECT `a`, `b` FROM `t_ab_list` AS `t_ab_list` WHERE ((`a` = 1) AND (`b` = 1))")
+
+
+- sql: |
+    /*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=10)*/
+    select * from t_a_hash where a in (1,2)
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="t_a_hash[p2,p3]", shardCount=2, sql="SELECT `a`, `b` FROM `t_a_hash` AS `t_a_hash` WHERE (`a` IN(1, 2))")
+
+- sql: |
+    /*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=10)*/
+    select * from t_ab_hash where (a,b) in ((1,2),(2,3))
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="t_ab_hash[p1,p4]", shardcount=2, sql="select `a`, `b` from `t_ab_hash` as `t_ab_hash` where (((`a`, `b`)) in((1, 2),(2, 3)))")
+
+
+- sql: |
+    /*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=10)*/
+    select * from t_a_range where a in (1,2)
+
+  plan: |
+    PhyTableOperation(tables="t_a_range[p0]", sql="SELECT `t_a_range`.`a`, `t_a_range`.`b` FROM ? AS `t_a_range` WHERE (`t_a_range`.`a` IN (1, 2))")
+
+- sql: |
+    select * from t_a_range where a < 1 or a > 20
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="t_a_range[p0,p2]", shardCount=2, sql="SELECT `a`, `b` FROM `t_a_range` AS `t_a_range` WHERE ((`a` < 1) OR (`a` > 20))")
+
+
+- sql: |
+    /*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=10)*/
+    select * from t_a_list where a in (10,30)
+
+  plan: |
+    PhyTableOperation(tables="t_a_list[p0]", sql="SELECT `t_a_list`.`a`, `t_a_list`.`b` FROM ? AS `t_a_list` WHERE (`t_a_list`.`a` IN (10, 30))")
+
+
+- sql: |
+    select * from t_ab_range join t_ab_hash on t_ab_range.a = t_ab_hash.a and t_ab_range.b = t_ab_hash.b
+
+  plan: |
+    BKAJoin(condition="a = a AND b = b", type="inner")
+      Gather(concurrent=true)
+        LogicalView(tables="t_ab_range[p0,p1,p2]", shardCount=3, sql="SELECT `a`, `b` FROM `t_ab_range` AS `t_ab_range`")
+      Gather(concurrent=true)
+        LogicalView(tables="t_ab_hash[p1,p2,p3,p4]", shardCount=4, sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (((`a`, `b`)) IN (...))")
+
+- sql: |
+    select * from t_hash_varchar where varchar_test = 'k'
+
+  plan: |
+    LogicalView(tables="t_hash_varchar[p2]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_varchar` AS `t_hash_varchar` WHERE (`varchar_test` = 'k')")
+
+- sql: |
+    select * from t_hash_bigint where bigint_test = 10000000000
+
+  plan: |
+    LogicalView(tables="t_hash_bigint[p4]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_bigint` AS `t_hash_bigint` WHERE (`bigint_test` = 10000000000)")
+
+- sql: |
+    select * from t_hash_date where date_test = '2013-04-05 06:34:12'
+
+  plan: |
+    LogicalView(tables="t_hash_date[p1]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_date` AS `t_hash_date` WHERE (`date_test` = '2013-04-05 06:34:12')")
+
+- sql: |
+    select * from t_hash_timestamp where timestamp_test = '2013-04-04 22:34:12'
+
+  plan: |
+    LogicalView(tables="t_hash_timestamp[p2]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_timestamp` AS `t_hash_timestamp` WHERE (`timestamp_test` = '2013-04-04 22:34:12')")
+
+- sql: |
+    select * from t_range_varchar where varchar_test = 'k'
+
+  plan: |
+    LogicalView(tables="t_range_varchar[p2]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_varchar` AS `t_range_varchar` WHERE (`varchar_test` = 'k')")
+
+- sql: |
+    select * from t_range_bigint where bigint_test = 200
+
+  plan: |
+    LogicalView(tables="t_range_bigint[p1]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE (`bigint_test` = 200)")
+
+- sql: |
+    select * from t_range_date where date_test = '2013-04-05 06:34:12'
+
+  plan: |
+    LogicalView(tables="t_range_date[p0]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_date` AS `t_range_date` WHERE (`date_test` = '2013-04-05 06:34:12')")
+
+#- sql: |
+#    select * from t_range_timestamp where timestamp_test = '2015-04-04 22:34:12'
+#
+#  plan: |
+#    LogicalView(tables="t_range_timestamp[p1]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_timestamp` AS `t_range_timestamp` WHERE (`timestamp_test` = '2015-04-04 22:34:12')")
+
+
+- sql: |
+    select * from t_range_bigint order by bigint_test limit 10;
+
+  plan: |
+    MergeSort(sort="bigint_test ASC", offset=0, fetch=10)
+      LogicalView(tables="t_range_bigint[p0,p1,p2]", shardCount=3, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` ORDER BY `bigint_test` LIMIT 10")
+
+- sql: |
+    select * from t_range_bigint where bigint_test < 10 or bigint_test > 10000
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="t_range_bigint[p0,p2]", shardCount=2, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE ((`bigint_test` < 10) OR (`bigint_test` > 10000))")
+
+- sql: |
+    select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="t_range_bigint[p0,p2]", shardCount=2, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE (((`bigint_test` < 10) OR (`bigint_test` > 10000)) AND (`pk` = 1))")
+
+- sql: |
+    select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test < 20)
+
+  plan: |
+    PhyTableOperation(tables="t_range_bigint[p0]", sql="SELECT `t_range_bigint`.`pk`, `t_range_bigint`.`integer_test`, `t_range_bigint`.`varchar_test`, `t_range_bigint`.`char_test`, `t_range_bigint`.`blob_test`, `t_range_bigint`.`tinyint_test`, `t_range_bigint`.`tinyint_1bit_test`, `t_range_bigint`.`smallint_test`, `t_range_bigint`.`mediumint_test`, `t_range_bigint`.`bit_test`, `t_range_bigint`.`bigint_test`, `t_range_bigint`.`float_test`, `t_range_bigint`.`double_test`, `t_range_bigint`.`decimal_test`, `t_range_bigint`.`date_test`, `t_range_bigint`.`time_test`, `t_range_bigint`.`datetime_test`, `t_range_bigint`.`timestamp_test`, `t_range_bigint`.`year_test`, `t_range_bigint`.`mediumtext_test` FROM ? AS `t_range_bigint` WHERE ((((`t_range_bigint`.`bigint_test` < 10) OR (`t_range_bigint`.`bigint_test` > 10000)) AND (`t_range_bigint`.`pk` = 1)) AND (`t_range_bigint`.`bigint_test` < 20))")
+
+- sql: |
+    select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test between 5 and 10005)
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="t_range_bigint[p0,p2]", shardCount=2, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE ((((`bigint_test` < 10) OR (`bigint_test` > 10000)) AND (`pk` = 1)) AND (`bigint_test` BETWEEN 5 AND 10005))")
+
+- sql: |
+    select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test between 20 and 10005)
+
+  plan: |
+    PhyTableOperation(tables="t_range_bigint[p2]", sql="SELECT `t_range_bigint`.`pk`, `t_range_bigint`.`integer_test`, `t_range_bigint`.`varchar_test`, `t_range_bigint`.`char_test`, `t_range_bigint`.`blob_test`, `t_range_bigint`.`tinyint_test`, `t_range_bigint`.`tinyint_1bit_test`, `t_range_bigint`.`smallint_test`, `t_range_bigint`.`mediumint_test`, `t_range_bigint`.`bit_test`, `t_range_bigint`.`bigint_test`, `t_range_bigint`.`float_test`, `t_range_bigint`.`double_test`, `t_range_bigint`.`decimal_test`, `t_range_bigint`.`date_test`, `t_range_bigint`.`time_test`, `t_range_bigint`.`datetime_test`, `t_range_bigint`.`timestamp_test`, `t_range_bigint`.`year_test`, `t_range_bigint`.`mediumtext_test` FROM ? AS `t_range_bigint` WHERE ((((`t_range_bigint`.`bigint_test` < 10) OR (`t_range_bigint`.`bigint_test` > 10000)) AND (`t_range_bigint`.`pk` = 1)) AND (`t_range_bigint`.`bigint_test` BETWEEN 20 AND 10005))")
+
+- sql: |
+    select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test between 20 and 9999)
+
+  plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="t_range_bigint[]", shardCount=0, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE ((((`bigint_test` < 10) OR (`bigint_test` > 10000)) AND (`pk` = 1)) AND (`bigint_test` BETWEEN 20 AND 9999))")
+
+- sql: |
+    update nation, customer set n_name = 2, c_name = 2 where n_nationkey = c_nationkey;
+  plan: |
+    LogicalModify(TYPE="UPDATE", SET="nation.n_name=2, customer.c_name=2")
+      Gather(concurrent=true)
+        LogicalView(tables="customer[p1,p2,p3,p4],nation", shardCount=4, sql="SELECT `nation`.`n_nationkey`, `nation`.`n_name`, `nation`.`n_regionkey`, `nation`.`n_comment`, `customer`.`c_custkey`, `customer`.`c_name`, `customer`.`c_address`, `customer`.`c_nationkey`, `customer`.`c_phone`, `customer`.`c_acctbal`, `customer`.`c_mktsegment`, `customer`.`c_comment`, 2, 2 FROM `customer` AS `customer` INNER JOIN `nation` AS `nation` ON (`customer`.`c_nationkey` = `nation`.`n_nationkey`) FOR UPDATE")

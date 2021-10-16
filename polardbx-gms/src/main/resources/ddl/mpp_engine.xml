@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="node_info">
+        <Create><![CDATA[
+            create table if not exists `node_info` (
+              `id` bigint unsigned not null auto_increment,
+              `cluster` varchar(64) not null default '',
+              `inst_id` varchar(128) NOT NULL,
+              `nodeid` varchar(64) not null default '',
+              `version` varchar(64) not null default '',
+              `ip` varchar(20) not null default '',
+              `port` int(11) NOT NULL,
+              `rpc_port` bigint(10) not null default '0',
+              `role` bigint(10) not null default '0',
+              `status` bigint(10) not null default '1',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key (`id`),
+              unique key (`cluster`, `nodeid`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

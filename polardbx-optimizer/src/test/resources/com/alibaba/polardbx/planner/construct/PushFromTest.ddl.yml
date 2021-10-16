@@ -1,0 +1,19 @@
+test_table_a:
+  CREATE TABLE `test_table_a` (`pk` BIGINT(11)                                           NOT NULL,
+  `bigint_test` BIGINT                                               DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255)                                         DEFAULT NULL,
+  `datetime_test` DATETIME                                             DEFAULT NULL,
+  `text_test` TEXT                                                 DEFAULT NULL,
+  `timestamp_test` TIMESTAMP                                            NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7
+
+test_table_b:
+  CREATE TABLE `test_table_b` (`pk` BIGINT(11)                                           NOT NULL,
+  `bigint_test` BIGINT                                               DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255)                                         DEFAULT NULL,
+  `datetime_test` DATETIME                                             DEFAULT NULL,
+  `text_test` TEXT                                                 DEFAULT NULL,
+  `timestamp_test` TIMESTAMP                                            NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 7

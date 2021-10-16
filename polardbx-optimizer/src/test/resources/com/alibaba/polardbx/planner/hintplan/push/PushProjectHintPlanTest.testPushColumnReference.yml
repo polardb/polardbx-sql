@@ -1,0 +1,10 @@
+# tableName.columnName
+- sql: |
+    select /* +TDDL: construct()
+    push_pj("test_table_a.pk as pk")
+    add_un()*/ * from test_table_a;
+
+  plan: |
+
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `test_table_a`.`pk` AS `pk` FROM `test_table_a` AS `test_table_a`")

@@ -1,0 +1,432 @@
+## show tables
+-
+  sql: |
+    show tables
+  plan: |
+    LogicalShow(sql="SHOW TABLES")
+
+-
+  sql: |
+    show tables like "optest%"
+  plan: |
+    LogicalShow(sql="SHOW TABLES LIKE 'optest%'")
+
+-
+  sql: |
+    show full tables where Table_type like "optest%"
+  plan: |
+    Filter(condition="Table_type LIKE 'optest%'")
+      LogicalShow(sql="SHOW FULL TABLES")
+
+## show create table
+-
+  sql: |
+    show create table op_test
+  plan: |
+    LogicalShow(sql="SHOW CREATE TABLE `op_test`")
+
+## show procedure
+-
+  sql: |
+    show procedure status
+  plan: |
+    LogicalShow(sql="SHOW PROCEDURE STATUS")
+
+-
+  sql: |
+    show procedure status like "optest%"
+  plan: |
+    LogicalShow(sql="SHOW PROCEDURE STATUS LIKE 'optest%'")
+
+-
+  sql: |
+    show procedure status where Name like "optest%"
+  plan: |
+    Filter(condition="Name LIKE 'optest%'")
+      LogicalShow(sql="SHOW PROCEDURE STATUS")
+
+## show variables
+-
+  sql: |
+    show variables
+  plan: |
+    LogicalShow(sql="SHOW VARIABLES")
+
+-
+  sql: |
+    show VARIABLES like "%tran%"
+  plan: |
+    LogicalShow(sql="SHOW VARIABLES LIKE '%tran%'")
+
+-
+  sql: |
+    show variables where variable_name like "%drds%"
+  plan: |
+    Filter(condition="Variable_name LIKE '%drds%'")
+      LogicalShow(sql="SHOW VARIABLES")
+
+## show processlist
+-
+  sql: |
+    show processlist
+  plan: |
+    LogicalShow(sql="SHOW PROCESSLIST")
+
+-
+  sql: |
+    show full PROCESSLIST
+  plan: |
+    LogicalShow(sql="SHOW FULL PROCESSLIST")
+
+-
+  sql: |
+    show full PHYSICAL_PROCESSLIST
+  plan: |
+    LogicalShow(sql="SHOW FULL PHYSICAL_PROCESSLIST")
+
+## show table status
+-
+  sql: |
+    show table status
+  plan: |
+    LogicalShow(sql="SHOW TABLE STATUS")
+
+-
+  sql: |
+    show table status like "optest%"
+  plan: |
+    LogicalShow(sql="SHOW TABLE STATUS LIKE 'optest%'")
+
+-
+  sql: |
+    show table status from xxx where Name like "optest%"
+  plan: |
+    Filter(condition="Name LIKE 'optest%'")
+      LogicalShow(sql="SHOW TABLE STATUS FROM `xxx`")
+
+## show datasources
+-
+  sql: |
+    show datasources
+  plan: |
+    LogicalShow(sql="SHOW DATASOURCES")
+
+-
+  sql: |
+    show datasources  where Name like "optest%"
+  plan: |
+    Filter(condition="NAME LIKE 'optest%'")
+      LogicalShow(sql="SHOW DATASOURCES")
+
+-
+  sql: |
+    show datasources where Name like "optest%" order by name limit 3
+  plan: |
+    TopN(sort="NAME ASC", offset=0, fetch=3)
+      Filter(condition="NAME LIKE 'optest%'")
+        LogicalShow(sql="SHOW DATASOURCES")
+
+## show slow
+-
+  sql: |
+    show slow
+  plan: |
+    LogicalShow(sql="SHOW SLOW")
+
+-
+  sql: |
+    show slow where host like 'optest%' order by execute_time limit 1,2
+  plan: |
+    TopN(sort="EXECUTE_TIME ASC", offset=1, fetch=2)
+      Filter(condition="HOST LIKE 'optest%'")
+        LogicalShow(sql="SHOW SLOW")
+
+-
+  sql: |
+    show FULL slow  where host like "optest%"
+  plan: |
+    MemSort(sort="START_TIME ASC")
+      Filter(condition="HOST LIKE 'optest%'")
+        LogicalShow(sql="SHOW FULL SLOW")
+
+-
+  sql: |
+    show FULL slow where Host like "optest%" order by Host limit 3
+  plan: |
+    TopN(sort="HOST ASC", offset=0, fetch=3)
+      Filter(condition="HOST LIKE 'optest%'")
+        LogicalShow(sql="SHOW FULL SLOW")
+
+-
+  sql: |
+    show FULL physical_slow where Host like "optest%" order by Host limit 3
+  plan: |
+    TopN(sort="HOST ASC", offset=0, fetch=3)
+      Filter(condition="HOST LIKE 'optest%'")
+        LogicalShow(sql="SHOW FULL PHYSICAL_SLOW")
+
+## show STC
+-
+  sql: |
+    show stc
+  plan: |
+    LogicalShow(sql="SHOW STC")
+
+-
+  sql: |
+    show stc his
+  plan: |
+    LogicalShow(sql="SHOW STC HIS")
+
+## show HTC
+-
+  sql: |
+    show htc
+  plan: |
+    LogicalShow(sql="SHOW HTC")
+
+## show partitions
+-
+  sql: |
+    show partitions test_table_a
+  plan: |
+    LogicalShow(sql="SHOW PARTITIONS FROM `test_table_a`")
+
+-
+  sql: |
+    show partitions from test_table_a
+  plan: |
+    LogicalShow(sql="SHOW PARTITIONS FROM `test_table_a`")
+
+## show topology
+-
+  sql: |
+    show topology test_table_a
+  plan: |
+    LogicalShow(sql="SHOW TOPOLOGY FROM `test_table_a`")
+
+-
+  sql: |
+    show TOPOLOGY from test_table_a where group_name = "corona_qatest_1"
+  plan: |
+    Filter(condition="GROUP_NAME = 'corona_qatest_1'")
+      LogicalShow(sql="SHOW TOPOLOGY FROM `test_table_a`")
+
+-
+  sql: |
+    show TOPOLOGY from test_table_a where group_name = "corona_qatest_1" order by table_name desc limit 1,2
+  plan: |
+    TopN(sort="TABLE_NAME DESC", offset=1, fetch=2)
+      Filter(condition="GROUP_NAME = 'corona_qatest_1'")
+        LogicalShow(sql="SHOW TOPOLOGY FROM `test_table_a`")
+
+## show db status
+-
+  sql: |
+    show database status
+  plan: |
+    LogicalShow(sql="SHOW DB STATUS")
+
+-
+  sql: |
+    show database status like 'test_table_a'
+  plan: |
+    LogicalShow(sql="SHOW DB STATUS LIKE `test_table_a`")
+
+-
+  sql: |
+    show database STATUS where PHYSICAL_DB = "corona_qatest_1" order by RATIO desc limit 1,2
+  plan: |
+    TopN(sort="RATIO DESC", offset=1, fetch=2)
+      Filter(condition="PHYSICAL_DB = 'corona_qatest_1'")
+        LogicalShow(sql="SHOW DB STATUS")
+-
+  sql: |
+    show full db STATUS where PHYSICAL_DB = "corona_qatest_1" order by RATIO desc limit 1,2
+  plan: |
+    TopN(sort="RATIO DESC", offset=1, fetch=2)
+      Filter(condition="PHYSICAL_DB = 'corona_qatest_1'")
+        LogicalShow(sql="SHOW FULL DB STATUS")
+
+## show broadcasts
+-
+  sql: |
+    show broadcasts
+  plan: |
+    LogicalShow(sql="SHOW BROADCASTS")
+
+-
+  sql: |
+    show BROADCASTS where TABLE_NAME = "test_table_a" order by id desc limit 1,2
+  plan: |
+    TopN(sort="ID DESC", offset=1, fetch=2)
+      Filter(condition="TABLE_NAME = 'test_table_a'")
+        LogicalShow(sql="SHOW BROADCASTS")
+
+## show trace
+-
+  sql: |
+    show trace
+  plan: |
+    LogicalShow(sql="SHOW TRACE")
+
+-
+  sql: |
+    show trace where GROUP_NAME = "corona_qatest_2" order by rows desc limit 1,2
+  plan: |
+    TopN(sort="ROWS DESC", offset=1, fetch=2)
+      Filter(condition="GROUP_NAME = 'corona_qatest_2'")
+        LogicalShow(sql="SHOW TRACE")
+
+-
+  sql: |
+    show trace(ID + 1, TYPE) where GROUP_NAME = "corona_qatest_2" order by rows desc limit 1,2
+  plan: |
+    Project((ID + 1)="(ID + 1)", TYPE="TYPE")
+      TopN(sort="ROWS DESC", offset=1, fetch=2)
+        Project((ID + 1)="ID + 1", TYPE="TYPE", ROWS="ROWS")
+          Filter(condition="GROUP_NAME = 'corona_qatest_2'")
+            LogicalShow(sql="SHOW TRACE (`ID` + 1), `TYPE`")
+
+## show ds
+-
+  sql: |
+    show DS
+  plan: |
+    LogicalShow(sql="SHOW DS")
+
+## show stats
+-
+  sql: |
+    show stats
+  plan: |
+    LogicalShow(sql="SHOW STATS")
+
+-
+  sql: |
+    show FULL STATS
+  plan: |
+    LogicalShow(sql="SHOW FULL STATS")
+
+## show rule
+-
+  sql: |
+    show rule
+  plan: |
+    LogicalShow(sql="SHOW RULE")
+
+-
+  sql: |
+    show full rule from test_table_a
+  plan: |
+    LogicalShow(sql="SHOW FULL RULE FROM `test_table_a`")
+
+-
+  sql: |
+    show full rule from test_table_a where ALLOW_FULL_TABLE_SCAN = 1 order by PARTITION_KEYS desc limit 1,2
+  plan: |
+    TopN(sort="PARTITION_KEYS DESC", offset=1, fetch=2)
+      Filter(condition="ALLOW_FULL_TABLE_SCAN = 1")
+        LogicalShow(sql="SHOW FULL RULE FROM `test_table_a`")
+
+## show ddl status
+-
+  sql: |
+    show ddl status
+  plan: |
+    LogicalShow(sql="SHOW DDL STATUS")
+
+-
+  sql: |
+    show ddl status where STATE = "RUNNING" order by START_TIME desc limit 1,2
+  plan: |
+    TopN(sort="START_TIME DESC", offset=1, fetch=2)
+      Filter(condition="STATE = 'RUNNING'")
+        LogicalShow(sql="SHOW DDL STATUS")
+
+## show grants
+-
+  sql: |
+    show grants
+  plan: |
+    LogicalShow(sql="SHOW GRANTS")
+
+-
+  sql: |
+    show grants for 'test'@'localhost'
+  plan: |
+    LogicalShow(sql="SHOW GRANTS FOR test@localhost")
+
+# desc
+-
+  sql: |
+    desc test_table_a
+  plan: |
+    PhyQuery(node="optest_0000", sql="SHOW COLUMNS FROM `test_table_a` WHERE (`field` <> '_drds_implicit_id_')")
+
+# plan table
+-
+  sql: |
+    optimize table test_table_a, test_table_b
+  plan: |
+    Gather(concurrent=true)
+      PhyQuery(table="test_table_a,test_table_b", sql="OPTIMIZE TABLE `test_table_a` , `test_table_b`")
+
+# analyze table
+-
+  sql: |
+    analyze table test_table_a, test_table_b
+  plan: |
+    LogicalDal(sql="ANALYZE TABLE `test_table_a` , `test_table_b`")
+
+# kill
+-
+  sql: |
+    kill 1
+  plan: |
+    LogicalDal(sql="KILL 1")
+
+# check table
+-
+  sql: |
+    check table test_table_a, test_table_b
+  plan: |
+    LogicalDal(sql="CHECK TABLE `test_table_a` , `test_table_b`")
+
+## show index
+-
+  sql: |
+    show keys in op_test
+  plan: |
+    LogicalShow(sql="SHOW INDEXES FROM `op_test`")
+
+-
+  sql: |
+    show keys in op_test from optest
+  plan: |
+    LogicalShow(sql="SHOW INDEXES FROM `op_test` FROM `optest`")
+
+-
+  sql: |
+    show indexes in op_test
+  plan: |
+    LogicalShow(sql="SHOW INDEXES FROM `op_test`")
+
+-
+  sql: |
+    show indexes in op_test from optest
+  plan: |
+    LogicalShow(sql="SHOW INDEXES FROM `op_test` FROM `optest`")
+
+-
+  sql: |
+    show index in op_test
+  plan: |
+    LogicalShow(sql="SHOW INDEXES FROM `op_test`")
+
+-
+  sql: |
+    show index in optest.op_test from optest
+  plan: |
+    LogicalShow(sql="SHOW INDEXES FROM `op_test` FROM `optest`")
+

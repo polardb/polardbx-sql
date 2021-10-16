@@ -1,0 +1,27 @@
+-
+  sql: |
+    /*+TDDL:SEMI_HASH_JOIN(t_shard_id1,t_shard_id2)*/
+    select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      where a.id in
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      )
+
+  plan: |
+
+    SemiHashJoin(condition="id = id", type="semi")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id1` AS `t_shard_id1`")
+      Gather(concurrent=true)
+        LogicalView(tables="[0000-0003].t_shard_id2", shardCount=4, sql="SELECT `name` AS `id` FROM `t_shard_id2` AS `t_shard_id2`")

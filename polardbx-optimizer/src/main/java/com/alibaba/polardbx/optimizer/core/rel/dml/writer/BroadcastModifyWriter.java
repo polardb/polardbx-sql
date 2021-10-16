@@ -1,0 +1,125 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.optimizer.core.rel.dml.writer;
+
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableModifyBuilder;
+import com.alibaba.polardbx.optimizer.core.rel.dml.BroadcastWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
+import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.rule.TableRule;
+import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.util.Pair;
+import org.apache.calcite.util.mapping.Mapping;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+/**
+ * UPDATE/DELETE on one broadcast table with primary key specified
+ *
+ * @author chenmo.cm
+ */
+public class BroadcastModifyWriter extends AbstractSingleWriter implements DistinctWriter, BroadcastWriter {
+
+    /**
+     * Operator for UPDATE/DELETE
+     */
+    protected final LogicalModify modify;
+    /**
+     * Mapping for primary key in input row
+     */
+    protected final Mapping pkMapping;
+    /**
+     * Mapping for source value of SET in input row
+     * Null if type is DELETE
+     */
+    protected final Mapping updateSetMapping;
+    /**
+     * Mapping for columns used to group input rows, normally identical to pkMapping
+     * if pkMapping and skMapping are identical, then groupingMapping is also identical to them
+     * otherwise groupingMapping is the combination of pkMapping and skMapping
+     */
+    private final Mapping groupingMapping;
+
+    protected final TableRule tableRule;
+
+    public BroadcastModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
+                                 Mapping updateSetMapping, Mapping groupingMapping, TableRule tableRule) {
+        super(targetTable, modify.getOperation());
+        this.modify = modify;
+        this.pkMapping = pkMapping;
+        this.updateSetMapping = updateSetMapping;
+        this.groupingMapping = groupingMapping;
+        this.tableRule = tableRule;
+    }
+
+    @Override
+    public List<RelNode> getInput(ExecutionContext ec, Function<DistinctWriter, List<List<Object>>> rowGenerator) {
+        final RelOptTable targetTable = getTargetTable();
+        final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
+        final String schemaName = qn.left;
+        final String logicalTableName = qn.right;
+
+        // Deduplicate
+        final List<List<Object>> distinctRows = rowGenerator.apply(this);
+        if (distinctRows.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
+        final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
+            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec, tableRule);
+
+        final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
+        switch (getOperation()) {
+        case UPDATE:
+            return builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, shardResult);
+        case DELETE:
+            return builder.buildDeleteWithPk(modify, shardResult, ec);
+        default:
+            throw new AssertionError("Cannot handle operation " + getOperation().name());
+        }
+    }
+
+    @Override
+    public Mapping getGroupingMapping() {
+        return groupingMapping;
+    }
+
+    public LogicalModify getModify() {
+        return modify;
+    }
+
+    @Override
+    public List<Writer> getInputs() {
+        List writerList = Collections.emptyList();
+        return writerList;
+    }
+
+    @Override
+    public TableRule getTableRule() {
+        return tableRule;
+    }
+}

@@ -1,0 +1,205 @@
+- sql: |
+    SELECT distinct a FROM test_tb
+  plan: |
+    LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a) FROM test_tb
+  plan: |
+
+    logicalagg(count(distinct a)="count(a)")
+      logicalagg(group="a")
+        logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a` from `test_tb` as `test_tb`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a, b) FROM test_tb
+  plan: |
+
+    LogicalAgg(COUNT(DISTINCT a, b)="COUNT(a, b)")
+      LogicalAgg(group="a,b")
+        LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, `b` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(DISTINCT a), MAX(DISTINCT a) FROM test_tb
+
+  plan: |
+
+    LogicalAgg(COUNT(DISTINCT a)="COUNT(a)", SUM(DISTINCT a)="SUM(a)", MAX(DISTINCT a)="MAX(a)")
+      LogicalAgg(group="a")
+        LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(b) FROM test_tb
+
+  plan: |
+
+    LogicalAgg(COUNT(DISTINCT a)="COUNT(a) FILTER $2", SUM(b)="MIN(SUM(b)) FILTER $3")
+      Project(a="a", SUM(b)="SUM(b)", $g_0="CASE(=($1, 0), 0, 1) = 0", $g_1="CASE(=($1, 0), 0, 1) = 1")
+        LogicalAgg(group="a,$e", SUM(b)="SUM(b)")
+          Expand(projects="{a=a, b=b, $e=0}, {a=null, b=b, $e=1}")
+            LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, `b` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT COUNT(a), SUM(DISTINCT b) FROM test_tb
+
+  plan: |
+
+    Project(COUNT(a)="$f0", SUM(DISTINCT b)="SUM(DISTINCT b)")
+      Project($f0="CASE(IS NOT NULL($0), $0, 0)", SUM(DISTINCT b)="SUM(DISTINCT b)")
+        LogicalAgg(COUNT(a)="MIN(COUNT(a)) FILTER $3", SUM(DISTINCT b)="SUM(b) FILTER $2")
+          Project(b="b", COUNT(a)="COUNT(a)", $g_0="CASE(=($1, 0), 0, 1) = 0", $g_1="CASE(=($1, 0), 0, 1) = 1")
+            LogicalAgg(group="b,$e", COUNT(a)="COUNT(a)")
+              Expand(projects="{a=a, b=b, $e=0}, {a=a, b=null, $e=1}")
+                LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, `b` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(DISTINCT b), COUNT(c) FROM test_tb
+
+  plan: |
+
+    Project(COUNT(DISTINCT a)="COUNT(DISTINCT a)", SUM(DISTINCT b)="SUM(DISTINCT b)", COUNT(c)="$f2")
+      Project(COUNT(DISTINCT a)="COUNT(DISTINCT a)", SUM(DISTINCT b)="SUM(DISTINCT b)", $f2="CASE(IS NOT NULL($2), $2, 0)")
+        LogicalAgg(COUNT(DISTINCT a)="COUNT(a) FILTER $3", SUM(DISTINCT b)="SUM(b) FILTER $4", COUNT(c)="MIN(COUNT(c)) FILTER $5")
+          Project(a="a", b="b", COUNT(c)="COUNT(c)", $g_1="CASE(=($2, 1), 1, =($2, 2), 2, 3) = 1", $g_2="CASE(=($2, 1), 1, =($2, 2), 2, 3) = 2", $g_3="CASE(=($2, 1), 1, =($2, 2), 2, 3) = 3")
+            LogicalAgg(group="a,b,$e", COUNT(c)="COUNT(c)")
+              Expand(projects="{a=a, b=null, c=c, $e=1}, {a=null, b=b, c=c, $e=2}, {a=null, b=null, c=c, $e=3}")
+                LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, `b`, `c` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT a, COUNT(a), SUM(DISTINCT b) FROM test_tb GROUP BY a
+
+  plan: |
+
+    LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, COUNT(`a`) AS `COUNT(a)`, SUM(DISTINCT `b`) AS `SUM(DISTINCT b)` FROM `test_tb` AS `test_tb` GROUP BY `a`")
+
+- sql: |
+    SELECT a, COUNT(*), SUM(DISTINCT b), COUNT(DISTINCT b) FROM test_tb GROUP BY a
+
+  plan: |
+
+    LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, COUNT(*) AS `COUNT(*)`, SUM(DISTINCT `b`) AS `SUM(DISTINCT b)`, COUNT(DISTINCT `b`) AS `COUNT(DISTINCT b)` FROM `test_tb` AS `test_tb` GROUP BY `a`")
+
+- sql: |
+    SELECT a, COUNT(*), SUM(DISTINCT b), COUNT(DISTINCT c) FROM test_tb GROUP BY a
+
+  plan: |
+
+    LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, COUNT(*) AS `COUNT(*)`, SUM(DISTINCT `b`) AS `SUM(DISTINCT b)`, COUNT(DISTINCT `c`) AS `COUNT(DISTINCT c)` FROM `test_tb` AS `test_tb` GROUP BY `a`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(DISTINCT b), MAX(a), MIN(a) FROM test_tb
+
+  plan: |
+
+    LogicalAgg(COUNT(DISTINCT a)="COUNT(a) FILTER $4", SUM(DISTINCT b)="SUM(b) FILTER $5", MAX(a)="MIN(MAX(a)) FILTER $6", MIN(a)="MIN(MIN(a)) FILTER $6")
+      Project(a="a", b="b", MAX(a)="MAX(a)", MIN(a)="MIN(a)", $g_1="CASE(=($2, 1), 1, =($2, 2), 2, 3) = 1", $g_2="CASE(=($2, 1), 1, =($2, 2), 2, 3) = 2", $g_3="CASE(=($2, 1), 1, =($2, 2), 2, 3) = 3")
+        LogicalAgg(group="a,b,$e", MAX(a)="MAX(a_1)", MIN(a)="MIN(a_1)")
+          Expand(projects="{a=a, b=null, $e=1, a_0=a, a_1=a}, {a=null, b=b, $e=2, a_0=a, a_1=a}, {a=null, b=null, $e=3, a_0=a, a_1=a}")
+            LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, `b` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(DISTINCT b), MAX(a), MIN(a) FROM test_tb GROUP BY c
+
+  plan: |
+
+    Project(COUNT(DISTINCT a)="COUNT(DISTINCT a)", SUM(DISTINCT b)="SUM(DISTINCT b)", MAX(a)="MAX(a)", MIN(a)="MIN(a)")
+      LogicalAgg(group="c", COUNT(DISTINCT a)="COUNT(a) FILTER $5", SUM(DISTINCT b)="SUM(b) FILTER $6", MAX(a)="MIN(MAX(a)) FILTER $7", MIN(a)="MIN(MIN(a)) FILTER $7")
+        Project(c="c", a="a", b="b", MAX(a)="MAX(a)", MIN(a)="MIN(a)", $g_1="CASE(=($3, 1), 1, =($3, 2), 2, 3) = 1", $g_2="CASE(=($3, 1), 1, =($3, 2), 2, 3) = 2", $g_3="CASE(=($3, 1), 1, =($3, 2), 2, 3) = 3")
+          LogicalAgg(group="c,a,b,$e", MAX(a)="MAX(a_1)", MIN(a)="MIN(a_1)")
+            Expand(projects="{c=c, a=a, b=null, $e=1, a_0=a, a_1=a}, {c=c, a=null, b=b, $e=2, a_0=a, a_1=a}, {c=c, a=null, b=null, $e=3, a_0=a, a_1=a}")
+              LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `c`, `a`, `b` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT SUM(DISTINCT a), COUNT(DISTINCT c) FROM test_tb GROUP BY b
+
+  plan: |
+
+    Project(SUM(DISTINCT a)="SUM(DISTINCT a)", COUNT(DISTINCT c)="COUNT(DISTINCT c)")
+      LogicalAgg(group="b", SUM(DISTINCT a)="SUM(a) FILTER $3", COUNT(DISTINCT c)="COUNT(c) FILTER $4")
+        Project(b="b", a="a", c="c", $g_1="CASE(=($3, 1), 1, 2) = 1", $g_2="CASE(=($3, 1), 1, 2) = 2")
+          LogicalAgg(group="b,a,c,$e")
+            Expand(projects="{b=b, a=a, c=null, $e=1}, {b=b, a=null, c=c, $e=2}")
+              LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `b`, `a`, `c` FROM `test_tb` AS `test_tb`")
+
+- sql: |
+    SELECT a, COUNT(a), SUM(b), SUM(DISTINCT b) FROM test_tb GROUP BY a
+
+  plan: |
+
+    LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a`, COUNT(`a`) AS `COUNT(a)`, SUM(`b`) AS `SUM(b)`, SUM(DISTINCT `b`) AS `SUM(DISTINCT b)` FROM `test_tb` AS `test_tb` GROUP BY `a`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a, b) FROM test_tb2 GROUP BY GROUPING SETS (c, d)
+
+  plan: |
+
+    Project(COUNT(DISTINCT a, b)="COUNT(DISTINCT a, b)")
+      LogicalAgg(group="c,d,$e", COUNT(DISTINCT a, b)="COUNT(a, b)")
+        LogicalAgg(group="c,d,$e,a,b")
+          Project(c="c", d="d", $e="$e", a="a", b="b")
+            Expand(projects="{c=c, d=null, a=a, b=b, $e=1}, {c=null, d=d, a=a, b=b, $e=2}")
+              LogicalView(tables="[0000-0003].test_tb2_[00-27]", shardCount=28, sql="SELECT `c`, `d`, `a`, `b` FROM `test_tb2` AS `test_tb2`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(DISTINCT a), MAX(DISTINCT a) FROM test_tb2 GROUP BY GROUPING SETS (b, c)
+
+  plan: |
+
+    Project(COUNT(DISTINCT a)="COUNT(DISTINCT a)", SUM(DISTINCT a)="SUM(DISTINCT a)", MAX(DISTINCT a)="MAX(DISTINCT a)")
+      LogicalAgg(group="b,c,$e", COUNT(DISTINCT a)="COUNT(a)", SUM(DISTINCT a)="SUM(a)", MAX(DISTINCT a)="MAX(a)")
+        LogicalAgg(group="b,c,$e,a")
+          Project(b="b", c="c", $e="$e", a="a")
+            Expand(projects="{b=b, c=null, a=a, $e=1}, {b=null, c=c, a=a, $e=2}")
+              LogicalView(tables="[0000-0003].test_tb2_[00-27]", shardCount=28, sql="SELECT `b`, `c`, `a` FROM `test_tb2` AS `test_tb2`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(b) FROM test_tb2 GROUP BY GROUPING SETS (b, c)
+
+  plan: |
+
+    Project(COUNT(DISTINCT a)="COUNT(DISTINCT a)", SUM(b)="SUM(b)")
+      LogicalAgg(group="b,c,$e", COUNT(DISTINCT a)="COUNT(a) FILTER $5", SUM(b)="MIN(SUM(b)) FILTER $6")
+        Project(b="b", c="c", a="a", $e="$e", SUM(b)="SUM(b)", $g_0="CASE(=($4, 0), 0, 2) = 0", $g_2="CASE(=($4, 0), 0, 2) = 2")
+          LogicalAgg(group="b,c,a,$e,$e_0", SUM(b)="SUM(b_0)")
+            Expand(projects="{b=b, c=c, a=a, $e=$e, b_0=b_0, $e_0=0}, {b=b, c=c, a=null, $e=$e, b_0=b_0, $e_0=2}")
+              Expand(projects="{b=b, c=null, a=a, $e=1, b_0=b}, {b=null, c=c, a=a, $e=2, b_0=b}")
+                LogicalView(tables="[0000-0003].test_tb2_[00-27]", shardCount=28, sql="SELECT `b`, `c`, `a` FROM `test_tb2` AS `test_tb2`")
+
+- sql: |
+    SELECT COUNT(a), SUM(DISTINCT b) FROM test_tb2 GROUP BY GROUPING SETS (c, d)
+
+  plan: |
+
+    Project(COUNT(a)="COUNT(a)", SUM(DISTINCT b)="SUM(DISTINCT b)")
+      LogicalAgg(group="c,d,$e", COUNT(a)="MIN(COUNT(a)) FILTER $6", SUM(DISTINCT b)="SUM(b) FILTER $5")
+        Project(c="c", d="d", b="b", $e="$e", COUNT(a)="COUNT(a)", $g_0="CASE(=($4, 0), 0, 2) = 0", $g_2="CASE(=($4, 0), 0, 2) = 2")
+          LogicalAgg(group="c,d,b,$e,$e_0", COUNT(a)="COUNT(a)")
+            Expand(projects="{c=c, d=d, a=a, b=b, $e=$e, $e_0=0}, {c=c, d=d, a=a, b=null, $e=$e, $e_0=2}")
+              Expand(projects="{c=c, d=null, a=a, b=b, $e=1}, {c=null, d=d, a=a, b=b, $e=2}")
+                LogicalView(tables="[0000-0003].test_tb2_[00-27]", shardCount=28, sql="SELECT `c`, `d`, `a`, `b` FROM `test_tb2` AS `test_tb2`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(DISTINCT b) FROM test_tb2 GROUP BY GROUPING SETS (c, d)
+
+  plan: |
+
+    Project(COUNT(DISTINCT a)="COUNT(DISTINCT a)", SUM(DISTINCT b)="SUM(DISTINCT b)")
+      LogicalAgg(group="c,d,$e", COUNT(DISTINCT a)="COUNT(a) FILTER $5", SUM(DISTINCT b)="SUM(b) FILTER $6")
+        Project(c="c", d="d", a="a", b="b", $e="$e", $g_2="CASE(=($5, 2), 2, 4) = 2", $g_4="CASE(=($5, 2), 2, 4) = 4")
+          LogicalAgg(group="c,d,a,b,$e,$e_0")
+            Expand(projects="{c=c, d=d, a=a, b=null, $e=$e, $e_0=2}, {c=c, d=d, a=null, b=b, $e=$e, $e_0=4}")
+              Expand(projects="{c=c, d=null, a=a, b=b, $e=1}, {c=null, d=d, a=a, b=b, $e=2}")
+                LogicalView(tables="[0000-0003].test_tb2_[00-27]", shardCount=28, sql="SELECT `c`, `d`, `a`, `b` FROM `test_tb2` AS `test_tb2`")
+
+- sql: |
+    SELECT COUNT(DISTINCT a), SUM(DISTINCT b), COUNT(c) FROM test_tb2 GROUP BY GROUPING SETS (d, e)
+
+  plan: |
+
+    Project(COUNT(DISTINCT a)="COUNT(DISTINCT a)", SUM(DISTINCT b)="SUM(DISTINCT b)", COUNT(c)="COUNT(c)")
+      LogicalAgg(group="d,e,$e", COUNT(DISTINCT a)="COUNT(a) FILTER $6", SUM(DISTINCT b)="SUM(b) FILTER $7", COUNT(c)="MIN(COUNT(c)) FILTER $8")
+        Project(d="d", e="e", a="a", b="b", $e="$e", COUNT(c)="COUNT(c)", $g_2="CASE(=($5, 2), 2, =($5, 4), 4, 6) = 2", $g_4="CASE(=($5, 2), 2, =($5, 4), 4, 6) = 4", $g_6="CASE(=($5, 2), 2, =($5, 4), 4, 6) = 6")
+          LogicalAgg(group="d,e,a,b,$e,$e_0", COUNT(c)="COUNT(c)")
+            Expand(projects="{d=d, e=e, a=a, b=null, c=c, $e=$e, $e_0=2}, {d=d, e=e, a=null, b=b, c=c, $e=$e, $e_0=4}, {d=d, e=e, a=null, b=null, c=c, $e=$e, $e_0=6}")
+              Expand(projects="{d=d, e=null, a=a, b=b, c=c, $e=1}, {d=null, e=e, a=a, b=b, c=c, $e=2}")
+                LogicalView(tables="[0000-0003].test_tb2_[00-27]", shardCount=28, sql="SELECT `d`, `e`, `a`, `b`, `c` FROM `test_tb2` AS `test_tb2`")

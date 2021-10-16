@@ -1,0 +1,22 @@
+TDDL_USERS:
+  CREATE TABLE `TDDL_USERS` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `name` varchar(30) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`id`) tbpartition by hash(`id`) tbpartitions 3
+
+TDDL_ADDRESS:
+  CREATE TABLE `TDDL_ADDRESS` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `user_id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`user_id`) tbpartition by hash(`user_id`) tbpartitions 3
+
+TDDL_ORDERS:
+  CREATE TABLE `TDDL_ORDERS` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `user_id` int(11),
+  `name` varchar(30) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`id`) tbpartition by hash(`id`) tbpartitions 3
