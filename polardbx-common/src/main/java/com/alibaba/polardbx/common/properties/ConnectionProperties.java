@@ -20,6 +20,7 @@ package com.alibaba.polardbx.common.properties;
 public class ConnectionProperties {
 
     public static final String PLAN_CACHE = "PLAN_CACHE";
+    public static final String PHY_SQL_TEMPLATE_CACHE = "PHY_SQL_TEMPLATE_CACHE";
     public static final String PREPARE_OPTIMIZE = "PREPARE_OPTIMIZE";
 
     public static final String ENABLE_RECYCLEBIN = "ENABLE_RECYCLEBIN";

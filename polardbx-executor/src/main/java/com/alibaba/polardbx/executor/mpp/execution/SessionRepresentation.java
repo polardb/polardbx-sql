@@ -369,6 +369,7 @@ public class SessionRepresentation {
         ec.getCacheRelNodeIds().addAll(cacheRelNodesId);
         ec.getRecordRowCnt().putAll(recordRowCnt);
         ec.setInternalSystemSql(false);
+        ec.setUsingPhySqlCache(true);
 
         //mock connection
         MppMockConnection mppMockConnection = new MppMockConnection(user, catalog, schema);

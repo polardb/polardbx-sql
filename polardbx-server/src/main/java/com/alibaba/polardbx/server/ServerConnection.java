@@ -1194,6 +1194,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
              * system sql of drds
              */
             ec.setInternalSystemSql(false);
+            ec.setUsingPhySqlCache(true);
         }
         ec.setStartTime(System.nanoTime());
         ec.setPrivilegeMode(isPrivilegeMode());

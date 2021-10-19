@@ -59,6 +59,8 @@ public abstract class AdvisorTestCommon extends PlanTestCommon {
             false);
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setInternalSystemSql(false);
+        executionContext.setUsingPhySqlCache(true);
+
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName, executionContext.getExtraCmds(),
             executionContext.getGroupHint());
         executionContext.setRandomPhyTableEnabled(false);

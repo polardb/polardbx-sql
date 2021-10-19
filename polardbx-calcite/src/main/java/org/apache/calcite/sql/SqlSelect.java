@@ -63,6 +63,11 @@ public class SqlSelect extends SqlCall {
   SqlNodeList orderBy;
   SqlNode offset;
   SqlNode fetch;
+  /**
+   * computedFetch should be a SqlNumericLiteral
+   * while fetch is a SqlBasicCall with SqlDynamicParam
+   */
+  SqlNode computedFetch;
   SqlMatchRecognize matchRecognize;
   OutFileParams outFileParams;
 
@@ -141,8 +146,13 @@ public class SqlSelect extends SqlCall {
    * accepted by parametrize and physical sql generation
    */
   public List<SqlNode> getParameterizableOperandList() {
-    return ImmutableNullableList.of(keywordList, selectList, from, where,
-        groupBy, having, windowDecls, orderBy, fetch, offset);
+    if (isDynamicFetch()) {
+      return ImmutableNullableList.of(keywordList, selectList, from, where,
+          groupBy, having, windowDecls, orderBy, computedFetch, offset);
+    } else {
+      return ImmutableNullableList.of(keywordList, selectList, from, where,
+          groupBy, having, windowDecls, orderBy, fetch, offset);
+    }
   }
 
   @Override public void setOperand(int i, SqlNode operand) {
@@ -263,6 +273,24 @@ public class SqlSelect extends SqlCall {
 
   public void setFetch(SqlNode fetch) {
     this.fetch = fetch;
+  }
+
+  /**
+   * computed fetch should be set only once as a DynamicParam
+   * if it is set concurrently, make sure the param index is identical
+   */
+  public void setComputedFetch(SqlNode computedFetch) {
+    assert computedFetch instanceof SqlDynamicParam;
+    if (this.computedFetch != null) {
+      Preconditions.checkArgument(((SqlDynamicParam) this.computedFetch).index ==
+          ((SqlDynamicParam) computedFetch).index, "Computed fetch should be set at the exact same index");
+    } else {
+      this.computedFetch = computedFetch;
+    }
+  }
+
+  public boolean isDynamicFetch() {
+    return fetch != null && fetch.getKind() == SqlKind.PLUS && computedFetch != null;
   }
 
   public SqlMatchRecognize getMatchRecognize() {

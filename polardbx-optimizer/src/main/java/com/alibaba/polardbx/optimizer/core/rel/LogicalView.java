@@ -504,7 +504,9 @@ public class LogicalView extends TableScan {
      */
     public List<RelNode> getInput(ExecutionContext executionContext) {
         Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
-        PhyTableScanBuilder phyTableScanbuilder = new PhyTableScanBuilder((SqlSelect) getSqlTemplate(),
+        SqlSelect sqlTemplate = (SqlSelect) getSqlTemplate(executionContext);
+
+        PhyTableScanBuilder phyTableScanbuilder = new PhyTableScanBuilder(sqlTemplate,
             targetTables,
             executionContext,
             this,
@@ -516,7 +518,8 @@ public class LogicalView extends TableScan {
 
     public List<RelNode> getInnerInput(UnionOptHelper helper, ExecutionContext executionContext,
                                        boolean forceIgnoreRF) {
-        SqlSelect sqlTemplate = (SqlSelect) getSqlTemplate();
+        SqlSelect sqlTemplate = (SqlSelect) getSqlTemplate(executionContext);
+
         return getInnerInput(sqlTemplate, helper, executionContext, forceIgnoreRF);
     }
 
@@ -674,17 +677,21 @@ public class LogicalView extends TableScan {
         this.targetTablesHintCache = targetTables;
     }
 
+    public SqlNode getSqlTemplate(ExecutionContext executionContext) {
+        return getSqlTemplate(null, executionContext.enablePhySqlCache());
+    }
+
     /**
      * if no cache, return current SqlTemplate
      */
     public SqlNode getSqlTemplate() {
-        return getSqlTemplate(null);
+        return getSqlTemplate(null, true);
     }
 
-    public SqlNode getSqlTemplate(ReplaceCallWithLiteralVisitor visitor) {
+    public SqlNode getSqlTemplate(ReplaceCallWithLiteralVisitor visitor, boolean usingCache) {
         if (sqlTemplateHintCache == null) {
             if (visitor == null && scalarList.isEmpty() && correlateVariableScalar.isEmpty()) {
-                if (sqlTemplateCache == null) {
+                if (!usingCache || sqlTemplateCache == null) {
                     sqlTemplateCache = buildSqlTemplate(null);
                 }
                 return sqlTemplateCache;
@@ -694,6 +701,10 @@ public class LogicalView extends TableScan {
         } else {
             return sqlTemplateHintCache;
         }
+    }
+
+    public SqlNode getSqlTemplate(ReplaceCallWithLiteralVisitor visitor) {
+        return getSqlTemplate(visitor, true);
     }
 
     /**

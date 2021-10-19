@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import java.util.HashMap;
 import java.util.Map;
 
-
 public class ConnectionParams {
 
     public static final Map<String, ConfigParam> SUPPORTED_PARAMS = new HashMap<>();
@@ -1079,6 +1078,13 @@ public class ConnectionParams {
 
     public static final BooleanConfigParam PLAN_CACHE = new BooleanConfigParam(ConnectionProperties.PLAN_CACHE, true,
         true);
+
+    /**
+     * Physical sql template string cache for external sql
+     */
+    public static final BooleanConfigParam PHY_SQL_TEMPLATE_CACHE =
+        new BooleanConfigParam(ConnectionProperties.PHY_SQL_TEMPLATE_CACHE, true,
+            true);
 
     public static final BooleanConfigParam SKIP_READONLY_CHECK = new BooleanConfigParam(
         ConnectionProperties.SKIP_READONLY_CHECK, false, true);
