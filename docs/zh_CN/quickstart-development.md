@@ -3,8 +3,7 @@
 
 本文档对PolarDB-X的开发流程进行了说明，覆盖代码编译、数据库安装、部署等流程。
 
-备注：本文档主要针对CentOS7操作系统，其他Linux发行版原理类似。
-
+备注：本文档主要针对CentOS7和Ubuntu20操作系统，其他Linux发行版原理类似。
 
 ### 准备工作
 
@@ -13,15 +12,13 @@
 - 下载galaxyglue代码：https://github.com/ApsaraDB/galaxyglue ，main分支
 - 下载galaxycdc代码：https://github.com/ApsaraDB/galaxycdc ，main分支
 
-- 准备一个CentOS7的ECS实例
-   - 操作系统：CentOS Linux release 7.9.2009
-   - 内核：3.10.0-1160.42.2.el7.x86_64
-  
-
 ### 编译 PolarDB-X DN (存储节点，代号GalaxyEngine)
+
 此步骤编译和安装GalaxyEngine（mysql）
-```yaml
-# 安装cmake3
+
+**安装依赖（CentOS7)**
+
+```bash
 yum install cmake3
 ln -s /usr/bin/cmake3 /usr/bin/cmake
 
@@ -33,8 +30,26 @@ echo "source /opt/rh/devtoolset-7/enable" >>/etc/profile
 
 # 安装依赖
 yum install make automake git openssl-devel ncurses-devel bison libaio-devel
+```
 
+**安装依赖（Ubuntu20）**
 
+```bash
+# 安装GCC7
+apt install -y gcc-7 g++-7
+update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 60 \
+                         --slave /usr/bin/g++ g++ /usr/bin/g++-7 
+update-alternatives --config gcc
+gcc -version
+g++ -version
+
+# 安装依赖
+apt install make automake git bison libaio-dev libncurses-dev libsasl2-dev libldap2-dev
+```
+
+**编译**
+
+```bash
 # 进入 galaxyengine 代码路径
 cd galaxyengine
 

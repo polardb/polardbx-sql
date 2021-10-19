@@ -2,11 +2,11 @@
 
 This document explains the development process of PolarDB-X, covering code compilation, deployment and other processes.
 
-> Note: This document is mainly for CentOS 7, other Linux distributions have similar processes.
+> Note: This document is mainly for CentOS 7 and Ubuntu 20, other Linux distributions have similar processes.
 
 ### Before Starting
 
-On your CentOS, get the source code of PolarDB-X from github repositories:
+On your computer, get the source code of PolarDB-X from github repositories:
 
 [GalaxyEngine](https://github.com/ApsaraDB/galaxyengine)
 
@@ -20,21 +20,41 @@ Check out the `main` branch of each repository.
 
 ### Compiling PolarDB-X Data Node (GalaxyEngine)
 
-```shell
-# install cmake3
+**Install dependencies on CentOS7**
+
+```bash
 yum install cmake3
 ln -s /usr/bin/cmake3 /usr/bin/cmake
 
 
-# install GCC7
+# Install GCC7
 yum install centos-release-scl
 yum install devtoolset-7-gcc devtoolset-7-gcc-c++ devtoolset-7-binutils
 echo "source /opt/rh/devtoolset-7/enable" >>/etc/profile
 
-# install dependencies
+# Install dependencies
 yum install make automake git openssl-devel ncurses-devel bison libaio-devel
+```
+
+**Install dependencies on Ubuntu20**
+
+```bash
+# Install GCC7
+apt install -y gcc-7 g++-7
+update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 60 \
+                         --slave /usr/bin/g++ g++ /usr/bin/g++-7 
+update-alternatives --config gcc
+gcc -version
+g++ -version
 
 
+# Install dependencies
+apt install make automake git bison libaio-dev libncurses-dev libsasl2-dev libldap2-dev
+```
+
+**Compile && Install**
+
+```bash
 # enter galaxyengine directory
 cd galaxyengine
 
@@ -115,7 +135,7 @@ Once the mysql process is started, PolarDB-X can be initialized and the followin
 
 - metadb user：`my_polarx`
 - metadb database: `polardbx_meta_db_polardbx`
-- dnPasswordKey： `855a7043dfcb1f9b`
+- dnPasswordKey： `asdf1234ghjk5678`
 - PolarDB-X default root user：`polarx_root`
 - PolarDB-X default password：`123456`, you can reset it by `-S`
 
