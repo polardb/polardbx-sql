@@ -1,13 +1,13 @@
 ## How to contribute
 
-Contributors are welcome to submit their code and ideas. In a long run, we hope this project can be managed by developers from both inside and outside Alibaba. 
+Contributors are welcome to submit their code and ideas. In a long run, we hope this project can be managed by developers from both inside and outside Alibaba.
 
 ### Before contributing
 
 * Sign CLA of PolarDB-X:
-Please download PolarDB-X [CLA](https://gist.github.com/alibaba-oss/151a13b0a72e44ba471119c7eb737d74). Follow the instructions to sign it. 
+  Please download PolarDB-X [CLA](https://gist.github.com/alibaba-oss/151a13b0a72e44ba471119c7eb737d74). Follow the instructions to sign it.
 
-Here is a checklist to prepare and submit your PR (pull request). 
+Here is a checklist to prepare and submit your PR (pull request).
 
 * Create your own Github branch by forking PolarDB-X related repositories.
 * Checkout [README](README.md) for how to start PolarDB-X from source code.
@@ -16,7 +16,7 @@ Here is a checklist to prepare and submit your PR (pull request).
 * Submit PR for review and address all feedbacks.
 * Wait for merging (done by committers).
 
-Let's use an example to walk through the list. 
+Let's use an example to walk through the list.
 
 ## An Example of Submitting Code Change to PolarDB-X
 
@@ -51,14 +51,14 @@ git rebase develop
 git push --recurse-submodules=on-demand origin your_github_id_feature_name
 ```
 
-### Create a PR 
+### Create a PR
 Click **New pull request** or **Compare & pull  request** button, choose to compare branches apsaradb/galaxysql and your_github/your_github_id_feature_name, and write PR description.
 
 ### Address Reviewers' Comments
 Resolve all problems raised by reviewers and update PR.
 
 ### Merge
-It is done by PolarDB-X committers. 
+It is done by PolarDB-X committers.
 ___
 
 Copyright © Alibaba Group, Inc.

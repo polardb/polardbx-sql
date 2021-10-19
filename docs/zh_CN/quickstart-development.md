@@ -44,14 +44,14 @@ mkdir extra/boost
 cp boost_1_70_0.tar.gz extra/boost/
 
 # 编译安装
-# 详细编译参数参考 MySQL 文档：https://dev.mysql.com/doc/refman/8.0/en/source-configuration-options.html
-cmake .                                  \
-    - DFORCE_INSOURCE_BUILD=ON           \
-    - DCMAKE_BUILD_TYPE="Debug"          \
-    - DSYSCONFDIR="/u01/mysql"           \
-    - DCMAKE_INSTALL_PREFIX="/u01/mysql" \
-    - DMYSQL_DATADIR="/u01/mysql/data"   \
-    - DWITH_BOOST="./extra/boost/boost_1_70_0.tar.gz" 
+# 详细参数请参考 https://dev.mysql.com/doc/refman/8.0/en/source-configuration-options.html
+cmake .                               	\
+    -DFORCE_INSOURCE_BUILD=ON           \
+    -DCMAKE_BUILD_TYPE="Debug"          \
+    -DSYSCONFDIR="/u01/mysql"           \
+    -DCMAKE_INSTALL_PREFIX="/u01/mysql" \
+    -DMYSQL_DATADIR="/u01/mysql/data"   \
+    -DWITH_BOOST="./extra/boost/boost_1_70_0.tar.gz"
 make -j8
 make install
 ```
@@ -120,7 +120,7 @@ mkdir -p /u01/my3306/{data,log,run,tmp,mysql}
 - metadb database：创建metadb库，以下采用 `polardbx_meta_db_polardbx`
 - 密码加密key（dnPasswordKey)：以下采用 `asdf1234ghjk5678`
 - PolarDB-X默认用户名：默认为 `polarx_root`
-- PolarDB-X默认用户密码：默认为 `123456`，可通过 `-polarxRootPasswd`参数修改
+- PolarDB-X默认用户密码：默认为 `123456`，可通过 `-S` 参数修改
 
 > 注意：启动 CN 需要使用非 root 账号完成
 
@@ -153,12 +153,12 @@ instanceId=polardbx-polardbx
 
 ```sql
 bin/startup.sh \
-	-I \
-	-P asdf1234ghjk5678 \
-  -d 127.0.0.1:4886:32886 \
-  -r "" \
-  -u polardbx_root \
-  -S "123456"
+    -I \
+    -P asdf1234ghjk5678 \
+    -d 127.0.0.1:4886:32886 \
+    -r "" \
+    -u polardbx_root \
+    -S "123456"
 ```
 
 此步骤中会生成内部密码及加密密码，需要将其填写配置文件 conf/server.properties 中，用于后续访问:

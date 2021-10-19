@@ -101,6 +101,7 @@ tar zxvf polardbx-cdc-assemble/target/polardbx-cdc*.tar.gz
 - Refer to the mysql configuration file in the appendix to modify it accordingly. By default, 4886 is used as mysql port and 32886 as private protocol port
 - By default, /u01/my3306 is used as mysql data directory, you can change it to other directory
 
+> NOTE：You should start DN under account other than root
 
 Start MySQL：
 ```shell
@@ -116,8 +117,9 @@ Once the mysql process is started, PolarDB-X can be initialized and the followin
 - metadb database: `polardbx_meta_db_polardbx`
 - dnPasswordKey： `855a7043dfcb1f9b`
 - PolarDB-X default root user：`polarx_root`
-- PolarDB-X default password：`123456`, you can reset it by `-polarxRootPasswd`
+- PolarDB-X default password：`123456`, you can reset it by `-S`
 
+> NOTE：You should start CN under account other than root
 
 update conf/server.properties:
 ```text
@@ -148,15 +150,20 @@ Initialize PolarDB-X:
 ```sql
 bin/startup.sh \
 	-I \
-	-P 855a7043dfcb1f9b \
-  -d 127.0.0.1:4886:32886 \
-  -r "" \
-  -u polardbx_root \
-  -S "123456"
+	-P asdf1234ghjk5678 \
+    -d 127.0.0.1:4886:32886 \
+    -r "" \
+    -u polardbx_root \
+    -S "123456"
 ```
 
 This step generates the internal and encrypted passwords, which need to be filled in the configuration file conf/server.properties for subsequent access:
+
 ```sql
+Generate password for user: my_polarx && M8%V5%K9^$5%oY0%yC0+&1!J7@8+R6)
+Encrypted password: DB84u4UkU/OYlMzu3aj9NFdknvxYgedFiW9z59bVnoc=
+Root user for polarx with password: polardbx_root && 123456
+Encrypted password for polarx: H1AzXc2NmCs61dNjH5nMvA==
 ======== Paste following configurations to conf/server.properties ! ======= 
 metaDbPasswd=HMqvkvXZtT7XedA6t2IWY8+D7fJWIJir/mIY1Nf1b58=
 ```
@@ -164,7 +171,7 @@ metaDbPasswd=HMqvkvXZtT7XedA6t2IWY8+D7fJWIJir/mIY1Nf1b58=
 
 Final Step, Run PolarDB-X:
 ```shell
-bin/startup.sh -P 855a7043dfcb1f9b
+bin/startup.sh -P asdf1234ghjk5678
 ```
 
 
@@ -180,24 +187,27 @@ After the PolarDB-X is running, the PolarDB-X CDC component can be initialized, 
 - metadb database: same as before `polardbx_meta_db_polardbx`
 - metadb password：same as before
 - metadb port：same as before `3306`
-- dnPasswordKey：same as before `855a7043dfcb1f9b`
+- dnPasswordKey：same as before `asdf1234ghjk5678`
 - PolarDB-X user：same as before `polarx_root`
-- PolarDB-X password：same as before `123456`
+- PolarDB-X password：encrypted password of polarx `H1AzXc2NmCs61dNjH5nMvA==`
 - PolarDB-X Port：same as before `8527`
-- 
-
+- Max allocatable memory for cdc：the size, in MB, stands for memory limitation of cdc, see as `16000` in example below
+  
+> NOTE：You should start CDC under account other than root
 
 Modify the configuration file conf/config.properties and replace ${HOME} in the following example with the current user's home directory, e.g. /home/mysql
+
 ```shell
+useEncryptedPassword=true
 polardbx.instance.id=polardbx-polardbx
 mem_size=16000
-metaDb_url=jdbc:mysql://127.0.0.1:3306/polardbx_meta_db_polardbx?useSSL=false
+metaDb_url=jdbc:mysql://127.0.0.1:4886/polardbx_meta_db_polardbx?useSSL=false
 metaDb_username=my_polarx
-metaDb_password=xxx
+metaDbPasswd=HMqvkvXZtT7XedA6t2IWY8+D7fJWIJir/mIY1Nf1b58=
 polarx_url=jdbc:mysql://127.0.0.1:8527/__cdc__
 polarx_username=polardbx_root
-polarx_password=123456
-dnPasswordKey=855a7043dfcb1f9b
+polarx_password=H1AzXc2NmCs61dNjH5nMvA==
+dnPasswordKey=asdf1234ghjk5678
 storage.persistBasePath=${HOME}/logs/rocksdb
 binlog.dir.path=${HOME}/binlog/
 ```
