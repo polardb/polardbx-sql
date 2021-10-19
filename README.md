@@ -12,7 +12,7 @@ PolarDB-X was originally created to solve the database's scalability bottleneck 
 
 The core features of PolarDB-X include:
 
-- Horizontal Scalibility
+- Horizontal Scalability
 
 PolarDB-X is designed with Shared-nothing architecture, supporting multiple Hash and Range data sharding algorithms and achieving transparent horizontal scaling through implicit primary key sharding and dynamic scheduling of data shard.
 
