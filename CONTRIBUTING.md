@@ -22,11 +22,13 @@ Let's use an example to walk through the list.
 
 ### Fork Your Own Branch
 
-there are many PolarDB-X related repositories, take ApasaraDB GalaxySQL for an example. On [its Github page](https://github.com/apsaradb/galaxysql), Click **fork** button to create your own galaxysql repository.
+There are many PolarDB-X related repositories, take ApasaraDB GalaxySQL and ApasaraDB GalaxyGlue for an example. On Github page of [GalaxySQL](https://github.com/apsaradb/galaxysql) and [GalaxyGlue](https://github.com/apsaradb/galaxyglue), Click **fork** button to create your own galaxysql and galaxyglue repository.
 
-### Create Local Repository 
+### Create Local Repository
 ```bash
 git clone https://github.com/your_github/galaxysql.git
+cd galaxysql
+git submodule add https://github.com/your_github/galaxyglue.git polardbx-rpc
 ```
 ### Create a dev Branch (named as your_github_id_feature_name)
 ```bash
@@ -46,7 +48,7 @@ git pull
 git checkout your_github_id_feature_name
 git rebase develop
 -- resolve conflict, compile and test --
-git push origin your_github_id_feature_name
+git push --recurse-submodules=on-demand origin your_github_id_feature_name
 ```
 
 ### Create a PR 
