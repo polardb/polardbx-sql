@@ -44,7 +44,14 @@ mkdir extra/boost
 cp boost_1_70_0.tar.gz extra/boost/
 
 # compile & install
-./build.sh
+# for more information, see https://dev.mysql.com/doc/refman/8.0/en/source-configuration-options.html
+cmake .                               	\
+    -DFORCE_INSOURCE_BUILD=ON           \
+    -DCMAKE_BUILD_TYPE="Debug"          \
+    -DSYSCONFDIR="/u01/mysql"           \
+    -DCMAKE_INSTALL_PREFIX="/u01/mysql" \
+    -DMYSQL_DATADIR="/u01/mysql/data"   \
+    -DWITH_BOOST="./extra/boost/boost_1_70_0.tar.gz" 
 make -j8
 make install
 ```
