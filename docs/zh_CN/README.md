@@ -111,6 +111,14 @@ ApsaraDB GalaxySQL 采用 Apache License 2.0 协议。协议详情参看 [Licens
 欢迎大家为 PolarDB-X 作出贡献，我们感谢包括使用体验、反馈问题、提交 PR 等在内的任何形式的贡献。关于如何开始开发和提交 PR，请参考[这里](../../CONTRIBUTING.md)。 
 
 
+## 社区
+欢迎大家加入社区讨论 PolarDB-X 相关问题:
+- 钉钉群: [32432897](https://h5.dingtalk.com/circle/healthCheckin.html?dtaction=os&corpId=dingc5456617ca6ab502e1cc01e222598659&1b3d4=1ec1b&cbdbhh=qwertyuiop#/)  
+  ![DingTalk Group](../images/dingtalk_group.jpg)
+- 微信群: 阿里云 PolarDB-X 开源交流群  
+  ![WeChat Group](../images/wechat_group.jpg)
+
+
 ## 致谢
 ApsaraDB GalaxySQL 中引用或借鉴了很多开源社区的代码，例如 Calcite、Presto 等，真诚感谢这些项目和贡献人员。
 ## 
