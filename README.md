@@ -117,8 +117,9 @@ You are welcome to make contributions to PolarDB-X. We appreciate all the contri
 You can join these groups and chats to discuss and ask PolarDB-X related questions:
  - DingTalk Group: [32432897](https://h5.dingtalk.com/circle/healthCheckin.html?dtaction=os&corpId=dingc5456617ca6ab502e1cc01e222598659&1b3d4=1ec1b&cbdbhh=qwertyuiop#/)  
    ![DingTalk Group](docs/images/dingtalk_group.jpg)
- - WeChat Group: 阿里云 PolarDB-X 开源交流群  
-   ![WeChat Group](docs/images/wechat_group.jpg)
+ - WeChat Group: 阿里云 PolarDB-X 开源交流群 (Contact group manager to get into wechat group. Managers' ID: oldbread3, hustfxj, agapple0002)   
+   ![WeChat Manager 1](docs/images/wechat_manager_a.jpg)  ![WeChat Manager 2](docs/images/wechat_manager_b.jpg) ![WeChat Manager 3](docs/images/wechat_manager_c.jpg)
+
    
 
 ## Acknowledgements
