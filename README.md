@@ -42,7 +42,7 @@ PolarDB-X has years of cloud native practice on AliCloud, supports managing clus
 PolarDB-X achieves strong data consistency through Multi-Paxos protocol, supports cross-data center deployment, and improves system availability through Table Group, Geo-locality, etc.
 
 
-- Compatiable with MySQL and Its Ecosystem
+- Compatible with MySQL and Its Ecosystem
 
 The goal of PolarDB-X is to be fully compatible with MySQL, which currently includes MySQL protocol, most of MySQL SQL syntax, Collations, transaction isolation level, binary log, etc.
 
