@@ -40,8 +40,8 @@ apt install -y gcc-7 g++-7
 update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 60 \
                          --slave /usr/bin/g++ g++ /usr/bin/g++-7 
 update-alternatives --config gcc
-gcc -version
-g++ -version
+gcc --version
+g++ --version
 
 # 安装依赖
 apt install make automake git bison libaio-dev libncurses-dev libsasl2-dev libldap2-dev
