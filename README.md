@@ -5,7 +5,7 @@
 [中文文档](docs/zh_CN/README.md)
 
 ## What is PolarDB-X ？
-PolarDB-X is a cloud native distributed SQL Database designed for high concurrency, massive storage, complex querying scenarios. It has a shared-nothing architecture in which computing is decoupled from storage. It supports horizontal scaling, distributed transactions and Hybrid Transactional and Analytical Processing (HTAP) workloads, and is characterized by enterprise-class, cloud native, high availability, highly compatiable with MySQL and its ecosystem.
+PolarDB-X is a cloud native distributed SQL Database designed for high concurrency, massive storage and complex querying scenarios. It has a shared-nothing architecture in which computing is decoupled from storage. It supports horizontal scaling, distributed transactions and Hybrid Transactional and Analytical Processing (HTAP) workloads, and is characterized by enterprise-class, cloud native, high availability, highly compatible with MySQL and its ecosystem.
 
 PolarDB-X was originally created to solve the database's scalability bottleneck of Alibaba Tmall's "Double Eleven" core transaction system, and has grown with AliCloud along the way, and is a mature and stable database system that has been verified by many customers' core business systems.
 
@@ -124,5 +124,3 @@ You can join these groups and chats to discuss and ask PolarDB-X related questio
 
 ## Acknowledgements
 ApsaraDB GalaxySQL references from many open source projects, such as Calcite, Presto etc. Sincere thanks to these projects and contributors.
-## 
-
