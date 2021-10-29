@@ -2510,12 +2510,18 @@ public class MySqlStatementParser extends SQLStatementParser {
                 case KILL:
                 case EXPLAIN:
                 case LPAREN:
+                case CONTINUE:
                     acceptHint = true;
                     break;
                 case IDENTIFIER:
                     acceptHint = lexer.hash_lower() == FnvHash.Constants.DUMP
                             || lexer.hash_lower() == FnvHash.Constants.RENAME
                             || lexer.hash_lower() == FnvHash.Constants.DESCRIBE
+                            || lexer.identifierEquals(FnvHash.Constants.RECOVER)
+                            || lexer.identifierEquals(FnvHash.Constants.PAUSE)
+                            || lexer.identifierEquals(FnvHash.Constants.REMOVE)
+                            || lexer.identifierEquals("ROLLBACK")
+                            || lexer.identifierEquals("CANCEL")
                             || lexer.identifierEquals("CALL")
                         || lexer.identifierEquals("REFRESH");
                     break;

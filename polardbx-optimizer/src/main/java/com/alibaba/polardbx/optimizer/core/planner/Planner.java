@@ -217,6 +217,7 @@ import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdviso
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.RelUtils.disableMpp;
 import static com.alibaba.polardbx.optimizer.workload.WorkloadUtil.determineWorkloadType;
+import static org.apache.calcite.sql.SqlKind.DDL;
 import static org.apache.calcite.sql.SqlKind.DML;
 import static org.apache.calcite.sql.SqlKind.QUERY;
 
@@ -1511,6 +1512,11 @@ public class Planner {
         if (sqlNode.isA(QUERY)) {
             plan.getPlanProperties().set(ExecutionPlanProperties.QUERY);
         }
+
+        if (sqlNode.isA(DDL)) {
+            plan.getPlanProperties().set(ExecutionPlanProperties.DDL);
+        }
+
         return plan;
     }
 

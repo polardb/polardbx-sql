@@ -51,6 +51,8 @@ public final class ExecutionPlanProperties {
 
     public static final int DML = 11;
 
+    public static final int DDL = 12;
+
     public static final BitSet MDL_REQUIRED = BitSets
         .of(MODIFY_TABLE, MODIFY_GSI_TABLE, MODIFY_BROADCAST_TABLE, MODIFY_SHARDING_COLUMN, MODIFY_CROSS_DB,
             MODIFY_SCALE_OUT_GROUP, REPLICATE_TABLE);
@@ -61,4 +63,7 @@ public final class ExecutionPlanProperties {
     public static final BitSet XA_REQUIRED = BitSets
         .of(MODIFY_BROADCAST_TABLE, MODIFY_GSI_TABLE, MODIFY_SHARDING_COLUMN, MODIFY_CROSS_DB, MODIFY_SCALE_OUT_GROUP,
             REPLICATE_TABLE);
+
+    public static final BitSet DDL_STATEMENT = BitSets
+        .of(DDL);
 }

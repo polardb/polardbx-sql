@@ -105,6 +105,9 @@ import static com.alibaba.polardbx.executor.utils.failpoint.FailPoint.SET_PREFIX
 public final class SetHandler {
 
     static FastsqlParser fastsqlParser = new FastsqlParser();
+
+    static Object IGNORE_VALUE = new Object();
+
     private static final Logger logger = LoggerFactory.getLogger(SetHandler.class);
 
     public static void handleV2(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
@@ -586,7 +589,10 @@ public final class SetHandler {
                     } else if ("time_zone".equalsIgnoreCase(key.getName())) {
                         //在内部添加到customizeVar中
                         c.setTimeZone(c.getVarStringValue(oriValue));
-                        c.getServerVariables().put(key.getName().toLowerCase(), c.getVarStringValue(oriValue));
+                        Object parserValue = parserValue(oriValue, key, c);
+                        if (parserValue != IGNORE_VALUE) {
+                            c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                        }
                     } else if ("block_encryption_mode".equalsIgnoreCase(key.getName())) {
                         BlockEncryptionMode encryptionMode;
                         boolean supportOpenSSL =
@@ -630,10 +636,11 @@ public final class SetHandler {
                         c.setEnableANSIQuotes(enableANSIQuotes);
                         c.setSqlMode(val);
                         c.getExtraServerVariables().put(key.getName().toLowerCase(), val);
-                        c.getServerVariables().put(key.getName().toLowerCase(), val);
+                        Object parserValue = parserValue(oriValue, key, c);
+                        if (parserValue != IGNORE_VALUE) {
+                            c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                        }
                     } else if (!isCnVariable(key.getName())) {
-                        Object value = null;
-
                         if (!ServerVariables.isWritable(key.getName())) {
                             if (enableSetGlobal && key.getScope() == org.apache.calcite.sql.VariableScope.GLOBAL) {
                                 continue;
@@ -665,46 +672,10 @@ public final class SetHandler {
                                 "Not supported variable for now '" + key.getName() + "'");
                             return;
                         }
-
-                        if (oriValue instanceof SqlCharStringLiteral) {
-                            value = RelUtils.stringValue(oriValue);
-                        } else if (oriValue instanceof SqlNumericLiteral) {
-                            value = ((SqlNumericLiteral) oriValue).getValue();
-                        } else if (oriValue instanceof SqlUserDefVar) {
-                            value = c.getUserDefVariables().get(((SqlUserDefVar) oriValue).getName().toLowerCase());
-                            if (!c.getUserDefVariables()
-                                .containsKey(((SqlUserDefVar) oriValue).getName().toLowerCase())) {
-                                c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "Variable " + key.getName()
-                                    + " can't be set to the value of "
-                                    + RelUtils.stringValue(oriValue));
-                                return;
-                            }
-                        } else if (oriValue instanceof SqlSystemVar) {
-                            SqlSystemVar var = (SqlSystemVar) oriValue;
-                            if (!ServerVariables.contains(var.getName()) && !ServerVariables
-                                .isExtra(var.getName())) {
-                                c.writeErrMessage(ErrorCode.ER_UNKNOWN_SYSTEM_VARIABLE, "Unknown system variable '"
-                                    + var.getName() + "'");
-                                return;
-                            }
-                            value = c.getSysVarValue(var);
-                        } else if (oriValue instanceof SqlLiteral
-                            && ((SqlLiteral) oriValue).getTypeName() == SqlTypeName.NULL) {
-                            value = null;
-                        } else if (oriValue instanceof SqlLiteral
-                            && ((SqlLiteral) oriValue).getTypeName() == SqlTypeName.BOOLEAN) {
-                            value = ((SqlLiteral) oriValue).booleanValue();
-                        } else if (isDefault(oriValue)) {
-                            value = "default";
-                        } else if (oriValue instanceof SqlIdentifier) {
-                            value = oriValue.toString();
-                            // } else if (oriValue instanceof SqlBasicCall
-                            // && oriValue.getKind() == SqlKind.MINUS) {
-                            // value =
-                            // ((SqlNode)oriValue).evaluation(Collections.emptyMap());
+                        Object parserValue = parserValue(oriValue, key, c);
+                        if (parserValue != IGNORE_VALUE) {
+                            c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
                         }
-
-                        c.getServerVariables().put(key.getName().toLowerCase(), value);
                     } else {
                         c.getConnectionVariables().put(key.getName().toUpperCase(Locale.ROOT), oriValue.toString());
                     }
@@ -1114,5 +1085,45 @@ public final class SetHandler {
 
     private static boolean isDnVariable(String variableName) {
         return ServerVariables.contains(variableName);
+    }
+
+    private static Object parserValue(SqlNode oriValue, SqlSystemVar key, ServerConnection c) {
+        Object value = IGNORE_VALUE;
+        if (oriValue instanceof SqlCharStringLiteral) {
+            value = RelUtils.stringValue(oriValue);
+        } else if (oriValue instanceof SqlNumericLiteral) {
+            value = ((SqlNumericLiteral) oriValue).getValue();
+        } else if (oriValue instanceof SqlUserDefVar) {
+            value = c.getUserDefVariables().get(((SqlUserDefVar) oriValue).getName().toLowerCase());
+            if (!c.getUserDefVariables()
+                .containsKey(((SqlUserDefVar) oriValue).getName().toLowerCase())) {
+                c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "Variable " + key.getName()
+                    + " can't be set to the value of "
+                    + RelUtils.stringValue(oriValue));
+            }
+        } else if (oriValue instanceof SqlSystemVar) {
+            SqlSystemVar var = (SqlSystemVar) oriValue;
+            if (!ServerVariables.contains(var.getName()) && !ServerVariables
+                .isExtra(var.getName())) {
+                c.writeErrMessage(ErrorCode.ER_UNKNOWN_SYSTEM_VARIABLE, "Unknown system variable '"
+                    + var.getName() + "'");
+            }
+            value = c.getSysVarValue(var);
+        } else if (oriValue instanceof SqlLiteral
+            && ((SqlLiteral) oriValue).getTypeName() == SqlTypeName.NULL) {
+            value = null;
+        } else if (oriValue instanceof SqlLiteral
+            && ((SqlLiteral) oriValue).getTypeName() == SqlTypeName.BOOLEAN) {
+            value = ((SqlLiteral) oriValue).booleanValue();
+        } else if (isDefault(oriValue)) {
+            value = "default";
+        } else if (oriValue instanceof SqlIdentifier) {
+            value = oriValue.toString();
+            // } else if (oriValue instanceof SqlBasicCall
+            // && oriValue.getKind() == SqlKind.MINUS) {
+            // value =
+            // ((SqlNode)oriValue).evaluation(Collections.emptyMap());
+        }
+        return value;
     }
 }

@@ -43,15 +43,14 @@ public class Task implements Runnable {
     @Override
     public void run() {
         String cleanSql = cleanable.getCleanSql();
-        try (Connection connection = MetaDbUtil.getConnection();
-            PreparedStatement s = connection.prepareStatement(cleanSql)) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
             Map<Integer, ParameterContext> params = new HashMap<>();
             Date date = new Date();
             Calendar cal = Calendar.getInstance();
             cal.setTime(date);
-            cal.add(Calendar.HOUR_OF_DAY, 0 - cleanable.getKeepDays());
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setDate1, cal.getTime());
-            s.execute();
+            cal.add(Calendar.DATE, 0 - cleanable.getKeepDays());
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setDate1, new java.sql.Date(cal.getTimeInMillis()));
+            MetaDbUtil.delete(cleanSql, params, connection);
         } catch (Throwable e) {
             logger.error("Failed to clean table '" + cleanable.getCleanSql() + "'", e);
             //don't throw it
