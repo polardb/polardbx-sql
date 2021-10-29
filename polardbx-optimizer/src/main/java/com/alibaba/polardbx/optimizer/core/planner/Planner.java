@@ -256,14 +256,9 @@ public class Planner {
         if (executionContext.isExecutingPreparedStmt()) {
             PreparedStmtCache preparedStmtCache = executionContext.getPreparedStmtCache();
             assert preparedStmtCache != null;
-            // bind params when executing server prepared stmt
-            SqlParameterized parameterized = preparedStmtCache.getSqlParameterized();
-            parameterized.getParameters().clear();
-            Map<Integer, ParameterContext> parameters = executionContext.getParams().getCurrentParameter();
-            int parameterCount = preparedStmtCache.getStmt().getPrepareParamCount();
-            for (int i = 0; i < parameterCount; i++) {
-                parameterized.getParameters().add(parameters.get(i + 1).getValue());
-            }
+
+            ByteString afterProcessSql = removeSpecialHint(sql, executionContext);
+            SqlParameterized parameterized = parameterize(afterProcessSql, executionContext);
             return plan(sql, preparedStmtCache.getSqlType(), parameterized, executionContext);
         } else {
             ByteString afterProcessSql = removeSpecialHint(sql, executionContext);

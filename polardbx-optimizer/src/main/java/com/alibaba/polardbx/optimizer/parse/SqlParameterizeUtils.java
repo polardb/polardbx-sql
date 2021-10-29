@@ -108,16 +108,12 @@ public class SqlParameterizeUtils {
             // the order of parameters corresponds to the original sql. For
             // example, originalSql = 'select * from tb limit ? offset ?',
             // params = '10, 20', parameterizedSql = 'select * from tb limit ?, ?'.
-            return new SqlParameterized(sql, sql.toString(), tmpParameters, statement);
+            return SqlParameterizeUtils.parameterizeStmt(statement, sql, executionContext, tmpParameters);
         } else {
-            if (forPrepare) {
-                // todo: Executing prepare statement should use the same parameterization as common queries
-                // Use the original sql in prepare phase
-                // so that it can hit cache with the same cache key in execute phase
-                return new SqlParameterized(sql, sql.toString(), new ArrayList<>(), statement);
-            } else {
-                return SqlParameterizeUtils.parameterizeStmt(statement, sql, executionContext);
-            }
+            // Executing prepare statement should use the same parameterization as common queries
+            // Use the original sql in prepare phase
+            // so that it can hit cache with the same cache key in execute phase
+            return SqlParameterizeUtils.parameterizeStmt(statement, sql, executionContext);
         }
     }
 
@@ -131,6 +127,12 @@ public class SqlParameterizeUtils {
 
     private static SqlParameterized parameterizeStmt(SQLStatement stmt, ByteString sql,
                                                      ExecutionContext executionContext) {
+        return parameterizeStmt(stmt, sql, executionContext, null);
+    }
+
+    private static SqlParameterized parameterizeStmt(SQLStatement stmt, ByteString sql,
+                                                     ExecutionContext executionContext, List<Object> tmpParameters) {
+
         if (!needCache(stmt)) {
             // use sql instead of stmt.toString(), because fastsql special sql toString is buggy.
             return new SqlParameterized(sql, sql.toString(), new ArrayList<>(), stmt);
@@ -142,7 +144,8 @@ public class SqlParameterizeUtils {
         List<Object> outParameters = new ArrayList<>();
 
         StringBuilder out = new StringBuilder();
-        ParameterizedVisitor visitor = new DrdsParameterizeSqlVisitor(out, true, executionContext);
+        DrdsParameterizeSqlVisitor visitor = new DrdsParameterizeSqlVisitor(out, true, executionContext);
+        visitor.setTmpParameters(tmpParameters);
         visitor.setOutputParameters(outParameters);
         configVisitorFeatures(visitor, parameterizeFeatures);
 

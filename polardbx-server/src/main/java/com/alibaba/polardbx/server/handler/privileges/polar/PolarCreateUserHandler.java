@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.parser.ParserException;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateUserStatement;
@@ -84,7 +87,17 @@ public class PolarCreateUserHandler extends AbstractPrivilegeCommandHandler {
     private List<PolarAccountInfo> checkAndGetGrantees() {
         List<PolarAccountInfo> grantees = new ArrayList<>();
         for (UserSpecification spec : stmt.getUsers()) {
-            MySqlUserName user = (MySqlUserName) spec.getUser();
+            MySqlUserName user = null;
+            if (spec.getUser() instanceof MySqlUserName) {
+                user = (MySqlUserName) spec.getUser();
+            } else {
+                /*
+                 * If host part omitted, defaults to '%'.
+                 */
+                user = MySqlUserName.fromExpr(spec.getUser());
+                user.setHost("%");
+                user.setIdentifiedBy(((SQLCharExpr)spec.getPassword()).getText());
+            }
             PolarAccountInfo userInfo = new PolarAccountInfo(PolarAccount.newBuilder()
                 .setAccountType(AccountType.USER)
                 .setUsername(user.getUserName())

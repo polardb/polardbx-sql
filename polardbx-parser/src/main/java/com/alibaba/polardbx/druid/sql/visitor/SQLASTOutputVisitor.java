@@ -374,6 +374,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLCreateResou
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.SQLListResourceGroupStatement;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.Pair;
+import com.alibaba.polardbx.druid.util.StringUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -441,6 +442,9 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     protected transient int lines = 0;
     private TimeZone timeZone;
 
+    protected List<Object> tmpParameters;
+    protected int tmpParamCnt = 0;
+
     protected Boolean printStatementAfterSemi = defaultPrintStatementAfterSemi;
 
     {
@@ -475,6 +479,18 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     public void setTimeZone(TimeZone timeZone) {
         this.timeZone = timeZone;
+    }
+
+    public void setTmpParameters(List<Object> tmpParameters) {
+        this.tmpParameters = tmpParameters;
+    }
+
+    /**
+     * 将prepare-execute的参数传到参数化的结果中
+     */
+    protected void passTmpParameter(int paramIdx) {
+        this.parameters.add(tmpParameters.get(paramIdx));
+        tmpParamCnt++;
     }
 
     public void addTableMapping(String srcTable, String destTable) {
@@ -1965,6 +1981,9 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             if (allLiteral) {
                 boolean changed = true;
                 if (targetList.size() == 1 && targetList.get(0) instanceof SQLVariantRefExpr) {
+                    if (this.tmpParameters != null) {
+                        passTmpParameter(((SQLVariantRefExpr) targetList.get(0)).getIndex());
+                    }
                     changed = false;
                 }
 
@@ -1984,20 +2003,6 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
                 if ((!parameterizedQuesUnMergeInList) || (targetList.size() == 1 && !(targetList
                     .get(0) instanceof SQLListExpr))) {
-//                    if (parameters != null) {
-//                        print(" (");
-//                        for (int i = 0; i < targetList.size(); i++) {
-//                            if(i != 0) {
-//                                print(", ");
-//                            }
-//                            SQLExpr item = targetList.get(i);
-//                            printExpr(item);
-//                        }
-//                        print(')');
-//                        return false;
-//                    } else {
-//
-//                    }
                     print(" (?)");
                 } else {
                     print(" (");
@@ -2024,12 +2029,19 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                             for (SQLExpr target : x.getTargetList()) {
                                 ExportParameterVisitorUtils.exportParameter(subList, target);
                             }
-                            if (subList != null) {
-                                parameters.add(subList);
-                            }
+                            parameters.add(subList);
                         } else {
                             for (SQLExpr target : x.getTargetList()) {
-                                ExportParameterVisitorUtils.exportParameter(this.parameters, target);
+                                boolean usingTmpParam = false;
+                                if (target instanceof SQLVariantRefExpr && (StringUtils.equals(((SQLVariantRefExpr) target).getName(), "?"))) {
+                                    if (this.tmpParameters != null) {
+                                        passTmpParameter(((SQLVariantRefExpr) target).getIndex());
+                                        usingTmpParam = true;
+                                    }
+                                }
+                                if (!usingTmpParam) {
+                                    ExportParameterVisitorUtils.exportParameter(this.parameters, target);
+                                }
                             }
                         }
                     }

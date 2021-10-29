@@ -51,6 +51,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -208,6 +210,13 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
                 } else {
                     super.visit(x);
                 }
+            }
+        } else if (StringUtils.equals(name, "?")) {
+            if (this.tmpParameters != null) {
+                print('?');
+                passTmpParameter(x.getIndex());
+            } else {
+                super.visit(x);
             }
         } else {
             super.visit(x);
