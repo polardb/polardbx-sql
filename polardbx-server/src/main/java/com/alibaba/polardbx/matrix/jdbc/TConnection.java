@@ -140,6 +140,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
+import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.DDL_STATEMENT;
+import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MDL_REQUIRED;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MDL_REQUIRED_POLARDBX;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MODIFY_TABLE;
 import static org.apache.calcite.sql.OptimizerHint.COMMIT_ON_SUCCESS;
@@ -228,6 +230,19 @@ public class TConnection implements IConnection {
      * FIXME @jinwu for ShareReadView
      */
     private ShareReadViewPolicy shareReadView = ShareReadViewPolicy.DEFAULT;
+
+    /**
+     * whether the current statement is a DDL
+     */
+    private boolean ddlStatement;
+
+    public void setDdlStatement(boolean ddlStatement) {
+        this.ddlStatement = ddlStatement;
+    }
+
+    public boolean isDdlStatement() {
+        return ddlStatement;
+    }
 
     public TConnection(TDataSource ds) {
         this.dataSource = ds;
@@ -524,8 +539,9 @@ public class TConnection implements IConnection {
         this.lastExecutionBeginNano = System.nanoTime();
         this.lastExecutionBeginUnixTime = unixTimeStamp();
 
-        boolean isDDL = plan.getPlan() instanceof BaseDdlOperation;
-        if (!isAutoCommit && isDDL) {
+        this.setDdlStatement(plan.is(DDL_STATEMENT));
+
+        if (!isAutoCommit && this.isDdlStatement()) {
             try {
                 // DDL statement causes an implicit commit
                 commit();

@@ -1058,18 +1058,18 @@ public final class ServerConnection extends FrontendConnection implements Resche
             logger.error("Interrupted unexpectedly for " + ec.getTraceId(), ex);
         }
 
-        // Checking the current trans obj, If it's changing, A DDL
-        // maybe execute and committing the previous trans.
-        if (!autocommit && trx != null) {
-            if (conn != null && trx != conn.getTrx()) {
-                this.txId = null;
+        // For non-autocommit, if the current statement is a DDL, we reset the trxId
+        // in case that the next statement reuses the same trxId of DDL
+        if (!autocommit && conn != null && conn.isDdlStatement()) {
+            this.txId = null;
 
-                if (this.beginTransaction) {
-                    this.beginTransaction = false;
-                    this.setAutocommit(true);
-                    this.setReadOnly(false);
-                    this.recoverTxIsolation();
-                }
+            // since a DDL implicitly commits the last transaction,
+            // we reset the transaction state if it is a begin-commit transaction
+            if (this.beginTransaction) {
+                this.beginTransaction = false;
+                this.setAutocommit(true);
+                this.setReadOnly(false);
+                this.recoverTxIsolation();
             }
         }
 

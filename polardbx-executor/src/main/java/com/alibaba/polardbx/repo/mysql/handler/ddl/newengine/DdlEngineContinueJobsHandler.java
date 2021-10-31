@@ -19,6 +19,7 @@ package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -78,7 +79,8 @@ public class DdlEngineContinueJobsHandler extends DdlEngineJobsHandler {
             }
         }
 
-        if (CollectionUtils.isNotEmpty(records) && CollectionUtils.size(records) == 1) {
+        boolean asyncMode = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE);
+        if (!asyncMode && CollectionUtils.isNotEmpty(records) && CollectionUtils.size(records) == 1) {
             DdlEngineRecord record = records.get(0);
             respond(record.schemaName, record.jobId, executionContext, false);
         }
