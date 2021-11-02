@@ -39,6 +39,7 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.QueryMemoryPoolHolder;
@@ -219,6 +220,15 @@ public class ExecutionContext {
     private boolean internalSystemSql = true;
     private String sqlTemplateId = null;
     private RuntimeStat runtimeStatistics = null;
+
+    /**
+     * Only use physical sql cache when it is a query from external user.
+     * When it is an internal sql, caching physical sql may cause expansion of params in ExecutionContext
+     *
+     * @see com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder
+     * @see com.alibaba.polardbx.optimizer.core.rel.LogicalView#sqlTemplateCache
+     */
+    private boolean usingPhySqlCache = false;
 
     private QueryMemoryPoolHolder memoryPoolHolder = new QueryMemoryPoolHolder();
     private boolean doingBatchInsertBySpliter = false;
@@ -1026,6 +1036,7 @@ public class ExecutionContext {
         ec.onlyUseTmpTblPool = isOnlyUseTmpTblPool();
         ec.doingBatchInsertBySpliter = isDoingBatchInsertBySpliter();
         ec.internalSystemSql = isInternalSystemSql();
+        ec.usingPhySqlCache = isUsingPhySqlCache();
         ec.runtimeStatistics = getRuntimeStatistics();
         ec.isApplyingSubquery = isApplyingSubquery();
         ec.subqueryId = getSubqueryId();
@@ -1151,6 +1162,19 @@ public class ExecutionContext {
 
     public void setInternalSystemSql(boolean internalSystemSql) {
         this.internalSystemSql = internalSystemSql;
+    }
+
+    private boolean isUsingPhySqlCache() {
+        return usingPhySqlCache;
+    }
+
+    public void setUsingPhySqlCache(boolean usingPhySqlCache) {
+        this.usingPhySqlCache = usingPhySqlCache;
+    }
+
+    public boolean enablePhySqlCache() {
+        return usingPhySqlCache && getParamManager()
+            .getBoolean(ConnectionParams.PHY_SQL_TEMPLATE_CACHE);
     }
 
     public String getSubqueryId() {

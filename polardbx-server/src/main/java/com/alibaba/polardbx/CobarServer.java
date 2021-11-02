@@ -322,6 +322,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                 ec.setRecorder(dataSource.getRecorder());
                 ec.setExecutorService(dataSource.borrowExecutorService());
                 ec.setInternalSystemSql(false);
+                ec.setUsingPhySqlCache(true);
                 ec.setExecuteMode(ExecutorMode.MPP);
                 ec.setPrivilegeContext(new MppPrivilegeContext());
                 ec.setTxIsolation(txIsolation);

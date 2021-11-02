@@ -74,6 +74,8 @@ public abstract class PlanTestCommon extends BasePlannerTest {
         ExecutionContext executionContext = new ExecutionContext();
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setInternalSystemSql(false);
+        executionContext.setUsingPhySqlCache(true);
+
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName, executionContext.getExtraCmds(),
             executionContext.getGroupHint());
 

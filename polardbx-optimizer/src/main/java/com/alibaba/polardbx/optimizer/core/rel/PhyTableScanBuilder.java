@@ -23,7 +23,9 @@ import com.alibaba.polardbx.optimizer.core.rel.util.DynamicParamInfo;
 import com.alibaba.polardbx.optimizer.core.rel.util.IndexedDynamicParamInfo;
 import com.alibaba.polardbx.optimizer.core.rel.util.RuntimeFilterDynamicParamInfo;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
@@ -45,6 +47,8 @@ import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.Util;
 import org.apache.commons.collections.CollectionUtils;
@@ -106,9 +110,18 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                                ExecutionContext executionContext, RelNode parent, DbType dbType,
                                RelDataType rowType, String schemaName, List<String> logicalTableNames) {
         this.executionContext = executionContext;
-        if (executionContext.getCorrelateFieldInViewMap() == null
-            || executionContext.getCorrelateFieldInViewMap().isEmpty()) {
+        this.targetTables = targetTables;
+        this.params = executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
+        this.parent = parent;
+        this.dbType = dbType;
+        this.rowType = rowType;
+
+        boolean usingPhySqlCache = executionContext.enablePhySqlCache();
+        if (usingPhySqlCache &&
+            (executionContext.getCorrelateFieldInViewMap() == null || executionContext
+                .getCorrelateFieldInViewMap().isEmpty())) {
             this.sqlTemplate = sqlTemplate;
+            this.sqlTemplate.accept(new FetchPreprocessor(params, true));
         } else {
             this.sqlTemplate = (SqlSelect) sqlTemplate.accept(
                 new ReplaceTableNameWithSomethingVisitor(executionContext.getCorrelateFieldInViewMap(), schemaName,
@@ -119,13 +132,8 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     }
                 }
             );
+            this.sqlTemplate.accept(new FetchPreprocessor(params, false));
         }
-        this.targetTables = targetTables;
-        this.params = executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
-        this.parent = parent;
-        this.dbType = dbType;
-        this.rowType = rowType;
-        this.sqlTemplate.accept(new FetchPreprocessor(params));
         this.dynamicParamList = PlannerUtils.getDynamicParamInfoList(this.sqlTemplate);
         this.schemaName = schemaName;
         this.logicalTableNames = logicalTableNames;
@@ -141,9 +149,11 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
     private static class FetchPreprocessor extends SqlShuttle {
 
         protected final Map<Integer, ParameterContext> params;
+        private final boolean usingCache;
 
-        private FetchPreprocessor(Map<Integer, ParameterContext> params) {
+        private FetchPreprocessor(Map<Integer, ParameterContext> params, boolean usingCache) {
             this.params = params;
+            this.usingCache = usingCache;
         }
 
         @Override
@@ -176,12 +186,29 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                 if (fetchVal == -1) {
                     return;
                 }
-                /**
-                 * Set the new Fetch value. For native sql, we do not parameterized the limit
-                 * value.
-                 */
-                sqlTemplate
-                    .setFetch(SqlLiteral.createExactNumeric(String.valueOf(fetchVal), fetch.getParserPosition()));
+
+                if (usingCache) {
+                    /*
+                      We have to parameterize the limit due to LogicalView#sqlTemplateStringCache.
+                     */
+                    SqlDynamicParam dynamicParam = new SqlDynamicParam(params.size(),
+                        SqlTypeName.BIGINT,
+                        SqlParserPos.ZERO,
+                        null);
+                    // it is ok to set concurrently
+                    sqlTemplate.setComputedFetch(dynamicParam);
+                    // put the computed value to params in execution context
+                    params.put(params.size() + 1, new ParameterContext(
+                        OptimizerUtils.getParameterMethod(fetchVal), new Object[] {params.size() + 1, fetchVal}));
+                } else {
+                    /*
+                      When no cache, we can generate a Literal directly.
+                      Set the new Fetch value. For native sql, we do not parameterized the limit
+                      value.
+                     */
+                    sqlTemplate
+                        .setFetch(SqlLiteral.createExactNumeric(String.valueOf(fetchVal), fetch.getParserPosition()));
+                }
             }
         }
 
