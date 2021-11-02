@@ -344,7 +344,7 @@ public class FrontendAuthenticator implements NIOHandler {
     protected void failure(int errno, String info, String cause) {
         source.clearMDC();
         if (errno == ErrorCode.ER_DBACCESS_DENIED_ERROR || errno == ErrorCode.ER_ACCESS_DENIED_ERROR) {
-            incrementLoginErrorCount(source.getHost(), auth.user);
+            incrementLoginErrorCount(auth.user, source.getHost());
             logAuditInfo(auth.database, auth.user, source.getHost(), source.getPort(), AuditAction.LOGIN_ERR);
         }
         if (errno == ErrorCode.ER_PASSWORD_NOT_ALLOWED) {

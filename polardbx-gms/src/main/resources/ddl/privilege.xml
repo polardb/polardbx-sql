@@ -155,8 +155,8 @@
                 `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 `limit_key` varchar(128) DEFAULT NULL,
-                `max_error_limit` varchar(128) NOT NULL,
-                `error_count` varchar(1024) NOT NULL,
+                `max_error_limit` int(11) NOT NULL,
+                `error_count` int(11) NOT NULL,
                 `expire_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uk_inst_key` (`limit_key`)

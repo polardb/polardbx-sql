@@ -255,7 +255,7 @@ public class PolarPrivManager {
         Map<Integer, ParameterContext> insertParams = Maps.newHashMap();
         MetaDbUtil.setParameter(1, insertParams, ParameterMethod.setString, limitKey);
         MetaDbUtil.setParameter(2, insertParams, ParameterMethod.setInt, max);
-        MetaDbUtil.setParameter(3, insertParams, ParameterMethod.setLong, 1L);
+        MetaDbUtil.setParameter(3, insertParams, ParameterMethod.setInt, 1);
         MetaDbUtil.insert(PolarPrivUtil.INSERT_LOGIN_ERROR_INFO, insertParams, connection);
     }
 
@@ -773,8 +773,6 @@ public class PolarPrivManager {
         if (userName == null) {
             return true;
         }
-        MetaDbInstConfigManager.getInstance().reloadInstConfig();
-        MetaDbVariableConfigManager.getInstance().reloadVariableConfig();
         PolarLoginErr polarLoginErr = selectLoginErr(userName, host);
         if (polarLoginErr == null) {
             return true;
