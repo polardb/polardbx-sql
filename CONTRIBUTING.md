@@ -26,9 +26,7 @@ There are many PolarDB-X related repositories, take ApasaraDB GalaxySQL and Apas
 
 ### Create Local Repository
 ```bash
-git clone https://github.com/your_github/galaxysql.git
-cd galaxysql
-git submodule add https://github.com/your_github/galaxyglue.git polardbx-rpc
+git clone --recursive https://github.com/your_github/galaxysql.git
 ```
 ### Create a dev Branch (named as your_github_id_feature_name)
 ```bash
