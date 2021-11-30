@@ -82,11 +82,11 @@ make install
 # install jdk 1.8, and configure the environment variables JAVA_HOME, PATH
 
 # install maven 3.8
-wget https://dlcdn.apache.org/maven/maven-3/3.8.3/binaries/apache-maven-3.8.3-bin.tar.gz
-tar zxvf apache-maven-3.8.3-bin.tar.gz
-export PATH=`pwd`/apache-maven-3.8.3/bin/:$PATH
+wget https://dlcdn.apache.org/maven/maven-3/3.8.4/binaries/apache-maven-3.8.4-bin.tar.gz
+tar zxvf apache-maven-3.8.4-bin.tar.gz
+export PATH=`pwd`/apache-maven-3.8.4/bin/:$PATH
 
-# confirm maven version is 3.8.3
+# confirm maven version is 3.8.4
 mvn -v
 
 # update subtree
