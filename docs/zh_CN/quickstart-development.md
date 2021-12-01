@@ -78,11 +78,11 @@ make install
 # 安装jdk1.8, 并配置环境变量JAVA_HOME、PATH
 
 # 安装maven3.8
-wget https://dlcdn.apache.org/maven/maven-3/3.8.3/binaries/apache-maven-3.8.3-bin.tar.gz
-tar zxvf apache-maven-3.8.3-bin.tar.gz
-export PATH=`pwd`/apache-maven-3.8.3/bin/:$PATH
+wget https://dlcdn.apache.org/maven/maven-3/3.8.4/binaries/apache-maven-3.8.4-bin.tar.gz
+tar zxvf apache-maven-3.8.4-bin.tar.gz
+export PATH=`pwd`/apache-maven-3.8.4/bin/:$PATH
 
-# 确认Maven版本为3.8.3
+# 确认Maven版本为3.8.4
 mvn -v
 
 # 移动rpc代码到galaxysql目录下的polardbx-rpc
