@@ -89,8 +89,8 @@ export PATH=`pwd`/apache-maven-3.8.4/bin/:$PATH
 # confirm maven version is 3.8.4
 mvn -v
 
-# update subtree
-mv galaxyglue galaxysql/polardbx-rpc
+# make sure polardbx-rpc (galaxyglue) initialized
+git submodule update --init
 
 # enter the galaxysql directory 
 cd galaxysql/

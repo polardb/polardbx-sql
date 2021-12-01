@@ -85,8 +85,8 @@ export PATH=`pwd`/apache-maven-3.8.4/bin/:$PATH
 # 确认Maven版本为3.8.4
 mvn -v
 
-# 移动rpc代码到galaxysql目录下的polardbx-rpc
-mv galaxyglue galaxysql/polardbx-rpc
+# 确保 polardbx-rpc (galaxyglue) 已经初始化
+git submodule update --init
 
 # 进入代码目录 
 cd galaxysql/

@@ -1,0 +1,3 @@
+[submodule "polardbx-rpc"]
+	path = polardbx-rpc
+	url = git@github.com:ApsaraDB/galaxyglue.git
