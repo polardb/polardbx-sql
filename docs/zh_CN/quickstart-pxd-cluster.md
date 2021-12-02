@@ -2,13 +2,7 @@
 
 PXD 是 PolarDB-X 的部署工具，除了支持在本地一键快速拉起测试环境外，也支持在 Linux 集群中通过指定的拓扑的方式部署 PolarDB-X 分布式数据库。
 
-## 1. 软硬件环境检查
-检查机器的硬件及软件配置，详见：
-
-* [软硬件需求](https://yuque.antfin.com/coronadb/doc/yp2qzf)
-
-
-## 2. 系统配置
+## 1. 系统配置
 
 1. 在集群内的所有机器上安装 Docker，参考文档：[https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/)
 > 注：集群模式下，docker engine 版本需要大于等于18.04。
@@ -25,7 +19,7 @@ ssh-keygen -t rsa
 # 复制免登公钥到目标机器，修改user和ip
 ssh-copy-id {user}@{ip}
 ```
-## 3. 在部署机上安装 PXD
+## 2. 在部署机上安装 PXD
 选择任意一台机器作为部署机，在这台机器上安装 PXD 即可。PXD 会通过部署机在集群内创建 PolarDB-X 数据库。
 
 ### 准备工作
@@ -71,7 +65,7 @@ pip install pxd
 > 注： 部分国内用户从 pypi 下载包的速度较慢, 可以使用如下命令从阿里云的镜像安装：
 > pip install -i http://mirrors.aliyun.com/pypi/simple/ pxd
 
-## 4. 准备 PolarDB-X 拓扑文件
+## 3. 准备 PolarDB-X 拓扑文件
 编写如下的 YAML 文件，指定 PolarDB-X 集群的名称以及 GMS， CN，DN 的部署节点。
 
 比如：总共准备了3台机器10.168.0.37、10.168.0.38、10.168.0.39
@@ -137,7 +131,7 @@ cluster:
    - resources: CDC 节点使用的资源
       - mem_limit: 内存上限，默认 2G
 
-## 5. 创建 PolarDB-X 集群
+## 4. 创建 PolarDB-X 集群
 执行如下命令，即可在集群内一键部署 PolarDB-X：
 
 ```shell
@@ -186,7 +180,7 @@ show storage ;
 show mpp ;    
 ```
 
-## 6. 查看 PolarDB-X 集群状态
+## 5. 查看 PolarDB-X 集群状态
 执行如下命令查看 PolarDB-X 集群状态：
 
 ```shell
