@@ -12,12 +12,16 @@ env:
   MAVEN_CUSTOM_OPTS: "-Xmx4g -XX:+ExitOnOutOfMemoryError"
   RETRY: .github/bin/retry
 
+concurrency: 
+  group: ${{ github.head_ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-    timeout-minutes: 60
+    timeout-minutes: 200
     steps:
       - name: Free Disk Space
         run: |
