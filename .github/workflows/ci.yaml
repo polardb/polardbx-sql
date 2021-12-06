@@ -15,6 +15,8 @@ env:
 concurrency: 
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+  # main branch should complete running
+  if: github.ref != 'refs/heads/main'
 
 jobs:
   build:
