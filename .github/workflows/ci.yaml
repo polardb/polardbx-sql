@@ -1,15 +1,12 @@
 name: ci
 
 on:
-  pull_request:
-    branches: 
-      - master
-      - tags/*
-
-   push:
+  push:
     branches:
-      - master
-      - tags/*
+      - main
+  pull_request:
+    branches:
+      - main
 
 env:
   MAVEN_CUSTOM_OPTS: "-Xmx4g -XX:+ExitOnOutOfMemoryError"
