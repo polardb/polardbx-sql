@@ -13,10 +13,9 @@ env:
   RETRY: .github/bin/retry
 
 concurrency: 
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
   # main branch should complete running
-  if: github.ref != 'refs/heads/main'
+  group: ${{ github.ref == 'refs/heads/main' && format('ci-master-{0}', github.sha) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: true
 
 jobs:
   build:
