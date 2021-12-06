@@ -13,8 +13,8 @@ env:
   RETRY: .github/bin/retry
 
 concurrency: 
-  group: ${{ github.head_ref }}
-  cancel-in-progress: false
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
