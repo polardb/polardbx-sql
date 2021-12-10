@@ -25,13 +25,13 @@ import org.apache.commons.lang3.StringUtils;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
-import javax.xml.bind.DatatypeConverter;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
+import java.security.Provider;
 import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
@@ -40,6 +40,7 @@ import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
 
 /**
  * SSL context initialization.
@@ -63,7 +64,11 @@ public final class SslContextFactory {
             if (INIT) {
                 return SERVER_CONTEXT;
             }
-            Security.addProvider(new com.sun.crypto.provider.SunJCE());
+
+            Provider sunjceProvider = Security.getProvider("SUNJCE");
+            if (sunjceProvider != null) {
+                Security.addProvider(sunjceProvider);
+            }
 
             SSLContext serverContext = null;
 
@@ -205,7 +210,7 @@ public final class SslContextFactory {
         String data = new String(pem);
         String[] tokens = data.split(beginDelimiter);
         tokens = tokens[1].split(endDelimiter);
-        return DatatypeConverter.parseBase64Binary(tokens[0]);
+        return Base64.getDecoder().decode(tokens[0]);
     }
 
     protected static RSAPrivateKey generatePrivateKeyFromDER(byte[] keyBytes) throws InvalidKeySpecException,

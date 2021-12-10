@@ -46,11 +46,8 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlPostfixOperator;
 import org.apache.calcite.sql.SqlPrefixOperator;
-import org.apache.calcite.sql.SqlSpecialOperator;
 import org.apache.calcite.sql.fun.SqlCaseOperator;
 import org.apache.calcite.sql.fun.SqlLikeOperator;
-import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.omg.CORBA.OBJ_ADAPTER;
 
 public class RexExplainVisitor implements RexVisitor {
 

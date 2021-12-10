@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.util.Base64;
 
 @SuppressWarnings("restriction")
 public class SerializeUtils {
@@ -35,14 +36,14 @@ public class SerializeUtils {
         if (s == null) {
             return null;
         }
-        return (new sun.misc.BASE64Encoder()).encode(s.getBytes());
+        return Base64.getEncoder().encodeToString(s.getBytes());
     }
 
     public static String getBase64(byte[] ba) {
         if (ba == null) {
             return null;
         }
-        return (new sun.misc.BASE64Encoder()).encode(ba);
+        return Base64.getEncoder().encodeToString(ba);
     }
 
     public static byte[] base64ToByteArray(String base64) throws IOException {
@@ -50,7 +51,7 @@ public class SerializeUtils {
             return null;
         }
 
-        return (new sun.misc.BASE64Decoder()).decodeBuffer(base64);
+        return Base64.getDecoder().decode(base64);
     }
 
     @SuppressWarnings("unchecked")
