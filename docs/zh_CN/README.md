@@ -58,7 +58,7 @@ PolarDB-X 提供 K8S 部署模式，通过该方式，可对 PolarDB-X 集群做
 
 如果想从源码编译安装 PolarDB-X，可参考[这里](quickstart-development.md)。
 
-PolarDB-X 开源社区版核心特性会跟商业版保持一致，更多使用说明可参考[商业版文档](https://help.aliyun.com/document_detail/312565.html) 。开源文档正在整理中，近期将对外发布。
+更多文档可参考[这里](https://polardbx.com) 。
 如果对 PolarDB-X 的设计细节感兴趣，可关注我们的[知乎专栏](https://www.zhihu.com/org/polardb-x) 。
 
 

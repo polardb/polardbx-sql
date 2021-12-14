@@ -2,7 +2,7 @@
 [![LICENSE](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://github.com/ApsaraDB/galaxysql/blob/main/LICENSE)
 [![Language](https://img.shields.io/badge/Language-Java-blue.svg)](https://www.java.com/)
 
-[中文文档](docs/zh_CN/README.md)
+[中文文档](https://polardbx.com)
 
 ## What is PolarDB-X ？
 PolarDB-X is a cloud native distributed SQL Database designed for high concurrency, massive storage and complex querying scenarios. It has a shared-nothing architecture in which computing is decoupled from storage. It supports horizontal scaling, distributed transactions and Hybrid Transactional and Analytical Processing (HTAP) workloads, and is characterized by enterprise-class, cloud native, high availability, highly compatible with MySQL and its ecosystem.
