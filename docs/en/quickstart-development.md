@@ -49,7 +49,7 @@ g++ --version
 
 
 # Install dependencies
-apt install make automake git bison libaio-dev libncurses-dev libsasl2-dev libldap2-dev
+apt install make automake cmake git bison libaio-dev libncurses-dev libsasl2-dev libldap2-dev libssl-dev pkg-config
 ```
 
 **Compile && Install**
@@ -79,15 +79,7 @@ make install
 ### Compiling PolarDB-X Compute Node (GalaxySQL&GalaxyGlue)
 
 ```shell
-# install jdk 1.8, and configure the environment variables JAVA_HOME, PATH
-
-# install maven 3.8
-wget https://dlcdn.apache.org/maven/maven-3/3.8.4/binaries/apache-maven-3.8.4-bin.tar.gz
-tar zxvf apache-maven-3.8.4-bin.tar.gz
-export PATH=`pwd`/apache-maven-3.8.4/bin/:$PATH
-
-# confirm maven version is 3.8.4
-mvn -v
+# install JDK 1.8 and Maven 3
 
 # make sure polardbx-rpc (galaxyglue) initialized
 git submodule update --init
@@ -118,7 +110,7 @@ tar zxvf polardbx-cdc-assemble/target/polardbx-cdc*.tar.gz
 > NOTE: GalaxyEngine is a derivative work of MySQL, the following will use mysql and galaxyengine without distinction
 > 
 - This step starts a mysql process that acts as the metadb and DN
-- Refer to the mysql configuration file in the appendix to modify it accordingly. By default, 4886 is used as mysql port and 32886 as private protocol port
+- Refer to the mysql configuration file (my.cnf) in the appendix to modify it accordingly. By default, 4886 is used as mysql port and 32886 as private protocol port
 - By default, /u01/my3306 is used as mysql data directory, you can change it to other directory
 
 > NOTE：You should start DN under account other than root
@@ -136,7 +128,7 @@ Once the mysql process is started, PolarDB-X can be initialized and the followin
 - metadb user：`my_polarx`
 - metadb database: `polardbx_meta_db_polardbx`
 - dnPasswordKey： `asdf1234ghjk5678`
-- PolarDB-X default root user：`polarx_root`
+- PolarDB-X default root user：`polardbx_root`
 - PolarDB-X default password：`123456`, you can reset it by `-S`
 
 > NOTE：You should start CN under account other than root
@@ -208,7 +200,7 @@ After the PolarDB-X is running, the PolarDB-X CDC component can be initialized, 
 - metadb password：same as before
 - metadb port：same as before `3306`
 - dnPasswordKey：same as before `asdf1234ghjk5678`
-- PolarDB-X user：same as before `polarx_root`
+- PolarDB-X user：same as before `polardbx_root`
 - PolarDB-X password：encrypted password of polarx `H1AzXc2NmCs61dNjH5nMvA==`
 - PolarDB-X Port：same as before `8527`
 - Max allocatable memory for cdc：the size, in MB, stands for memory limitation of cdc, see as `16000` in example below

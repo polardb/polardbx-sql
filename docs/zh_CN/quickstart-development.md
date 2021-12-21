@@ -7,10 +7,10 @@
 
 ### 准备工作
 
-- 下载galaxyengine代码: https://github.com/ApsaraDB/galaxyengine ，main分支
-- 下载galaxysql代码：https://github.com/ApsaraDB/galaxysql ，main分支
-- 下载galaxyglue代码：https://github.com/ApsaraDB/galaxyglue ，main分支
-- 下载galaxycdc代码：https://github.com/ApsaraDB/galaxycdc ，main分支
+- 下载 [GalaxyEngine](https://github.com/ApsaraDB/galaxyengine) 代码，main分支
+- 下载 [GalaxySQL](https://github.com/ApsaraDB/galaxysql) 代码，main分支
+- 下载 [GalaxyGlue](https://github.com/ApsaraDB/galaxyglue) 代码，main分支
+- 下载 [GalaxyCDC](https://github.com/ApsaraDB/galaxycdc) 代码，main分支
 
 ### 编译 PolarDB-X DN (存储节点，代号GalaxyEngine)
 
@@ -44,7 +44,7 @@ gcc --version
 g++ --version
 
 # 安装依赖
-apt install make automake git bison libaio-dev libncurses-dev libsasl2-dev libldap2-dev
+apt install make automake cmake git bison libaio-dev libncurses-dev libsasl2-dev libldap2-dev libssl-dev pkg-config
 ```
 
 **编译**
@@ -75,21 +75,13 @@ make install
 ### 编译 PolarDB-X CN (计算节点，代号GalaxySQL)
 此步骤编译和安装galaxysql & galaxyglue代码。
 ```yaml
-# 安装jdk1.8, 并配置环境变量JAVA_HOME、PATH
-
-# 安装maven3.8
-wget https://dlcdn.apache.org/maven/maven-3/3.8.4/binaries/apache-maven-3.8.4-bin.tar.gz
-tar zxvf apache-maven-3.8.4-bin.tar.gz
-export PATH=`pwd`/apache-maven-3.8.4/bin/:$PATH
-
-# 确认Maven版本为3.8.4
-mvn -v
-
-# 确保 polardbx-rpc (galaxyglue) 已经初始化
-git submodule update --init
+# 安装依赖 JDK 1.8 和 Maven 3
 
 # 进入代码目录 
 cd galaxysql/
+
+# 确保 polardbx-rpc 子模块 (GalaxyGlue) 已初始化
+git submodule update --init
 
 # 编译打包
 mvn install -D maven.test.skip=true -D env=release 
@@ -99,7 +91,7 @@ tar zxvf target/polardbx-server-5.4.12-SNAPSHOT.tar.gz
 ```
 
 ### 编译 PolarDB-X CDC（日志节点，代号GalaxyCDC）
-此步骤编译和安装galaxycdc代码。
+此步骤编译和安装 galaxycdc 代码。
 ```yaml
 # 进入CDC代码
 
@@ -115,7 +107,7 @@ tar zxvf polardbx-binlog.tar.gz
 ### 启动PolarDB-X DN
 
 - 此步骤启动一个mysql进程，作为metadb和dn
-- 参考附录中的mysql配置文件，可进行相应修改，默认使用 4886 作为 mysql端口，32886 作为私有协议端口
+- 参考附录中的mysql配置文件（my.cnf），可进行相应修改，默认使用 4886 作为 mysql端口，32886 作为私有协议端口
 - 默认使用 /u01/my3306 作为mysql数据目录，可以修改成其他目录
   
 > 注意：启动 DN 需要使用非 root 账号完成
@@ -139,7 +131,7 @@ mkdir -p /u01/my3306/{data,log,run,tmp,mysql}
 
 > 注意：启动 CN 需要使用非 root 账号完成
 
-修改配置文件 conf/server.properties:
+修改配置文件 conf/server.properties，逐个替换以下配置项：
 ```basic
 # PolarDB-X 服务端口
 serverPort=8527
@@ -207,7 +199,7 @@ mysql -h127.1 -P8527 -upolardbx_root
 - metadb password：和启动PolarDB-X时设置的值保持一致，需使用密文，以下采用`HMqvkvXZtT7XedA6t2IWY8+D7fJWIJir/mIY1Nf1b58=`
 - metadb port：和启动MySQL时设置的值保持一致，以下采用 `4886`
 - 密码加密key（dnPasswordKey)：和启动PolarDB-X时设置的值保持一致，以下采用 `asdf1234ghjk5678`
-- PolarDB-X用户名：和启动PolarDB-X时设置的值保持一致，以下采用默认值 `polarx_root`
+- PolarDB-X用户名：和启动PolarDB-X时设置的值保持一致，以下采用默认值 `polardbx_root`
 - PolarDB-X用户密码：和启动PolarDB-X时设置的值保持一致，需使用密文，以下采用默认值`H1AzXc2NmCs61dNjH5nMvA==`
 - PolarDB-X端口：和启动PolarDB-X时设置的值保持一致，以下采用默认值 `8527`
 - 当前机器分配给CDC使用的内存大小：以下采用16000代指，单位为M，实际配置值请替换为真实值
