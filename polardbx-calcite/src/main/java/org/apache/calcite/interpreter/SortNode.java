@@ -20,7 +20,6 @@ import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rex.RexLiteral;
 
-import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
@@ -87,13 +86,13 @@ public class SortNode extends AbstractSingleNode<Sort> {
     if (rel.getCollation().getFieldCollations().size() == 1) {
       return comparator(rel.getCollation().getFieldCollations().get(0));
     }
-    return Ordering.compound(
-        Iterables.transform(rel.getCollation().getFieldCollations(),
-            new Function<RelFieldCollation, Comparator<? super Row>>() {
-              public Comparator<? super Row> apply(RelFieldCollation input) {
-                return comparator(input);
-              }
-            }));
+
+    // Comparator of lexicographic order.
+    Iterable<Comparator<Row>> comparators = Iterables.transform(
+            rel.getCollation().getFieldCollations(),
+            this::comparator
+    );
+    return Ordering.compound(comparators);
   }
 
   private Comparator<Row> comparator(RelFieldCollation fieldCollation) {
