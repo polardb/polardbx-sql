@@ -44,6 +44,7 @@ public class RexDynamicParam extends RexVariable {
   private final int     index;
   private       RelNode rel;
   private       Object  value;
+  private       boolean maxOnerow = true;
   private ImmutableList<RexNode> subqueryOperands;
   private SqlOperator subqueryOp;
   private SqlKind subqueryKind;
@@ -170,6 +171,14 @@ public class RexDynamicParam extends RexVariable {
 
   public void setSubqueryKind(SqlKind subqueryKind) {
     this.subqueryKind = subqueryKind;
+  }
+
+  public boolean isMaxOnerow() {
+    return maxOnerow;
+  }
+
+  public void setMaxOnerow(boolean maxOnerow) {
+    this.maxOnerow = maxOnerow;
   }
 
   //~ Enum

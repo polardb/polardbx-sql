@@ -255,7 +255,6 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
 
         // Init the stat of feature usage
         FeatureUsageStatistics.init();
-
     }
 
     protected void initPortInfoAndInstId() {

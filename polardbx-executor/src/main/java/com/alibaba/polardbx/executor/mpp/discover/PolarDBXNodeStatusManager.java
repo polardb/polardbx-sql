@@ -70,13 +70,6 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
                 scheduledExecutorService.scheduleWithFixedDelay(
                     new CheckAllNodeTask(), 0L, ACTIVE_LEASE, TimeUnit.SECONDS);
             logger.warn("injectNode " + localNode + " over");
-
-            if (ConfigDataMode.isMasterMode()) {
-                checkDelayFuture =
-                    scheduledExecutorService.scheduleWithFixedDelay(
-                        new CheckLearnerDNStatusTask(nodeManager), 0L, CheckLearnerDNStatusTask.frequency,
-                        TimeUnit.SECONDS);
-            }
         } catch (Throwable t) {
             logger.error("init PolarDBXNodeStatusManager error:", t);
             //如果初始化异常的话，就一定要抛出来

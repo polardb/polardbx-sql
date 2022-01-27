@@ -72,8 +72,8 @@ public class PolarDbXSystemTablePlanInfo implements SystemTablePlanInfo {
     public static final String REPLACE_SQL = "REPLACE INTO `" + TABLE_NAME + "` " +
         "(`SCHEMA_NAME`, `ID`, `BASELINE_ID`, `LAST_EXECUTE_TIME`, `PLAN`, `CHOOSE_COUNT`, `COST`, "
         + "`ESTIMATE_EXECUTION_TIME`, "
-        + "`ACCEPTED`, `FIXED`, `TRACE_ID`, `ORIGIN`, `TABLES_HASHCODE`)" +
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        + "`ACCEPTED`, `FIXED`, `TRACE_ID`, `ORIGIN`, `TABLES_HASHCODE`, `EXTEND_FIELD`)" +
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     public static final String DELETE_SQL = "DELETE FROM " + TABLE_NAME +
         " WHERE SCHEMA_NAME = ? AND BASELINE_ID = ? AND ID = ?";

@@ -75,6 +75,7 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -1075,6 +1076,32 @@ public class BuildPlanUtils {
         upsert.getDuplicateKeyUpdateList().stream()
             .map(rex -> ((RexInputRef) ((RexCall) rex).getOperands().get(0)).getIndex())
             .map(targetTableColumnNames::get).forEach(result::add);
+
+        return result;
+    }
+
+    public static List<String> buildUpdateColumnList(SqlNodeList duplicateKeyUpdateList,
+                                                     Consumer<SqlNode> unsupported) {
+        final List<String> result = new ArrayList<>();
+
+        if (null == duplicateKeyUpdateList || duplicateKeyUpdateList.size() == 0) {
+            return result;
+        }
+
+        for (SqlNode sqlNode : duplicateKeyUpdateList) {
+            if (!(sqlNode instanceof SqlBasicCall)) {
+                unsupported.accept(sqlNode);
+                continue;
+            }
+
+            final SqlNode columnName = ((SqlBasicCall) sqlNode).getOperandList().get(0);
+            if (!(columnName instanceof SqlIdentifier)) {
+                unsupported.accept(columnName);
+                continue;
+            }
+
+            result.add(RelUtils.lastStringValue(columnName));
+        }
 
         return result;
     }

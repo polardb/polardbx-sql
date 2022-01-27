@@ -338,7 +338,7 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
           SqlKind.IS_DISTINCT_FROM,
           30,
           true,
-          ReturnTypes.BOOLEAN,
+          ReturnTypes.BIGINT_NULLABLE,
           InferTypes.FIRST_KNOWN,
           OperandTypes.COMPARABLE_UNORDERED_COMPARABLE_UNORDERED);
 
@@ -352,7 +352,7 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
           SqlKind.IS_NOT_DISTINCT_FROM,
           30,
           true,
-          ReturnTypes.BOOLEAN,
+          ReturnTypes.BIGINT_NULLABLE,
           InferTypes.FIRST_KNOWN,
           OperandTypes.COMPARABLE_UNORDERED_COMPARABLE_UNORDERED);
 

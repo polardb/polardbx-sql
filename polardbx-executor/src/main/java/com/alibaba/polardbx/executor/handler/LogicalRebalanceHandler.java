@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -91,6 +92,9 @@ public class LogicalRebalanceHandler extends LogicalCommonDdlHandler {
 //            } else {
 //                setDbIndexAndPhyTable(logicalDdlPlan);
 //            }
+            if (TStringUtil.isEmpty(logicalDdlPlan.getSchemaName())) {
+                logicalDdlPlan.setSchemaName(ec.getSchemaName());
+            }
 
             final SqlRebalance sqlRebalance = (SqlRebalance) logicalDdlPlan.getNativeSqlNode();
             final BalanceOptions options = BalanceOptions.fromSqlNode(sqlRebalance);

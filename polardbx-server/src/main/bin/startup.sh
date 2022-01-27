@@ -319,6 +319,8 @@ if [ -n "$str" ]; then
     elif [ $freecount -le 65536 ] ; then
         JAVA_OPTS="-server -Xms50g -Xmx50g"
     elif [ $freecount -le 131072 ] ; then
+        JAVA_OPTS="-server -Xms110g -Xmx110g"
+    elif [ $freecount -gt 131072 ] ; then
         JAVA_OPTS="-server -Xms120g -Xmx120g"
     fi
 else

@@ -104,9 +104,6 @@ public class TopN {
             throw new IllegalStateException("topN cannot build with empty value");
         }
 
-        int count = 0;
-        valueArr = new Object[n];
-
         /**
          * find topn values by count
          */
@@ -114,15 +111,11 @@ public class TopN {
             .sorted(Map.Entry.comparingByValue()).map(objectLongEntry -> objectLongEntry.getKey())
             .collect(Collectors.toList());
 
-        for (Object obj : vals) {
-            if (count >= valueArr.length) {
-                break;
-            }
-            valueArr[count++] = obj;
-        }
+        int fromIndex = vals.size() - n >= 0 ? vals.size() - n : 0;
+        valueArr = vals.subList(fromIndex, vals.size()).toArray(new Object[0]);
 
         int from = 0;
-        if (count >= n) {
+        if (valueArr.length >= n) {
             /**
              * if the cardinality is beyond n, should remove the min value
              */
@@ -133,7 +126,7 @@ public class TopN {
             from = (int) Arrays.stream(valueArr).filter(val -> valueMap.get(val) == minNum).count();
         }
 
-        valueArr = Arrays.copyOfRange(valueArr, from, count);
+        valueArr = Arrays.copyOfRange(valueArr, from, valueArr.length);
 
         /**
          * sort topn values by value

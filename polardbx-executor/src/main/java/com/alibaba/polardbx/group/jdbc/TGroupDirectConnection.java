@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.group.jdbc;
 
 import com.alibaba.polardbx.atom.TAtomConnectionProxy;
+import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.atom.utils.EncodingUtils;
 import com.alibaba.polardbx.atom.utils.NetworkUtils;
 import com.alibaba.polardbx.common.exception.NotSupportException;
@@ -76,6 +77,7 @@ public class TGroupDirectConnection extends ReadViewConn {
     private boolean stressTestValid;
     private Statement currentStatement;
     private ConnectionStats connectionStats = new ConnectionStats();
+    private String dbKey;
 
     public static class SocketTimeoutExecutor implements Executor {
 
@@ -87,18 +89,8 @@ public class TGroupDirectConnection extends ReadViewConn {
 
     public static final Executor socketTimeoutExecutor = new SocketTimeoutExecutor();
 
-    public TGroupDirectConnection(TGroupDataSource groupDataSource) throws SQLException {
-        this(groupDataSource, MasterSlave.MASTER_ONLY, null, null);
-    }
-
     public TGroupDirectConnection(TGroupDataSource groupDataSource, MasterSlave master) throws SQLException {
         this(groupDataSource, master, null, null);
-    }
-
-    public TGroupDirectConnection(TGroupDataSource groupDataSource, String userName, String password)
-        throws SQLException {
-        this(groupDataSource, MasterSlave.MASTER_ONLY, userName, password);
-
     }
 
     public TGroupDirectConnection(TGroupDataSource groupDataSource, MasterSlave master, String userName,
@@ -116,11 +108,13 @@ public class TGroupDirectConnection extends ReadViewConn {
         // 这个方法只发生在第一次建立读/写连接的时候，以后都是复用了
         Connection conn;
 
+        TAtomDataSource atomDataSource = groupDataSource.getConfigManager().getDataSource(master);
         if (userName != null) {
-            conn = groupDataSource.getConfigManager().getDataSource(master).getConnection(userName, password);
+            conn = atomDataSource.getConnection(userName, password);
         } else {
-            conn = groupDataSource.getConfigManager().getDataSource(master).getConnection();
+            conn = atomDataSource.getConnection();
         }
+        this.dbKey = atomDataSource.getDbKey();
 
         long cost = System.nanoTime() - start;
         doConnStats(conn, startTs, cost);
@@ -660,5 +654,9 @@ public class TGroupDirectConnection extends ReadViewConn {
         } else {
             throw new NotSupportException("xproto required");
         }
+    }
+
+    public String getDbKey() {
+        return dbKey;
     }
 }

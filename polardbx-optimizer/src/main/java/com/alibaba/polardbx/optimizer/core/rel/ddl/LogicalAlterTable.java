@@ -539,7 +539,11 @@ public class LogicalAlterTable extends LogicalTableOperation {
         boolean columnReorder = false;
         boolean primaryKeyDropped = false;
 
+        // We have to use the first column name as reference to confirm the physical index name
+        // because Alter Table allows to add an index without specifying an index name.
         List<String> addedIndexes = new ArrayList<>();
+        List<String> addedIndexesWithoutNames = new ArrayList<>();
+
         List<String> droppedIndexes = new ArrayList<>();
         Map<String, String> renamedIndexes = new HashMap<>();
         List<String> addedPrimaryKeyColumns = new ArrayList<>();
@@ -550,7 +554,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 changedColumns
                     .put(changeColumn.getNewName().getLastName(), changeColumn.getOldName().getLastName());
 
-                // Refresh is needed when reorder.
+                // Refresh is needed after reordered.
                 if (changeColumn.isFirst() || changeColumn.getAfterColumn() != null) {
                     columnReorder = true;
                 }
@@ -561,13 +565,13 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 alterDefaultColumns.add(columnName);
             } else if (alterItem instanceof SqlAddIndex) {
                 SqlAddIndex addIndex = (SqlAddIndex) alterItem;
-                String indexName;
+                String firstColumnName = addIndex.getIndexDef().getColumns().get(0).getColumnNameStr();
                 if (addIndex.getIndexName() != null) {
-                    indexName = addIndex.getIndexName().getLastName();
+                    addedIndexes.add(addIndex.getIndexName().getLastName());
                 } else {
-                    indexName = addIndex.getIndexDef().getColumns().get(0).getColumnNameStr();
+                    // If user doesn't specify an index name, we use the first column name as reference.
+                    addedIndexesWithoutNames.add(firstColumnName);
                 }
-                addedIndexes.add(indexName);
             } else if (alterItem instanceof SqlAlterTableDropIndex) {
                 SqlAlterTableDropIndex dropIndex = (SqlAlterTableDropIndex) alterItem;
                 droppedIndexes.add(dropIndex.getIndexName().getLastName());
@@ -625,6 +629,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         preparedData.setColumnReorder(columnReorder);
         preparedData.setDroppedIndexes(droppedIndexes);
         preparedData.setAddedIndexes(addedIndexes);
+        preparedData.setAddedIndexesWithoutNames(addedIndexesWithoutNames);
         preparedData.setRenamedIndexes(renamedIndexes);
         preparedData.setPrimaryKeyDropped(primaryKeyDropped);
         preparedData.setAddedPrimaryKeyColumns(addedPrimaryKeyColumns);

@@ -281,7 +281,9 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
                 }
                 return result;
             } catch (Throwable ex) {
-                throw ex;
+                logger.warn(ex);
+                MetaDbLogUtil.META_DB_LOG.warn(ex);
+                return false;
             }
         }
     }
@@ -325,6 +327,12 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
             // enable listener and subscribe the change of the dataId
             enableListenerByDataId(dataId, record.opVersion, listener);
         }
+    }
+
+    @Override
+    public void bindListener(String dataId, long opVersion, ConfigListener listener) {
+        // enable listener and subscribe the change of the dataId
+        enableListenerByDataId(dataId, opVersion, listener);
     }
 
     @Override
@@ -390,20 +398,20 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
     }
 
     @Override
-    public void notifyMultiple(List<String> dataIds, Connection conn) {
+    public void notifyMultiple(List<String> dataIds, Connection conn, boolean ignoreCntError) {
         if (conn == null) {
             try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
                 metaDbConn.setAutoCommit(true);
                 ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();
                 configListenerAccessor.setConnection(metaDbConn);
-                configListenerAccessor.updateMultipleOpVersion(dataIds);
+                configListenerAccessor.updateMultipleOpVersion(dataIds, ignoreCntError);
             } catch (Throwable ex) {
                 throw GeneralUtil.nestedException(ex);
             }
         } else {
             ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();
             configListenerAccessor.setConnection(conn);
-            configListenerAccessor.updateMultipleOpVersion(dataIds);
+            configListenerAccessor.updateMultipleOpVersion(dataIds, ignoreCntError);
         }
     }
 
@@ -603,5 +611,56 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
                 isSucc,
                 callListenerCostTime * 1.0 / 1000000.0);
         MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.info(logMsg);
+    }
+
+    private static void logLocalSyncConfig(String dataId, ConfigListener listener, long oldVer, long newVer,
+                                         boolean isSucc, long callListenerCostTime) {
+        String listenerClassName = listener != null ? listener.getClass().getSimpleName() : "None";
+        String logMsgTemplate =
+            "[MetaDB Local Sync] DataId[%s]-Version[old:%s, new:%s]-Listener(%s)[isSucc:%s, handleTime: %.3f ms]";
+        String logMsg =
+            String.format(logMsgTemplate, dataId, oldVer, newVer, listenerClassName, isSucc,
+                callListenerCostTime * 1.0 / 1000000.0);
+        MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.info(logMsg);
+    }
+
+    @Override
+    public boolean localSync(String dataId) {
+        DataIdContext dataIdContext = dataIdContextMap.get(dataId);
+        if (dataIdContext == null) {
+            logLocalSyncConfig(dataId, null, 0, 0, false, 0);
+            return false;
+        }
+
+        long st = System.nanoTime();
+        // Handle the listener is registered
+        ConfigListener listener = dataIdContext.dataIdListener;
+        long currOpVersion = dataIdContext.currOpVersion;
+        dataIdContext.handlingLock.lock();
+        try {
+            long newOpVersion = dataIdContext.currOpVersion;
+            if (listener == null) {
+                logLocalSyncConfig(dataId, null, 0, 0, false, 0);
+                return false;
+            }
+
+            if (newOpVersion > currOpVersion) {
+                logLocalSyncConfig(dataId, listener, currOpVersion, newOpVersion, false, 0);
+                return false;
+            }
+
+            listener.onHandleConfig(dataIdContext.dataId, newOpVersion);
+
+            long et = System.nanoTime();
+            logLocalSyncConfig(dataId, listener, currOpVersion, newOpVersion, true, et - st);
+        } catch (Throwable ex) {
+            logLocalSyncConfig(dataId, listener, currOpVersion, currOpVersion, false,
+                System.nanoTime() - st);
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw ex;
+        } finally {
+            dataIdContext.handlingLock.unlock();
+        }
+        return true;
     }
 }

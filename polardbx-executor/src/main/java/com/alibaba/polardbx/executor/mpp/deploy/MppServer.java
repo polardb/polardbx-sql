@@ -52,6 +52,7 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.properties.PropUtil.getCluster;
 import static com.alibaba.polardbx.executor.mpp.client.MppMediaTypes.MPP_POLARDBX;
 
 public class MppServer extends Server {

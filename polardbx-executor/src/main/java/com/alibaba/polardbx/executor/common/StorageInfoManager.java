@@ -28,9 +28,9 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.rpc.XConfig;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.google.common.base.Preconditions;
+import com.alibaba.polardbx.rpc.XConfig;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.sql.DataSource;
@@ -56,6 +56,7 @@ public class StorageInfoManager extends AbstractLifecycle {
     private volatile boolean supportXA;
     private volatile boolean supportTso;
     private volatile boolean supportTsoHeartbeat;
+    private volatile boolean supportPurgeTso;
     private volatile boolean supportCtsTransaction;
     private volatile boolean supportDeadlockDetection;
     private volatile boolean supportMdlDeadlockDetection;
@@ -114,6 +115,18 @@ public class StorageInfoManager extends AbstractLifecycle {
         try (Connection conn = dataSource.getConnection();
             Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'innodb_heartbeat_seq'")) {
+            boolean hasNext = rs.next();
+            return hasNext;
+        } catch (SQLException ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS, ex,
+                "Failed to check TSO support: " + ex.getMessage());
+        }
+    }
+
+    public static boolean checkSupportPurgeTso(IDataSource dataSource) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'innodb_purge_seq'")) {
             boolean hasNext = rs.next();
             return hasNext;
         } catch (SQLException ex) {
@@ -295,6 +308,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         boolean tmpSupportXA = true;
         boolean tmpSupportTso = true;
         boolean tmpSupportTsoHeartbeat = true;
+        boolean tmpSupportPurgeTso = true;
         boolean tmpSupportDeadlockDetection = true;
         boolean tmpSupportMdlDeadlockDetection = true;
         boolean tmpSupportsBloomFilter = true;
@@ -317,6 +331,7 @@ public class StorageInfoManager extends AbstractLifecycle {
                     lessMysql56 = lessMysql56 || lessMysql56Version(storageInfo);
                     tmpSupportTso &= storageInfo.supportTso;
                     tmpSupportTsoHeartbeat &= storageInfo.supportTsoHeartbeat;
+                    tmpSupportPurgeTso &= storageInfo.supportPurgeTso;
                     tmpSupportCtsTransaction &= storageInfo.supportCtsTransaction;
                     tmpSupportDeadlockDetection &= supportDeadlockDetection(storageInfo);
                     tmpSupportMdlDeadlockDetection &= supportMdlDeadlockDetection(storageInfo);
@@ -340,6 +355,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         this.supportsReturning = tmpSupportsReturning;
         this.supportTso = tmpSupportTso && (metaDbUsesXProtocol() || tmpRDS80);
         this.supportTsoHeartbeat = tmpSupportTsoHeartbeat && metaDbUsesXProtocol();
+        this.supportPurgeTso = tmpSupportPurgeTso && metaDbUsesXProtocol();
         this.supportCtsTransaction = tmpSupportCtsTransaction;
         this.supportSharedReadView = tmpSupportSharedReadView;
         this.supportDeadlockDetection = tmpSupportDeadlockDetection;
@@ -421,6 +437,14 @@ public class StorageInfoManager extends AbstractLifecycle {
         }
 
         return supportTso;
+    }
+
+    public boolean supportPurgeTso() {
+        if (!isInited()) {
+            init();
+        }
+
+        return supportPurgeTso;
     }
 
     public boolean isLessMy56Version() {
@@ -522,6 +546,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         public final String version;
         public final boolean supportTso;
         private volatile boolean supportTsoHeartbeat;
+        public final boolean supportPurgeTso;
         public final boolean supportCtsTransaction;
         public final boolean supportsBloomFilter;
         public final boolean supportsReturning;
@@ -539,6 +564,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             String version,
             boolean supportTso,
             boolean supportTsoHeartbeat,
+            boolean supportPurgeTso,
             boolean supportCtsTransaction,
             boolean supportsBloomFilter,
             boolean supportsReturning,
@@ -555,6 +581,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             this.version = version;
             this.supportTso = supportTso;
             this.supportTsoHeartbeat = supportTsoHeartbeat;
+            this.supportPurgeTso = supportPurgeTso;
             this.supportCtsTransaction = supportCtsTransaction;
             this.supportsBloomFilter = supportsBloomFilter;
             this.supportsReturning = supportsReturning;
@@ -574,6 +601,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             if (ConfigDataMode.isFastMock()) {
                 return new StorageInfo(
                     "5.7",
+                    false,
                     false, false,
                     false, false, false, 1,
                     false, false,
@@ -589,6 +617,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             String version = getMySqlVersion(dataSource);
             boolean supportTso = checkSupportTso(dataSource);
             boolean supportTsoHeartbeat = checkSupportTsoHeartbeat(dataSource);
+            boolean supportPurgeTso = checkSupportPurgeTso(dataSource);
             boolean supportPerformanceSchema = checkSupportPerformanceSchema(dataSource);
             boolean isXEngine = checkIsXEngine(dataSource);
 
@@ -605,7 +634,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportOpenSSL = checkSupportOpenSSL(dataSource);
             boolean supportFastChecker = polarxUDFInfo.map(PolarxUDFInfo::supportFastChecker).orElse(false);
 
-            return new StorageInfo(version, supportTso, supportTsoHeartbeat, supportCtsTransaction, supportsBloomFilter,
+            return new StorageInfo(version, supportTso, supportTsoHeartbeat, supportPurgeTso, supportCtsTransaction, supportsBloomFilter,
                 supportsReturning, lowerCaseTableNames, supportPerformanceSchema, isXEngine, supportSharedReadView,
                 hasMetaDataLocksSelectPrivilege, isMetaDataLocksEnable, supportHyperLogLog, supportOpenSSL,
                 supportFastChecker);

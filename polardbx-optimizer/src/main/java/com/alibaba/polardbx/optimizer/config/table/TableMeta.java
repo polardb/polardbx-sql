@@ -405,7 +405,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
                 if (autoUpdateColumns == null) {
                     autoUpdateColumns = new ArrayList<>();
                     for (ColumnMeta column : allColumnsOrderByDefined) {
-                        if (column.getField().getExtra().toLowerCase().contains("on update")) {
+                        if (TStringUtil.containsIgnoreCase(column.getField().getExtra(), "on update")) {
                             autoUpdateColumns.add(column);
                         }
                     }
@@ -459,6 +459,10 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             return true;
         }
         return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType == GsiMetaManager.TableType.GSI;
+    }
+
+    public boolean isClustered() {
+        return isGsi() && getGsiTableMetaBean().gsiMetaBean.clusteredIndex;
     }
 
     @Override

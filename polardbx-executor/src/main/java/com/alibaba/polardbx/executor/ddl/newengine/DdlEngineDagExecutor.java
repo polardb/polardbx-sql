@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -42,6 +43,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponse;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponse.Response;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponseSyncAction;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
@@ -57,6 +59,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -124,9 +127,9 @@ public class DdlEngineDagExecutor {
      * a new execution may restart later if DdlState is 'RUNNING' or 'ROLLBACK_RUNNING'.
      */
     private AtomicReference<Optional<DdlState>> stateInconsistencyDetector = new AtomicReference<>();
-    private LocalDateTime beginTs = LocalDateTime.now();
+    private final boolean interruptWhileLosingLeader;
+    private final LocalDateTime beginTs = LocalDateTime.now();
     private LocalDateTime lastRecordTs;
-    private LocalDateTime endTs;
 
     DdlEngineDagExecutor(Long jobId, ExecutionContext executionContext) {
         FailPoint.injectSuspendFromHint(FP_DDL_RESTORE_JOB_SUSPEND, executionContext);
@@ -140,6 +143,8 @@ public class DdlEngineDagExecutor {
         }
         prepareExecutionContext(executionContext, ddlContext);
         this.executionContext = executionContext;
+        interruptWhileLosingLeader =
+            executionContext.getParamManager().getBoolean(ConnectionParams.INTERRUPT_DDL_WHILE_LOSING_LEADER);
         this.executor = executionContext.getExecutorService();
         this.futures = new ConcurrentLinkedQueue<>();
         this.taskScheduler = this.ddlJob.createTaskScheduler();
@@ -175,40 +180,55 @@ public class DdlEngineDagExecutor {
             ));
             throw t;
         } finally {
+            DdlEngineDagExecutorMap.get(schemaName, jobId).interrupt();
             DdlEngineDagExecutorMap.remove(schemaName, jobId);
         }
     }
 
     private void run() {
-        LOGGER.info(String.format("start run() DDL JOB: [%s]", ddlContext.getJobId()));
-        // Start the job state machine.
-        if (ddlContext.getState() == DdlState.QUEUED) {
-            onQueued();
-        }
-        if (ddlContext.getState() == DdlState.RUNNING) {
-            onRunning();
-        }
-        if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
-            onRollingBack();
-        }
+        try {
+            LOGGER.info(String.format("start run() DDL JOB: [%s]", ddlContext.getJobId()));
+            // Start the job state machine.
+            if (ddlContext.getState() == DdlState.QUEUED) {
+                onQueued();
+            }
+            if (ddlContext.getState() == DdlState.RUNNING) {
+                onRunning();
+            }
+            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+                onRollingBack();
+            }
 
-        endTs = LocalDateTime.now();
-        // Handle the terminated states.
-        switch (ddlContext.getState()) {
-        case ROLLBACK_PAUSED:
-        case PAUSED:
-            onTerminated();
-            break;
-        case ROLLBACK_COMPLETED:
-        case COMPLETED:
-            onFinished();
-            break;
-        default:
-            break;
+            // Handle the terminated states.
+            switch (ddlContext.getState()) {
+            case ROLLBACK_PAUSED:
+            case PAUSED:
+                onTerminated();
+                break;
+            case ROLLBACK_COMPLETED:
+            case COMPLETED:
+                onFinished();
+                break;
+            default:
+                break;
+            }
+        }finally {
+            LocalDateTime endTs = LocalDateTime.now();
+            DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, String.format(
+                "DDL JOB:[%s] exit with state: %s. beginTs:%s, endTs:%s, cost:%sms",
+                ddlContext.getJobId(),
+                ddlContext.getState().name(),
+                beginTs,
+                endTs,
+                endTs.toInstant(ZoneOffset.ofHours(8)).toEpochMilli() - beginTs.toInstant(ZoneOffset.ofHours(8)).toEpochMilli()
+            ));
         }
     }
 
     private void onQueued() {
+        if(hasFailureOnState(DdlState.QUEUED)){
+            return;
+        }
         // Start performing the job.
         updateDdlState(DdlState.QUEUED, DdlState.RUNNING);
     }
@@ -248,6 +268,10 @@ public class DdlEngineDagExecutor {
     }
 
     private void onRollingBack() {
+        if(!allowRollback()){
+            updateDdlState(DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_PAUSED);
+            return;
+        }
         // Load tasks reversely if needed.
         reverseTaskDagForRollback();
 
@@ -477,6 +501,9 @@ public class DdlEngineDagExecutor {
         int recoveryRetryTimes = 0;
         while (DdlTaskState.needToCallExecute(task.getState())) {
             try {
+                if(hasFailureOnState(DdlState.RUNNING)){
+                    return false;
+                }
                 task.execute(executionContext);
                 recordTaskExecutionInfo(taskExecutionQueue, task, true, null);
             } catch (Throwable e) {
@@ -576,6 +603,9 @@ public class DdlEngineDagExecutor {
         // Start rolling back the job's tasks one by one reversely.
         while (DdlTaskState.needToCallRollback(task.getState())) {
             try {
+                if(hasFailureOnState(DdlState.ROLLBACK_RUNNING)){
+                    return false;
+                }
                 task.rollback(executionContext);
                 recordTaskExecutionInfo(taskExecutionQueue, task, false, null);
             } catch (Throwable e) {
@@ -608,6 +638,18 @@ public class DdlEngineDagExecutor {
             }
         }
         return true;
+    }
+
+    /**
+     * check current DdlEngineDagExecutor is alive
+     * exceptions in onRunning()/onRollingBack() may cause DdlEngineDagExecutor dead.   e.g. OOM
+     */
+    private boolean deamonThreadAlive(){
+        DdlEngineDagExecutor dagExecutor = DdlEngineDagExecutorMap.get(ddlContext.getSchemaName(), ddlContext.getJobId());
+        if(dagExecutor == this){
+            return true;
+        }
+        return false;
     }
 
     private void respond(Response response) {
@@ -656,11 +698,10 @@ public class DdlEngineDagExecutor {
         boolean allowRollback = record.isSupportCancel();
         if (!allowRollback) {
             String errMsg = String.format(
-                "try to rollback DDL JOB: [%s], but rollback command is not supported at this stage. "
-                    + "please try: cancel ddl %s",
-                ddlContext.getJobId(),
+                "try to cancel DDL JOB: [%s], but cancel command is not supported at this stage.",
                 ddlContext.getJobId()
             );
+            EventLogger.log(EventType.DDL_WARN, errMsg);
             DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, errMsg);
         }
         return allowRollback;
@@ -670,13 +711,18 @@ public class DdlEngineDagExecutor {
      * @throws TddlNestableRuntimeException when CAS operation fails
      */
     private void updateDdlState(final DdlState expect, final DdlState newState) {
+        if(!deamonThreadAlive()){
+            return;
+        }
         DdlState originState = compareAndSetDdlState(expect, newState);
+        //fatal: current DdlEngineDagExecutor's state is inconsistent with which in GMS
         if (originState != expect) {
             stateInconsistencyDetector.compareAndSet(null, Optional.ofNullable(originState));
             ddlContext.setInterruptedAsTrue();
             String errMsg = String.format(
                 "fail to update DDL State. JobId:[%s]. expect state:[%s], actual state:[%s], new state:[%s]",
                 ddlContext.getJobId(), expect, originState, newState);
+            EventLogger.log(EventType.DDL_WARN, errMsg);
             DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, errMsg);
             throw new TddlNestableRuntimeException(errMsg);
         }
@@ -738,6 +784,17 @@ public class DdlEngineDagExecutor {
             return true;
         }
         if (ddlContext.isInterrupted()) {
+            return true;
+        }
+        if(interruptWhileLosingLeader && !ExecUtils.hasLeadership(null)){
+            ddlContext.setInterruptedAsTrue();
+            DdlHelper.errorLogDual(LOGGER, ROOT_LOGGER, String.format(
+                "interrupt DDL JOB %s for losing CN leadership.", ddlContext.getJobId()));
+            EventLogger.log(EventType.DDL_INTERRUPT, String.format(
+                "interrupt DDL JOB %s for losing CN leadership.", ddlContext.getJobId()));
+            return true;
+        }
+        if (!deamonThreadAlive()){
             return true;
         }
         return false;
@@ -920,10 +977,12 @@ public class DdlEngineDagExecutor {
                 lastRecordTs = now;
                 return;
             }
-            if (now.minusHours(1L).isAfter(lastRecordTs)) {
+            if (now.minusHours(3L).isAfter(lastRecordTs)) {
                 lastRecordTs = now;
                 EventLogger.log(EventType.DDL_WARN, String.format(
-                    "Found slow DDL JOB. begin at:%s, current time is:%s",
+                    "Found slow DDL JOB %s. schemaName:%s, begin at:%s, current time is:%s",
+                    ddlContext.getJobId(),
+                    ddlContext.getSchemaName(),
                     beginTs,
                     now
                 ));

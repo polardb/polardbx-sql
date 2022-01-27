@@ -20,11 +20,22 @@ public enum MasterSlave {
 
     MASTER_ONLY,
 
+    /**
+     * 优先路由备库，没有任何备库或者备库延迟较大时，路由到主库
+     */
     SLAVE_FIRST,
 
     READ_WEIGHT,
 
-    SLAVE_ONLY;
+    /**
+     * 只路由备库，但不会路由到主库
+     */
+    SLAVE_ONLY,
+
+    /**
+     * 只路由低延迟的备库，路由不到直接报错
+     */
+    LOW_DELAY_SLAVE_ONLY;
 
     MasterSlave() {
         mask = (1 << ordinal());

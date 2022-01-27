@@ -61,7 +61,10 @@ public class ViewManager extends AbstractLifecycle {
             "TABLE_NAME",
             "TABLE_ROWS",
             "COLUMN_NAME",
-            "CARDINALITY"});
+            "CARDINALITY",
+            "NDV_SOURCE",
+            "TOPN",
+            "HISTOGRAM"});
     }
 
     private static void defineView(String name, String[] columns, String definition) {

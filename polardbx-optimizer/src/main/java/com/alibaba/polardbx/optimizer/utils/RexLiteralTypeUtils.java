@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.utils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import io.airlift.slice.Slice;
 import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
@@ -335,6 +336,8 @@ public class RexLiteralTypeUtils {
 
             if (value instanceof NlsString) {
                 rexLiterValObj = value;
+            } else if (value instanceof Slice){
+                rexLiterValObj = ((Slice) value).toStringUtf8();
             } else {
                 rexLiterValObj = new NlsString((String) value, type.getCharset().name(),
                     type.getCollation());

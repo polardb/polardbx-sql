@@ -60,6 +60,7 @@ public final class ServerParse {
     public static final int CREATE_ROLE = 34;
     public static final int DROP_ROLE = 35;
     public static final int RESIZE = 36;
+    public static final int FLUSH = 37;
     public static final int LOAD_DATA_INFILE_SQL = 99;
     public static final int TABLE = 100;
 
@@ -113,6 +114,9 @@ public final class ServerParse {
             case 'e': {
                 return executeCheck(stmt, i);
             }
+            case 'F':
+            case 'f':
+                return fCheck(stmt, i);
             case 'G':
             case 'g':
                 return gCheck(stmt, i);
@@ -147,6 +151,37 @@ public final class ServerParse {
                 return OTHER;
             }
         }
+        return OTHER;
+    }
+
+    private static int fCheck(ByteString stmt, int offset) {
+        if (stmt.length() > ++offset) {
+            switch (stmt.charAt(offset)) {
+            case 'L':
+            case 'l':
+                return flushCheck(stmt, offset);
+            default:
+                return OTHER;
+            }
+        }
+
+        return OTHER;
+    }
+
+    private static int flushCheck(ByteString stmt, int offset) {
+        if (stmt.length() > offset + "ush".length()) {
+            char c1 = stmt.charAt(++offset);
+            char c2 = stmt.charAt(++offset);
+            char c3 = stmt.charAt(++offset);
+            char c4 = stmt.charAt(++offset);
+            if ((c1 == 'U' || c1 == 'u') && (c2 == 'S' || c2 == 's') && (c3 == 'H' || c3 == 'h')
+                && (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
+                return (offset << 8) | FLUSH;
+            } else {
+                return OTHER;
+            }
+        }
+
         return OTHER;
     }
 

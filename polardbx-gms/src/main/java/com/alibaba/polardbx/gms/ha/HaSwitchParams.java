@@ -31,10 +31,11 @@ public class HaSwitchParams {
     public String phyDbName;
     public String curAvailableAddr;
     public int xport = -1; // <0 means not available. =0 means default. >0 means selected.
-    public String storageInstId;
     public ConnPoolConfig storageConnPoolConfig;
     public Map<String, StorageNodeHaInfo> storageHaInfoMap;
     public int storageKind;
+    public String storageInstId;
+    public String instId;
 
     public HaSwitchParams() {
     }

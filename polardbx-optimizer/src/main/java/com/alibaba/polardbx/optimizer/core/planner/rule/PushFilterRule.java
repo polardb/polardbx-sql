@@ -233,22 +233,25 @@ public class PushFilterRule extends RelOptRule {
 
             Filter newLogicalFilter =
                 filter.copy(filter.getTraitSet(), filter.getInput(), filter.getCondition());
-            // make convention none to match push (semi)join rule
-            LogicalView newLogicalView = logicalView.copy(logicalView.getTraitSet().replace(Convention.NONE));
-            newLogicalView.push(newLogicalFilter);
-
-            Project newPorject;
 
             if (PushProjectRule.doNotPush(project)) {
-                newPorject = project
+                // make convention none to match push (semi)join rule
+                LogicalView newLogicalView = logicalView.copy(logicalView.getTraitSet().replace(Convention.NONE));
+                newLogicalView.push(newLogicalFilter);
+
+                Project newProject = project
                     .copy(project.getTraitSet(), newLogicalView, project.getProjects(),
                         project.getRowType());
-                call.transformTo(newPorject);
+                call.transformTo(newProject);
             } else {
-                newPorject = project
+                // make convention none to match push (semi)join rule
+                LogicalView newLogicalView = logicalView.copy(project.getTraitSet().replace(Convention.NONE));
+                newLogicalView.push(newLogicalFilter);
+
+                Project newProject = project
                     .copy(project.getTraitSet(), project.getInput(), project.getProjects(),
                         project.getRowType());
-                newLogicalView.push(newPorject);
+                newLogicalView.push(newProject);
                 call.transformTo(newLogicalView);
             }
         }

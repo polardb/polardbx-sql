@@ -605,6 +605,10 @@ public class DeferredConnection extends ReadViewConn {
 
     @Override
     public IConnection getRealConnection() {
-        return conn;
+        if (conn instanceof DeferredConnection) {
+            return conn.getRealConnection();
+        } else {
+            return conn;
+        }
     }
 }

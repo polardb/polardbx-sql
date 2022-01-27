@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel.dml.writer;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -35,6 +36,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mapping;
 
+import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiPredicate;
@@ -162,7 +164,15 @@ public class ReplaceRelocateWriter extends RelocateWriter {
     }
 
     public boolean canPushReplace(ExecutionContext ec) {
-        return isContainsAllUk();
+        return isContainsAllUk() && checkIsolationLevel(ec);
+    }
+
+    public boolean checkIsolationLevel(ExecutionContext ec) {
+        // We should not push down REPLACE if current isolation level is below RR, otherwise we may REPLACE more
+        // conflict rows than expected, because SELECT FOR UPDATE that we previously used to select conflict rows
+        // will not lock gap in isolation level below RR.
+        return ec.getParamManager().getBoolean(ConnectionParams.DML_FORCE_PUSHDOWN_RC_REPLACE)
+            || ec.getTxIsolation() > Connection.TRANSACTION_READ_COMMITTED;
     }
 
     public boolean isContainsAllUk() {

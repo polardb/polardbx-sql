@@ -16,9 +16,7 @@
 
 package org.apache.calcite.sql;
 
-import java.util.LinkedList;
-import java.util.List;
-
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
@@ -26,7 +24,9 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
-import com.google.common.collect.ImmutableList;
+
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * @author chenmo.cm
@@ -87,11 +87,17 @@ public class SqlShowDatasources extends SqlShow {
             columns.add(new RelDataTypeFieldImpl("ON_FATAL_ERROR_MAX_ACTIVE",
                 12,
                 typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("ACTIVE_COUNT", 13, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("POOLING_COUNT", 14, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("ATOM", 15, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("READ_WEIGHT", 16, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("WRITE_WEIGHT", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("MAX_WAIT_THREAD_COUNT",
+                13,
+                typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("ACTIVE_COUNT", 14, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("POOLING_COUNT", 15, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("ATOM", 16, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("READ_WEIGHT", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("WRITE_WEIGHT", 18, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("STORAGE_INST_ID",
+                19,
+                typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
             return typeFactory.createStructType(columns);
         }

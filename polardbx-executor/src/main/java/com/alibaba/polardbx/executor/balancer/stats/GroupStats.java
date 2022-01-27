@@ -23,6 +23,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.google.common.collect.Sets;
@@ -77,7 +78,9 @@ public class GroupStats {
         Set<String> storageNodeList = getAllDataNodes();
         List<GroupDetailInfoExRecord> records = getGroupRecords();
 
-        records.stream().collect(Collectors.groupingBy(x -> x.dbName))
+        records.stream()
+            .filter(x -> !SystemDbHelper.isDBBuildIn(x.dbName))
+            .collect(Collectors.groupingBy(x -> x.dbName))
             .forEach((schema, groups) -> {
                 if (!dbFilter.apply(schema)) {
                     return;

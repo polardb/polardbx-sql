@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.alibaba.polardbx.rpc.client.XSession;
+import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
@@ -854,15 +859,20 @@ public class ExplainExecutorUtil {
         String sqlTid = "NULL";
         PlanCache.CacheKey cacheKey = executionContext.getFinalPlan().getCacheKey();
         if (cacheKey != null) {
-            sqlTid = TStringUtil.int2FixedLenHexStr(cacheKey.getParameterizedSql().hashCode());
+            sqlTid = cacheKey.getTemplateId();
         }
         result.addRow(new Object[] {"TemplateId: " + sqlTid});
         return result;
     }
 
     private static void executePlanForExplainAnalyze(ExecutionPlan executionPlan, ExecutionContext executionContext) {
+        /*
+            Explain analyze 复用同一个executionContext, 参数可能会被污染
+            已知情况: limit的物理sql cache需要保存计算好的limit到Params中
+         */
+        Parameters parameters = executionContext.cloneParamsOrNull();
         ResultCursor cursor = PlanExecutor.execByExecPlanNodeByOne(executionPlan, executionContext);
-
+        executionContext.setParams(parameters);
         ArrayList<Throwable> exceptions = new ArrayList<>();
         try {
             Row result;

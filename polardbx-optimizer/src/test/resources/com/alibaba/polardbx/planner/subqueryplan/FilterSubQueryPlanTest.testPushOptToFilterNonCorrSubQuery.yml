@@ -47,19 +47,12 @@
 
 
   plan: |
-    Project(id="id")
-      Filter(condition="int_col1 = 1 OR (int_col2 = 1 AND (int_col3 = 1 OR (int_col4 = 1 AND int_col5 = 5 AND (int_col6 = 6 OR APPLY_BOOLEAN))))")
-        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` > 5)")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb3` AS `test_hash_tb3`")
-    cache node:
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where ((`id` > 5) and ((`int_col1` = 1) or ((`int_col2` = 1) and ((`int_col3` = 1) or (((`int_col4` = 1) and (`int_col5` = 5)) and ((`int_col6` = 6) or (`id` in(?))))))))")
 
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` > 5)")
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb3` AS `test_hash_tb3`")
+    >> individual scalar subquery :
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb3` as `test_hash_tb3`")
 
 
 - sql: |
@@ -74,19 +67,12 @@
 
   plan: |
 
-    Project(id="id", name="name")
-      Filter(condition="APPLY_BOOLEAN")
-        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb2` AS `test_hash_tb2` ON (`test_hash_tb`.`id` = `test_hash_tb2`.`id`)")
-          MergeSort(sort="", offset=0, fetch=1)
-            LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb3` AS `test_hash_tb3` LIMIT 1")
-    cache node:
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) where (`test_hash_tb`.`id` in(?))")
 
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb2` AS `test_hash_tb2` ON (`test_hash_tb`.`id` = `test_hash_tb2`.`id`)")
-    MergeSort(sort="", offset=0, fetch=1)
-      LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` AS `$f0` FROM `test_hash_tb3` AS `test_hash_tb3` LIMIT 1")
+    >> individual scalar subquery :
+    mergesort(sort="", offset=0, fetch=1)
+      logicalview(tables="[0000-0003].test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb3` as `test_hash_tb3` limit 1")
 
 
 - sql: |
@@ -130,7 +116,7 @@
   plan: |
 
     Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id`, `name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6`, `test_hash_tb2`.`id` AS `id0`, `test_hash_tb2`.`name` AS `name0`, `test_hash_tb2`.`create_time` AS `create_time0`, `test_hash_tb2`.`int_col1` AS `int_col10`, `test_hash_tb2`.`int_col2` AS `int_col20`, `test_hash_tb2`.`int_col3` AS `int_col30`, `test_hash_tb2`.`int_col4` AS `int_col40`, `test_hash_tb2`.`int_col5` AS `int_col50`, `test_hash_tb2`.`int_col6` AS `int_col60`, ? AS `$f18` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb2` AS `test_hash_tb2` ON (`test_hash_tb`.`id` = `test_hash_tb2`.`id`)) AS `t` WHERE (`id` = `$f18`)")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) where (`test_hash_tb`.`id` = ?)")
 
     >> individual scalar subquery :
     MergeSort(sort="", offset=0, fetch=1)

@@ -100,8 +100,10 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          InsertWriter primaryInsertWriter, List<InsertWriter> gsiInsertWriters,
                          List<Integer> autoIncParamIndex, List<List<String>> ukColumnNamesList,
                          List<List<Integer>> beforeUkMapping, List<List<Integer>> afterUkMapping,
-                         List<String> pkColumnNames, List<Integer> beforePkMapping, List<Integer> afterPkMapping,
-                         Set<String> allUkSet, Map<String, Map<String, Set<String>>> tableUkMap,
+                         List<Integer> selectInsertRowMapping, List<String> pkColumnNames,
+                         List<Integer> beforePkMapping, List<Integer> afterPkMapping, Set<String> allUkSet,
+                         Map<String, Map<String, Set<String>>> tableUkMap,
+                         Map<String, List<List<String>>> ukGroupByTable,
                          List<ColumnMeta> rowColumnMetas, List<ColumnMeta> tableColumnMetas,
                          List<String> selectListForDuplicateCheck, UpsertWriter primaryUpsertWriter,
                          List<UpsertWriter> gsiUpsertWriters, RelocateWriter primaryRelocateWriter,
@@ -114,11 +116,12 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          List<DistinctWriter> gsiDeleteWriters) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
-            gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping, pkColumnNames,
-            beforePkMapping, afterPkMapping, allUkSet, tableUkMap, rowColumnMetas, tableColumnMetas,
-            selectListForDuplicateCheck, targetTableIsWritable, targetTableIsReadyToPublish,
-            sourceTablesIsReadyToPublish, logicalDynamicValues, unOptimizedDuplicateKeyUpdateList, pushDownInsertWriter,
-            gsiInsertIgnoreWriters, primaryDeleteWriter, gsiDeleteWriters);
+            gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping,
+            selectInsertRowMapping, pkColumnNames, beforePkMapping, afterPkMapping, allUkSet, tableUkMap,
+            ukGroupByTable, rowColumnMetas, tableColumnMetas, selectListForDuplicateCheck, targetTableIsWritable,
+            targetTableIsReadyToPublish, sourceTablesIsReadyToPublish, logicalDynamicValues,
+            unOptimizedDuplicateKeyUpdateList, pushDownInsertWriter, gsiInsertIgnoreWriters, primaryDeleteWriter,
+            gsiDeleteWriters);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.primaryUpsertWriter = primaryUpsertWriter;
@@ -152,11 +155,13 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             getUkColumnNamesList(),
             getBeforeUkMapping(),
             getAfterUkMapping(),
+            getSelectInsertColumnMapping(),
             getPkColumnNames(),
             getBeforePkMapping(),
             getAfterPkMapping(),
             getAllUkSet(),
             getTableUkMap(),
+            getUkGroupByTable(),
             getRowColumnMetaList(),
             getTableColumnMetaList(),
             getSelectListForDuplicateCheck(),

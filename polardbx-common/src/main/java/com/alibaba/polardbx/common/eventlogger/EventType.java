@@ -21,6 +21,10 @@ public enum EventType {
     DDL_WARN(EventLevel.WARN),
 
     DDL_PAUSED(EventLevel.INFO),
+    /**
+     * CN发生切主，停止原先leader节点中的DDL
+     */
+    DDL_INTERRUPT(EventLevel.INFO),
     MOVE_DATABASE_PENDING(EventLevel.WARN),
 
     DEAD_LOCK_DETECTION(EventLevel.INFO),

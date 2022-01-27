@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.function.SqlSequenceFunction;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -31,7 +31,9 @@ import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.logical.LogicalValues;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexShuttle;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,9 +82,9 @@ public abstract class MergeUnionValuesRule extends RelOptRule {
                         }
                         LogicalValues values =
                             (LogicalValues) ((HepRelVertex) ((LogicalProject) unionInput).getInput()).getCurrentRel();
-                        ImmutableList<ImmutableList<RexNode>> exps = RemoveProjectRule.getTuples(
-                            project.getChildExps(), values.getTuples());
-                        oldTuples.addAll(exps);
+                        List<ImmutableList<RexNode>> tuples =
+                            reWriteProjects(project.getChildExps(), values.getTuples());
+                        oldTuples.addAll(tuples);
                     } else {
                         break;
                     }
@@ -125,10 +127,7 @@ public abstract class MergeUnionValuesRule extends RelOptRule {
             LogicalProject project = (LogicalProject) call.rels[0];
             LogicalDynamicValues dynamicValues = (LogicalDynamicValues) call.rels[1];
 
-            List<ImmutableList<RexNode>> tuples = new ArrayList<>();
-            for (ImmutableList<RexNode> rexNodes : dynamicValues.getTuples()) {
-                tuples.addAll(RemoveProjectRule.getSingleTuple(project.getChildExps(), rexNodes));
-            }
+            List<ImmutableList<RexNode>> tuples = reWriteProjects(project.getProjects(), dynamicValues.getTuples());
             LogicalDynamicValues newValues = LogicalDynamicValues.createDrdsValues(project.getCluster(),
                 project.getTraitSet(),
                 project.getRowType(),
@@ -136,5 +135,28 @@ public abstract class MergeUnionValuesRule extends RelOptRule {
 
             call.transformTo(newValues);
         }
+    }
+
+    public static List<RexNode> reWriteProject(List<RexNode> projects, List<? extends RexNode> lookupList) {
+        final List<RexNode> list = new ArrayList<>();
+        new RexShuttle() {
+            @Override
+            public RexNode visitInputRef(RexInputRef ref) {
+                return lookupList.get(ref.getIndex());
+            }
+        }.visitList(projects, list);
+        return list;
+    }
+
+    public static List<ImmutableList<RexNode>> reWriteProjects(
+        List<RexNode> projects, List<? extends List<? extends RexNode>> lookupList) {
+        List<ImmutableList<RexNode>> tuples = new ArrayList<>();
+        for (List<? extends RexNode> rexNodes : lookupList) {
+            List<RexNode> newProjects = reWriteProject(projects, rexNodes);
+
+            ImmutableList<RexNode> rets = ImmutableList.copyOf(newProjects);
+            tuples.add(rets);
+        }
+        return tuples;
     }
 }

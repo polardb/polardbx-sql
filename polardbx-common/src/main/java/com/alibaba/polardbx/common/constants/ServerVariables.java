@@ -380,6 +380,10 @@ public class ServerVariables {
         variables.add("net_read_timeout");
         variables.add("net_retry_count");
         variables.add("net_write_timeout");
+        variables.add("innodb_purge_history");
+        variables.add("replica_read_timeout");
+        variables.add("loose_innodb_prepare_wait_timeout");
+        variables.add("innodb_prepare_wait_timeout");
         variables.add("new");
         variables.add("old");
         variables.add("old_alter_table");
@@ -1149,6 +1153,10 @@ public class ServerVariables {
         mysqlBothVariables.add("windowing_use_high_precision");
         mysqlGlobalVariables.add("activate_all_roles_on_login");
         mysqlGlobalVariables.add("admin_address");
+        mysqlGlobalVariables.add("innodb_purge_history");
+        mysqlGlobalVariables.add("replica_read_timeout");
+        mysqlGlobalVariables.add("loose_innodb_prepare_wait_timeout");
+        mysqlGlobalVariables.add("innodb_prepare_wait_timeout");
         mysqlGlobalVariables.add("admin_port");
         mysqlGlobalVariables.add("admin_ssl_ca");
         mysqlGlobalVariables.add("admin_ssl_capath");
@@ -1965,6 +1973,10 @@ public class ServerVariables {
         mysqlSessionVariables.add("use_secondary_engine");
         mysqlSessionVariables.add("warning_count");
         mysqlDynamicVariables.add("activate_all_roles_on_login");
+        mysqlDynamicVariables.add("innodb_purge_history");
+        mysqlDynamicVariables.add("replica_read_timeout");
+        mysqlDynamicVariables.add("loose_innodb_prepare_wait_timeout");
+        mysqlDynamicVariables.add("innodb_prepare_wait_timeout");
         mysqlDynamicVariables.add("admin_ssl_ca");
         mysqlDynamicVariables.add("admin_ssl_capath");
         mysqlDynamicVariables.add("admin_ssl_cert");

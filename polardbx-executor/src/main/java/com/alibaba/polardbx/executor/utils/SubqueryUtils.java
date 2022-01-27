@@ -51,9 +51,10 @@ public class SubqueryUtils {
                                                     ExecutionContext executionContext,
                                                     CorrelationId correlateId,
                                                     RelDataType correlateDataRowType,
-                                                    SemiJoinType semiJoinType) {
+                                                    SemiJoinType semiJoinType,
+                                                    boolean maxOnerow) {
         return new SubqueryApply(subqueryId, inputChunk, executionContext, correlateId, semiJoinType, plan,
-            leftConditions, opKind, correlateDataRowType);
+            leftConditions, opKind, correlateDataRowType, maxOnerow);
     }
 
     public static void buildScalarSubqueryValue(List<RexDynamicParam> scalarList, ExecutionContext executionContext) {
@@ -80,7 +81,7 @@ public class SubqueryUtils {
             SubqueryApply subqueryApply =
                 createSubqueryApply(subqueryId, null, dynamicParamExpression.getRelNode(), null, null, executionContext,
                     null, null,
-                    rexDynamicParam.getSemiType());
+                    rexDynamicParam.getSemiType(), rexDynamicParam.isMaxOnerow());
             try {
                 subqueryApply.prepare();
                 subqueryApply.processUntilFinish();

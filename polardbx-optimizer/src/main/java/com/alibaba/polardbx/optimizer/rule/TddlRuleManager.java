@@ -213,11 +213,11 @@ public class TddlRuleManager extends AbstractLifecycle {
                 TargetDB target = new TargetDB();
                 target.setDbIndex(group);
                 target.addOneTable(tableNames.iterator().next());
-                if (ConfigDataMode.isFastMock()) {
-                    for (String tableName : target.getTableNames()) {
-                        MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
-                    }
-                }
+//                if (ConfigDataMode.isFastMock()) {
+//                    for (String tableName : target.getTableNames()) {
+//                        MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
+//                    }
+//                }
                 return target;
             }
         }
@@ -721,13 +721,13 @@ public class TddlRuleManager extends AbstractLifecycle {
             throw GeneralUtil.nestedException(e);
         }
 
-        if (ConfigDataMode.isFastMock()) {
-            for (TargetDB targetDB : result.getCalculationResult()) {
-                for (String tableName : targetDB.getTableNames()) {
-                    MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
-                }
-            }
-        }
+//        if (ConfigDataMode.isFastMock()) {
+//            for (TargetDB targetDB : result.getCalculationResult()) {
+//                for (String tableName : targetDB.getTableNames()) {
+//                    MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
+//                }
+//            }
+//        }
         return result.getCalculationResult();
     }
 
@@ -783,7 +783,11 @@ public class TddlRuleManager extends AbstractLifecycle {
             if (dataType instanceof TimestampType) {
                 paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
             }
-            c.setValue(dataType.convertJavaFrom(paramVal));
+            if (paramVal instanceof RexDynamicParam) {
+                c.setValue(dataType.convertJavaFrom(((RexDynamicParam) paramVal).getValue()));
+            } else {
+                c.setValue(dataType.convertJavaFrom(paramVal));
+            }
 
             return c;
         } else {

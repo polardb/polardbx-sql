@@ -145,6 +145,14 @@ public enum CharsetName {
         return defaultCollationName;
     }
 
+    public static String getDefaultCollationName(String mysqlCharset) {
+        CharsetName charsetName = CharsetName.of(mysqlCharset);
+        if (charsetName == null) {
+            return "";
+        }
+        return charsetName.getDefaultCollationName().name();
+    }
+
     public List<CollationName> getSupportedCollationName() {
         return supportedCollationName;
     }

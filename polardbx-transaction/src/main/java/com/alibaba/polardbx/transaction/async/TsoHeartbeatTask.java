@@ -16,20 +16,31 @@
 
 package com.alibaba.polardbx.transaction.async;
 
+import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
+import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.transaction.TransactionExecutor;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Future;
 
 /**
@@ -43,15 +54,13 @@ public class TsoHeartbeatTask implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(TsoHeartbeatTask.class);
 
     private static final String HEARTBEAT_QUERY = "SET GLOBAL innodb_heartbeat_seq = ?";
+    private static final String HEARTBEAT_QUERY_SQL = "SET GLOBAL innodb_heartbeat_seq = ";
 
     private final AsyncTaskQueue asyncQueue;
-    private final TransactionExecutor executor;
     private final ITimestampOracle tso;
 
-    public TsoHeartbeatTask(AsyncTaskQueue asyncQueue, TransactionExecutor executor,
-                            ITimestampOracle tso) {
+    public TsoHeartbeatTask(AsyncTaskQueue asyncQueue, ITimestampOracle tso) {
         this.asyncQueue = asyncQueue;
-        this.executor = executor;
         this.tso = tso;
     }
 
@@ -65,19 +74,43 @@ public class TsoHeartbeatTask implements Runnable {
         long timestamp = tso.nextTimestamp();
 
         List<Future> futures = new ArrayList<>();
-        for (String group : executor.getGroupList()) {
-            DataSource dataSource = executor.getGroupExecutor(group).getDataSource();
-            // Send heartbeat to each group simultaneously
+        if (DynamicConfig.getInstance().isKeepTsoBasedCDC()
+            && ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME) != null) {
+            TopologyHandler topologyHandler =
+                ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME).getTopologyHandler();
+            for (Group group : topologyHandler.getMatrix().getGroups()) {
+                String groupName = group.getName();
+                IGroupExecutor groupExecutor = topologyHandler.get(groupName);
+                DataSource dataSource = groupExecutor.getDataSource();
+                // Send heartbeat to each group simultaneously
+                futures.add(asyncQueue.submit(() -> {
+                    doHeartbeat(dataSource, timestamp);
+                }));
+            }
+
+            // Also send heartbeat to MetaDB
+            DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+            futures.add(asyncQueue.submit(() -> {
+                doHeartbeat(dataSource, timestamp);
+            }));
+        } else {
+            Map<String, StorageInstHaContext> storageStatusMap =
+                StorageHaManager.getInstance().getStorageHaCtxCache();
+            Iterator<StorageInstHaContext> iterator = storageStatusMap.values().stream().iterator();
+            while (iterator.hasNext()) {
+                StorageInstHaContext instHaContext = iterator.next();
+                if (instHaContext != null && instHaContext.isMasterMode()) {
+                    futures.add(asyncQueue.submit(() -> {
+                        doHeartbeat(instHaContext, timestamp);
+                    }));
+                }
+            }
+            // Also send heartbeat to MetaDB
+            DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
             futures.add(asyncQueue.submit(() -> {
                 doHeartbeat(dataSource, timestamp);
             }));
         }
-
-        // Also send heartbeat to MetaDB
-        DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
-        futures.add(asyncQueue.submit(() -> {
-            doHeartbeat(dataSource, timestamp);
-        }));
 
         AsyncUtils.waitAll(futures);
     }
@@ -89,6 +122,22 @@ public class TsoHeartbeatTask implements Runnable {
             ps.executeUpdate();
         } catch (SQLException e) {
             logger.error("Failed to send timestamp heartbeat", e);
+        }
+    }
+
+    private void doHeartbeat(StorageInstHaContext instHaContext, long timestamp) {
+        try (Connection salveConn = DbTopologyManager.getConnectionForStorage(instHaContext)) {
+            Statement stmt = null;
+            try {
+                stmt = salveConn.createStatement();
+                stmt.executeUpdate(HEARTBEAT_QUERY_SQL + timestamp);
+            } finally {
+                if (stmt != null) {
+                    stmt.close();
+                }
+            }
+        } catch (Throwable e) {
+            logger.error("Failed to send timestamp heartbeat for " + instHaContext.getStorageInstId(), e);
         }
     }
 }

@@ -110,13 +110,25 @@ public class DdlEngineResourceManager {
                         for (DdlEngineRecord record : blockerJobRecords) {
                             DdlState ddlState = DdlState.valueOf(record.state);
                             if (DdlHelper.isTerminated(ddlState)) {
-                                //问题：应该直接提示用户如何操作；还是让用户去show前一个失败的任务，在那边提示用户如何操作？
-                                throw new TddlRuntimeException(ErrorCode.ERR_PENDING_DDL_JOB_EXISTS,
-                                    String.valueOf(record.jobId),
-                                    record.ddlType,
-                                    record.schemaName,
-                                    record.objectName,
-                                    record.schemaName);
+                                StringBuilder sb = new StringBuilder();
+                                sb.append(String
+                                    .format("Found Paused DDL JOB. You can use 'SHOW DDL %s' to check it for details",
+                                        record.jobId));
+                                if (record.isSupportContinue() || record.isSupportCancel()) {
+                                    sb.append(", ");
+                                }
+                                if (record.isSupportContinue()) {
+                                    sb.append(
+                                        String.format("use 'CONTINUE DDL %s' to continue executing it", record.jobId));
+                                }
+                                if (record.isSupportContinue() && record.isSupportCancel()) {
+                                    sb.append(", or ");
+                                }
+                                if (record.isSupportCancel()) {
+                                    sb.append(String.format("use 'CANCEL DDL %s' to cancel it", record.jobId));
+                                }
+                                sb.append(".");
+                                throw new TddlRuntimeException(ErrorCode.ERR_PAUSED_DDL_JOB_EXISTS, sb.toString());
                             }
                         }
                     }

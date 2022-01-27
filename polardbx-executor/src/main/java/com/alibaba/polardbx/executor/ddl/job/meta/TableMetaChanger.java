@@ -279,10 +279,12 @@ public class TableMetaChanger {
                                        String dbIndex, String phyTableName, SqlKind sqlKind, boolean isPartitioned,
                                        List<String> droppedColumns, List<String> addedColumns,
                                        List<String> updatedColumns, Map<String, String> changedColumns,
-                                       boolean columnReorder, List<String> droppedIndexes, List<String> addedIndexes,
+                                       boolean columnReorder, List<String> droppedIndexes,
+                                       List<String> addedIndexes, List<String> addedIndexesWithoutNames,
                                        Map<String, String> renamedIndexes, boolean primaryKeyDropped,
                                        List<String> addedPrimaryKeyColumns, String tableComment,
-                                       SequenceBean sequenceBean, ExecutionContext executionContext) {
+                                        SequenceBean sequenceBean,
+                                       ExecutionContext executionContext) {
         TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
             CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
 
@@ -333,9 +335,9 @@ public class TableMetaChanger {
             tableInfoManager.renameIndexes(schemaName, logicalTableName, renamedIndexes);
         }
 
-        // Add new index meta if exist.
-        if (GeneralUtil.isNotEmpty(addedIndexes)) {
-            tableInfoManager.addIndexes(phyInfoSchemaContext, addedIndexes);
+        // Add new index meta if existed.
+        if (GeneralUtil.isNotEmpty(addedIndexes) || GeneralUtil.isNotEmpty(addedIndexesWithoutNames)) {
+            tableInfoManager.addIndexes(phyInfoSchemaContext, addedIndexes, addedIndexesWithoutNames);
         }
 
         // Drop existing primary key.

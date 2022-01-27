@@ -47,7 +47,6 @@ public class SystemTables {
     public static final String DRDS_SYSTABLE_LEADERSHIP = "__drds__systable__leadership__";
     public static final String DRDS_SYSTABLE_DDL_JOBS = "__drds__systable__ddl_jobs__";
     public static final String DRDS_SYSTABLE_DDL_OBJECTS = "__drds__systable__ddl_objects__";
-    public static final String DRDS_SYSTABLE_SYNC_EVENT = "__drds__systable__sync_event__";
     public static final String DRDS_SYSTABLE_TABLES = "__drds__systable__tables__";
     public static final String DRDS_SYSTABLE_INDEXES = "__drds__systable__indexes__";
     public static final String DRDS_SYSTABLE_BACKFILL_OBJECTS = "__drds__systable__backfill_objects__";
@@ -78,7 +77,6 @@ public class SystemTables {
         register(DRDS_SYSTABLE_LEADERSHIP);
         register(DRDS_SYSTABLE_DDL_JOBS);
         register(DRDS_SYSTABLE_DDL_OBJECTS);
-        register(DRDS_SYSTABLE_SYNC_EVENT);
         register(DUAL);
         register(DRDS_SYSTABLE_LOGICAL_TABLE_STATISTIC);
         register(DRDS_SYSTABLE_COLUMN_STATISTIC);

@@ -550,7 +550,6 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
             String appConfStr = data;
             TAtomDsConfDO tmpConf = TAtomConfParser.parserTAtomDsConfDO(null, appConfStr);
             TAtomDsConfDO newConf = TAtomDsConfHandle.this.runTimeConf.clone();
-
             // 有些既有配置不能变更，所以克隆老的配置，然后将新的set进去
             newConf.setUserName(tmpConf.getUserName());
             newConf.setMinPoolSize(tmpConf.getMinPoolSize());

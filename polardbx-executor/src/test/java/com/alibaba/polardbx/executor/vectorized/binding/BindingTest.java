@@ -74,4 +74,19 @@ public class BindingTest extends BindingTestBase {
                 + "   └ InputRefVectorizedExpression, { DoubleType, 2 }\n"
                 + "   └ InputRefVectorizedExpression, { DoubleType, 3 }\n");
     }
+
+    @Test
+    public void testNullSafeEqual() {
+        initTable("test_seq",
+            "CREATE TABLE `test_seq` (\n"
+                + "  `pk` bigint(11) NOT NULL auto_increment,\n"
+                + "  `a` bigint DEFAULT NULL,\n"
+                + "  PRIMARY KEY (`pk`)\n"
+                + ");");
+
+        testProject("select a <=> 1 from test_seq")
+            .tree("└ SEQLongColLongConstVectorizedExpression, { LongType, 2 }\n"
+                + "   └ InputRefVectorizedExpression, { LongType, 1 }\n"
+                + "   └ LiteralVectorizedExpression, { LongType, 3 }\n");
+    }
 }

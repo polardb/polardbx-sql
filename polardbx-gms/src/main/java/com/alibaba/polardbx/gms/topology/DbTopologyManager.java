@@ -29,9 +29,11 @@ import com.alibaba.polardbx.gms.config.impl.ConnPoolConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.ha.HaSwitchParams;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
+import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
 import com.alibaba.polardbx.gms.util.AppNameUtil;
@@ -40,6 +42,7 @@ import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -388,11 +391,20 @@ public class DbTopologyManager {
     }
 
     public static void dropLogicalDb(DropDbInfo dropDbInfo) {
+        final String moveGroupTaskName = "ActionMoveGroup";
+
         String dbName = dropDbInfo.dbName;
         boolean isDropIfExists = dropDbInfo.isDropIfExists;
         long socketTimeout = dropDbInfo.socketTimeout;
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection();
             Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
+
+            DdlEngineTaskAccessor accessor = new DdlEngineTaskAccessor();
+            accessor.setConnection(metaDbConn);
+            if (!dropDbInfo.isAllowDropInScale() && accessor.hasOngoingTask(dbName, moveGroupTaskName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                    "Drop database not allowed when scale-in/out");
+            }
 
             dropLogicalDbWithConn(dbName, isDropIfExists, metaDbConn, metaDbLockConn, socketTimeout);
 
@@ -1358,6 +1370,7 @@ public class DbTopologyManager {
                 }
                 MetaDbConfigManager.getInstance()
                     .register(MetaDbDataIdBuilder.getGroupConfigDataId(instId, dbName, grpKey), metaDbConn);
+
                 MetaDbConfigManager.getInstance().notify(MetaDbDataIdBuilder.getDbTopologyDataId(dbName), metaDbConn);
             }
         } catch (Throwable ex) {
@@ -2031,6 +2044,20 @@ public class DbTopologyManager {
         int port = ipAndPort.getValue();
         String user = storageInfoRecord.user;
         String passwdEnc = storageInfoRecord.passwdEnc;
+        String storageConnProps = ConnPoolConfigManager.getInstance().getConnPoolConfig().connProps;
+        String connProps = getJdbcConnPropsFromAtomConnPropsForGroup(-1, storageConnProps);
+        return GmsJdbcUtil
+            .buildJdbcConnection(host, port, GmsJdbcUtil.DEFAULT_PHY_DB, user, passwdEnc, connProps);
+    }
+
+    public static Connection getConnectionForStorage(StorageInstHaContext instHaContext) {
+        String address = instHaContext.getCurrAvailableNodeAddr();
+        String user = instHaContext.getUser();
+        String passwdEnc = instHaContext.getEncPasswd();
+        Pair<String, Integer> ipAndPort = AddressUtils.getIpPortPairByAddrStr(address);
+        String host = ipAndPort.getKey();
+        int port = ipAndPort.getValue();
+
         String storageConnProps = ConnPoolConfigManager.getInstance().getConnPoolConfig().connProps;
         String connProps = getJdbcConnPropsFromAtomConnPropsForGroup(-1, storageConnProps);
         return GmsJdbcUtil

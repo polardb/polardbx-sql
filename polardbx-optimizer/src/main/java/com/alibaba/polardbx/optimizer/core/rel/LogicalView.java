@@ -32,6 +32,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
+import com.alibaba.polardbx.optimizer.config.meta.DrdsRelOptCostImpl;
 import com.alibaba.polardbx.optimizer.config.meta.TableScanIOEstimator;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -384,6 +385,19 @@ public class LogicalView extends TableScan {
         return new LogicalView.ReplacedTableCondition(visit, dynamicRexReplacer.isReplaced());
     }
 
+    private boolean isCacheForbidden() {
+        if (scalarList != null &&
+            scalarList.size() > 0) {
+            return true;
+        }
+
+        if (correlateVariableScalar != null &&
+            correlateVariableScalar.size() > 0) {
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public void collectVariablesUsed(Set<CorrelationId> variableSet) {
         this.correlateVariableScalar.stream().forEach(
@@ -721,6 +735,9 @@ public class LogicalView extends TableScan {
     }
 
     public String getSqlTemplateStr() {
+        if (isCacheForbidden()) {
+            return RelUtils.toNativeSql(getSqlTemplate(), dbType);
+        }
         if (sqlTemplateStringCache == null) {
             sqlTemplateStringCache = RelUtils.toNativeSql(getSqlTemplate(), dbType);
         }
@@ -1581,6 +1598,10 @@ public class LogicalView extends TableScan {
 
     @Override
     public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
+        if (ConfigDataMode.isFastMock() || !PlannerContext.getPlannerContext(this).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LOGICALVIEW_COST)) {
+            return DrdsRelOptCostImpl.TINY;
+        }
         if (join != null) {
             Index index = getLookupJoin().getLookupIndex();
             RelNode mysqlRelNode = getMysqlNode();
@@ -1987,6 +2008,9 @@ public class LogicalView extends TableScan {
     }
 
     public String getLookupSqlTemplateCache(Supplier<String> generator) {
+        if (isCacheForbidden()) {
+            return generator.get();
+        }
         if (lookupSqlTemplateCache == null) {
             lookupSqlTemplateCache = generator.get();
         }

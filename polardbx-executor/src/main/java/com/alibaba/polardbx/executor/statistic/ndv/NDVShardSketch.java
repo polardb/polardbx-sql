@@ -29,7 +29,10 @@ import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
+import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.MetaUtils;
+import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -128,8 +131,17 @@ public class NDVShardSketch {
         String[] shardInfo = shardKey.split(":");
         String schemaName = shardInfo[0];
         String tableName = shardInfo[1];
-        Map<String, Set<String>> topologyTmp =
-            getContext(schemaName).getRuleManager().getTableRule(tableName).getActualTopology();
+        Map<String, Set<String>> topologyTmp;
+        TddlRuleManager ruleManager = getContext(schemaName).getRuleManager();
+        if (ruleManager == null) {
+            return false;
+        }
+        TableRule rule = ruleManager.getTableRule(tableName);
+        if (rule == null) {
+            return false;
+        }
+        topologyTmp = rule.getActualTopology();
+
         Map<String, Set<String>> topology = Maps.newHashMap();
 
         // build new map to avoid concurrency update problem
@@ -234,6 +246,7 @@ public class NDVShardSketch {
                 SystemTableNDVSketchStatistic.SketchRow sketchRow = new SystemTableNDVSketchStatistic.SketchRow
                     (schemaName, tableName, columnNames, getShardParts()[i], getDnCardinalityArray()[i], -1,
                         "HYPER_LOG_LOG");
+                sketchRow.setSketchBytes(bytes);
                 PolarDbXSystemTableNDVSketchStatistic.getInstance()
                     .batchReplace(new SystemTableNDVSketchStatistic.SketchRow[] {sketchRow});
 
@@ -338,6 +351,7 @@ public class NDVShardSketch {
                 SystemTableNDVSketchStatistic.SketchRow sketchRow = new SystemTableNDVSketchStatistic.SketchRow
                     (schemaName, tableName, columnNames, getShardParts()[i], getDnCardinalityArray()[i], -1,
                         "HYPER_LOG_LOG");
+                sketchRow.setSketchBytes(bytes);
                 PolarDbXSystemTableNDVSketchStatistic.getInstance()
                     .batchReplace(new SystemTableNDVSketchStatistic.SketchRow[] {sketchRow});
 

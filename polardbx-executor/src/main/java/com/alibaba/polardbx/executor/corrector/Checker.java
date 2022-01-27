@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.corrector;
 
+import com.alibaba.polardbx.executor.backfill.Extractor;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.RateLimiter;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
@@ -175,7 +178,7 @@ public class Checker {
     private final PhyTableOperation planSelectMaxPk;
 
     private final List<String> indexColumns;
-    private final BitSet primaryKeys;
+    List<Integer> primaryKeysId;
     private final Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator;
 
     private final ITransactionManager tm;
@@ -202,7 +205,7 @@ public class Checker {
                    PhyTableOperation planSelectWithMaxPrimary, PhyTableOperation planSelectWithMaxGsi,
                    PhyTableOperation planSelectWithMinAndMaxPrimary, PhyTableOperation planSelectWithMinAndMaxGsi,
                    SqlSelect planSelectWithInTemplate, PhyTableOperation planSelectWithIn,
-                   PhyTableOperation planSelectMaxPk, List<String> indexColumns, BitSet primaryKeys,
+                   PhyTableOperation planSelectMaxPk, List<String> indexColumns, List<Integer> primaryKeysId,
                    Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator) {
         this.schemaName = schemaName;
         this.tableName = tableName;
@@ -225,7 +228,7 @@ public class Checker {
         this.planSelectWithIn = planSelectWithIn;
         this.planSelectMaxPk = planSelectMaxPk;
         this.indexColumns = indexColumns;
-        this.primaryKeys = primaryKeys;
+        this.primaryKeysId = primaryKeysId;
         this.rowComparator = rowComparator;
         this.tm = ExecutorContext.getContext(schemaName).getTransactionManager();
         this.manager = new CheckerManager(schemaName);
@@ -293,8 +296,8 @@ public class Checker {
         return indexColumns;
     }
 
-    public BitSet getPrimaryKeys() {
-        return primaryKeys;
+    public List<Integer> getPrimaryKeys() {
+        return primaryKeysId;
     }
 
     public Comparator<List<Pair<ParameterContext, byte[]>>> getRowComparator() {
@@ -362,42 +365,23 @@ public class Checker {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER, "Incorrect GSI relationship.");
         }
 
-        // Caution: This should get all writable column(which double written).
-        final List<String> indexColumns = indexTableMeta.getWriteColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
-
-        List<String> primaryKeys = GlobalIndexMeta.getPrimaryKeys(baseTableMeta);
-        final BitSet primaryKeySet = new BitSet(primaryKeys.size());
-        for (String primaryKey : primaryKeys) {
-            for (int i = 0; i < indexColumns.size(); i++) {
-                if (primaryKey.equalsIgnoreCase(indexColumns.get(i))) {
-                    primaryKeySet.set(i);
-                }
-            }
-        }
-
-        primaryKeys = primaryKeySet.stream().mapToObj(indexColumns::get).collect(Collectors.toList());
-
+        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(checkerEc, schemaName, tableName, indexName);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, checkerEc);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
-            .buildSelectWithInForChecker(baseTableMeta, indexColumns, primaryKeys, true);
+            .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(), true);
 
         final List<DataType> columnTypes = indexTableMeta.getAllColumns()
             .stream()
             .map(ColumnMeta::getDataType)
             .collect(Collectors.toList());
         final Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator = (o1, o2) -> {
-            int idx = 0;
-            while ((idx = primaryKeySet.nextSetBit(idx)) >= 0) {
+            for (int idx : info.getPrimaryKeysId()) {
                 int n = ExecUtils
                     .comp(o1.get(idx).getKey().getValue(), o2.get(idx).getKey().getValue(), columnTypes.get(idx), true);
                 if (n != 0) {
                     return n;
                 }
-                ++idx;
             }
             return 0;
         };
@@ -413,15 +397,19 @@ public class Checker {
             parallelism,
             primaryLock,
             gsiLock,
-            builder.buildSelectForBackfill(baseTableMeta, indexColumns, primaryKeys, false, true, primaryLock),
-            builder.buildSelectForBackfill(baseTableMeta, indexColumns, primaryKeys, false, true, gsiLock),
-            builder.buildSelectForBackfill(baseTableMeta, indexColumns, primaryKeys, true, true, primaryLock),
-            builder.buildSelectForBackfill(baseTableMeta, indexColumns, primaryKeys, true, true, gsiLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                false, true, primaryLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                false, true, gsiLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                true, true, primaryLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                true, true, gsiLock),
             selectWithIn.getKey(),
             selectWithIn.getValue(),
-            builder.buildSelectMaxPkForBackfill(baseTableMeta, primaryKeys),
-            indexColumns,
-            primaryKeySet,
+            builder.buildSelectMaxPkForBackfill(baseTableMeta, info.getPrimaryKeys()),
+            info.getTargetTableColumns(),
+            info.getPrimaryKeysId(),
             rowComparator);
     }
 
@@ -501,9 +489,9 @@ public class Checker {
         SqlNode condition = null;
         final SqlNodeList inValues = new SqlNodeList(SqlParserPos.ZERO);
         if (toCNF) {
-            if (1 == primaryKeys.cardinality()) {
+            if (1 == primaryKeysId.size()) {
                 // pk=? or pk=? ...
-                final int pkIndex = primaryKeys.nextSetBit(0);
+                final int pkIndex = primaryKeysId.get(0);
                 final SqlIdentifier pk = new SqlIdentifier(indexColumns.get(pkIndex), SqlParserPos.ZERO);
                 for (List<Pair<ParameterContext, byte[]>> row : rows) {
                     final SqlNode conditionItem = new SqlBasicCall(SqlStdOperatorTable.EQUALS,
@@ -519,11 +507,11 @@ public class Checker {
                 }
             } else {
                 // (pk0=? and pk1=?) or ...
-                final SqlIdentifier[] pks = primaryKeys.stream()
+                final SqlIdentifier[] pks = primaryKeysId.stream().mapToInt(idx -> idx)
                     .mapToObj(idx -> new SqlIdentifier(indexColumns.get(idx), SqlParserPos.ZERO))
                     .toArray(SqlIdentifier[]::new);
                 for (List<Pair<ParameterContext, byte[]>> row : rows) {
-                    final SqlNode[] values = primaryKeys.stream()
+                    final SqlNode[] values = primaryKeysId.stream().mapToInt(idx -> idx)
                         .mapToObj(idx -> value2node(row.get(idx).getKey().getValue()))
                         .toArray(SqlNode[]::new);
                     SqlNode block = null;
@@ -550,12 +538,12 @@ public class Checker {
             }
         } else {
             // Generate in XXX.
-            if (1 == primaryKeys.cardinality()) {
-                final int pkIndex = primaryKeys.nextSetBit(0);
+            if (1 == primaryKeysId.size()) {
+                final int pkIndex = primaryKeysId.get(0);
                 rows.forEach(row -> inValues.add(value2node(row.get(pkIndex).getKey().getValue())));
             } else {
                 rows.forEach(row -> {
-                    final SqlNode[] rowSet = primaryKeys.stream()
+                    final SqlNode[] rowSet = primaryKeysId.stream().mapToInt(idx -> idx)
                         .mapToObj(i -> row.get(i).getKey().getValue())
                         .map(Checker::value2node)
                         .toArray(SqlNode[]::new);
@@ -939,7 +927,7 @@ public class Checker {
                     if (baseRows.size() < batchSize) {
                         return null;
                     } else {
-                        return primaryKeys.stream()
+                        return primaryKeysId.stream().mapToInt(idx -> idx)
                             .mapToObj(i -> baseRows.get(baseRows.size() - 1).get(i).getKey())
                             .collect(Collectors.toList());
                     }
@@ -1187,7 +1175,7 @@ public class Checker {
     }
 
     private boolean equalPk(List<Pair<ParameterContext, byte[]>> left, List<Pair<ParameterContext, byte[]>> right) {
-        return primaryKeys.stream()
+        return primaryKeysId.stream().mapToInt(idx -> idx)
             .mapToObj(i -> Arrays.equals(left.get(i).getValue(), right.get(i).getValue()))
             .allMatch(res -> res);
     }

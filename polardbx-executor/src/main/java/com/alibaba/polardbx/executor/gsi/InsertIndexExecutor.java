@@ -412,7 +412,8 @@ public class InsertIndexExecutor extends IndexExecutor {
                                     List<TableMeta> indexMetas, ExecutionContext executionContext,
                                     String baseTableName) {
         TableMeta baseTableMeta = executionContext.getSchemaManager(schemaName).getTable(baseTableName);
-        List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(baseTableMeta, executionContext);
+        List<List<String>> uniqueKeys =
+            GlobalIndexMeta.getUniqueKeys(baseTableMeta, true, tm -> true, executionContext);
         Set<String> selectKeysMap = new HashSet<>();
         uniqueKeys.forEach(selectKeysMap::addAll);
         List<String> selectKeys = new ArrayList<>(selectKeysMap);
@@ -704,7 +705,8 @@ public class InsertIndexExecutor extends IndexExecutor {
         checkUpdatingShardingKey(sqlInsert, baseTableMeta, indexMetas, executionContext);
 
         List<String> selectKeyNames = GlobalIndexMeta.getUniqueAndShardingKeys(baseTableMeta, indexMetas, schemaName);
-        List<List<String>> conditionKeys = GlobalIndexMeta.getUniqueKeys(baseTableMeta, executionContext);
+        List<List<String>> conditionKeys =
+            GlobalIndexMeta.getUniqueKeys(baseTableMeta, true, tm -> true, executionContext);
 
         PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, executionContext);
         List<RelNode> selects = builder.buildSelect(baseTableMeta, physicalPlans, selectKeyNames, conditionKeys);
@@ -886,7 +888,7 @@ public class InsertIndexExecutor extends IndexExecutor {
         }
 
         // check unique key
-        List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(baseTableMeta, ec);
+        List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(baseTableMeta, true, tm -> true, ec);
         Set<String> uniqueKeySet = new HashSet<>();
         uniqueKeys.forEach(uniqueKeySet::addAll);
         for (SqlNode column : columnList) {
@@ -913,7 +915,8 @@ public class InsertIndexExecutor extends IndexExecutor {
 
         TableMeta baseTableMeta = executionContext.getSchemaManager(schemaName).getTable(baseTableName);
         List<String> selectKeyNames = GlobalIndexMeta.getPrimaryAndShardingKeys(baseTableMeta, indexMetas, schemaName);
-        List<List<String>> conditionKeys = GlobalIndexMeta.getUniqueKeys(baseTableMeta, executionContext);
+        List<List<String>> conditionKeys =
+            GlobalIndexMeta.getUniqueKeys(baseTableMeta, true, tm -> true, executionContext);
 
         PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, executionContext);
         List<RelNode> selects = builder.buildSelect(baseTableMeta, physicalPlans, selectKeyNames, conditionKeys);

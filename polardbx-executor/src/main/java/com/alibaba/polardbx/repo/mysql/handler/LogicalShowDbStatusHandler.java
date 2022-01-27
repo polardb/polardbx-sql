@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -116,10 +117,15 @@ public class LogicalShowDbStatusHandler extends HandlerCommon {
                     r = weightVal.r;
                 }
 
-                if (w <= 0 && r <= 0) {
-                    // Skip unused datasource
-                    continue;
-                }
+                if (ConfigDataMode.isMasterMode()) {
+                        if (!(w > 0)) {
+                            continue;
+                        }
+                    } else {
+                        if (!(r > 0 && w <= 0)) {
+                            continue;
+                        }
+                    }
 
                 final TAtomDataSource atomDs = dataSourceWrapper.getWrappedDataSource();
                 final TAtomDsConfDO atomConfig = atomDs.getDsConfHandle().getRunTimeConf();

@@ -51,6 +51,7 @@ import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Lists;
@@ -126,7 +127,7 @@ public class PolicyDrainNode implements BalancePolicy {
         BalanceAction drainCDC = new ActionDrainCDCStorage(ec.getSchemaName(), dnInstIdList);
 
         String resName = ActionUtils.genRebalanceClusterName();
-        ActionLockResource lock = new ActionLockResource(null, resName);
+        ActionLockResource lock = new ActionLockResource(DefaultDbSchema.NAME, resName);
 
         List<BalanceAction> moveDataActions = new ArrayList<>();
         moveDataActions.add(lock);

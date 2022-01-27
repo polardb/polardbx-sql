@@ -16,17 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
-import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
-import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
-import com.alibaba.polardbx.optimizer.exception.OptimizerException;
-import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.UncheckedExecutionException;
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -37,24 +28,32 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
+import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
+import com.alibaba.polardbx.optimizer.exception.OptimizerException;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
+import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.rule.MappingRule;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.meta.ShardFunctionMeta;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -301,8 +300,11 @@ public final class PlanCache {
     }
 
     public static class CacheKey {
+        private static final long NO_TYPE_DIGEST = Long.MIN_VALUE;
 
         final String parameterizedSql;
+        final long typeDigest;
+
         final String versionInfo;
 
         // other context info
@@ -315,6 +317,17 @@ public final class PlanCache {
         public CacheKey(String parameterizedSql, String versionInfo, List<TableMeta> metas, boolean testing,
                         boolean autoCommit) {
             this.parameterizedSql = parameterizedSql;
+            this.typeDigest = NO_TYPE_DIGEST;
+            this.versionInfo = versionInfo;
+            this.testing = testing;
+            this.metas = metas;
+            this.autoCommit = autoCommit;
+        }
+
+        public CacheKey(SqlParameterized sqlParameterized, String versionInfo, List<TableMeta> metas, boolean testing,
+                        boolean autoCommit) {
+            this.parameterizedSql = sqlParameterized.getSql();
+            this.typeDigest = sqlParameterized.getDigest();
             this.versionInfo = versionInfo;
             this.testing = testing;
             this.metas = metas;
@@ -332,13 +345,15 @@ public final class PlanCache {
             CacheKey cacheKey = (CacheKey) o;
             return testing == cacheKey.testing &&
                 parameterizedSql.equals(cacheKey.parameterizedSql) &&
+                (typeDigest == cacheKey.typeDigest || typeDigest == NO_TYPE_DIGEST
+                    || cacheKey.typeDigest == NO_TYPE_DIGEST) &&
                 versionInfo.equals(cacheKey.versionInfo) &&
                 autoCommit == cacheKey.autoCommit;
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(parameterizedSql, versionInfo, testing, autoCommit);
+            return Objects.hash(parameterizedSql, typeDigest, versionInfo, testing, autoCommit);
         }
 
         public List<TableMeta> getTableMetas() {
@@ -347,6 +362,15 @@ public final class PlanCache {
 
         public String getParameterizedSql() {
             return parameterizedSql;
+        }
+
+        public long getTypeDigest() {
+            return typeDigest;
+        }
+
+        public String getTemplateId() {
+            int hashCode = (int) (31 * parameterizedSql.hashCode() + typeDigest);
+            return TStringUtil.int2FixedLenHexStr(hashCode);
         }
     }
 
@@ -508,8 +532,7 @@ public final class PlanCache {
         ExecutionContext executionContext = plannerContext.getExecutionContext();
         plan.saveCacheState(plan.getTableSet(), plan.getTableSetHashCode(), cacheKey, plan.getTableMetaSnapshots());
         if (executionContext != null) {
-            int templateId = cacheKey.getParameterizedSql().hashCode();
-            executionContext.setSqlTemplateId(TStringUtil.int2FixedLenHexStr(templateId));
+            executionContext.setSqlTemplateId(cacheKey.getTemplateId());
         }
     }
 

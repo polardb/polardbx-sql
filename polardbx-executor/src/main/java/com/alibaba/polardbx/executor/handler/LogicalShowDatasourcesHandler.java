@@ -24,7 +24,6 @@ import com.alibaba.polardbx.common.model.Matrix;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -33,6 +32,7 @@ import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
@@ -106,13 +106,11 @@ public class LogicalShowDatasourcesHandler extends HandlerCommon {
         Matrix matrix = ExecutorContext.getContext(executionContext.getSchemaName()).getTopologyHandler().getMatrix();
         TopologyHandler topology = ExecutorContext.getContext(executionContext.getSchemaName()).getTopologyHandler();
         List<Group> groups = matrix.getGroups();
-        fillDataSourceInfos(result, topology, index, groups, false);
+        fillDataSourceInfos(result, topology, index, groups);
         List<Group> scaleGroups = matrix.getScaleOutGroups();
-        fillDataSourceInfos(result, topology, index, scaleGroups, false);
-        if (!ConfigDataMode.isMasterMode()) {
-            fillDataSourceInfos(result, topology, index, groups, true);
-        }
+        fillDataSourceInfos(result, topology, index, scaleGroups);
         fillMetaDbDataSourceInfo(result, index);
+
         return result;
     }
 
@@ -147,11 +145,10 @@ public class LogicalShowDatasourcesHandler extends HandlerCommon {
     }
 
     private void fillDataSourceInfos(ArrayResultCursor result, TopologyHandler topology,
-                                     Integer index,
-                                     List<Group> groups, boolean isForMasterGroup) {
+                                     Integer index, List<Group> groups) {
 
         for (Group group : groups) {
-            IGroupExecutor groupExecutor = topology.get(group.getName(), isForMasterGroup);
+            IGroupExecutor groupExecutor = topology.get(group.getName());
             if (groupExecutor == null) {
                 continue;
             }
@@ -160,8 +157,6 @@ public class LogicalShowDatasourcesHandler extends HandlerCommon {
 
             if (o instanceof TGroupDataSource) {
                 TGroupDataSource ds = (TGroupDataSource) o;
-
-                String storageInstId = ds.getConfigManager().getStroageInstId();
 
                 // 整理atom的权重信息
                 Map<TAtomDataSource, Weight> atomDsWeights = ds.getAtomDataSourceWeights();
@@ -189,6 +184,7 @@ public class LogicalShowDatasourcesHandler extends HandlerCommon {
                         final XDataSource x = (XDataSource) rawDataSource;
                         final XClientPool.XStatus s = x.getStatus();
 
+                        String storageInstId = GroupInfoUtil.parseStorageId(dbKey);
                         result.addRow(new Object[] {
                             index++, topology.getAppName(), x.getName(), group.getName(),
                             x.getUrl(),
@@ -197,11 +193,13 @@ public class LogicalShowDatasourcesHandler extends HandlerCommon {
                             m.getMinPooledSessionPerInstance(),
                             m.getMaxClientPerInstance() * m.getMaxSessionPerClient(),
                             atomDs.getDsConfHandle().getRunTimeConf().getIdleTimeout(), x.getGetConnTimeoutMillis(),
-                            "N/A", "N/A", s.workingSession, s.idleSession, dbKey, r, w,
-                            storageInstId});
+                            DynamicConfig.getInstance().getXprotoMaxDnWaitConnection(),
+                            DynamicConfig.getInstance().getXprotoMaxDnConcurrent(), s.workingSession, s.idleSession,
+                            dbKey, r, w, storageInstId});
                     } else if (rawDataSource instanceof DruidDataSource) {
                         DruidDataSource d = (DruidDataSource) rawDataSource;
 
+                        String storageInstId = GroupInfoUtil.parseStorageId(dbKey);
                         result.addRow(new Object[] {
                             index++, topology.getAppName(), d.getName(), group.getName(),
                             d.getUrl(), d.getUsername(), d.getDbType(), d.getInitialSize(), d.getMinIdle(),

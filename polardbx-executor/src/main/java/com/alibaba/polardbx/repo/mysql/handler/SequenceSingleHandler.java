@@ -28,6 +28,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.ddl.job.validator.SequenceValidator;
+import com.alibaba.polardbx.executor.ddl.sync.ClearPlanCacheSyncAction;
 import com.alibaba.polardbx.executor.gms.util.SequenceUtil;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -37,13 +38,13 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
 import com.alibaba.polardbx.gms.sync.SyncScope;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.sequence.bean.AlterSequence;
 import com.alibaba.polardbx.optimizer.core.sequence.bean.CreateSequence;
 import com.alibaba.polardbx.optimizer.core.sequence.bean.SequenceFactory;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
+import com.alibaba.polardbx.repo.mysql.spi.MyPhyDdlTableCursor;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SequenceBean;
@@ -86,7 +87,7 @@ public class SequenceSingleHandler extends HandlerCommon {
             SyncManagerHelper.sync(new SequenceSyncAction(schemaName, sequence.getSequenceName()), schemaName,
                 SyncScope.CURRENT_ONLY);
 
-            clearPlanCache(sequence.getSequenceName(), tableOperation);
+            clearPlanCache(schemaName, sequence.getSequenceName(), tableOperation);
 
             return cursor;
         } else {
@@ -256,13 +257,20 @@ public class SequenceSingleHandler extends HandlerCommon {
         }
     }
 
-    private void clearPlanCache(String seqName, PhyDdlTableOperation operation) {
+    private Cursor execute(PhyDdlTableOperation relNode, ExecutionContext executionContext) {
+        // Execute the SQL statement and return the number of affected rows.
+        Cursor cursor = repo.getCursorFactory().repoCursor(executionContext, relNode);
+        int affectRows = ((MyPhyDdlTableCursor) cursor).getAffectedRows();
+        return new AffectRowCursor(new int[] {affectRows});
+    }
+
+    private void clearPlanCache(String schemaName, String seqName, PhyDdlTableOperation operation) {
         if (TStringUtil.startsWithIgnoreCase(seqName, AUTO_SEQ_PREFIX) &&
             operation.getKind() == SqlKind.CREATE_SEQUENCE) {
             // Only separate sequence DDL, i.e. create sequence, will be handled here,
             // so we don't have to check its parent.
             // Avoid unnecessary plan cache cleanup since it's schema-level.
-            OptimizerContext.getContext(operation.getSchemaName()).getPlanManager().cleanCache();
+                SyncManagerHelper.sync(new ClearPlanCacheSyncAction(schemaName), schemaName);
         }
     }
 

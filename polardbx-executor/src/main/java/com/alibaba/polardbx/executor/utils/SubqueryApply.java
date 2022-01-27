@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -40,6 +42,7 @@ import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCorrelVariable;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
@@ -78,13 +81,18 @@ public class SubqueryApply {
     private SqlKind opKind;
     private RelDataType correlateDataRowType;
     private boolean hasNull;
+    private boolean maxOnerow = true;
 
     public SubqueryApply(String subqueryId,
                          Chunk.ChunkRow inputRow,
                          ExecutionContext parentEc,
                          CorrelationId correlateId,
                          SemiJoinType semiJoinType,
-                         RelNode plan, List<RexNode> leftConditions, SqlKind opKind, RelDataType correlateDataRowType) {
+                         RelNode plan,
+                         List<RexNode> leftConditions,
+                         SqlKind opKind,
+                         RelDataType correlateDataRowType,
+                         boolean maxOnerow) {
         this.subqueryId = subqueryId;
         this.plan = plan;
         this.inputRow = inputRow;
@@ -94,6 +102,7 @@ public class SubqueryApply {
         this.leftConditions = leftConditions;
         this.opKind = opKind;
         this.correlateDataRowType = correlateDataRowType;
+        this.maxOnerow = maxOnerow;
     }
 
     public void prepare() {
@@ -110,7 +119,8 @@ public class SubqueryApply {
             hasApplyInLogicalView = true;
             RexCorrelVariable rexCorrelVariable = (RexCorrelVariable) (rexFieldAccess).getReferenceExpr();
             if (correlateId.equals(rexCorrelVariable.getId())) {
-                Object value = inputRow.getObject(rexFieldAccess.getField().getIndex());
+                DataType dataType = CalciteUtils.getType(rexFieldAccess.getField());
+                Object value = dataType.convertFrom(inputRow.getObject(rexFieldAccess.getField().getIndex()));
                 RexNode literal = plan
                     .getCluster()
                     .getRexBuilder()
@@ -207,12 +217,26 @@ public class SubqueryApply {
             // exit code for time slicing executor
             if (row == null) {
                 isFinish = true;
+                if (emptyResult) {
+                    resultValue = RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY;
+                }
                 return;
             }
             Object value = row.getObject(0);
             // multi value
-            if (!emptyResult && !(ConfigDataMode.isFastMock())) {
+            if (!emptyResult && !(ConfigDataMode.isFastMock()) && maxOnerow) {
                 GeneralUtil.nestedException("Subquery returns more than 1 row");
+            }
+            if (!emptyResult) {
+                if (resultValue instanceof List) {
+                    ((List) resultValue).add(value);
+                } else {
+                    List tmpResult = Lists.newLinkedList();
+                    tmpResult.add(resultValue);
+                    tmpResult.add(value);
+                    resultValue = tmpResult;
+                }
+                return;
             }
 
             // single value

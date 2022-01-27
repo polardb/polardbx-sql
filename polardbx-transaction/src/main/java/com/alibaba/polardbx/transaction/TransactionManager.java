@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.extension.Activate;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -40,6 +41,7 @@ import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.tso.ClusterTimestampOracle;
 
 import java.sql.Connection;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
@@ -82,6 +84,9 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     // Since heartbeat task must run on PolarDB-X instances, only one task is need
     private static TimerTask tsoHeartbeatTask;
 
+    // Since purge tso task must run on PolarDB-X instances, only one task is need
+    private static TimerTask tsoPurgeTask;
+
     private static final ITimestampOracle timestampOracle;
 
     // fair=true is necessary to prevent starvation
@@ -109,6 +114,9 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         // Enable TSO heartbeat for PolarDB-X master instances
         if (ConfigDataMode.isMasterMode() && storageManager.supportTsoHeartbeat()) {
             enableTsoHeartbeat();
+        }
+        if (ConfigDataMode.isMasterMode() && storageManager.supportPurgeTso()) {
+            enableTsoPurge();
         }
     }
 
@@ -371,7 +379,26 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
                     int heartbeatInterval = paramManager.getInt(ConnectionParams.TSO_HEARTBEAT_INTERVAL);
 
                     tsoHeartbeatTask =
-                        asyncQueue.scheduleTsoHeartbeatTask(executor, getTimestampOracle(), heartbeatInterval);
+                        asyncQueue.scheduleTsoHeartbeatTask(getTimestampOracle(), heartbeatInterval);
+                }
+            }
+        }
+    }
+
+    void enableTsoPurge() {
+        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+            return;
+        }
+        if (tsoPurgeTask == null) {
+            synchronized (this) {
+                if (tsoPurgeTask == null) {
+                    AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
+
+                    ParamManager paramManager = new ParamManager(properties);
+                    int heartbeatInterval = paramManager.getInt(ConnectionParams.TSO_HEARTBEAT_INTERVAL);
+
+                    tsoPurgeTask =
+                        asyncQueue.scheduleTsoPurgeTask(heartbeatInterval);
                 }
             }
         }
@@ -423,5 +450,26 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             this.mdlDeadlockDetectionTask.cancel();
             this.mdlDeadlockDetectionTask = null;
         }
+    }
+
+    /**
+     * get the min tso timestamp.
+     */
+    public long getMinSnapshotSeq() {
+
+        long minSnapshotTime =
+            getTimestampOracle().nextTimestamp() - (DynamicConfig.getInstance().getPurgeHistoryMs() << 22);
+        for (Iterator<Map.Entry<Long, ITransaction>> iterator = trans.entrySet().iterator(); iterator.hasNext(); ) {
+            ITransaction transaction = iterator.next().getValue();
+            if (transaction instanceof ITsoTransaction) {
+                if (!((ITsoTransaction) transaction).snapshotSeqIsEmpty()) {
+                    minSnapshotTime =
+                        Math.min(minSnapshotTime,
+                            ((ITsoTransaction) transaction).getSnapshotSeq() - (1
+                                << ClusterTimestampOracle.BitReserved));
+                }
+            }
+        }
+        return minSnapshotTime;
     }
 }

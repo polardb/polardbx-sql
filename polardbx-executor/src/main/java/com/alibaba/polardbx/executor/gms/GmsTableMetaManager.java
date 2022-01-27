@@ -641,8 +641,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             List<TablesRecord> tablesRecords = tableInfoManager.queryTables(schemaName);
             Map<String, List<ColumnsRecord>> allColumns = tableInfoManager.queryVisibleColumns(schemaName);
             Map<String, List<IndexesRecord>> allIndexes = tableInfoManager.queryVisibleIndexes(schemaName);
-            Map<String, TablesExtRecord> extRecords = tableInfoManager.queryTableExts(schemaName).stream().collect(
-                Collectors.toMap(TablesExtRecord::getTableName, r -> r));
+            Map<String, TablesExtRecord> extRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            extRecords.putAll(tableInfoManager.queryTableExts(schemaName).stream().collect(
+                Collectors.toMap(TablesExtRecord::getTableName, r -> r)));
+
             DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
             final GsiMetaManager gsiMetaManager =
                 new GsiMetaManager(dataSource, schemaName);
@@ -650,10 +652,12 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             List<GsiMetaManager.IndexRecord> allIndexRecords = gsiMetaManager.getIndexRecords(schemaName);
 
             // tableName->List<IndexRecord>
-            Map<String, List<GsiMetaManager.IndexRecord>> indexRecordsTableMap = new HashMap<>();
+            Map<String, List<GsiMetaManager.IndexRecord>> indexRecordsTableMap =
+                new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
             // indexName->List<IndexRecord>
-            Map<String, List<GsiMetaManager.IndexRecord>> indexRecordsIndexMap = new HashMap<>();
+            Map<String, List<GsiMetaManager.IndexRecord>> indexRecordsIndexMap =
+                new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
             allIndexRecords.forEach(r -> {
                 indexRecordsTableMap.computeIfAbsent(r.getTableName(), k -> new ArrayList<>()).add(r);

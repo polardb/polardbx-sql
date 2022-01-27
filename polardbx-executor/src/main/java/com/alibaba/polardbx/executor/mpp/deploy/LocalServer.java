@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.deploy;
 
-import com.google.common.collect.ImmutableList;
-import com.google.inject.Injector;
-import com.google.inject.Module;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -35,6 +32,9 @@ import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.NodeVersion;
 import com.alibaba.polardbx.gms.topology.ServerInfoRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.google.common.collect.ImmutableList;
+import com.google.inject.Injector;
+import com.google.inject.Module;
 import io.airlift.bootstrap.Bootstrap;
 import io.airlift.event.client.HttpEventModule;
 import io.airlift.http.server.HttpServer;
@@ -46,6 +46,7 @@ import io.airlift.node.NodeModule;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.properties.PropUtil.getCluster;
 import static com.alibaba.polardbx.executor.mpp.client.MppMediaTypes.MPP_POLARDBX;
 
 public class LocalServer extends Server {

@@ -39,7 +39,7 @@ public class LogicalCorrelateFactory extends ExecutorFactory {
         int fieldCount = correlate.getRowType().getFieldCount() - 1;
         DataType dateType = correlate.getJoinType() == SemiJoinType.LEFT ?
             CalciteUtils.getType(correlate.getRowType().getFieldList().get(fieldCount)) :
-            DataTypes.BooleanType;
+            DataTypes.LongType;
         return new CorrelateExec(inner, correlate.getRight(), dateType, correlate.getLeft().getRowType(),
             correlate.getCorrelationId(),
             correlate.getLeftConditions(),

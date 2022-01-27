@@ -215,7 +215,7 @@ public class MyParametricQueryAdvisor implements ParametricQueryAdvisor {
             double selectivity = RelMetadataQuery.instance().getSelectivity(r.getKey(), r.getValue());
             String tableName = r.getKey().getTable().getQualifiedName().toString();
             if (m.containsKey(tableName)) {
-                m.put(tableName, selectivity + m.get(r.getKey()));
+                m.put(tableName, selectivity + m.get(tableName));
             } else {
                 m.put(tableName, selectivity);
             }

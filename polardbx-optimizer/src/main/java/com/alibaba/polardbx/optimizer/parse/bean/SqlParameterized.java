@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.parse.bean;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
@@ -28,6 +29,8 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
 import com.alibaba.polardbx.optimizer.parse.visitor.FastSqlTableNameCollector;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.List;
 import java.util.Set;
 
@@ -58,6 +61,11 @@ public class SqlParameterized {
      */
     private final SQLStatement stmt;
     private final Set<Pair<String, String>> tables;
+
+    /**
+     * Type info digest for parameters.
+     */
+    private Long digest = null;
 
     public SqlParameterized(ByteString originSql, String sql, List<Object> parameters, SQLStatement stmt) {
         this.originSql = originSql;
@@ -110,5 +118,40 @@ public class SqlParameterized {
             || stmt instanceof SQLDeleteStatement
             || stmt instanceof MySqlLoadDataInFileStatement
             || stmt instanceof MySqlLoadXmlStatement;
+    }
+
+    public long getDigest() {
+        if (digest == null) {
+            digest = doComputeDigest();
+        }
+        return digest;
+    }
+
+    private long doComputeDigest() {
+        long digest = 0L;
+        for (Object value : parameters) {
+            int typeCode = getTypeCode(value);
+            digest = 31 * digest + typeCode;
+        }
+        return digest;
+    }
+
+    private static int getTypeCode(Object param) {
+        if (param == null) {
+            // NULL
+            return 0;
+        } else if (param instanceof Integer || param instanceof Long) {
+            // BIGINT
+            return 1 << 1;
+        } else if (param instanceof BigInteger) {
+            // BIGINT_INTEGER
+            return 1 << 2;
+        } else if (param instanceof BigDecimal) {
+            // DECIMAL
+            return 1 << 3;
+        } else {
+            // VARCHAR
+            return 1 << 4;
+        }
     }
 }

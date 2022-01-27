@@ -46,6 +46,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.BiFunction;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class GlobalIndexMeta {
@@ -177,9 +178,10 @@ public class GlobalIndexMeta {
         return SQLUtils.normalizeNoTrim(indexTable);
     }
 
-    public static List<List<String>> getUniqueKeys(String tableName, String schema, ExecutionContext ec) {
+    public static List<List<String>> getUniqueKeys(String tableName, String schema, boolean includingPrimary,
+                                                   Predicate<TableMeta> gsiFilter, ExecutionContext ec) {
         final TableMeta tableMeta = ec.getSchemaManager(schema).getTable(tableName);
-        return getUniqueKeys(tableMeta, ec);
+        return getUniqueKeys(tableMeta, includingPrimary, gsiFilter, ec);
     }
 
     /**
@@ -187,12 +189,15 @@ public class GlobalIndexMeta {
      * Including primary key
      *
      * @param primary Primary table meta
+     * @param includingPrimary
+     * @param gsiFilter Filter conditions for gsi
      * @return Index column names
      */
-    public static List<List<String>> getUniqueKeys(TableMeta primary, ExecutionContext ec) {
+    public static List<List<String>> getUniqueKeys(TableMeta primary, boolean includingPrimary,
+                                                   Predicate<TableMeta> gsiFilter, ExecutionContext ec) {
         final List<List<String>> result = new ArrayList<>();
         // Local unique index
-        primary.getUniqueIndexes(true)
+        primary.getUniqueIndexes(includingPrimary)
             .stream()
             .map(indexMeta -> indexMeta.getKeyColumns()
                 .stream()
@@ -202,7 +207,10 @@ public class GlobalIndexMeta {
             .forEach(result::add);
 
         // Global unique index
-        final List<TableMeta> indexTableMetas = getIndex(primary.getTableName(), primary.getSchemaName(), ec);
+        List<TableMeta> indexTableMetas =
+            getIndex(primary.getTableName(), primary.getSchemaName(), ec).stream().filter(gsiFilter)
+                .collect(Collectors.toList());
+
         indexTableMetas.stream().flatMap(tm -> tm.getUniqueIndexes(false).stream())
             .map(indexMeta -> indexMeta.getKeyColumns().stream()
                 .map(cm -> cm.getName().toUpperCase()).collect(Collectors.toList()))
@@ -394,14 +402,14 @@ public class GlobalIndexMeta {
         return IndexType.NONE;
     }
 
-    public static boolean isEveryUkContainsPartitionKey(String table, String schema, boolean includingPrimaryIndex,
-                                                        ExecutionContext ec) {
+    public static boolean isEveryUkContainsAllPartitionKey(String table, String schema, boolean includingPrimaryIndex,
+                                                           ExecutionContext ec) {
         final TableMeta tableMeta = ec.getSchemaManager(schema).getTable(table);
         final Map<String, Map<String, Set<String>>> tableUkMap = getTableUkMap(tableMeta, includingPrimaryIndex, ec);
         // Skip implicit primary key
         tableUkMap.values().forEach(
             ukMap -> ukMap.entrySet().removeIf(entry -> SqlValidatorImpl.isImplicitKey(entry.getKey())));
-        return isEveryUkContainsPartitionKey(tableMeta, tableUkMap, ec);
+        return isEveryUkContainsAllPartitionKey(tableMeta, tableUkMap, ec);
     }
 
     /**
@@ -410,39 +418,11 @@ public class GlobalIndexMeta {
      *
      * @param primary Primary table
      */
-    public static boolean isEveryUkContainsPartitionKey(TableMeta primary,
-                                                        Map<String, Map<String, Set<String>>> tableUkMap,
-                                                        ExecutionContext ec) {
+    public static boolean isEveryUkContainsAllPartitionKey(TableMeta primary,
+                                                           Map<String, Map<String, Set<String>>> tableUkMap,
+                                                           ExecutionContext ec) {
         final TreeSet<String> partitionKeySet = getPartitionKeySet(primary, ec);
 
-        // Get uk column information
-        return isEveryUkContainsAllPartitionKey(tableUkMap, partitionKeySet, true);
-    }
-
-    /**
-     * Check whether every uk contains all partition key of primary
-     *
-     * @param primary Primary table
-     */
-    public static boolean isEveryUkContainsPrimaryPartitionKey(TableMeta primary,
-                                                               Map<String, Map<String, Set<String>>> tableUkMap) {
-        final TreeSet<String> partitionKeySet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        final TddlRuleManager rm = OptimizerContext.getContext(primary.getSchemaName()).getRuleManager();
-        partitionKeySet.addAll(rm.getSharedColumns(primary.getTableName()));
-        return isEveryUkContainsAllPartitionKey(tableUkMap, partitionKeySet, false);
-
-    }
-
-    /**
-     * 1. Check whether every uk contains all given partition key of primary
-     * 2. Check whether every table contains all uk
-     *
-     * @param tableUkMap Uk map
-     * @param partitionKeySet Partition key set
-     */
-    public static boolean isEveryUkContainsAllPartitionKey(Map<String, Map<String, Set<String>>> tableUkMap,
-                                                           TreeSet<String> partitionKeySet,
-                                                           boolean checkEveryTableContainsAllUk) {
         // Get uk column information
         final Map<String, Set<String>> allUkMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         tableUkMap.forEach((table, allUk) -> allUkMap.putAll(allUk));
@@ -453,10 +433,18 @@ public class GlobalIndexMeta {
         if (!everyUkContainsAllPartitionKey) {
             return false;
         }
-
         // Every table contains all uk
-        return !checkEveryTableContainsAllUk || tableUkMap.values().stream()
-            .allMatch(ukMap -> ukMap.keySet().containsAll(allUkMap.keySet()));
+        return tableUkMap.values().stream().allMatch(ukMap -> ukMap.keySet().containsAll(allUkMap.keySet()));
+    }
+
+    /**
+     * Check whether every uk contains all partition key of one table, could be primary or gsi
+     */
+    public static boolean isEveryUkContainsTablePartitionKey(TableMeta tableMeta, List<Set<String>> currentUkSets) {
+        final TreeSet<String> partitionKeySet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        final TddlRuleManager rm = OptimizerContext.getContext(tableMeta.getSchemaName()).getRuleManager();
+        partitionKeySet.addAll(rm.getSharedColumns(tableMeta.getTableName()));
+        return currentUkSets.stream().allMatch(ukColumns -> ukColumns.containsAll(partitionKeySet));
     }
 
     public static TreeSet<String> getPartitionKeySet(String table, String schema, ExecutionContext ec) {

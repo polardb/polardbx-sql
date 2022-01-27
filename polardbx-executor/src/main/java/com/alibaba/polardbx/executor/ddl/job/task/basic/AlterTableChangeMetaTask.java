@@ -48,6 +48,7 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
 
     private List<String> droppedIndexes;
     private List<String> addedIndexes;
+    private List<String> addedIndexesWithoutNames;
     private Map<String, String> renamedIndexes;
 
     private boolean primaryKeyDropped = false;
@@ -70,6 +71,7 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
                                     boolean columnReorder,
                                     List<String> droppedIndexes,
                                     List<String> addedIndexes,
+                                    List<String> addedIndexesWithoutNames,
                                     Map<String, String> renamedIndexes,
                                     boolean primaryKeyDropped,
                                     List<String> addedPrimaryKeyColumns,
@@ -87,6 +89,7 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         this.columnReorder = columnReorder;
         this.droppedIndexes = droppedIndexes;
         this.addedIndexes = addedIndexes;
+        this.addedIndexesWithoutNames = addedIndexesWithoutNames;
         this.renamedIndexes = renamedIndexes;
         this.primaryKeyDropped = primaryKeyDropped;
         this.addedPrimaryKeyColumns = addedPrimaryKeyColumns;
@@ -101,8 +104,8 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         FailPoint.injectRandomSuspendFromHint(executionContext);
         TableMetaChanger.changeTableMeta(metaDbConnection, schemaName, logicalTableName, dbIndex, phyTableName, sqlKind,
             isPartitioned, droppedColumns, addedColumns, updatedColumns, changedColumns, columnReorder, droppedIndexes,
-            addedIndexes, renamedIndexes, primaryKeyDropped, addedPrimaryKeyColumns, tableComment, sequenceBean,
-            executionContext);
+            addedIndexes, addedIndexesWithoutNames, renamedIndexes, primaryKeyDropped, addedPrimaryKeyColumns,
+            tableComment,  sequenceBean, executionContext);
     }
 
     @Override
@@ -116,6 +119,9 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         }
         if (CollectionUtils.isNotEmpty(this.addedIndexes)) {
             sb.append("add indexes ").append(this.addedIndexes);
+        }
+        if (CollectionUtils.isNotEmpty(this.addedIndexesWithoutNames)) {
+            sb.append("add indexes without names").append(this.addedIndexesWithoutNames);
         }
         if (CollectionUtils.isNotEmpty(this.droppedIndexes)) {
             sb.append("drop indexes ").append(this.droppedIndexes);

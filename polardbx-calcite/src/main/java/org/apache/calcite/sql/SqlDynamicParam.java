@@ -27,6 +27,7 @@ import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.calcite.util.Litmus;
 
 import java.nio.charset.Charset;
+import java.util.List;
 
 /**
  * A <code>SqlDynamicParam</code> represents a dynamic parameter marker in an
@@ -132,6 +133,19 @@ public class SqlDynamicParam extends SqlNode {
         } else if (realValue instanceof RexFieldAccess) {
           writer.print("?");
           writer.setNeedWhitespace(true);
+          return;
+        }else if(realValue instanceof List){
+          int count=0;
+          for(Object tmpValue : (List)realValue){
+            if(count++ != 0){
+              writer.sep(",");
+            }
+            if(tmpValue==null){
+              writer.print("NULL");
+              continue;
+            }
+            getTypeName().createLiteral(tmpValue, pos).unparse(writer, leftPrec, rightPrec);
+          }
           return;
         }
         getTypeName().createLiteral(realValue, pos).unparse(writer, leftPrec, rightPrec);

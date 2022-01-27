@@ -16,14 +16,8 @@
 
 package com.alibaba.polardbx.repo.mysql.spi;
 
-import com.alibaba.polardbx.common.datatype.UInt64;
-import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
-import com.google.common.collect.ImmutableList;
-import com.googlecode.protobuf.format.JsonFormat;
-import com.mysql.cj.x.protobuf.PolarxExecPlan;
-import com.mysql.jdbc.CommunicationsException;
-import com.mysql.jdbc.Statement;
 import com.alibaba.polardbx.atom.utils.LoadFileUtils;
+import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlException;
@@ -1530,13 +1524,6 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     }
 
     public int executeTableDdl(PhyDdlTableOperation tableOperation) throws SQLException {
-        FailPoint.injectFromHint(FailPointKey.FP_RANDOM_PHYSICAL_DDL_EXCEPTION, executionContext, () -> {
-            long taskId = executionContext.getPhyDdlExecutionRecord().getTaskId();
-            if (executionContext.getDdlContext().compareAndSetPhysicalDdlInjectionFlag(taskId)) {
-                FailPoint
-                    .injectRandomExceptionFromHint(FailPointKey.FP_RANDOM_PHYSICAL_DDL_EXCEPTION, executionContext);
-            }
-        });
         long startPrepStmtEnvNano = 0;
         if (enableTaskProfile) {
             startPrepStmtEnvNano = ThreadCpuStatUtil.getThreadCpuTimeNano();
@@ -1584,6 +1571,9 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             }
             long startTimeNano = System.nanoTime();
             try {
+                FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_EXCEPTION, executionContext, () -> {
+                    FailPoint.injectException(FailPointKey.FP_PHYSICAL_DDL_EXCEPTION);
+                });
 
                 /**
                  * 真正将SQL发向物理数据源并执行：一定需要返回是否真正对DB产生了影响，后面会根据这个来决定是否上推新规则
@@ -1651,15 +1641,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     1L);
             }
 
-            if (tolerateSocketTimeout(e)) {
-                // Still print a warning.
-                if (logger.isWarnEnabled()) {
-                    logger.warn("Execute error on group: " + this.groupName + ", sql is: " + sqlAndParam.sql
-                        + ", param is: " + String.valueOf(sqlAndParam.param.values()), e);
-                }
-                // The physical ddl has been done even if socket timeout.
-                return 1;
-            }
+            waitUntilPhyDdlDoneAfterTimeout(e);
 
             try {
                 if (tableOperation.isPartitioned()) {
@@ -1710,11 +1692,12 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     }
 
     /**
-     * If the physical ddl execution failed due to socket timeout,
-     * then the physical ddl is probably still running on physical
-     * instance, so we should check the process until it's done.
+     * If the physical ddl failed due to timeout or connection reset,
+     * then it may be still running on physical instance. We should
+     * check the physical process until it's done, so that the logical
+     * ddl executor can determine if the physical ddl is already done.
      */
-    private boolean tolerateSocketTimeout(Throwable t) {
+    private void waitUntilPhyDdlDoneAfterTimeout(Throwable t) {
         boolean isTimeoutOnJdbc = t instanceof CommunicationsException &&
             TStringUtil.equalsIgnoreCase(((CommunicationsException) t).getSQLState(), "08S01") &&
             TStringUtil.containsIgnoreCase(t.getMessage(), "Communications link failure");
@@ -1729,10 +1712,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
 
         if (isTimeoutOnJdbc || isTimeoutOnXProtocol || isUnfinishedOnXProtocol) {
             DdlHelper.waitUntilPhyDdlDone(connection, executionContext.getTraceId());
-            return true;
         }
-
-        return false;
     }
 
     private boolean storeWarningsIfNeeded(PhyDdlTableOperation tableOperation) {
@@ -1903,9 +1883,19 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         TGroupDataSource dataSource = repo.getDataSource(groupName);
         String currentDbKey = ANONAMOUS_DBKEY;
         if (dataSource != null) {
-            MasterSlave masterSlave =
-                ExecUtils.getMasterSlave(inTrans, rw.equals(ITransaction.RW.WRITE), executionContext);
-            currentDbKey = dataSource.getConfigManager().getDataSource(masterSlave).getDsConfHandle().getDbKey();
+            if (connection != null) {
+                IConnection realConneciton = connection.getRealConnection();
+                if (realConneciton instanceof TGroupDirectConnection) {
+                    currentDbKey = ((TGroupDirectConnection) realConneciton).getDbKey();
+                }
+            }
+            if (currentDbKey == ANONAMOUS_DBKEY) {
+                MasterSlave masterSlave =
+                    ExecUtils.getMasterSlave(inTrans, rw.equals(ITransaction.RW.WRITE), executionContext);
+                currentDbKey =
+                    dataSource.getConfigManager().getDataSource(
+                        masterSlave).getDsConfHandle().getDbKey();
+            }
             if (StringUtils.isEmpty(currentDbKey)) {
                 currentDbKey = ANONAMOUS_DBKEY;
             }
@@ -1930,7 +1920,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             (TGroupDataSource) dataSource,
             rw,
             executionContext);
-        if (conn instanceof TGroupDirectConnection) {
+        if (conn.getRealConnection() instanceof TGroupDirectConnection) {
             this.connectionStats = conn.getConnectionStats();
             collectConnectionStats();
         }

@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -29,12 +29,14 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.logical.LogicalValues;
-import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import static com.alibaba.polardbx.optimizer.core.planner.rule.MergeUnionValuesRule.reWriteProject;
+import static com.alibaba.polardbx.optimizer.core.planner.rule.MergeUnionValuesRule.reWriteProjects;
 
 /**
  * @author minggong.zm 2018/1/29
@@ -67,30 +69,32 @@ public class RemoveProjectRule extends RelOptRule {
         RelNode projectChild = ((HepRelVertex) project.getInput()).getCurrentRel();
         if (projectChild instanceof LogicalValues) {
             LogicalValues oldValues = (LogicalValues) projectChild;
-            ImmutableList<ImmutableList<RexNode>> tuples = getTuples(project.getChildExps(), oldValues.getTuples());
+            List<ImmutableList<RexNode>> tuples = reWriteProjects(project.getChildExps(), oldValues.getTuples());
+
             dynamicValues = LogicalDynamicValues.createDrdsValues(oldValues.getCluster(),
                 oldValues.getTraitSet(),
                 modify.getInsertRowType(), // If inserted value is an
                 // expression, project.getRowType
-                tuples);
+                ImmutableList.copyOf(tuples));
         } else if (projectChild instanceof LogicalDynamicValues) {
             LogicalDynamicValues child = (LogicalDynamicValues) projectChild;
             if (child.getTuples().size() == 1) {
-                ImmutableList<ImmutableList<RexNode>> tuples = getSingleTuple(project.getChildExps(),
-                    child.getTuples().get(0));
+                List<ImmutableList<RexNode>> tuples = reWriteProjects(project.getProjects(), child.getTuples());
                 dynamicValues = LogicalDynamicValues.createDrdsValues(project.getCluster(),
                     project.getTraitSet(),
                     modify.getInsertRowType(),
-                    tuples);
+                    ImmutableList.copyOf(tuples));
             }
         } else if (projectChild instanceof LogicalProject) {
             LogicalProject midProject = (LogicalProject) projectChild;
-            ImmutableList<ImmutableList<RexNode>> tuples = getSingleTuple(project.getChildExps(),
-                midProject.getChildExps());
+            List<ImmutableList<RexNode>> tuples = new ArrayList<>();
+            List<RexNode> newProjects = reWriteProject(project.getChildExps(), midProject.getChildExps());
+            ImmutableList<RexNode> rets = ImmutableList.copyOf(newProjects);
+            tuples.add(rets);
             dynamicValues = LogicalDynamicValues.createDrdsValues(midProject.getCluster(),
                 midProject.getTraitSet(),
                 modify.getInsertRowType(),
-                tuples);
+                ImmutableList.copyOf(tuples));
         } else if (projectChild instanceof LogicalUnion) {
             LogicalUnion union = (LogicalUnion) projectChild;
             List<RelNode> unionInputs = union.getInputs();
@@ -111,11 +115,11 @@ public class RemoveProjectRule extends RelOptRule {
                 }
             }
             if (oldTuples.size() == unionInputs.size()) {
-                ImmutableList<ImmutableList<RexNode>> tuples = getTuples(project.getChildExps(), oldTuples);
+                List<ImmutableList<RexNode>> tuples = reWriteProjects(project.getChildExps(), oldTuples);
                 dynamicValues = LogicalDynamicValues.createDrdsValues(union.getCluster(),
                     union.getTraitSet(),
                     modify.getInsertRowType(),
-                    tuples);
+                    ImmutableList.copyOf(tuples));
             }
         }
 
@@ -126,58 +130,5 @@ public class RemoveProjectRule extends RelOptRule {
 
             call.transformTo(newModify);
         }
-    }
-
-    /**
-     * When a default value is used, other values will be RexInputRef instead of
-     * RexLiteral. We must transform RexInputRef to RexLiteral. If it's a
-     * RexDynamicParam, keep it as it was.
-     *
-     * @param exps LogicalProject > exps
-     * @param lookupList LogicalProject > LogicalProject > exps
-     */
-    public static ImmutableList<ImmutableList<RexNode>> getSingleTuple(List<RexNode> exps, List<RexNode> lookupList) {
-        List<RexNode> tuple = new ArrayList<>(exps.size());
-        for (RexNode exp : exps) {
-            if (exp instanceof RexInputRef) {
-                RexInputRef inputRef = (RexInputRef) exp;
-                int index = inputRef.getIndex();
-                RexNode newExp = lookupList.get(index);
-                tuple.add(newExp);
-            } else {
-                tuple.add(exp);
-            }
-        }
-        return ImmutableList.of(ImmutableList.copyOf(tuple));
-    }
-
-    /**
-     * When a default value is used, other values will be RexInputRef instead of
-     * RexLiteral. We must transform RexInputRef to RexLiteral. If it's a
-     * RexDynamicParam, keep it as it was.
-     *
-     * @param exps LogicalProject > exps
-     * @param lookupList LogicalProject > LogicalValues > tuples or LogicalUnion
-     * > LogicalProject > exps
-     */
-    public static ImmutableList<ImmutableList<RexNode>> getTuples(List<RexNode> exps,
-                                                                  List<? extends List<? extends RexNode>> lookupList) {
-        List<ImmutableList<RexNode>> newTuples = new ArrayList<>(lookupList.size());
-        for (int i = 0; i < lookupList.size(); i++) {
-            List<? extends RexNode> oldTuple = lookupList.get(i);
-            List<RexNode> newTuple = new ArrayList<>(exps.size());
-            for (RexNode exp : exps) {
-                if (exp instanceof RexInputRef) {
-                    RexInputRef inputRef = (RexInputRef) exp;
-                    int index = inputRef.getIndex();
-                    RexNode newExp = oldTuple.get(index);
-                    newTuple.add(newExp);
-                } else {
-                    newTuple.add(exp);
-                }
-            }
-            newTuples.add(ImmutableList.copyOf(newTuple));
-        }
-        return ImmutableList.copyOf(newTuples);
     }
 }

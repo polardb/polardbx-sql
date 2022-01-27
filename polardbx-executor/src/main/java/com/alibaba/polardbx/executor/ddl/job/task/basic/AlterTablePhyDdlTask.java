@@ -17,8 +17,15 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.common.exception.PhysicalDdlException;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -60,10 +67,39 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
-        if (!AlterTableRollbacker.checkIfRollbackable(executionContext.getDdlContext().getDdlStmt())) {
-            updateSupportedCommands(true, false, null);
+        try {
+            super.executeImpl(executionContext);
+        }catch (PhysicalDdlException e){
+            int successCount = e.getSuccessCount();
+            if (successCount == 0) {
+                final DdlTask currentTask = this;
+                DdlEngineAccessorDelegate delegate = new DdlEngineAccessorDelegate<Integer>() {
+                    @Override
+                    protected Integer invoke() {
+                        DdlEngineRecord engineRecord = engineAccessor.query(jobId);
+                        //if successCount==0, check supported_commands to decide exception policy
+                        if (engineRecord.isSupportCancel()) {
+                            //no physical DDL done
+                            //so we can mark DdlTaskState from DIRTY to READY
+                            currentTask.setState(DdlTaskState.READY);
+                            onExceptionTryRollback();
+                            DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
+                            return engineTaskAccessor.updateTask(taskRecord);
+                        }
+                        return 0;
+                    }
+                };
+                delegate.execute();
+            } else {
+                //some physical DDL failed && they do not support rollback
+                //so we forbid CANCEL DDL command here
+                if (!AlterTableRollbacker.checkIfRollbackable(executionContext.getDdlContext().getDdlStmt())) {
+                    updateSupportedCommands(true, false, null);
+                }
+            }
+            throw new PhysicalDdlException(e.getTotalCount(), e.getSuccessCount(), e.getFailCount(),
+                e.getErrMsg(), e.getSimpleErrMsg());
         }
-        super.executeImpl(executionContext);
     }
 
     @Override

@@ -34,6 +34,9 @@ public class FloatBlock extends AbstractBlock {
     public FloatBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new float[slotLen];
+
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = (Float.BYTES + Byte.BYTES) * positionCount;
     }
 
     public FloatBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, float[] values) {

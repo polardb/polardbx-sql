@@ -715,7 +715,7 @@ public class LogicalInsert extends TableModify {
             }
         }
 
-        RelDataType rowType = input.getRowType();
+        final RelDataType rowType = isSourceSelect() ? insertRowType : input.getRowType();
         if (rowType == null) {
             return;
         }

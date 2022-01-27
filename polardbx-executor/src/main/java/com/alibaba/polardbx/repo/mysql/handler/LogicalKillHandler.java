@@ -25,10 +25,12 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -49,7 +51,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author chenmo.cm
@@ -152,9 +156,18 @@ public class LogicalKillHandler extends HandlerCommon {
             }
 
             TGroupDataSource groupDataSource = (TGroupDataSource) repo.getDataSource(group.getName());
-            List<TAtomDataSource> atoms = groupDataSource.getAtomDataSources();
-            for (int atomIndex = 0; atomIndex < atoms.size(); atomIndex++) {
-                TAtomDataSource atom = atoms.get(atomIndex);
+            Iterator<Map.Entry<TAtomDataSource, Weight>> iterator =
+                groupDataSource.getAtomDataSourceWeights().entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<TAtomDataSource, Weight> entry = iterator.next();
+                TAtomDataSource atom = entry.getKey();
+                Weight weight = entry.getValue();
+
+                if (!ConfigDataMode.isMasterMode()) {
+                    if (weight != null && weight.w >= 0) {
+                        continue;
+                    }
+                }
                 Connection conn = null;
                 String user = atom.getDsConfHandle().getRunTimeConf().getUserName();
                 try {

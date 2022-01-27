@@ -32,7 +32,7 @@ import java.util.List;
  */
 public class Md5 extends AbstractScalarFunction {
     public Md5(List<DataType> operandTypes, DataType resultType) {
-        super(operandTypes, DataTypes.StringType);
+        super(operandTypes, resultType);
     }
 
     @Override

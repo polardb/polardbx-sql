@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
  */
 public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger("statistics view");
+    private static final Logger logger = LoggerFactory.getLogger("statistics");
 
     public VirtualStatisticHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
@@ -72,7 +72,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                 tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
             } catch (Throwable e) {
                 logger.error(e.getMessage());
-                return cursor;
+                continue;
             }
 
             for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {

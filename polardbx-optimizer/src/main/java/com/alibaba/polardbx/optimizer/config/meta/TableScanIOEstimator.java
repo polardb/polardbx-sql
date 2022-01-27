@@ -512,9 +512,15 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
                         StatisticResult statisticResult =
                             OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
                                 .getFrequency(tableMeta.getTableName(), columnMeta.getName(), rowValue);
-                        long frequency = rowValue.getValues().size();
-                        if (statisticResult != StatisticResult.EMPTY) {
-                            frequency = statisticResult.getLongValue();
+                        long frequency = statisticResult.getLongValue();
+
+                        // if statistic result is empty, assign one default value
+                        if (frequency < 0) {
+                            // Meaning lack of statistics
+                            frequency = Math.min(LACK_OF_STATISTICS_INDEX_EQUAL_ROW_COUNT, tableRowCount.longValue());
+                            if (rightRexNode != null && ((RexCall) rightRexNode).getOperands() != null) {
+                                frequency = frequency * ((RexCall) rightRexNode).getOperands().size();
+                            }
                         }
 
                         IndexContext indexContext =

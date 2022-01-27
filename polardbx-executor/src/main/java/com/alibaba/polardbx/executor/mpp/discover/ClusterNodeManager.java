@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.mpp.discover;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.mpp.deploy.MppServer;
 import com.alibaba.polardbx.executor.mpp.metadata.ForNodeManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.node.AllNodes;
@@ -27,7 +28,6 @@ import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeServer;
 import com.alibaba.polardbx.gms.node.NodeState;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
-import com.alibaba.polardbx.gms.node.PolarDBXStatusManager;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.http.client.HttpClient;
 import io.airlift.json.JsonCodec;
@@ -36,6 +36,7 @@ import javax.inject.Inject;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
 
 public class ClusterNodeManager implements InternalNodeManager {
 
@@ -48,7 +49,9 @@ public class ClusterNodeManager implements InternalNodeManager {
 
     private HttpClient httpClient;
 
-    private PolarDBXStatusManager polarDBXStatusManager = new PolarDBXStatusManager();
+    private ScheduledExecutorService nodeStateUpdateExecutor;
+
+    private MppServer mppServer;
 
     @Inject
     public ClusterNodeManager(InternalNode currentNode,
@@ -168,10 +171,5 @@ public class ClusterNodeManager implements InternalNodeManager {
 
     public HttpClient getHttpClient() {
         return httpClient;
-    }
-
-    @Override
-    public PolarDBXStatusManager getPolarDBXStatusManager() {
-        return polarDBXStatusManager;
     }
 }

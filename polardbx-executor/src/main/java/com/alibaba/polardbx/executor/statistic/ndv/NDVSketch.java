@@ -41,7 +41,7 @@ public class NDVSketch implements NDVSketchService {
     /**
      * schemaName:table name:columns name -> sketch
      */
-    private Map<String, NDVShardSketch> stringNDVShardSketchMap = Maps.newHashMap();
+    private Map<String, NDVShardSketch> stringNDVShardSketchMap = Maps.newConcurrentMap();
     private String schemaName;
 
     public NDVSketch(String schemaName) {
@@ -107,6 +107,17 @@ public class NDVSketch implements NDVSketchService {
             ndvShardSketch.setCardinality(compositeCardinalityArray.get(sketchKey));
             stringNDVShardSketchMap.put(sketchKey, ndvShardSketch);
         }
+    }
+
+    @Override
+    public void remove(String tableName) {
+        List<String> removeList = Lists.newLinkedList();
+        for (String sketchKey : stringNDVShardSketchMap.keySet()) {
+            if (sketchKey.startsWith(schemaName + ":" + tableName.toLowerCase() + ":")) {
+                removeList.add(sketchKey);
+            }
+        }
+        removeList.forEach(sketchKey -> stringNDVShardSketchMap.remove(sketchKey));
     }
 
     public StatisticResult getCardinality(String tableName, String columnNames) {

@@ -75,27 +75,19 @@ public class MockUtils {
 
     public static Set<String> fastsqls = Sets.newHashSet();
 
-    static {
-//        fastsqls.add("select @@version");
-//        fastsqls.add("xa recover");
-//        fastsqls.add("show variables like 'version'");
-//        fastsqls.add("select @@tx_isolation as `@@session.tx_isolation`");
-//        fastsqls.add(
-//            "select @@auto_increment_increment as `auto_increment_increment`, @@character_set_client as `character_set_client`, @@character_set_connection as `character_set_connection`, @@character_set_results as `character_set_results`, @@character_set_server as `character_set_server`, @@collation_server as `collation_server`, @@init_connect as `init_connect`, @@interactive_timeout as `interactive_timeout`, @@license as `license`, @@lower_case_table_names as `lower_case_table_names`, @@max_allowed_packet as `max_allowed_packet`, @@net_buffer_length as `net_buffer_length`, @@net_write_timeout as `net_write_timeout`, @@query_cache_size as `query_cache_size`, @@query_cache_type as `query_cache_type`, @@sql_mode as `sql_mode`, @@system_time_zone as `system_time_zone`, @@time_zone as `time_zone`, @@tx_isolation as `transaction_isolation`, @@wait_timeout as `wait_timeout`");
-    }
-
     public static boolean isSqlNeedTransparent(String sql, String schema,
                                                Map<Integer, Object> params) {
         if (fastMode) {
             int index = sql.indexOf("*/");
+
             if (index > 0) {
-                sql = sql.substring(index + 2);
-            }
-            if (fastsqls.contains(sql.toLowerCase())) {
-                return true;
+                sql = sql.replaceAll("/\\*[\\s\\S]*\\*/", " ");
             }
             if (sql.startsWith("XA")) {
                 return false;
+            }
+            if (fastsqls.contains(sql.toLowerCase())) {
+                return true;
             }
             if (!isMetaBuildCapable(sql, schema)) {
                 return true;

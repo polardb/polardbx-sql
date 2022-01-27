@@ -162,5 +162,8 @@
                 UNIQUE KEY `uk_inst_key` (`limit_key`)
               ) ENGINE=InnoDB AUTO_INCREMENT=57 DEFAULT CHARSET=utf8
         ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `user_login_error_limit` MODIFY COLUMN `max_error_limit` int(11) NOT NULL, MODIFY COLUMN `error_count` int(11) NOT NULL
+        ]]></Change>
     </SystemTable>
 </SystemTables>

@@ -61,8 +61,8 @@ public class GroupConcat extends AbstractAggregator {
 
     public GroupConcat(int[] aggTargetIndexes, boolean isDistinct, String separator,
                        List<Integer> aggOrderIndexList, List<Boolean> isAscList, int maxLen, String encoding,
-                       MemoryAllocatorCtx allocator, int filterArg) {
-        super(aggTargetIndexes, isDistinct, null, DataTypes.StringType, filterArg);
+                       MemoryAllocatorCtx allocator, int filterArg, DataType outputType) {
+        super(aggTargetIndexes, isDistinct, null, outputType, filterArg);
         this.aggOrderIndexList = aggOrderIndexList;
         this.memoryAllocator = allocator;
         if (separator != null) {

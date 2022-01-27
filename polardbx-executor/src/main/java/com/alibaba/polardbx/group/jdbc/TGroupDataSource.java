@@ -28,7 +28,10 @@ import com.alibaba.polardbx.common.model.DBType;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.Version;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.group.config.OptimizedGroupConfigManager;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
@@ -45,13 +48,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.StringTokenizer;
-import java.util.logging.Logger;
 
 /**
  * @author 梦实 2017年12月12日 下午2:01:21
  * @since 5.0.0
  */
 public class TGroupDataSource extends AbstractLifecycle implements IDataSource, Lifecycle {
+
+    private static final Logger logger = LoggerFactory.getLogger(TGroupDataSource.class);
+
+    public static final String INVALID_ADDRESS = "127.0.0.1:3306";
 
     public static final String VERSION = "2.4.1";
     private OptimizedGroupConfigManager configManager;
@@ -80,8 +86,6 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
 
     private MasterSlave masterSlave = MasterSlave.MASTER_ONLY;
 
-    private boolean enforceMaster = false;
-
     @Deprecated
     public TGroupDataSource() {
     }
@@ -94,6 +98,9 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             unitName = unitName.trim();
         }
         this.unitName = unitName;
+        if (!ConfigDataMode.isMasterMode()) {
+            masterSlave = MasterSlave.SLAVE_ONLY;
+        }
     }
 
     /**
@@ -372,7 +379,7 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
         this.stressTestValid = stressTestValid;
     }
 
-    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+    public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
         throw new UnsupportedOperationException("getParentLogger");
     }
 
@@ -395,15 +402,42 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
         return atomDataSources;
     }
 
-    public TAtomDataSource getAtomDataSourceOfIndexZero() {
+    public String getOneAtomAddress(boolean master) {
         TAtomDataSource ds = null;
-        for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
-            if (wrapper.getDataSourceIndex() == 0) {
-                ds = wrapper.getWrappedDataSource();
-                break;
+        if (master) {
+            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+                if (wrapper.getWeight() != null && wrapper.getWeight().w > 0) {
+                    ds = wrapper.getWrappedDataSource();
+                    break;
+                }
+            }
+        } else {
+            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+                if (wrapper.getWeight() != null && (wrapper.getWeight().w <= 0 && wrapper.getWeight().r > 0)) {
+                    ds = wrapper.getWrappedDataSource();
+                    break;
+                }
             }
         }
-        return ds;
+
+        if (ds == null) {
+            //The write weight is always > 0 for MetaDB Connection.
+            logger.warn(
+                "Not as expected for the appname:" + appName + ", dbGroupKey:" + dbGroupKey);
+            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+                ds = wrapper.getWrappedDataSource();
+                if (ds != null) {
+                    break;
+                }
+            }
+        }
+
+        if (ds != null) {
+            return ds.getHost() + ':' + ds.getPort();
+        } else {
+            // 不可能一个分库没有任何一个数据源，不应该走到这个逻辑
+            return INVALID_ADDRESS;
+        }
     }
 
     public void setUrl(String url) {
@@ -422,14 +456,6 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
         this.schemaName = schemaName;
     }
 
-    public boolean isEnforceMaster() {
-        return enforceMaster;
-    }
-
-    public void setEnforceMaster(boolean enforceMaster) {
-        this.enforceMaster = enforceMaster;
-    }
-
     public boolean isXDataSource() {
         for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
             if (!(wrapper.getWrappedDataSource().getDataSource() instanceof XDataSource)) {
@@ -444,11 +470,13 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
      *
      * @return instance id (HOST:PORT)
      */
-    public String getWriteInstanceId() {
+    public String getMasterSourceAddress() {
+
         String instanceId = null;
-        for (Map.Entry<TAtomDataSource, Weight> entry : getAtomDataSourceWeights().entrySet()) {
-            if (entry.getValue().w != 0) {
-                instanceId = entry.getKey().getHost() + ":" + entry.getKey().getPort();
+        for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+            Weight w = wrapper.getWeight();
+            if (w != null && w.w != 0) {
+                instanceId = wrapper.getWrappedDataSource().getHost() + ":" + wrapper.getWrappedDataSource().getPort();
                 break;
             }
         }

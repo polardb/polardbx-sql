@@ -18,14 +18,16 @@ package com.alibaba.polardbx.gms.topology;
 
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 
 import java.sql.Connection;
-import java.util.HashSet;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * @author chenghui.lch
@@ -37,7 +39,7 @@ public class ServerInstIdManager extends AbstractLifecycle {
     protected String instId = null;
     protected volatile String masterInstId = null;
     protected volatile int instType = ServerInfoRecord.INST_TYPE_MASTER;
-    protected volatile Set<String> allReadOnlyInstIdSet = new HashSet<>();
+    protected volatile Map<String, Set<String>> instId2StorageIds = new HashMap<>();
 
     protected ServerInstIdManager() {
     }
@@ -56,14 +58,23 @@ public class ServerInstIdManager extends AbstractLifecycle {
     @Override
     protected void doInit() {
         loadMasterInstId();
-        loadAllReadOnlyInstIdSet();
+        loadAllInstIdAndStorageIdSet();
         initInstType();
     }
 
     public void reload() {
         loadMasterInstId();
-        loadAllReadOnlyInstIdSet();
+        loadAllInstIdAndStorageIdSet();
         initInstType();
+        //here register the new storageIds listener after load the new learner InstId.
+        registerLearnerStorageInstId();
+    }
+
+    public void registerLearnerStorageInstId() {
+        if (ServerInstIdManager.getInstance().isMasterInst()) {
+            StorageHaManager.getInstance().registerLearnerStorageInstId();
+            StorageHaManager.getInstance().updateGroupConfigVersion();
+        }
     }
 
     protected void loadMasterInstId() {
@@ -92,19 +103,14 @@ public class ServerInstIdManager extends AbstractLifecycle {
         this.masterInstId = masterInstId;
     }
 
-    protected void loadAllReadOnlyInstIdSet() {
+    public synchronized void loadAllInstIdAndStorageIdSet() {
 
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
 
             StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
             storageInfoAccessor.setConnection(metaDbConn);
-            // Try to get all read-only inst id list from storage_info
-            List<String> roInstList = storageInfoAccessor.getServerReadOnlyInstIdSetFromStorageInfo();
-
-            Set<String> newAllReadOnlyInstIdSet = new HashSet<>();
-            newAllReadOnlyInstIdSet.addAll(roInstList);
-
-            allReadOnlyInstIdSet = newAllReadOnlyInstIdSet;
+            Map<String, Set<String>> instId2StorageIds = storageInfoAccessor.getServerStorageInstIdMapFromStorageInfo();
+            this.instId2StorageIds = instId2StorageIds;
         } catch (Throwable ex) {
             MetaDbLogUtil.META_DB_LOG.error(ex);
             throw GeneralUtil.nestedException(ex);
@@ -133,7 +139,11 @@ public class ServerInstIdManager extends AbstractLifecycle {
     }
 
     public Set<String> getAllReadOnlyInstIdSet() {
-        return allReadOnlyInstIdSet;
+        return this.instId2StorageIds.keySet().stream().filter(s -> !isMasterInstId(s)).collect(Collectors.toSet());
+    }
+
+    public Map<String, Set<String>> getInstId2StorageIds() {
+        return instId2StorageIds;
     }
 
     public String getInstId() {

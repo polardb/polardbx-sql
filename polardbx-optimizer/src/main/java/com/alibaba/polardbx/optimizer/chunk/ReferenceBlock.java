@@ -38,6 +38,8 @@ public class ReferenceBlock<T> extends AbstractBlock {
     public ReferenceBlock(DataType<T> dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new Object[slotLen];
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = Byte.BYTES * positionCount + sizeOf(values);
     }
 
     public ReferenceBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, Object[] values,

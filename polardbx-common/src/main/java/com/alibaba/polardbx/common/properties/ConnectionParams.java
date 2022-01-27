@@ -116,11 +116,43 @@ public class ConnectionParams {
         false,
         false);
 
+    /**
+     * 是否允许在 RC 的隔离级别下下推 REPLACE
+     */
+    public final static BooleanConfigParam DML_FORCE_PUSHDOWN_RC_REPLACE = new BooleanConfigParam(
+        ConnectionProperties.DML_FORCE_PUSHDOWN_RC_REPLACE,
+        false,
+        false);
+
+    /**
+     * 是否使用 returning 优化
+     */
     public final static BooleanConfigParam DML_USE_RETURNING = new BooleanConfigParam(
         ConnectionProperties.DML_USE_RETURNING,
         true,
         false);
 
+    /**
+     * 是否使用 GSI 检查冲突的插入值
+     */
+    public final static BooleanConfigParam DML_GET_DUP_USING_GSI = new BooleanConfigParam(
+        ConnectionProperties.DML_GET_DUP_USING_GSI,
+        true,
+        false);
+
+    /**
+     * DML 检查冲突列时下发 DN 的一条 SQL 所能包含的最大 UNION 数量，<= 0 表示无限制
+     */
+    public final static IntConfigParam DML_GET_DUP_UNION_SIZE = new IntConfigParam(
+        ConnectionProperties.DML_GET_DUP_UNION_SIZE,
+        0,
+        Integer.MAX_VALUE,
+        300,
+        true);
+
+    /**
+     * 是否使用 duplicated row count 作为 INSERT IGNORE 的 affected rows
+     */
     public final static BooleanConfigParam DML_RETURN_IGNORED_COUNT = new BooleanConfigParam(
         ConnectionProperties.DML_RETURN_IGNORED_COUNT,
         false,
@@ -1086,6 +1118,10 @@ public class ConnectionParams {
         new BooleanConfigParam(ConnectionProperties.PHY_SQL_TEMPLATE_CACHE, true,
             true);
 
+    /**
+     * Skip readonly check, Manager may do DDL(rename tables) after the servers
+     * were set readonly. Default is false.
+     */
     public static final BooleanConfigParam SKIP_READONLY_CHECK = new BooleanConfigParam(
         ConnectionProperties.SKIP_READONLY_CHECK, false, true);
 
@@ -1104,6 +1140,9 @@ public class ConnectionParams {
         new BooleanConfigParam(ConnectionProperties.WINDOW_FUNC_SUBQUERY_CONDITION,
             false,
             true);
+
+    public static final IntConfigParam PUSH_CORRELATE_MATERIALIZED_LIMIT = new IntConfigParam(
+        ConnectionProperties.PUSH_CORRELATE_MATERIALIZED_LIMIT, 1, 10000, 500, true);
 
     public static final BooleanConfigParam WINDOW_FUNC_REORDER_JOIN =
         new BooleanConfigParam(ConnectionProperties.WINDOW_FUNC_REORDER_JOIN,
@@ -1512,7 +1551,6 @@ public class ConnectionParams {
     public static final FloatConfigParam RUNTIME_FILTER_FPP = new FloatConfigParam(
         ConnectionProperties.RUNTIME_FILTER_FPP, 0.f, 0.99f, 0.03f, false);
 
-
     public static final BooleanConfigParam STORAGE_SUPPORTS_BLOOM_FILTER = new BooleanConfigParam(
         ConnectionProperties.STORAGE_SUPPORTS_BLOOM_FILTER, false, false);
 
@@ -1555,24 +1593,33 @@ public class ConnectionParams {
     public static final IntConfigParam TOPN_MIN_NUM = new IntConfigParam(
         ConnectionProperties.TOPN_MIN_NUM, 1, Integer.MAX_VALUE, 3, true);
 
-
-
     public static final IntConfigParam FEEDBACK_WORKLOAD_TP_THRESHOLD = new IntConfigParam(
         ConnectionProperties.FEEDBACK_WORKLOAD_TP_THRESHOLD, 1, Integer.MAX_VALUE, -1, true);
 
     public static final IntConfigParam FEEDBACK_WORKLOAD_AP_THRESHOLD = new IntConfigParam(
         ConnectionProperties.FEEDBACK_WORKLOAD_AP_THRESHOLD, 1, Integer.MAX_VALUE, Integer.MAX_VALUE, true);
 
-
-    public static final BooleanConfigParam ENABLE_AWARE_LEARNER_DELAY = new BooleanConfigParam(
-        ConnectionProperties.ENABLE_AWARE_LEARNER_DELAY, false, true);
-
-    public static final BooleanConfigParam ENABLE_AWARE_LEARNER_LOAD = new BooleanConfigParam(
-        ConnectionProperties.ENABLE_AWARE_LEARNER_LOAD, false, true);
+    //HTAP ROUTE
 
     public static final IntConfigParam MASTER_READ_WEIGHT = new IntConfigParam(
         ConnectionProperties.MASTER_READ_WEIGHT, -1, 100, -1, true);
 
+    /**
+     * set the operation strategy when the slave delay
+     * <0 means nothing, =1 change master, =2 throw exception
+     */
+    public static final IntConfigParam DELAY_EXECUTION_STRATEGY = new IntConfigParam(
+        ConnectionProperties.DELAY_EXECUTION_STRATEGY, 0, 2, 0, true);
+
+    /**
+     * inherit the DELAY_EXECUTION_STRATEGY from coordinator
+     */
+    public static final BooleanConfigParam KEEP_DELAY_EXECUTION_STRATEGY = new BooleanConfigParam(
+        ConnectionProperties.KEEP_DELAY_EXECUTION_STRATEGY, true, false);
+
+    /**
+     * 是否开启 SELECT INTO OUTFILE 默认关闭
+     */
     public static final BooleanConfigParam ENABLE_SELECT_INTO_OUTFILE =
         new BooleanConfigParam(ConnectionProperties.ENABLE_SELECT_INTO_OUTFILE, false, true);
 
@@ -1726,4 +1773,13 @@ public class ConnectionParams {
 
     public static final BooleanConfigParam FORCE_READ_OUTSIDE_TX = new BooleanConfigParam(
         ConnectionProperties.FORCE_READ_OUTSIDE_TX, false, true);
+
+    public static final BooleanConfigParam INTERRUPT_DDL_WHILE_LOSING_LEADER = new BooleanConfigParam(
+        ConnectionProperties.INTERRUPT_DDL_WHILE_LOSING_LEADER, true, true);
+
+    public static final BooleanConfigParam RECORD_SQL_COST = new BooleanConfigParam(
+            ConnectionProperties.RECORD_SQL_COST, false, true);
+
+    public static final BooleanConfigParam ENABLE_LOGICALVIEW_COST = new BooleanConfigParam(
+            ConnectionProperties.ENABLE_LOGICALVIEW_COST, true, true);
 }

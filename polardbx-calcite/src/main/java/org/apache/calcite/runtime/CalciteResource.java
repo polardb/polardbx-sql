@@ -770,6 +770,8 @@ public interface CalciteResource {
     @BaseMessage("In Global Secondary Index ''{0}'', index column ''{2}'' too long, max key length is ''{1}'' bytes")
     ExInst<SqlValidatorException> gsiKeyTooLong(String name, String maxKeyLen, String colName);
 
+    @BaseMessage("Unsupported call ''{0}'' in DUPLICATE KEY UPDATE clause ")
+    ExInst<SqlValidatorException> unsupportedCallInDuplicateKeyUpdate(String nodeinfo);
 }
 
 //FullyQualified

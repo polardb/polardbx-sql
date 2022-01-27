@@ -127,8 +127,11 @@ public class InformationSchemaViewManager extends ViewManager {
                 "where can_access_table(schema_name, view_name) ");
 
         defineView("CHARACTER_SETS", null, String.format("select * from %s.CHARACTER_SETS", MetaDbSchema.NAME));
-        defineView("COLLATION_CHARACTER_SET_APPLICABILITY", null,
-            String.format("select * from %s.COLLATION_CHARACTER_SET_APPLICABILITY", MetaDbSchema.NAME));
+
+        defineVirtualView(VirtualViewType.COLLATION_CHARACTER_SET_APPLICABILITY, new String[] {
+            "COLLATION_NAME",
+            "CHARACTER_SET_NAME"
+        });
 
         defineVirtualView(VirtualViewType.COLLATIONS, new String[] {
             "COLLATION_NAME",
@@ -142,18 +145,14 @@ public class InformationSchemaViewManager extends ViewManager {
 
         defineView("ENGINES", null, String.format("select * from %s.ENGINES", MetaDbSchema.NAME));
 
-        defineView("SCHEMATA", new String[] {
-                "CATALOG_NAME",
-                "SCHEMA_NAME",
-                "DEFAULT_CHARACTER_SET_NAME",
-                "DEFAULT_COLLATION_NAME",
-                "SQL_PATH"
-            },
-            String.format(
-                "select CATALOG_NAME, SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME, SQL_PATH from "
-                    + "%s.SCHEMATA where SCHEMA_NAME not in ('%s', '%s') ",
-                MetaDbSchema.NAME, SystemDbHelper.DEFAULT_DB_NAME, SystemDbHelper.CDC_DB_NAME)
-        );
+        defineVirtualView(VirtualViewType.SCHEMATA, new String[] {
+            "CATALOG_NAME",
+            "SCHEMA_NAME",
+            "DEFAULT_CHARACTER_SET_NAME",
+            "DEFAULT_COLLATION_NAME",
+            "SQL_PATH",
+            "DEFAULT_ENCRYPTION"        // The schema default encryption, added in MySQL 8.0.16
+        });
 
         defineView("TABLES", new String[] {
                 "TABLE_CATALOG",
@@ -411,6 +410,21 @@ public class InformationSchemaViewManager extends ViewManager {
             "VARIABLE_VALUE"
         });
 
+        defineVirtualView(VirtualViewType.KEY_COLUMN_USAGE, new String[] {
+            "CONSTRAINT_CATALOG",
+            "CONSTRAINT_SCHEMA",
+            "CONSTRAINT_NAME",
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "ORDINAL_POSITION",
+            "POSITION_IN_UNIQUE_CONSTRAINT",
+            "REFERENCED_TABLE_SCHEMA",
+            "REFERENCED_TABLE_NAME",
+            "REFERENCED_COLUMN_NAME"
+        });
+
         defineView("STATISTICS", new String[] {
                 "TABLE_CATALOG",
                 "TABLE_SCHEMA",
@@ -455,6 +469,15 @@ public class InformationSchemaViewManager extends ViewManager {
     }
 
     private void defineCommonView() {
+
+        defineVirtualView(VirtualViewType.VIRTUAL_STATISTIC, new String[] {
+                "TABLE_NAME",
+                "TABLE_ROWS",
+                "COLUMN_NAME",
+                "CARDINALITY",
+                "NDV_SOURCE",
+                "TOPN",
+                "HISTOGRAM"});
 
         defineVirtualView(VirtualViewType.INFORMATION_SCHEMA_TABLES, new String[] {
             "TABLE_CATALOG",
@@ -716,7 +739,8 @@ public class InformationSchemaViewManager extends ViewManager {
             "COMMAND",
             "TIME",
             "STATE",
-            "INFO"
+            "INFO",
+            "SQL_TEMPLATE_ID"
         });
 
         defineVirtualView(VirtualViewType.PHYSICAL_PROCESSLIST, new String[] {
@@ -1217,11 +1241,17 @@ public class InformationSchemaViewManager extends ViewManager {
             "TABLE_GROUP_NAME",
             "LOGICAL_TABLE",
             "PHYSICAL_TABLE",
+            "PARTITION_SEQ",
+            "PARTITION_NAME",
             "TABLE_ROWS",
             "DATA_LENGTH",
             "INDEX_LENGTH",
             "BOUND_VALUE",
-            "PERCENT"
+            "PERCENT",
+            "ROWS_READ",
+            "ROWS_INSERTED",
+            "ROWS_UPDATED",
+            "ROWS_DELETED",
         });
 
         defineVirtualView(VirtualViewType.LOCALITY_INFO, new String[] {
@@ -1259,6 +1289,7 @@ public class InformationSchemaViewManager extends ViewManager {
         defineVirtualView(VirtualViewType.PLAN_CACHE, new String[] {
             "COMPUTE_NODE",
             "SCHEMA_NAME",
+            "TABLE_NAMES",
             "ID",
             "HIT_COUNT",
             "SQL",
@@ -1278,6 +1309,13 @@ public class InformationSchemaViewManager extends ViewManager {
             "PLAN_ID",
             "FIXED",
             "ACCEPTED",
+            "CHOOSE_COUNT",
+            "SELECTIVITY_SPACE",
+            "PARAMS",
+            "RECENTLY_CHOOSE_RATE",
+            "EXPECTED_ROWS",
+            "MAX_ROWS_FEEDBACK",
+            "MIN_ROWS_FEEDBACK",
             "ORIGIN",
             "PARAMETERIZED_SQL",
             "EXTERNALIZED_PLAN"

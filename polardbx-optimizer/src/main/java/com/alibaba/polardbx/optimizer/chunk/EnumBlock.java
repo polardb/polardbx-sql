@@ -45,7 +45,7 @@ public class EnumBlock extends AbstractCommonBlock {
         this.offsets = offsets;
         this.data = data;
         sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + sizeOf(data);
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(data);
+        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(data) + sizeOf(valueIsNull);
         this.enumValues = enumValues;
         this.enumType = new EnumType(enumValues);
     }

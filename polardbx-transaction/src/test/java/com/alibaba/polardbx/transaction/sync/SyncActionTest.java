@@ -16,12 +16,17 @@
 
 package com.alibaba.polardbx.transaction.sync;
 
+import com.alibaba.polardbx.gms.node.StorageStatus;
+import com.alibaba.polardbx.gms.sync.RefreshStorageStatusSyncAction;
 import org.junit.Assert;
 import org.junit.Test;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.parser.Feature;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class SyncActionTest {
 
@@ -50,5 +55,24 @@ public class SyncActionTest {
 
         Assert.assertEquals(obj.getSchema(), action.getSchema());
         Assert.assertEquals(obj.isFetchSql(), action.isFetchSql());
+    }
+
+    @Test
+    public void testRequestSnapshotSeqSyncAction() {
+        RequestSnapshotSeqSyncAction action = new RequestSnapshotSeqSyncAction();
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+        RequestSnapshotSeqSyncAction obj =
+            (RequestSnapshotSeqSyncAction) JSON.parse(data, Feature.SupportAutoType);
+    }
+
+    @Test
+    public void testStatusSyncAction() {
+        Map<String, StorageStatus> map = new HashMap<>();
+        map.put("1", new StorageStatus("1", 1, 1, true, true));
+        RefreshStorageStatusSyncAction action = new RefreshStorageStatusSyncAction(map);
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+        RefreshStorageStatusSyncAction obj =
+            (RefreshStorageStatusSyncAction) JSON.parse(data, Feature.SupportAutoType);
+        Assert.assertEquals(map.size(), obj.getStatusMap().size());
     }
 }

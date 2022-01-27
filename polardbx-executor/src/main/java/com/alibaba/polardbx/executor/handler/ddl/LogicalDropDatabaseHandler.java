@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropDatabase;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlDropDatabase;
 
@@ -58,6 +59,8 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
         DropDbInfo dropDbInfo = new DropDbInfo();
         dropDbInfo.setDbName(dbName);
         dropDbInfo.setDropIfExists(isDropIfExists);
+        dropDbInfo.setAllowDropInScale(
+            executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE));
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         dropDbInfo.setSocketTimeout(socketTimeout == null ? -1 : socketTimeout);
         DbTopologyManager.dropLogicalDb(dropDbInfo);

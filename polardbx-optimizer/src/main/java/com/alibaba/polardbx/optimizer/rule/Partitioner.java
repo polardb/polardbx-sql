@@ -240,13 +240,13 @@ public class Partitioner extends AbstractLifecycle {
             throw GeneralUtil.nestedException(e);
         }
 
-        if (ConfigDataMode.isFastMock()) {
-            for (TargetDB targetDB : result.getCalculationResult()) {
-                for (String tableName : targetDB.getTableNames()) {
-                    MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
-                }
-            }
-        }
+//        if (ConfigDataMode.isFastMock()) {
+//            for (TargetDB targetDB : result.getCalculationResult()) {
+//                for (String tableName : targetDB.getTableNames()) {
+//                    MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
+//                }
+//            }
+//        }
         return result.getCalculationResult();
     }
 
@@ -565,6 +565,15 @@ public class Partitioner extends AbstractLifecycle {
         boolean columnInValue = true;
         RexCall row = null;
         if (left instanceof RexInputRef && right.getKind() == SqlKind.ROW) {
+            if (right instanceof RexCall && ((RexCall) right).getOperands().size() >= 1) {
+                RexNode rightOperand = ((RexCall) right).getOperands().get(0);
+                if (rightOperand != null &&
+                    rightOperand instanceof RexDynamicParam &&
+                    ((RexDynamicParam) rightOperand).getIndex() == -2) {
+                    return null;
+                }
+            }
+
             // id in (1, 2)
             row = (RexCall) right;
         } else if (left.getKind() == SqlKind.ROW && right.getKind() == SqlKind.ROW) {
@@ -583,6 +592,14 @@ public class Partitioner extends AbstractLifecycle {
             left = sk.get(0).getValue();
             row = (RexCall) right;
         } else if (right.getKind() == SqlKind.ROW) {
+            if (right instanceof RexCall && ((RexCall) right).getOperands().size() >= 1) {
+                RexNode rightOperand = ((RexCall) right).getOperands().get(0);
+                if (rightOperand != null &&
+                    rightOperand instanceof RexDynamicParam &&
+                    ((RexDynamicParam) rightOperand).getIndex() == -2) {
+                    return null;
+                }
+            }
             // maybe 1 in (id, 2)
             columnInValue = false;
             row = (RexCall) right;

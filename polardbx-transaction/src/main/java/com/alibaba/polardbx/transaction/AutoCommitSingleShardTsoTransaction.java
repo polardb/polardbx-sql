@@ -61,6 +61,11 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
     }
 
     @Override
+    public boolean snapshotSeqIsEmpty() {
+        return snapshotSeq <= 0;
+    }
+
+    @Override
     public IConnection getConnection(String schemaName, String group, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
         MasterSlave masterSlave = ExecUtils.getMasterSlave(
@@ -68,7 +73,7 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
 
         boolean needReadLsn = needReadLsn(this, schemaName, masterSlave, consistentReplicaRead);
 
-        IConnection conn = super.getConnection(schemaName, group, ds, rw, ec);
+        IConnection conn = super.getSelfConnection(schemaName, group, ds, masterSlave);
 
         conn = new DeferredConnection(conn, ec.getParamManager().getBoolean(
             ConnectionParams.USING_RDS_RESULT_SKIP));

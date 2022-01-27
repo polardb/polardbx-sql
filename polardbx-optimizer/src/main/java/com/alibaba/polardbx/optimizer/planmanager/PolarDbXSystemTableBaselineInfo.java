@@ -69,7 +69,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
             +
             "PLAN_INFO.ID, PLAN_INFO.PLAN, UNIX_TIMESTAMP(PLAN_INFO.LAST_EXECUTE_TIME), PLAN_INFO.CHOOSE_COUNT, PLAN_INFO.COST, PLAN_INFO.ESTIMATE_EXECUTION_TIME, "
             +
-            "PLAN_INFO.ACCEPTED, PLAN_INFO.FIXED, PLAN_INFO.TRACE_ID, PLAN_INFO.ORIGIN, UNIX_TIMESTAMP(PLAN_INFO"
+            "PLAN_INFO.ACCEPTED, PLAN_INFO.FIXED, PLAN_INFO.TRACE_ID, PLAN_INFO.ORIGIN, PLAN_INFO.EXTEND_FIELD AS PLAN_EXTEND, UNIX_TIMESTAMP(PLAN_INFO"
             + ".GMT_MODIFIED), UNIX_TIMESTAMP(PLAN_INFO.GMT_CREATED) FROM "
             +
             "`" + TABLE_NAME + "` AS BASELINE_INFO INNER JOIN `" + PolarDbXSystemTablePlanInfo.TABLE_NAME
@@ -238,6 +238,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                     String traceId = rs.getString("PLAN_INFO.TRACE_ID");
                     long createTime = rs.getLong("UNIX_TIMESTAMP(PLAN_INFO.GMT_CREATED)");
                     String origin = rs.getString("PLAN_INFO.ORIGIN");
+                    String planExtendField = rs.getString("PLAN_EXTEND");
                     String extendField = rs.getString("BASELINE_INFO.EXTEND_FIELD");
 
                     if (parameterSql.length() > maxBaselineInfoSqlLength
@@ -257,7 +258,8 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                     baselineInfo.setExtend(extendField);
                     PlanInfo planInfo =
                         new PlanInfo(baselineId, planString, createTime, lastExecuteTime, chooseCount, cost,
-                            estimateExecutionTime, accepted, fixed, traceId, origin, tablesHashCode);
+                            estimateExecutionTime, accepted, fixed, traceId, origin, planExtendField, tablesHashCode);
+
                     assert planInfo.getId() == planId;
                     if (planInfo.isAccepted()) {
                         baselineInfo.addAcceptedPlan(planInfo);
@@ -351,6 +353,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                 pps.setString(11, updatePlanInfo.getTraceId());
                 pps.setString(12, updatePlanInfo.getOrigin());
                 pps.setInt(13, updatePlanInfo.getTablesHashCode());
+                pps.setString(14, updatePlanInfo.encodeExtend());
                 pps.execute();
             } else {
                 logger.warn("Don't exist the planInfo " + updatePlanInfo);
@@ -545,6 +548,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                 pps.setString(11, planInfo.getTraceId());
                 pps.setString(12, planInfo.getOrigin());
                 pps.setInt(13, planInfo.getTablesHashCode());
+                pps.setString(14, planInfo.encodeExtend());
                 pps.addBatch();
                 acceptedPlanCount++;
             }

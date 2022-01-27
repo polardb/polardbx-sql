@@ -50,9 +50,12 @@ public class LogicalRelocate extends TableModify {
     private final List<RelocateWriter> gsiRelocateWriters;
     private final List<DistinctWriter> gsiUpdateWriters;
 
+    // Positions of auto_increment columns update columns
+    private final List<Integer> autoIncColumns;
+
     protected LogicalRelocate(LogicalModify update, List<RelocateWriter> primaryRelocateWriters,
                               List<DistinctWriter> primaryUpdateWriters, List<RelocateWriter> gsiRelocateWriters,
-                              List<DistinctWriter> gsiUpdateWriters) {
+                              List<DistinctWriter> gsiUpdateWriters, List<Integer> autoIncColumns) {
         super(update.getCluster(),
             update.getTraitSet(),
             update.getTable(),
@@ -72,6 +75,7 @@ public class LogicalRelocate extends TableModify {
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.gsiUpdateWriters = gsiUpdateWriters;
         this.schemaName = update.getSchemaName();
+        this.autoIncColumns = autoIncColumns;
     }
 
     public LogicalRelocate(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table, CatalogReader catalogReader,
@@ -79,7 +83,8 @@ public class LogicalRelocate extends TableModify {
                            List<RexNode> sourceExpressionList, boolean flattened, List<String> keywords, int batchSize,
                            Set<Integer> appendedColumnIndex, SqlNodeList hints, TableInfo tableInfos, String schemaName,
                            List<RelocateWriter> primaryRelocateWriters, List<DistinctWriter> primaryUpdateWriters,
-                           List<RelocateWriter> gsiRelocateWriters, List<DistinctWriter> gsiUpdateWriters) {
+                           List<RelocateWriter> gsiRelocateWriters, List<DistinctWriter> gsiUpdateWriters,
+                           List<Integer> autoIncColumns) {
         super(cluster,
             traitSet,
             table,
@@ -99,7 +104,7 @@ public class LogicalRelocate extends TableModify {
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.gsiUpdateWriters = gsiUpdateWriters;
         this.schemaName = schemaName;
-
+        this.autoIncColumns = autoIncColumns;
     }
 
     /**
@@ -110,25 +115,28 @@ public class LogicalRelocate extends TableModify {
      * @return LogicalRelocate
      */
     public static LogicalRelocate singleTargetWithoutGsi(LogicalModify update,
-                                                         List<RelocateWriter> relocateWriters) {
+                                                         List<RelocateWriter> relocateWriters,
+                                                         List<Integer> autoIncColumns) {
         Preconditions.checkNotNull(update);
         Preconditions.checkArgument(update.isUpdate());
 
         // Single-table update
         Preconditions.checkArgument(update.getTableInfo().isSingleTarget());
 
-        return new LogicalRelocate(update, relocateWriters, ImmutableList.of(), ImmutableList.of(), ImmutableList.of());
+        return new LogicalRelocate(update, relocateWriters, ImmutableList.of(), ImmutableList.of(), ImmutableList.of(),
+            autoIncColumns);
     }
 
     public static LogicalRelocate create(LogicalModify update, List<RelocateWriter> primaryRelocateWriters,
                                          List<DistinctWriter> primaryUpdateWriters,
                                          List<RelocateWriter> gsiRelocateWriters,
-                                         List<DistinctWriter> gsiUpdateWriters) {
+                                         List<DistinctWriter> gsiUpdateWriters,
+                                         List<Integer> autoIncColumns) {
         Preconditions.checkNotNull(update);
         Preconditions.checkArgument(update.isUpdate());
 
         return new LogicalRelocate(update, primaryRelocateWriters, primaryUpdateWriters, gsiRelocateWriters,
-            gsiUpdateWriters);
+            gsiUpdateWriters, autoIncColumns);
     }
 
     protected String explainNodeName() {
@@ -193,7 +201,8 @@ public class LogicalRelocate extends TableModify {
             getPrimaryRelocateWriters(),
             getPrimaryUpdateWriters(),
             getGsiRelocateWriters(),
-            getGsiUpdateWriters());
+            getGsiUpdateWriters(),
+            getAutoIncColumns());
     }
 
     public List<RelocateWriter> getPrimaryRelocateWriters() {
@@ -210,6 +219,10 @@ public class LogicalRelocate extends TableModify {
 
     public List<DistinctWriter> getGsiUpdateWriters() {
         return gsiUpdateWriters;
+    }
+
+    public List<Integer> getAutoIncColumns() {
+        return autoIncColumns;
     }
 
     @Override

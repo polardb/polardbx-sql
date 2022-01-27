@@ -24,6 +24,17 @@ import java.util.concurrent.TimeUnit;
 
 public class PropUtil {
 
+    public static final String MPP_LOCALCLUSTER = "localcluster";
+
+    /**
+     * Converts the given duration (interval value plus unit) to milliseconds,
+     * ensuring that any given value greater than zero converts to at least one
+     * millisecond to avoid a zero millisecond result, since Object.wait(0)
+     * waits forever.
+     *
+     * @throws IllegalArgumentException if the duration argument is illegal.
+     * Thrown via API setter methods such as Transaction.setLockTimeout.
+     */
     public static int durationToMillis(final long val, final TimeUnit unit) {
         if (val == 0) {
 
@@ -166,11 +177,17 @@ public class PropUtil {
         TEXT, JSON
     }
 
-    public enum FOLLOWERSTRATEGY {
-        FORCE, AUTO, RANDOM
-    }
-
+    /**
+     * DEFAULT_VALUE_MODE mean the empty char will be replace by default value
+     * NULL_MODE mean the empty char will be replace by null value
+     * N_MODE mean the "\N" char will be replace by null value,
+     */
     public enum LOAD_NULL_MODE {
         DEFAULT_VALUE_MODE, NULL_MODE, N_MODE, DEFAULT_VALUE_AND_N_MODE
+    }
+
+    public static String getCluster(String defaultClusterName) {
+        return System.getProperty(MPP_LOCALCLUSTER) != null ?
+            System.getProperty(MPP_LOCALCLUSTER) : defaultClusterName;
     }
 }

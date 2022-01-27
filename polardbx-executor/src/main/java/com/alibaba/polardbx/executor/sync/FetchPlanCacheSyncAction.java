@@ -86,6 +86,7 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
         result.addColumn("ID", DataTypes.StringType);
         result.addColumn("HIT_COUNT", DataTypes.LongType);
         result.addColumn("SQL", DataTypes.StringType);
+        result.addColumn("TYPE_DIGEST", DataTypes.LongType);
         result.addColumn("PLAN", DataTypes.StringType);
 
         for (Map.Entry<PlanCache.CacheKey, ExecutionPlan> entry : planCache.getCache().asMap().entrySet()) {
@@ -108,9 +109,10 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
             result.addRow(new Object[] {
                 TddlNode.getHost() + ":" + TddlNode.getPort(),
                 cacheKey.getTableMetas().stream().map(meta -> meta.getTableName()).collect(Collectors.joining(",")),
-                TStringUtil.int2FixedLenHexStr(cacheKey.getParameterizedSql().hashCode()),
+                cacheKey.getTemplateId(),
                 executionPlan.getHitCount().longValue(),
                 cacheKey.getParameterizedSql(),
+                cacheKey.getTypeDigest(),
                 plan
             });
         }

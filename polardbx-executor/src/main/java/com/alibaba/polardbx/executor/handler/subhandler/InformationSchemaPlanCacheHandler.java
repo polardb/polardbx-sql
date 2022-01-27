@@ -71,6 +71,7 @@ public class InformationSchemaPlanCacheHandler extends BaseVirtualViewSubClassHa
                     final String id = DataTypes.StringType.convertFrom(row.get("ID"));
                     final Long hitCount = DataTypes.LongType.convertFrom(row.get("HIT_COUNT"));
                     final String sql = DataTypes.StringType.convertFrom(row.get("SQL"));
+                    final Long typeDigest = DataTypes.LongType.convertFrom(row.get("TYPE_DIGEST"));
                     final String plan = DataTypes.StringType.convertFrom(row.get("PLAN"));
 
                     cursor.addRow(new Object[] {
@@ -80,6 +81,7 @@ public class InformationSchemaPlanCacheHandler extends BaseVirtualViewSubClassHa
                         id,
                         hitCount,
                         sql,
+                        typeDigest,
                         plan
                     });
                 }

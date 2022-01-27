@@ -29,7 +29,7 @@ import java.util.List;
 public class User extends AbstractScalarFunction {
 
     public User(List<DataType> operandTypes, DataType resultType) {
-        super(operandTypes, DataTypes.StringType);
+        super(operandTypes, resultType);
     }
 
     @Override

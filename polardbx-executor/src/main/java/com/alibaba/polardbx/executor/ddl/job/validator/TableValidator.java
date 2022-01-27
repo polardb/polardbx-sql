@@ -65,7 +65,7 @@ public class TableValidator {
     }
 
     public static void validateSystemTables(String logicalTableName) {
-        if (GmsSystemTables.contains(logicalTableName)) {
+        if (GmsSystemTables.contains(logicalTableName) && !GmsSystemTables.systemIgnoreTablescontains(logicalTableName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_MODIFY_SYSTEM_TABLE, logicalTableName);
         }
     }

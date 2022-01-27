@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.google.common.base.Predicate;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -777,6 +780,9 @@ public class CBOUtil {
 
     public static RelOptCost getCost(ExecutionContext executionContext) {
         final RelOptCost zero = DrdsRelOptCostImpl.FACTORY.makeZeroCost();
+        if (!executionContext.getParamManager().getBoolean(ConnectionParams.RECORD_SQL_COST)) {
+            return zero;
+        }
         if (executionContext.getExplain() != null) {
             return zero;
         }
@@ -793,10 +799,18 @@ public class CBOUtil {
         RelOptCost cost = PlannerContext.getPlannerContext(plan).getCost();
         if (cost == null) {
             RelMetadataQuery mq = plan.getCluster().getMetadataQuery();
-            synchronized (mq) {
-                cost = mq.getCumulativeCost(plan);
-                PlannerContext.getPlannerContext(plan).setCost(cost);
+            if (mq != null) {
+                synchronized (mq) {
+                    try {
+                        cost = mq.getCumulativeCost(plan);
+                    } catch (Throwable t) {
+                        cost = plan.getCluster().getPlanner().getCostFactory().makeTinyCost();
+                    }
+                }
+            } else {
+                cost = plan.getCluster().getPlanner().getCostFactory().makeTinyCost();
             }
+            PlannerContext.getPlannerContext(plan).setCost(cost);
         }
         return cost;
     }

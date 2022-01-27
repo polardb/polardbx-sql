@@ -27,6 +27,7 @@ import com.alibaba.polardbx.server.handler.CollectHandler;
 import com.alibaba.polardbx.server.handler.CommentHandler;
 import com.alibaba.polardbx.server.handler.DeallocateHandler;
 import com.alibaba.polardbx.server.handler.ExecuteHandler;
+import com.alibaba.polardbx.server.handler.FlushHandler;
 import com.alibaba.polardbx.server.handler.PrepareHandler;
 import com.alibaba.polardbx.server.handler.ResizeHandler;
 import com.alibaba.polardbx.server.handler.SelectHandler;
@@ -163,7 +164,7 @@ public class ServerQueryHandler implements QueryHandler {
                 KillHandler.response(sql, rs >>> 8, true, c, hasMore);
                 break;
             case ServerParse.ROLLBACK:
-                c.rollback(hasMore, true);
+                c.rollback(hasMore);
                 break;
             case ServerParse.PREPARE:
                 PrepareHandler.handle(sql, c, hasMore);
@@ -190,8 +191,6 @@ public class ServerQueryHandler implements QueryHandler {
                 PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
                 break;
             case ServerParse.CREATE_ROLE:
-                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
-                break;
             case ServerParse.DROP_ROLE:
                 PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
                 break;
@@ -219,6 +218,10 @@ public class ServerQueryHandler implements QueryHandler {
                 break;
             case ServerParse.RESIZE:
                 ResizeHandler.handle(sql, c, rs >>> 8, hasMore);
+                recordSql = false;
+                break;
+            case ServerParse.FLUSH:
+                FlushHandler.handle(sql, c, rs >>> 8, hasMore);
                 recordSql = false;
                 break;
             default:

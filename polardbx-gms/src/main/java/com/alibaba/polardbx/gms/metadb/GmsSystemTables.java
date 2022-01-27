@@ -23,6 +23,8 @@ public class GmsSystemTables {
 
     private static Set<String> systemTables = new HashSet<>();
 
+    private static Set<String> maybe_IgnoreSystemTables = new HashSet<>();
+
     /**
      * Dummy Table
      */
@@ -90,6 +92,7 @@ public class GmsSystemTables {
      * DDL Job Engine
      */
     public static final String READ_WRITE_LOCK = "read_write_lock";
+    public static final String DDL_JOBS = "ddl_jobs";
     public static final String DDL_ENGINE = "ddl_engine";
     public static final String DDL_ENGINE_TASK = "ddl_engine_task";
 
@@ -196,6 +199,7 @@ public class GmsSystemTables {
         register(BASELINE_INFO);
         register(CHECKER_REPORTS);
         register(COLUMN_STATISTICS);
+        register(DDL_JOBS);
         register(DDL_ENGINE);
         register(DDL_ENGINE_TASK);
         register(READ_WRITE_LOCK);
@@ -241,6 +245,12 @@ public class GmsSystemTables {
         register(VARIABLE_CONFIG);
     }
 
+    static {
+        maybe_IgnoreSystemTables.add(TABLES);
+        maybe_IgnoreSystemTables.add(COLUMNS);
+        maybe_IgnoreSystemTables.add(INDEXES);
+    }
+
     private static void register(String systemTableName) {
         systemTables.add(systemTableName.toLowerCase());
     }
@@ -249,4 +259,7 @@ public class GmsSystemTables {
         return systemTables.contains(systemTableName.toLowerCase());
     }
 
+    public static boolean systemIgnoreTablescontains(String systemTableName) {
+        return maybe_IgnoreSystemTables.contains(systemTableName.toLowerCase());
+    }
 }

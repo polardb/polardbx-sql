@@ -127,7 +127,7 @@ public class HintUtil {
     public static String buildPushdown(String table, String condition, String schemaName) {
         StringBuilder sql = new StringBuilder("SELECT * FROM ");
         if (TStringUtil.isNotBlank(schemaName)) {
-            sql.append(schemaName).append(".");
+            sql.append("`").append(schemaName).append("`").append(".");
         }
 
         if (TStringUtil.isNotBlank(table)) {

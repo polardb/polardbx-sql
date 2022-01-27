@@ -51,6 +51,7 @@ public class SequenceValidator {
 
     public static void validateSimpleSequence(SequenceBean sequenceBean, ExecutionContext executionContext) {
         if (sequenceBean == null ||
+            sequenceBean.getKind() == null ||
             ConfigDataMode.isAllowSimpleSequence() ||
             executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_SIMPLE_SEQUENCE)) {
             return;

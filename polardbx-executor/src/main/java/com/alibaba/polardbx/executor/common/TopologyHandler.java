@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.common;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Matrix;
@@ -63,9 +62,6 @@ public class TopologyHandler extends AbstractLifecycle {
     public final static Logger logger = LoggerFactory.getLogger(TopologyHandler.class);
 
     private final Map<String/* group key of upper case */, IGroupExecutor> executorMap =
-        new ConcurrentHashMap<String, IGroupExecutor>();
-
-    private final Map<String/* group key of upper case */, IGroupExecutor> masterGroupExecutorMap =
         new ConcurrentHashMap<String, IGroupExecutor>();
 
     private String appName;
@@ -181,7 +177,6 @@ public class TopologyHandler extends AbstractLifecycle {
 
         this.repositoryHolder.clear();
         this.executorMap.clear();
-        this.masterGroupExecutorMap.clear();
     }
 
     @Override
@@ -277,28 +272,6 @@ public class TopologyHandler extends AbstractLifecycle {
     }
 
     /**
-     * 指定Group配置，创建一个GroupExecutor
-     */
-    public IGroupExecutor createOneMasterGroup(Group group) {
-        synchronized (executorMap) {
-            Group masterGroup = new Group();
-            masterGroup.setName(group.getName());
-            masterGroup.setType(group.getType());
-            masterGroup.setProperties(group.getProperties());
-            masterGroup.setAtoms(group.getAtoms());
-            masterGroup.setAppName(this.appName);
-            masterGroup.setSchemaName(this.schemaName);
-            masterGroup.setUnitName(this.unitName);
-            masterGroup.setEnforceMaster(true);
-            IRepository repo =
-                repositoryHolder.getOrCreateRepository(masterGroup, matrix.getProperties(), connProperties);
-            IGroupExecutor groupExecutor = repo.getMasterGroupExecutor(masterGroup);
-            putOneMasterGroupExecutor(masterGroup.getName(), groupExecutor, true);
-            return groupExecutor;
-        }
-    }
-
-    /**
      * 添加指定groupKey的GroupExecutor，返回之前已有的
      */
     protected IGroupExecutor putOne(String groupKey, IGroupExecutor groupExecutor) {
@@ -311,15 +284,6 @@ public class TopologyHandler extends AbstractLifecycle {
                 + executorMap);
         }
         return executorMap.put(groupKey.toUpperCase(), groupExecutor);
-    }
-
-    protected IGroupExecutor putOneMasterGroupExecutor(String groupKey, IGroupExecutor groupExecutor,
-                                                       boolean singleton) {
-        if (singleton && masterGroupExecutorMap.containsKey(groupKey.toUpperCase())) {
-            throw new IllegalArgumentException("group key is already exists . group key : " + groupKey + " . map "
-                + executorMap);
-        }
-        return masterGroupExecutorMap.put(groupKey.toUpperCase(), groupExecutor);
     }
 
     public IGroupExecutor get(String key) {
@@ -343,37 +307,6 @@ public class TopologyHandler extends AbstractLifecycle {
                         return createOne(group);
                     } else {
                         return executorMap.get(keyUpperCase);
-                    }
-                }
-            }
-        }
-        return groupExecutor;
-    }
-
-    public IGroupExecutor get(String key, boolean master) {
-        if (master && !ConfigDataMode.isMasterMode()) {
-            return getMasterGroupExecutor(key);
-        } else {
-            return get(key);
-        }
-    }
-
-    private IGroupExecutor getMasterGroupExecutor(String groupKey) {
-        if (ConfigDataMode.isMasterMode()) {
-            throw new NotSupportException("Not support getMasterGroupExecutor in PolarDB-X Master Mode");
-        }
-        String keyUpperCase = groupKey.toUpperCase();
-        IGroupExecutor groupExecutor = masterGroupExecutorMap.get(keyUpperCase);
-        if (groupExecutor == null) {
-            Group group = matrix.getGroup(keyUpperCase);
-            if (group != null) {
-                synchronized (masterGroupExecutorMap) {
-                    // double-check，避免并发创建
-                    groupExecutor = masterGroupExecutorMap.get(keyUpperCase);
-                    if (groupExecutor == null) {
-                        return createOneMasterGroup(group);
-                    } else {
-                        return masterGroupExecutorMap.get(keyUpperCase);
                     }
                 }
             }
@@ -474,7 +407,7 @@ public class TopologyHandler extends AbstractLifecycle {
         return repoInstMaps;
     }
 
-    public Map<String, RepoInst> getGroupRepoInstMaps() {
+    public Map<String, RepoInst> getGroupRepoInstMapsForzigzig() {
         Map<String, RepoInst> groupRepoInstMaps = new HashMap<String, RepoInst>();
 
         List<Group> allGroupsInMatrix = new ArrayList<>();
@@ -483,18 +416,10 @@ public class TopologyHandler extends AbstractLifecycle {
             IGroupExecutor groupExecutor = get(group.getName());
             TGroupDataSource ds = (TGroupDataSource) groupExecutor.getDataSource();
             String groupName = ds.getDbGroupKey();
-            TAtomDataSource atomDs = ds.getAtomDataSourceOfIndexZero();
+            String address = ds.getOneAtomAddress(ConfigDataMode.isMasterMode());
             RepoInst repoInst = new RepoInst();
-            if (atomDs != null) {
-                String addr = atomDs.getHost() + ':' + atomDs.getPort();
-                repoInst.setAddress(addr);
-                groupRepoInstMaps.put(groupName, repoInst);
-            } else {
-                // 不可能一个分库没有任何一个数据源，不应该走到这个逻辑
-                String addr = "127.0.0.1:3306";
-                repoInst.setAddress(addr);
-                groupRepoInstMaps.put(groupName, repoInst);
-            }
+            repoInst.setAddress(address);
+            groupRepoInstMaps.put(groupName, repoInst);
         }
         return groupRepoInstMaps;
     }

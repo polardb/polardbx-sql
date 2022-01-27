@@ -54,7 +54,7 @@ public class MockSchemaManager extends AbstractLifecycle implements SchemaManage
                 tableName.toUpperCase(),
                 StringUtils.join(tableMetaMap.keySet().toArray(), " ,"),
                 this.hashCode());
-            throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, tableName);
+            throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, error);
         }
     }
 

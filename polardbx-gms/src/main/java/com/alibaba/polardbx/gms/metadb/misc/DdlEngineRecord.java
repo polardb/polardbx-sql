@@ -130,6 +130,14 @@ public class DdlEngineRecord implements SystemTableRecord {
         supportedCommands &= ~FLAG_SUPPORT_CANCEL;
     }
 
+    public static boolean isSupportContinue(int flag) {
+        return (flag & FLAG_SUPPORT_CONTINUE) != 0L;
+    }
+
+    public static boolean isSupportCancel(int flag) {
+        return (flag & FLAG_SUPPORT_CANCEL) != 0L;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) {

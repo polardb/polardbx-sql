@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -378,6 +379,23 @@ public class CheckModifyLimitation {
 
         // Whether UPDATE modify columns belong to gsi
         return indexMeta.stream().anyMatch(tm -> targetColumns.stream().anyMatch(c -> null != tm.getColumn(c)));
+    }
+
+    public static boolean checkGsiHasAutoUpdateColumns(List<TableModify.TableInfoNode> srcTables, ExecutionContext ec) {
+        return srcTables.stream().anyMatch(t -> {
+            RelOptTable targetTable = t.getRefTable();
+            final List<TableMeta> indexMeta = GlobalIndexMeta.getIndex(targetTable, ec);
+            if (indexMeta.isEmpty()) {
+                // Without gsi
+                return false;
+            }
+
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
+            final TableMeta tableMeta = ec.getSchemaManager(qn.left).getTable(qn.right);
+            final List<String> autoUpdateColumns =
+                tableMeta.getAutoUpdateColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
+            return indexMeta.stream().anyMatch(tm -> autoUpdateColumns.stream().anyMatch(c -> null != tm.getColumn(c)));
+        });
     }
 
     public static boolean checkModifyPk(TableModify tableModify, ExecutionContext ec) {

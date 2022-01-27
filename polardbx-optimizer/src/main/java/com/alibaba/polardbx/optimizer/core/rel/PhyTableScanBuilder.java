@@ -485,12 +485,13 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
     public final static String UNION_KW = "\nUNION ALL\n";
     public final static String ORDERBY_KW = " ORDER BY ";
+    public final static String LIMIT_KW = " LIMIT ";
     public final static String UNION_ALIAS = "__DRDS_ALIAS_T_";
 
     public String buildSql(PhyTableOperation phyTableOp, String prefix) {
         int tableCount = phyTableOp.getTableNames().size();
         String orderBy = buildPhysicalOrderByClause();
-        return buildPhysicalQuery(tableCount, phyTableOp.getNativeSql(), orderBy, prefix);
+        return buildPhysicalQuery(tableCount, phyTableOp.getNativeSql(), orderBy, prefix, -1);
     }
 
     /**
@@ -498,7 +499,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
      *
      * @param num number of sub-queries
      */
-    public static String buildPhysicalQuery(int num, String sqlTemplateStr, String orderBy, String prefix) {
+    public static String buildPhysicalQuery(int num, String sqlTemplateStr, String orderBy, String prefix, long limit) {
         Preconditions.checkArgument(num > 0, "The number of tables must great than 0 when build UNION ALL sql");
         if (num == 1) {
             if (StringUtils.isNotEmpty(prefix)) {
@@ -527,6 +528,9 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
             builder.append(") ").append(UNION_ALIAS).append(" ").append(ORDERBY_KW).append(orderBy);
         }
 
+        if (limit > 0) {
+            builder.append(LIMIT_KW).append(limit);
+        }
         return builder.toString();
     }
 

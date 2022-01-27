@@ -139,7 +139,7 @@ public class ResumeTableScanExec extends TableScanExec implements ResumeExec {
         public String getHintSql(boolean ignore) {
             if (physicalSql == null) {
                 physicalSql =
-                    PhyTableScanBuilder.buildPhysicalQuery(getTableNames().size(), sqlTemplate, orderBy, null);
+                    PhyTableScanBuilder.buildPhysicalQuery(getTableNames().size(), sqlTemplate, orderBy, null, -1);
             }
 
             StringBuilder builder = new StringBuilder();

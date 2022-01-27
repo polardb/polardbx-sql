@@ -93,21 +93,24 @@ public class PlanExecutor extends AbstractLifecycle {
             RelNode relNode = executionPlan.getPlan();
             //record the row count for hashAgg&overWindow&LogicalUnion.
             final RelMetadataQuery mq = relNode.getCluster().getMetadataQuery();
-            synchronized (mq) {
-                new RelVisitor() {
 
-                    @Override
-                    public void visit(RelNode node, int ordinal, RelNode parent) {
-                        if (node instanceof HashAgg || node instanceof SortWindow || node instanceof LogicalUnion
+            new RelVisitor() {
+                @Override
+                public void visit(RelNode node, int ordinal, RelNode parent) {
+                    if (node instanceof HashAgg || node instanceof SortWindow || node instanceof LogicalUnion
                             || node instanceof HashGroupJoin) {
-                            int rowCount = mq.getRowCount(node).intValue();
-                            ec.getRecordRowCnt().put(node.getRelatedId(), rowCount);
+                        if (mq == null) {
+                            ec.getRecordRowCnt().put(node.getRelatedId(), 100);
+                        } else {
+                            synchronized (mq) {
+                                int rowCount = mq.getRowCount(node).intValue();
+                                ec.getRecordRowCnt().put(node.getRelatedId(), rowCount);
+                            }
                         }
-                        super.visit(node, ordinal, parent);
                     }
-
-                }.go(relNode);
-            }
+                    super.visit(node, ordinal, parent);
+                }
+            }.go(relNode);
 
             List<RelNode> cacheRelNodes = PlannerContext.getPlannerContext(relNode).getCacheNodes();
             ec.getCacheRelNodeIds()

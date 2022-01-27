@@ -27,6 +27,8 @@ public class DropDbInfo {
 
     protected long socketTimeout;
 
+    private boolean allowDropInScale;
+
     public String getDbName() {
         return dbName;
     }
@@ -49,5 +51,13 @@ public class DropDbInfo {
 
     public void setDropIfExists(boolean dropIfExists) {
         isDropIfExists = dropIfExists;
+    }
+
+    public boolean isAllowDropInScale() {
+        return allowDropInScale;
+    }
+
+    public void setAllowDropInScale(boolean allowDropInScale) {
+        this.allowDropInScale = allowDropInScale;
     }
 }

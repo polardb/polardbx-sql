@@ -49,7 +49,7 @@ public class SliceBlock extends AbstractCommonBlock {
         this.data = data;
         // Slice.length is the memory size in bytes.
         sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + data.length();
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + data.length();
+        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(valueIsNull) + data.length();
 
         this.sortKeys = new WeakReference[positionCount];
     }

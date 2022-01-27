@@ -192,6 +192,7 @@ import java.util.TreeSet;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TABLE_EMPTY_WITH_HINT;
 import static org.apache.calcite.sql.SqlUtil.stripAs;
 
 /**
@@ -889,6 +890,11 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 }
             } else {
                 boolean dmlPushed = false;
+
+                if (targetTable != null && targetTable.isEmpty()) {
+                    //目标表个数为0，运行容易产生歧义
+                    throw new TddlRuntimeException(ERR_TABLE_EMPTY_WITH_HINT);
+                }
 
                 // DML, DQL
                 if (pushed instanceof LogicalModifyView) {

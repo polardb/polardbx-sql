@@ -45,6 +45,7 @@ public class AlterTablePreparedData extends DdlPreparedData {
      */
     private List<String> droppedIndexes;
     private List<String> addedIndexes;
+    private List<String> addedIndexesWithoutNames;
     private Map<String, String> renamedIndexes;
 
     /**

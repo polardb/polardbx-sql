@@ -36,6 +36,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.google.common.collect.Sets;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
@@ -528,6 +529,27 @@ public class DdlEngineScheduler {
             return false;
         }
         return true;
+    }
+
+    private void interruptDdlJobs(){
+        if(CollectionUtils.isEmpty(activeSchemas)){
+            return;
+        }
+        for(String schemaName: activeSchemas){
+            List<DdlEngineDagExecutorMap.DdlEngineDagExecutionInfo> executionInfoList =
+                DdlEngineDagExecutorMap.getAllDdlJobCaches(schemaName);
+            if(CollectionUtils.isEmpty(executionInfoList)){
+                return;
+            }
+            for(DdlEngineDagExecutorMap.DdlEngineDagExecutionInfo info: executionInfoList){
+                DdlEngineDagExecutor dagExecutor = DdlEngineDagExecutorMap.get(schemaName, info.jobId);
+                if(dagExecutor != null && !dagExecutor.isInterrupted()){
+                    dagExecutor.interrupt();
+                    EventLogger.log(EventType.DDL_INTERRUPT, String.format(
+                        "interrupt DDL JOB %s for losing CN leadership", dagExecutor.getJobId()));
+                }
+            }
+        }
     }
 
 }

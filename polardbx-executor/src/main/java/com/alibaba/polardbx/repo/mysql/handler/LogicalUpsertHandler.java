@@ -123,11 +123,12 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
 
         int affectRows = 0;
         try {
-            // Select duplicated values from target table
-            final List<List<Object>> selectedRows =
-                getDuplicatedValues(upsert, SqlSelect.LockMode.EXCLUSIVE_LOCK, executionContext, handlerParams,
-                    (rowCount) -> memoryAllocator
-                        .allocateReservedMemory(MemoryEstimator.calcSelectValuesMemCost(rowCount, insertRowType)));
+            Map<String, List<List<String>>> ukGroupByTable = upsert.getUkGroupByTable();
+            List<List<Object>> selectedRows =
+                getDuplicatedValues(upsert, SqlSelect.LockMode.EXCLUSIVE_LOCK, executionContext, ukGroupByTable,
+                    (rowCount) -> memoryAllocator.allocateReservedMemory(
+                        MemoryEstimator.calcSelectValuesMemCost(rowCount, insertRowType)), insertRowType, false,
+                    handlerParams);
 
             // Bind insert rows to operation
             // Duplicate might exists between upsert values
@@ -260,12 +261,12 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             executePhysicalPlan(allDelete, executionContext, schemaName, isBroadcast);
         }
 
-        if (!allInsert.isEmpty()) {
-            executePhysicalPlan(allInsert, executionContext, schemaName, isBroadcast);
-        }
-
         if (!allUpdate.isEmpty()) {
             executePhysicalPlan(allUpdate, executionContext, schemaName, isBroadcast);
+        }
+
+        if (!allInsert.isEmpty()) {
+            executePhysicalPlan(allInsert, executionContext, schemaName, isBroadcast);
         }
 
         affectRows = inputValues.stream().mapToInt(row -> row.affectedRows).sum();
@@ -550,7 +551,7 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         // Set logical row index and build checker map
         final List<Map<GroupKey, SortedMap<Integer, DuplicateCheckRow>>> ukCheckerMapList =
             new ArrayList<>(ukMapping.size());
-        IntStream.range(0, ukMapping.size()).forEach(i -> ukCheckerMapList.add(new HashMap<>()));
+        IntStream.range(0, ukMapping.size()).forEach(i -> ukCheckerMapList.add(new TreeMap<>()));
 
         outCheckRows.forEach(row -> {
             row.rowIndex = logicalRowIndex.getAndIncrement();

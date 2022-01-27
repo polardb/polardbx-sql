@@ -43,8 +43,6 @@ public abstract class Server {
 
     public static final String NODEID_PREFIX = "node_";
     public static final String MPP_LOADAPP = "loadapp";
-    public static final String MPP_LOCALCLUSTER = "localcluster";
-    public static final String MPP_CLUSTER_DEFAULT = "DEFAULT";
     public static final String LOCAL_CLUSTER_DEFAULT = "LOCAL";
 
     protected String nodeId;
@@ -115,9 +113,8 @@ public abstract class Server {
 
     public abstract boolean isCoordinator();
 
-    public static String getCluster(String defaultClusterName) {
-        return System.getProperty(MPP_LOCALCLUSTER) != null ?
-            System.getProperty(MPP_LOCALCLUSTER) : defaultClusterName;
+    public boolean isEnableConfigLeader() {
+        return false;
     }
 
     public PolarDBXNodeStatusManager getStatusManager() {

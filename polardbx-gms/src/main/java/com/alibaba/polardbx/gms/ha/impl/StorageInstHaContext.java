@@ -115,14 +115,6 @@ public class StorageInstHaContext {
 
     /**
      * <pre>
-     *      Calculate the active Session Num  and refreshed by StorageHaManager.
-     *      CheckStorageHaTask at intervals of 5 seconds
-     * </pre>
-     */
-    protected volatile long activeSessionNum;
-
-    /**
-     * <pre>
      *     All TGroupDataSource need to get read lock of storage to do initialization, and
      *     HA switch task need to get write lock to do switch task for current storage.
      *     This lock is used to avoid the TGroupDataSource initialization during its storage is doing ha switch task.

@@ -350,7 +350,8 @@ public abstract class AggregateUtils {
                     groupConcatMaxLen,
                     executionContext.getEncoding(),
                     memoryAllocator,
-                    filterArg));
+                    filterArg,
+                    outputType));
                 break;
             }
             case __FIRST_VALUE: {

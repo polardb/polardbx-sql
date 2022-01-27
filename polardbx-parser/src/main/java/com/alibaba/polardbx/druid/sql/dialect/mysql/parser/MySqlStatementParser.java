@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.parser;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLCurrentUserExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLDeclareItem;
@@ -4152,6 +4153,8 @@ public class MySqlStatementParser extends SQLStatementParser {
                     } else {
                         throw new ParserException("syntax error: " + ((SQLMethodInvokeExpr) expr).getMethodName());
                     }
+                } else if (expr instanceof SQLCurrentUserExpr) {
+                    stmt.setUserSpec(MySql8ShowGrantsStatement.UserSpec.CURRENT_USER);
                 } else {
                     stmt.setUsername(MySqlUserName.fromExpr(expr));
                     stmt.setUserSpec(MySql8ShowGrantsStatement.UserSpec.USERNAME);
@@ -9896,7 +9899,7 @@ public class MySqlStatementParser extends SQLStatementParser {
                 }
                 stmt.setPartitionMode(this.exprParser.expr());
             }
-            
+
             //ads 特殊支持
             else if (lexer.identifierEquals("SHARDS") || lexer.identifierEquals("SHARD_ID")
                         || lexer.identifierEquals("REPLICATION") || lexer.identifierEquals("STORAGE_DEPENDENCY")

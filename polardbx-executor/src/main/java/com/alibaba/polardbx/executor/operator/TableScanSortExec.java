@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.executor.mpp.metadata.Split;
+import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -79,6 +81,15 @@ public class TableScanSortExec extends TableScanExec {
         if (fetched > 0) {
             super.doOpen();
         }
+    }
+
+    @Override
+    public void addSplit(Split split) {
+        if (fetched > 0) {
+            JdbcSplit jdbcSplit = (JdbcSplit) split.getConnectorSplit();
+            jdbcSplit.setLimit(skipped + fetched);
+        }
+        super.addSplit(split);
     }
 
     @Override

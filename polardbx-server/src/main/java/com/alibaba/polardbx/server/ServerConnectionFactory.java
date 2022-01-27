@@ -19,15 +19,16 @@ package com.alibaba.polardbx.server;
 import com.alibaba.polardbx.CobarPrivileges;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.PolarPrivileges;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SystemConfig;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.factory.FrontendConnectionFactory;
 import com.alibaba.polardbx.net.util.SslHandler;
 import com.alibaba.polardbx.server.session.ServerSession;
+import com.alibaba.polardbx.ssl.SslConstant;
 import com.alibaba.polardbx.ssl.SslContextFactory;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -59,6 +60,7 @@ public class ServerConnectionFactory extends FrontendConnectionFactory {
             SSLContext serverContext = SslContextFactory.getServerContext();
             if (serverContext != null) {
                 SSLEngine engine = serverContext.createSSLEngine();
+                engine.setEnabledProtocols(SslConstant.enabledProtocols);
                 engine.setUseClientMode(false);
                 // engine.setEnabledCipherSuites(new
                 // String[]{"TLS_RSA_WITH_AES_256_CBC_SHA"});

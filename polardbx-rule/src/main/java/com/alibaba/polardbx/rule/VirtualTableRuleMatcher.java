@@ -429,7 +429,7 @@ public class VirtualTableRuleMatcher {
             }
         }
 
-        return new MatcherResult(buildTargetDbList(topology, topologyOfRule), dbRuleArgs, tbRuleArgs);
+       return new MatcherResult(buildTargetDbList(topology, topologyOfRule), dbRuleArgs, tbRuleArgs);
     }
 
     /**

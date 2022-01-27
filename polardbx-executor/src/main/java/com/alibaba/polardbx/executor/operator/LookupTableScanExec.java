@@ -357,7 +357,7 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
                         num++;
                     }
                 }
-                String query = PhyTableScanBuilder.buildPhysicalQuery(num, sqlTemplate, orderBy, hint);
+                String query = PhyTableScanBuilder.buildPhysicalQuery(num, sqlTemplate, orderBy, hint, -1);
                 return query;
             }
             if (hintSql == null) {
@@ -368,7 +368,7 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
                         num++;
                     }
                 }
-                String query = PhyTableScanBuilder.buildPhysicalQuery(num, sqlTemplate, orderBy, hint);
+                String query = PhyTableScanBuilder.buildPhysicalQuery(num, sqlTemplate, orderBy, hint, -1);
                 for (SqlNode condition : lookupConditions) {
                     if (condition != null) {
                         query = StringUtils.replace(query, "'bka_magic' = 'bka_magic'",

@@ -41,7 +41,11 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String INDEXES_INFO_SCHEMA = "information_schema.statistics";
 
+    private static final String FROM_INDEXES_INFO_SCHEMA = " from " + INDEXES_INFO_SCHEMA;
+
     private static final String INDEXES_TABLE = wrap(GmsSystemTables.INDEXES);
+
+    private static final String FROM_INDEXES_TABLE = " from " + INDEXES_TABLE;
 
     private static final String INSERT_INDEXES =
         "insert into " + INDEXES_TABLE
@@ -67,7 +71,7 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String WHERE_SCHEMA_TABLE_INDEXES = WHERE_SCHEMA_TABLE + " and `index_name` in (%s)";
 
-    private static final String WHERE_SCHEMA_TABLE_ONE_INDEX_COLUMN =
+    private static final String WHERE_SCHEMA_TABLE_ONE_INDEX_COLUMNS =
         WHERE_SCHEMA_TABLE_ONE_INDEX + " and `column_name` in (%s)";
 
     private static final String WHERE_SCHEMA_TABLE_INDEXES_COLUMNS_STATUS_GSI =
@@ -78,24 +82,29 @@ public class IndexesAccessor extends AbstractAccessor {
             + "`column_name`, `collation`, `cardinality`, `sub_part`, `packed`, `nullable`, `index_type`, "
             + "`comment`, `index_comment`";
 
+    private static final String SELECT_CLAUSE_EXT =
+        ", `index_column_type`, `index_location`, `index_table_name`, `index_status`, `version`, `flag`";
+
     private static final String SELECT_INFO_SCHEMA =
-        SELECT_CLAUSE + " from " + INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE;
+        SELECT_CLAUSE + FROM_INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE;
 
     private static final String SELECT_INFO_SCHEMA_SPECIFIED =
-        SELECT_CLAUSE + " from " + INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE_INDEXES;
+        SELECT_CLAUSE + FROM_INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE_INDEXES;
+
+    private static final String SELECT_INFO_SCHEMA_BY_FIRST_COLUMN =
+        SELECT_CLAUSE + FROM_INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE_COLUMN;
 
     private static final String SELECT_INFO_SCHEMA_PRIMARY_KEY =
-        SELECT_CLAUSE + " from " + INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE_PRIMARY_KEY;
+        SELECT_CLAUSE + FROM_INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE_PRIMARY_KEY;
+
+    private static final String SELECT_INDEXES_BY_FIRST_COLUMN =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA_TABLE_COLUMN;
 
     private static final String SELECT_INDEXES =
-        SELECT_CLAUSE
-            + ", `index_column_type`, `index_location`, `index_table_name`, `index_status`, `version`, `flag` from "
-            + INDEXES_TABLE + WHERE_SCHEMA_TABLE + ORDER_BY_SEQ;
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA_TABLE + ORDER_BY_SEQ;
 
     private static final String SELECT_ALL_INDEXES =
-        SELECT_CLAUSE
-            + ", `index_column_type`, `index_location`, `index_table_name`, `index_status`, `version`, `flag` from "
-            + INDEXES_TABLE + WHERE_SCHEMA + ORDER_BY_SEQ;
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA + ORDER_BY_SEQ;
 
     private static final String UPDATE_INDEXES = "update " + INDEXES_TABLE + " set ";
 
@@ -123,9 +132,9 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String UPDATE_INDEXES_COLUMN_TYPE_AND_STATUS_SPECIFIED =
         UPDATE_INDEXES + "`comment` = ?, `index_column_type`=?, `index_status`=? "
-            + WHERE_SCHEMA_TABLE_ONE_INDEX_COLUMN;
+            + WHERE_SCHEMA_TABLE_ONE_INDEX_COLUMNS;
 
-    private static final String DELETE_INDEXES = "delete from " + INDEXES_TABLE;
+    private static final String DELETE_INDEXES = "delete" + FROM_INDEXES_TABLE;
 
     private static final String DELETE_INDEXES_ALL = DELETE_INDEXES + WHERE_SCHEMA;
 
@@ -214,6 +223,12 @@ public class IndexesAccessor extends AbstractAccessor {
             IndexesInfoSchemaRecord.class, phyTableSchema, phyTableName, dataSource);
     }
 
+    public List<IndexesInfoSchemaRecord> queryInfoSchemaByFirstColumn(String phyTableSchema, String phyTableName,
+                                                                      String firstColumnName, DataSource dataSource) {
+        return query(SELECT_INFO_SCHEMA_BY_FIRST_COLUMN, INDEXES_INFO_SCHEMA,
+            IndexesInfoSchemaRecord.class, phyTableSchema, phyTableName, firstColumnName, dataSource);
+    }
+
     public List<IndexesInfoSchemaRecord> queryInfoSchemaForPrimaryKey(String phyTableSchema, String phyTableName,
                                                                       DataSource dataSource) {
         return query(SELECT_INFO_SCHEMA_PRIMARY_KEY, INDEXES_INFO_SCHEMA, IndexesInfoSchemaRecord.class, phyTableSchema,
@@ -226,6 +241,11 @@ public class IndexesAccessor extends AbstractAccessor {
 
     public List<IndexesRecord> query(String tableSchema, String tableName) {
         return query(SELECT_INDEXES, INDEXES_TABLE, IndexesRecord.class, tableSchema, tableName);
+    }
+
+    public List<IndexesRecord> queryByFirstColumn(String tableSchema, String tableName, String firstColumnName) {
+        return query(SELECT_INDEXES_BY_FIRST_COLUMN, INDEXES_TABLE, IndexesRecord.class, tableSchema, tableName,
+            firstColumnName);
     }
 
     public boolean checkIfExists(String tableSchema, String tableName) {

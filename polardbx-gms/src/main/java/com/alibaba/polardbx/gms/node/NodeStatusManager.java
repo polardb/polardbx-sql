@@ -141,7 +141,8 @@ public abstract class NodeStatusManager {
 
     private String injectNode(ResultSet rs, Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes,
                               Set<InternalNode> inactiveNodes,
-                              Set<InternalNode> shuttingDownNodes)
+                              Set<InternalNode> shuttingDownNodes,
+                              Set<String> htapInstIds)
         throws SQLException {
         String leaderId = null;
         String nodeId = rs.getString("NODEID");
@@ -163,6 +164,10 @@ public abstract class NodeStatusManager {
 
         if ((role & ROLE_MASTER) == ROLE_MASTER) {
             node.setMaster(true);
+        }
+
+        if ((role & ROLE_HTAP) == ROLE_HTAP) {
+            htapInstIds.add(instId);
         }
 
         if (status == STATUS_SHUTDOWN) {
@@ -219,14 +224,16 @@ public abstract class NodeStatusManager {
             Set<InternalNode> otherActiveNodes = new HashSet<>();
             Set<InternalNode> inactiveNodes = new HashSet<>();
             Set<InternalNode> shuttingDownNodes = new HashSet<>();
+            Set<String> htapInstIds = new HashSet<>();
             String leaderId = null;
             while (resultSet.next()) {
-                String ret = injectNode(resultSet, activeNodes, otherActiveNodes, inactiveNodes, shuttingDownNodes);
+                String ret = injectNode(
+                    resultSet, activeNodes, otherActiveNodes, inactiveNodes, shuttingDownNodes, htapInstIds);
                 if (!StringUtils.isEmpty(ret)) {
                     leaderId = ret;
                 }
             }
-
+            StorageStatusManager.getInstance().allowedReadLearnerIds(htapInstIds);
             checkLeader(conn, leaderId);
 
             if (localNode.isWorker()) {

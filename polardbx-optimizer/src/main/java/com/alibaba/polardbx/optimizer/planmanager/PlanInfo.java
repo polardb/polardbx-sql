@@ -20,11 +20,14 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.util.JsonBuilder;
 
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
@@ -51,6 +54,8 @@ public class PlanInfo {
 
     private String origin;
 
+    private String extend;
+
     private long createTime; // unix time
 
     private Long lastExecuteTime; // unix time, default null
@@ -62,6 +67,11 @@ public class PlanInfo {
     private int tablesHashCode;
 
     private AtomicInteger errorCount = new AtomicInteger(0);
+
+    /**
+     * params from extend
+     */
+    private String fixHint;
 
     private PlanInfo() {
     }
@@ -80,7 +90,7 @@ public class PlanInfo {
 
     public PlanInfo(int baselineId, String planJsonString, long createTime, Long lastExecuteTime, int chooseCount,
                     double cost, double estimateExecutionTime, boolean accepted, boolean fixed, String traceId,
-                    String origin, int tablesHashCode) {
+                    String origin, String extend, int tablesHashCode) {
         this.compressPlanByteArray = PlanManagerUtil.compressPlan(planJsonString);
         this.id = planJsonString.hashCode();
         this.baselineId = baselineId;
@@ -93,7 +103,32 @@ public class PlanInfo {
         this.fixed = fixed;
         this.traceId = traceId;
         this.origin = origin;
+        this.extend = extend;
         this.tablesHashCode = tablesHashCode;
+
+        decodeExtend();
+    }
+
+    private void decodeExtend() {
+        if (extend == null || "".equals(extend)) {
+            return;
+        }
+        Map<String, Object> extendMap = (Map<String, Object>) JSON.parseObject(extend);
+        Object tmpFixHint = extendMap.get("FIX_HINT");
+        if (tmpFixHint != null) {
+            fixHint = tmpFixHint.toString();
+        }
+    }
+
+    public String encodeExtend() {
+        if (fixHint == null || "".equals(fixHint)) {
+            return "";
+        }
+        final JsonBuilder jsonBuilder = new JsonBuilder();
+
+        Map<String, Object> extendMap = Maps.newHashMap();
+        extendMap.put("FIX_HINT", fixHint);
+        return jsonBuilder.toJsonString(extendMap);
     }
 
     public int getId() {
@@ -172,6 +207,11 @@ public class PlanInfo {
         }
     }
 
+    public void resetPlan(RelNode newPlan){
+        this.compressPlanByteArray = PlanManagerUtil.compressPlan(PlanManagerUtil.relNodeToJson(newPlan));
+        this.plan = newPlan;
+    }
+
     public RelNode getPlan(RelOptCluster cluster, RelOptSchema relOptSchema) {
         if (plan == null) {
             if (cluster == null || relOptSchema == null) {
@@ -225,6 +265,7 @@ public class PlanInfo {
         planInfoJson.put("lastExecuteTime", planInfo.getLastExecuteTime());
         planInfoJson.put("estimateExecutionTime", planInfo.getEstimateExecutionTime());
         planInfoJson.put("origin", planInfo.getOrigin());
+        planInfoJson.put("extend", planInfo.encodeExtend());
         return planInfoJson.toJSONString();
     }
 
@@ -243,6 +284,7 @@ public class PlanInfo {
         planInfo.lastExecuteTime = planInfoJson.getLong("lastExecuteTime");
         planInfo.estimateExecutionTime = planInfoJson.getDoubleValue("estimateExecutionTime");
         planInfo.origin = planInfoJson.getString("origin");
+        planInfo.extend = planInfoJson.getString("extend");
         try {
             planInfo.tablesHashCode = planInfoJson.getInteger("hashcode");
         } catch (Throwable t) {
@@ -258,5 +300,21 @@ public class PlanInfo {
 
     public void setTablesHashCode(int tablesHashCode) {
         this.tablesHashCode = tablesHashCode;
+    }
+
+    public String getExtend() {
+        return extend;
+    }
+
+    public void setExtend(String extend) {
+        this.extend = extend;
+    }
+
+    public String getFixHint() {
+        return fixHint;
+    }
+
+    public void setFixHint(String fixHint) {
+        this.fixHint = fixHint;
     }
 }

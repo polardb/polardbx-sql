@@ -16,6 +16,8 @@
  */
 package org.apache.calcite.runtime;
 
+import com.alibaba.polardbx.ssl.SslConstant;
+
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -39,7 +41,7 @@ public class TrustAllSslSocketFactory extends SocketFactoryImpl {
     TrustManager[] trustAllCerts = {new DummyTrustManager()};
     SSLSocketFactory factory = null;
     try {
-      SSLContext sc = SSLContext.getInstance("SSL");
+      SSLContext sc = SSLContext.getInstance(SslConstant.PROTOCOL);
       sc.init(null, trustAllCerts, new SecureRandom());
       factory = sc.getSocketFactory();
     } catch (Exception e) {
@@ -98,7 +100,8 @@ public class TrustAllSslSocketFactory extends SocketFactoryImpl {
     SSLSocketFactory sslsocketfactory = null;
     TrustManager[] trustAllCerts = {new DummyTrustManager()};
     try {
-      SSLContext sc = SSLContext.getInstance("SSL");
+
+      SSLContext sc = SSLContext.getInstance(SslConstant.PROTOCOL);
       sc.init(null, trustAllCerts, new java.security.SecureRandom());
       sslsocketfactory = sc.getSocketFactory();
     } catch (Exception e) {

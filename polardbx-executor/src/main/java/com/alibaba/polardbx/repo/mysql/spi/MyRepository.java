@@ -35,7 +35,6 @@ import com.google.common.cache.LoadingCache;
 public class MyRepository extends AbstractLifecycle implements IRepository {
 
     private transient LoadingCache<Group, TddlGroupExecutor> executors;
-    private transient LoadingCache<Group, TddlGroupExecutor> masterExecutors;
 
     private RepositoryConfig config;
 
@@ -79,23 +78,6 @@ public class MyRepository extends AbstractLifecycle implements IRepository {
                 return executor;
             }
         });
-
-        masterExecutors = CacheBuilder.newBuilder().build(new CacheLoader<Group, TddlGroupExecutor>() {
-
-            @Override
-            public TddlGroupExecutor load(Group group) {
-                TGroupDataSource groupDS =
-                    new TGroupDataSource(group.getName(), group.getSchemaName(), group.getAppName(),
-                        group.getUnitName());
-                groupDS.setEnforceMaster(group.isEnforceMaster());
-                groupDS.init();
-                TddlGroupExecutor executor = new TddlGroupExecutor(getRepo());
-                executor.setGroup(group);
-                executor.setGroupDataSource(groupDS);
-                executor.init();
-                return executor;
-            }
-        });
     }
 
     protected IRepository getRepo() {
@@ -105,10 +87,6 @@ public class MyRepository extends AbstractLifecycle implements IRepository {
     @Override
     protected void doDestroy() {
         for (IGroupExecutor executor : executors.asMap().values()) {
-            executor.destroy();
-        }
-
-        for (IGroupExecutor executor : masterExecutors.asMap().values()) {
             executor.destroy();
         }
     }
@@ -142,16 +120,6 @@ public class MyRepository extends AbstractLifecycle implements IRepository {
     @Override
     public void invalidateGroupExecutor(Group group) {
         executors.invalidate(group);
-    }
-
-    @Override
-    public TddlGroupExecutor getMasterGroupExecutor(Group group) {
-        try {
-            return masterExecutors.get(group);
-        } catch (Throwable e) {
-            masterExecutors.invalidate(group);
-            throw GeneralUtil.nestedException(e.getCause());
-        }
     }
 
     public TGroupDataSource getDataSource(String groupName) {

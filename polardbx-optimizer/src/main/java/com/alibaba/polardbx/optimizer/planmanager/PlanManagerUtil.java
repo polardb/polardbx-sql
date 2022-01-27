@@ -169,7 +169,7 @@ public class PlanManagerUtil {
         try {
             er = ConditionExtractor.partitioningConditionFrom(rel).extract();
         } catch (Exception e) {
-            return null;
+            return Maps.newHashMap();
         }
 
         Map<LogicalTableScan, RexNode> cardinalityMap = Maps.newConcurrentMap();
@@ -308,9 +308,9 @@ public class PlanManagerUtil {
         }
 
         // if plan contain apply return false
-        if (OptimizerUtils.hasSubquery(executionPlan.getPlan())) {
-            return false;
-        }
+//        if (OptimizerUtils.hasSubquery(executionPlan.getPlan())) {
+//            return false;
+//        }
 
         return true;
     }

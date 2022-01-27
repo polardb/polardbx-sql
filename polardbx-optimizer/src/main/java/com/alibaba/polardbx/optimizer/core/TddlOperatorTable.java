@@ -644,7 +644,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         SqlKind.IS_NOT_DISTINCT_FROM,
         60,
         true,
-        ReturnTypes.BIGINT,
+        ReturnTypes.BIGINT_NULLABLE,
         InferTypes.FIRST_KNOWN,
         OperandTypes.COMPARABLE_UNORDERED_COMPARABLE_UNORDERED);
 

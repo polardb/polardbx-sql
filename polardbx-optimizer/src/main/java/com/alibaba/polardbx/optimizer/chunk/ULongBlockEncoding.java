@@ -56,6 +56,6 @@ public class ULongBlockEncoding implements BlockEncoding {
                 values[position] = sliceInput.readLong();
             }
         }
-        return new LongBlock(0, positionCount, valueIsNull, values);
+        return new ULongBlock(0, positionCount, valueIsNull, values);
     }
 }

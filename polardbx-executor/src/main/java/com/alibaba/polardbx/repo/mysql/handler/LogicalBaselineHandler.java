@@ -217,6 +217,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
             planManager.createPlanInfo(planJsonString, plan, baselineInfo.getId(), executionContext.getTraceId(),
                 PlanManagerUtil.getPlanOrigin(plan), ast, executionContext);
         planInfo.setFixed(fix);
+        planInfo.setFixHint(hint);
 
         PlanInfo existedPlanInfo = baselineInfo.getAcceptedPlans().get(planInfo.getId());
         if (existedPlanInfo != null) {

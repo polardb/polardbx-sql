@@ -61,7 +61,7 @@ public class InputRefTypeChecker extends RexVisitorImpl<RexNode> {
         DataType<?> columnType = inputTypes.get(inputRefIndex);
         DataType<?> inputRefType = DataTypeUtil.calciteToDrdsType(inputRef.getType());
         // force the input ref and column to be consistent.
-        if (!Objects.equals(columnType, inputRefType)) {
+        if (!DataTypeUtil.equalsSemantically(columnType, inputRefType)) {
             // lossy transfer
             return new RexInputRef(inputRefIndex, new Field(columnType).getRelType());
         }
@@ -70,13 +70,10 @@ public class InputRefTypeChecker extends RexVisitorImpl<RexNode> {
 
     @Override
     public RexNode visitCall(RexCall call) {
-        // rewrite predicates
-        if (TddlOperatorTable.VECTORIZED_COMPARISON_OPERATORS.contains(call.op)) {
-            List<RexNode> operands = call.getOperands().stream()
-                .map(node -> node.accept(this))
-                .collect(Collectors.toList());
-            call = call.clone(call.type, operands);
-        }
+        List<RexNode> operands = call.getOperands().stream()
+            .map(node -> node.accept(this))
+            .collect(Collectors.toList());
+        call = call.clone(call.type, operands);
         return call;
     }
 

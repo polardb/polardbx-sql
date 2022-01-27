@@ -113,6 +113,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static org.apache.calcite.sql.SqlKind.IN;
+import static org.apache.calcite.sql.SqlKind.ROW;
 import static org.apache.calcite.sql.type.SqlTypeName.BINARY;
 import static org.apache.calcite.sql.type.SqlTypeName.CHAR;
 import static org.apache.calcite.sql.type.SqlTypeName.DECIMAL;
@@ -584,6 +586,19 @@ public abstract class SqlImplementor {
       case SOME:
       case ALL:
         if(!(rex instanceof RexSubQuery)){
+          /**
+           * `xx in row(EMPTY)` is not valid in sql, should replace it with `false`
+           */
+          if (rex.getKind() == IN &&
+              ((RexCall)rex).getOperands().size() == 2 &&
+              ((RexCall)rex).getOperands().get(1) instanceof RexCall &&
+              ((RexCall)rex).getOperands().get(1).getKind() == ROW &&
+              ((RexCall)((RexCall)rex).getOperands().get(1)).getOperands().size() == 1 &&
+              ((RexCall)((RexCall)rex).getOperands().get(1)).getOperands().get(0) instanceof RexDynamicParam &&
+              ((RexDynamicParam)((RexCall)((RexCall)rex).getOperands().get(1)).getOperands().get(0)).getValue()
+                  == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
+            return SqlLiteral.createBoolean(false, POS);
+          }
           final List<SqlNode> c = toSql(program, ((RexCall)rex).getOperands());
           return ((RexCall) rex).getOperator().createCall(POS, c);
         }
@@ -632,7 +647,6 @@ public abstract class SqlImplementor {
       case RUNTIME_FILTER:
         final List<SqlNode> c = toSql(program, ((RexCall)rex).getOperands());
         return ((RexCall) rex).getOperator().createCall(POS, new SqlNodeList(c, POS));
-
       default:
         if (rex instanceof RexOver) {
           return toSql(program, (RexOver) rex);
@@ -1158,6 +1172,7 @@ public abstract class SqlImplementor {
       clauseList.appendAll(clauses);
       Context newContext;
       final SqlNodeList selectList = select.getSelectList();
+      final SqlNode selectFrom = select.getFrom();
       if (selectList != null) {
         newContext = new Context(selectList.size()) {
           public SqlNode field(int ordinal) {
@@ -1170,15 +1185,29 @@ public abstract class SqlImplementor {
           }
 
           @Override public SqlNode orderField(int ordinal) {
-            // If the field expression is an unqualified column identifier
-            // and matches a different alias, use an ordinal.
+            // It is decided that we follow what the document of MySQL says,
+            // rather than what MySQL actually does:
+            // "MySQL resolves unqualified column or alias references in ORDER BY clauses
+            //  by searching in the select_expr values,
+            //  then in the columns of the tables in the FROM clause."
             // For example, given
-            //    SELECT deptno AS empno, empno AS x FROM emp ORDER BY emp.empno
-            // we generate
-            //    SELECT deptno AS empno, empno AS x FROM emp ORDER BY 2
-            // "ORDER BY empno" would give incorrect result;
-            // "ORDER BY x" is acceptable but is not preferred.
+            //    SELECT deptno AS empno, empno AS deptno FROM emp ORDER BY empno
+            // we generate physical SQL:
+            //    SELECT deptno AS empno, empno AS deptno FROM emp ORDER BY emp.deptno
+            // which is the same as what MySQL does
+            //
+            // However, given
+            //    SELECT deptno AS empno, empno AS x FROM emp ORDER BY （empno + x)
+            // MySQL regards the SQL as:
+            //    SELECT deptno AS empno, empno AS x FROM emp ORDER BY （emp.empno + emp.empno)
+            // which means it searches 'from' clause first.
+            // we generate physical SQL:
+            //    SELECT deptno AS empno, empno AS x FROM emp ORDER BY （deptno + empno)
+            // and MySQL would regard our SQL as
+            //    SELECT deptno AS empno, empno AS x FROM emp ORDER BY （emp.deptno + emp.empno)
             final SqlNode node = field(ordinal);
+            // all name in 'node' comes from origin table,
+            // node would be simple if there is only one table in the 'from list'
             if (node instanceof SqlIdentifier
                 && ((SqlIdentifier) node).isSimple()) {
               final String name = ((SqlIdentifier) node).getSimple();
@@ -1187,8 +1216,15 @@ public abstract class SqlImplementor {
                   final String alias =
                       SqlValidatorUtil.getAlias(selectItem.e, -1);
                   if (name.equalsIgnoreCase(alias)) {
-                    return SqlLiteral.createExactNumeric(
-                        Integer.toString(ordinal + 1), SqlParserPos.ZERO);
+                    List<String> names= new ArrayList<>();
+                    if (selectFrom.getKind() == SqlKind.AS) {
+                      names.add(((SqlCall) selectFrom).operand(1).toString());
+                    } else {
+                      names.add(selectFrom.toString());
+                    }
+                    names.add(name);
+                    return new SqlIdentifier(names, null,
+                            SqlParserPos.ZERO, null);
                   }
                 }
               }

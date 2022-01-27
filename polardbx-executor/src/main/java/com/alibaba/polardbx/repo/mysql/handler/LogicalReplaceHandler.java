@@ -54,6 +54,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -111,16 +112,14 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
         final MemoryPool selectValuesPool = MemoryPoolUtils.createOperatorTmpTablePool(executionContext);
         final MemoryAllocatorCtx memoryAllocator = selectValuesPool.getMemoryAllocatorCtx();
-        final RelDataType rowType = getRowTypeForDuplicateCheck(replace);
+        final RelDataType selectRowType = getRowTypeForDuplicateCheck(replace);
 
         try {
-            // Get duplicated values
-            final List<List<Object>> selectedRows =
-                getDuplicatedValues(replace, LockMode.EXCLUSIVE_LOCK, executionContext, handlerParams,
-                    (rowCount) -> memoryAllocator
-                        .allocateReservedMemory(
-                            MemoryEstimator.calcSelectValuesMemCost(rowCount, rowType)));
-
+            Map<String, List<List<String>>> ukGroupByTable = replace.getUkGroupByTable();
+            List<List<Object>> selectedRows =
+                getDuplicatedValues(replace, LockMode.EXCLUSIVE_LOCK, executionContext, ukGroupByTable,
+                    (rowCount) -> memoryAllocator.allocateReservedMemory(
+                        MemoryEstimator.calcSelectValuesMemCost(rowCount, selectRowType)), selectRowType, false, handlerParams);
             // Bind insert rows to operation
             // Duplicate might exists between replace values
             final List<Map<Integer, ParameterContext>> batchParams = replaceEc.getParams().getBatchParameters();
@@ -367,7 +366,7 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
                 // Remove duplicated checker rows
                 for (Map<GroupKey, List<DuplicateCheckRow>> checker : checkers) {
-                    final Map<GroupKey, List<DuplicateCheckRow>> newChecker = new HashMap<>();
+                    final Map<GroupKey, List<DuplicateCheckRow>> newChecker = new TreeMap<>();
 
                     checker.forEach((k, v) -> {
                         final List<DuplicateCheckRow> newValue =
@@ -514,7 +513,7 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
                                                                                        List<List<ColumnMeta>> ukColumnMetas,
                                                                                        Map<Integer, DuplicateCheckRow> outDuplicateCheckRow) {
         final List<Map<GroupKey, List<DuplicateCheckRow>>> result = new ArrayList<>();
-        IntStream.range(0, ukMapping.size()).forEach(i -> result.add(new HashMap<>()));
+        IntStream.range(0, ukMapping.size()).forEach(i -> result.add(new TreeMap<>()));
         final int selectedRowCount = selectedRows.size();
 
         Ord.zip(selectedRows).forEach(ord -> {

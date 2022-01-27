@@ -50,6 +50,7 @@ public class InformationSchemaPlanCache extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("ID", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("HIT_COUNT", 4, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("SQL", 5, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TYPE_DIGEST", 5, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("PLAN", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);

@@ -48,6 +48,7 @@ public class JdbcSplit implements ConnectorSplit {
     protected final String orderBy;
     protected transient List<ParameterContext> flattenParams;
     protected transient String hintSql;
+    protected transient long limit = -1;
 
     public JdbcSplit(
         String catalogName,
@@ -161,8 +162,8 @@ public class JdbcSplit implements ConnectorSplit {
     @JsonIgnore
     public String getHintSql(boolean ignore) {
         if (hintSql == null) {
-            hintSql = PhyTableScanBuilder.buildPhysicalQuery(
-                tableNames.size(), sqlTemplate, orderBy, hint);
+            hintSql = PhyTableScanBuilder.buildPhysicalQuery(tableNames.size(),
+                sqlTemplate, orderBy, hint, limit);
         }
         return hintSql;
     }
@@ -205,6 +206,16 @@ public class JdbcSplit implements ConnectorSplit {
         return tableNames;
     }
 
+    @JsonIgnore
+    public void setLimit(long limit) {
+        this.limit = limit;
+    }
+
+    @JsonIgnore
+    public long getLimit() {
+        return limit;
+    }
+
     @Override
     public String toString() {
         return toStringHelper(this)
@@ -215,6 +226,7 @@ public class JdbcSplit implements ConnectorSplit {
             .add("hint", hint)
             .add("sqlTemplate", sqlTemplate)
             .add("orderBy", orderBy)
+            .add("limit", limit == -1 ? null : limit)
             .add("params", params)
             .toString();
     }

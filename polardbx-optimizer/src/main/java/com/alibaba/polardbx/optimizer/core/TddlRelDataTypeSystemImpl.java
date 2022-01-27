@@ -57,6 +57,7 @@ public class TddlRelDataTypeSystemImpl extends RelDataTypeSystemImpl {
         case JSON:
         case FLOAT:
         case DOUBLE:
+        case USER_SYMBOL:
             sumType = typeFactory.createSqlType(SqlTypeName.DOUBLE);
             break;
         default:

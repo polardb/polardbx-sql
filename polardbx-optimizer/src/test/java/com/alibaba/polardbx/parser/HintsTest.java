@@ -19,6 +19,7 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.parser.Token;
+import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import junit.framework.TestCase;
 import org.junit.Assert;
 
@@ -57,5 +58,14 @@ public class HintsTest extends TestCase {
         parser.match(Token.EOF);
         String output = SQLUtils.toMySqlString(stmt);
         Assert.assertEquals("/* STRAIGHT_JOIN */\n" + "SELECT col1\n" + "FROM table1, table2", output);
+    }
+
+    public void test_hints_schema_name() throws Exception {
+        String sql = HintUtil.buildPushdown("t1", null, "test-schema");
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        SQLStatement stmt = parser.parseStatementList().get(0);
+        String output = SQLUtils.toMySqlString(stmt);
+        Assert.assertEquals("SELECT *\n" +
+                "FROM `test-schema`.t1", output);
     }
 }

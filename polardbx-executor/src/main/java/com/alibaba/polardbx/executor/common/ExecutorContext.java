@@ -139,4 +139,16 @@ public class ExecutorContext {
     public void setGsiManager(GsiManager gsiManager) {
         this.gsiManager = gsiManager;
     }
+
+    public NodeStatusManager getNodeStatusManager() {
+        return nodeStatusManager;
+    }
+
+    public void setNodeStatusManager(NodeStatusManager nodeStatusManager) {
+        this.nodeStatusManager = nodeStatusManager;
+    }
+
+    public final static Map<String, ExecutorContext> getExecutorContextMap() {
+        return executorContextMap;
+    }
 }

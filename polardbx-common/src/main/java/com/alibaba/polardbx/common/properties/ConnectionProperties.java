@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.common.properties;
 
-
 public class ConnectionProperties {
 
     public static final String PLAN_CACHE = "PLAN_CACHE";
@@ -73,6 +72,11 @@ public class ConnectionProperties {
 
     public static final String GET_TSO_TIMEOUT = "GET_TSO_TIMEOUT";
 
+    public static final String PURGE_HISTORY_MS = "PURGE_HISTORY_MS";
+
+    /**
+     * Max single TSO/XA/2PC transaction time
+     */
     public static final String MAX_TRX_DURATION = "MAX_TRX_DURATION";
 
     public static final String EXPLAIN_X_PLAN = "EXPLAIN_X_PLAN";
@@ -97,8 +101,28 @@ public class ConnectionProperties {
 
     public static final String DML_SKIP_CRUCIAL_ERR_CHECK = "DML_SKIP_CRUCIAL_ERR_CHECK";
 
+    /**
+     * 是否允许在 RC 的隔离级别下下推 REPLACE
+     */
+    public static final String DML_FORCE_PUSHDOWN_RC_REPLACE = "DML_FORCE_PUSHDOWN_RC_REPLACE";
+    /**
+     * 是否使用 returning 优化
+     */
     public static final String DML_USE_RETURNING = "DML_USE_RETURNING";
 
+    /**
+     * 是否使用 GSI 检查冲突的插入值
+     */
+    public static final String DML_GET_DUP_USING_GSI = "DML_GET_DUP_USING_GSI";
+
+    /**
+     * DML 检查冲突列时下发 DN 的一条 SQL 所能包含的最大 UNION 数量，0 表示无限制
+     */
+    public static final String DML_GET_DUP_UNION_SIZE = "DML_GET_DUP_UNION_SIZE";
+
+    /**
+     * 是否使用 duplicated row count 作为 INSERT IGNORE 的 affected rows
+     */
     public static final String DML_RETURN_IGNORED_COUNT = "DML_RETURN_IGNORED_COUNT";
 
     public static final String ENABLE_SELF_CROSS_JOIN = "ENABLE_SELF_CROSS_JOIN";
@@ -594,6 +618,14 @@ public class ConnectionProperties {
 
     public static final String WINDOW_FUNC_SUBQUERY_CONDITION = "WINDOW_FUNC_SUBQUERY_CONDITION";
 
+    /**
+     * the num limit for correlate materialized judgement
+     */
+    public static final String PUSH_CORRELATE_MATERIALIZED_LIMIT = "PUSH_CORRELATE_MATERIALIZED_LIMIT";
+
+    /**
+     * force window and join reorder
+     */
     public static final String WINDOW_FUNC_REORDER_JOIN = "WINDOW_FUNC_REORDER_JOIN";
 
     public static final String STATISTIC_COLLECTOR_FROM_RULE = "STATISTIC_COLLECTOR_FROM_RULE";
@@ -638,7 +670,6 @@ public class ConnectionProperties {
     public static final String DATABASE_PARALLELISM = "DATABASE_PARALLELISM";
 
     public static final String POLARDBX_PARALLELISM = "POLARDBX_PARALLELISM";
-
 
     public static final String POLARDBX_SLAVE_INSTANCE_FIRST = "POLARDBX_SLAVE_INSTANCE_FIRST";
 
@@ -988,16 +1019,25 @@ public class ConnectionProperties {
 
     public static final String FEEDBACK_WORKLOAD_TP_THRESHOLD = "FEEDBACK_WORKLOAD_TP_THRESHOLD";
 
-    public static final String MPP_LEARNER_DELAY_THRESHOLD = "MPP_LEARNER_DELAY_THRESHOLD";
-
-    public static final String MPP_LEARNER_LOAD_THRESHOLD = "MPP_LEARNER_LOAD_THRESHOLD";
-
-    public static final String ENABLE_AWARE_LEARNER_DELAY = "ENABLE_AWARE_LEARNER_DELAY";
-
-    public static final String ENABLE_AWARE_LEARNER_LOAD = "ENABLE_AWARE_LEARNER_LOAD";
-
     public static final String MASTER_READ_WEIGHT = "MASTER_READ_WEIGHT";
 
+    public static final String STORAGE_DELAY_THRESHOLD = "STORAGE_DELAY_THRESHOLD";
+
+    public static final String STORAGE_BUSY_THRESHOLD = "STORAGE_BUSY_THRESHOLD";
+
+    /**
+     * set the operation strategy when the slave delay
+     * <0 means nothing, =1 change master, =2 throw exception
+     */
+    public static final String DELAY_EXECUTION_STRATEGY = "DELAY_EXECUTION_STRATEGY";
+
+    public static final String KEEP_DELAY_EXECUTION_STRATEGY = "KEEP_DELAY_EXECUTION_STRATEGY";
+
+    public static final String KEEP_TSO_HEARTBEAT_ON_CDC_CON = "KEEP_TSO_HEARTBEAT_ON_CDC_CON";
+
+    /**
+     * top record size
+     */
     public static final String TOPN_SIZE = "TOPN_SIZE";
 
     public static final String TOPN_MIN_NUM = "TOPN_MIN_NUM";
@@ -1084,4 +1124,13 @@ public class ConnectionProperties {
     public static final String PREEMPTIVE_MDL_INTERVAL = "PREEMPTIVE_MDL_INTERVAL";
 
     public static final String FORCE_READ_OUTSIDE_TX = "FORCE_READ_OUTSIDE_TX";
+
+
+    public static final String INTERRUPT_DDL_WHILE_LOSING_LEADER = "INTERRUPT_DDL_WHILE_LOSING_LEADER";
+
+    public static final String RECORD_SQL_COST = "RECORD_SQL_COST";
+
+    public static final String ENABLE_LOGICALVIEW_COST = "ENABLE_LOGICALVIEW_COST";
+
+    public static final String FORCE_RECREATE_GROUP_DATASOURCE = "FORCE_RECREATE_GROUP_DATASOURCE";
 }

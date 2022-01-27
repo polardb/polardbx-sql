@@ -71,6 +71,11 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
     }
 
     @Override
+    public boolean snapshotSeqIsEmpty() {
+        return snapshotTimestamp <= 0;
+    }
+
+    @Override
     protected void beginNonParticipant(String group, IConnection conn) throws SQLException {
         if (snapshotTimestamp < 0) {
             snapshotTimestamp = nextTimestamp();

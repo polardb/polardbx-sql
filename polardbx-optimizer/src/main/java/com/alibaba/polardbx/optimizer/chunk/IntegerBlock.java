@@ -38,11 +38,15 @@ public class IntegerBlock extends AbstractBlock {
     public IntegerBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new int[slotLen];
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount;
     }
 
     public IntegerBlock(DataType dataType, int[] values, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount;
     }
 
     IntegerBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, int[] values) {

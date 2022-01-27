@@ -55,7 +55,7 @@ public class BigIntegerBlock extends AbstractCommonBlock {
         super(DataTypes.ULongType, positionCount, valueIsNull, hasNull);
         this.data = data;
 
-        estimatedSize = INSTANCE_SIZE + sizeOf(data);
+        estimatedSize = INSTANCE_SIZE + sizeOf(data) + sizeOf(valueIsNull);
         sizeInBytes = (LENGTH + Byte.BYTES) * positionCount;
     }
 

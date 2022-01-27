@@ -1124,8 +1124,9 @@ public class WriterFactory {
         final TableMeta targetTableMeta = ec.getSchemaManager(qn.left).getTable(qn.right);
         final Set<String> identifierKeyNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         identifierKeyNames.addAll(oc.getRuleManager().getSharedColumns(qn.right));
+        final boolean allGsiPublished = !isGsi || GlobalIndexMeta.isPublished(ec, gsiMeta);
 
-        if (ComplexTaskPlanUtils.canWrite(targetTableMeta)) {
+        if (!allGsiPublished || ComplexTaskPlanUtils.canWrite(targetTableMeta)) {
             final List<String> pkNames = ImmutableList
                 .copyOf(targetTableMeta.getPrimaryKey().stream().map(ColumnMeta::getName)
                     .collect(Collectors.toList()));

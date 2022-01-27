@@ -595,7 +595,7 @@
                 </rollingPolicy>
                 <encoder>
                     <pattern>
-                        %d{yyyy-MM-dd HH:mm:ss.SSS} - [%X{CONNECTION}] %msg%n
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{56} - [%X{CONNECTION}] %msg%n
                     </pattern>
                 </encoder>
             </appender>
@@ -626,7 +626,7 @@
                 </rollingPolicy>
                 <encoder>
                     <pattern>
-                        %d{yyyy-MM-dd HH:mm:ss.SSS} - [%X{CONNECTION}] %msg%n
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{56} - [%X{CONNECTION}] %msg%n
                     </pattern>
                 </encoder>
             </appender>

@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.subhandler.BaseVirtualViewSubClassHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCclRuleHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCclTriggerHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsCharsetHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDnPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDrdsPhysicalProcessInTrxHandler;
@@ -34,6 +35,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbB
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbLockWaitsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbLocksHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbTrxHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaKeyColumnUsageHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaKeywordsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalityInfoHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMetadataLockHandler;
@@ -46,6 +48,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaProfili
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaQueryInfoHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaReactorPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSPMHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSchemataHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSessionPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatisticTaskHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTableDetailHandler;
@@ -92,6 +95,7 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler = new ArrayList<>();
         subHandler.add(new VirtualStatisticHandler(this));
         subHandler.add(new InformationSchemaTablesHandler(this));
+        subHandler.add(new InformationSchemaSchemataHandler(this));
         subHandler.add(new InformationSchemaInformationSchemaTablesHandler(this));
         subHandler.add(new InformationSchemaInformationSchemaColumnsHandler(this));
         subHandler.add(new InformationSchemaKeywordsHandler(this));
@@ -124,6 +128,8 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaDnPerfHandler(this));
         subHandler.add(new InformationSchemaTcpPerfHandler(this));
         subHandler.add(new InformationSchemaSessionPerfHandler(this));
+        subHandler.add(new InformationSchemaCollationsCharsetHandler(this));
+        subHandler.add(new InformationSchemaKeyColumnUsageHandler(this));
     }
 
     @Override
@@ -215,7 +221,7 @@ public class VirtualViewHandler extends HandlerCommon {
                     (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
                         .getGroupExecutor(groupName).getDataSource();
 
-                String instanceId = groupDataSource.getWriteInstanceId();
+                String instanceId = groupDataSource.getMasterSourceAddress();
 
                 if (instanceId == null) {
                     continue;

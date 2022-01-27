@@ -45,10 +45,10 @@ public class GsiExtractor extends Extractor {
                         long parallelism, PhyTableOperation planSelectWithMax,
                         PhyTableOperation planSelectWithMin,
                         PhyTableOperation planSelectWithMinAndMax,
-                        PhyTableOperation planSelectMaxPk, BitSet primaryKeys) {
+                        PhyTableOperation planSelectMaxPk, List<Integer> primaryKeysId) {
         super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
             planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeys);
+            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeysId);
     }
 
     @Override
@@ -58,27 +58,7 @@ public class GsiExtractor extends Extractor {
 
     public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
                                    long speedMin, long speedLimit, long parallelism, ExecutionContext ec) {
-        // Build select plan
-        final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        final TableMeta sourceTableMeta = sm.getTable(sourceTableName);
-        final TableMeta targetTableMeta = sm.getTable(targetTableName);
-        final List<String> targetTableColumns = targetTableMeta.getWriteColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
-
-        List<String> primaryKeys = GlobalIndexMeta.getPrimaryKeys(sourceTableMeta);
-        final BitSet primaryKeySet = new BitSet(primaryKeys.size());
-        for (String primaryKey : primaryKeys) {
-            for (int i = 0; i < targetTableColumns.size(); i++) {
-                if (primaryKey.equalsIgnoreCase(targetTableColumns.get(i))) {
-                    primaryKeySet.set(i);
-                }
-            }
-        }
-
-        primaryKeys = primaryKeySet.stream().mapToObj(i -> targetTableColumns.get(i)).collect(Collectors.toList());
-
+        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         return new GsiExtractor(schemaName,
@@ -88,13 +68,15 @@ public class GsiExtractor extends Extractor {
             speedMin,
             speedLimit,
             parallelism,
-            builder.buildSelectForBackfill(sourceTableMeta, targetTableColumns, primaryKeys, false, true,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                false, true, SqlSelect.LockMode.SHARED_LOCK),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                true, false,
                 SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(sourceTableMeta, targetTableColumns, primaryKeys, true, false,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                true, true,
                 SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(sourceTableMeta, targetTableColumns, primaryKeys, true, true,
-                SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectMaxPkForBackfill(sourceTableMeta, primaryKeys),
-            primaryKeySet);
+            builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
+            info.getPrimaryKeysId());
     }
 }

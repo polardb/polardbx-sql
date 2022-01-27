@@ -28,6 +28,8 @@ import org.apache.calcite.sql.util.SqlVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.apache.calcite.sql.SqlKind.PLUS;
+
 /**
  * An operator describing a query. (Not a query itself.)
  *

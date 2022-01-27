@@ -117,7 +117,7 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
             }
 
             if (numObjectsSkipped.get() == totalSize) {
-                super.init();
+                super.doInit();
                 return;
             }
 
@@ -138,7 +138,7 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
             }
 
             if (numObjectsSkipped.get() == totalSize) {
-                super.init();
+                super.doInit();
                 return;
             }
 
@@ -189,7 +189,7 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
                 }
 
                 if (numObjectsSkipped.get() == totalSize) {
-                    super.init();
+                    super.doInit();
                     return;
                 }
 

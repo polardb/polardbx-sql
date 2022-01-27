@@ -16,20 +16,19 @@
 
 package com.alibaba.polardbx.executor.mpp.split;
 
-import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.SubqueryUtils;
-import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
@@ -52,7 +51,6 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang.StringUtils;
 
-import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -127,7 +125,7 @@ public class SplitManager {
 
         IGroupExecutor groupExecutor = topology.get(dbIndex);
         TGroupDataSource ds = (TGroupDataSource) groupExecutor.getDataSource();
-        TAtomDataSource atomDataSource = getAtomDatasource(ds.getAtomDataSources().get(0));
+        String address = ds.getOneAtomAddress(ConfigDataMode.isMasterMode());
         String hint = buildDRDSTraceComment(executionContext);
         String sqlTemplate = queryOperation.getNativeSql();
         JdbcSplit split = new JdbcSplit(ds.getDbGroupKey(),
@@ -137,7 +135,7 @@ public class SplitManager {
             sqlTemplate,
             null,
             params,
-            atomDataSource.getHost() + ":" + atomDataSource.getPort(),
+            address,
             ImmutableList.of(logicalView.getTableNames()),
             rw,
             false);
@@ -308,7 +306,7 @@ public class SplitManager {
 
             IGroupExecutor groupExecutor = topology.get(phyTableOperation.getDbIndex());
             TGroupDataSource ds = (TGroupDataSource) groupExecutor.getDataSource();
-            TAtomDataSource atomDataSource = getAtomDatasource(ds.getAtomDataSources().get(0));
+            String address = ds.getOneAtomAddress(ConfigDataMode.isMasterMode());
 
             PhyTableScanBuilder phyOperationBuilder =
                 (PhyTableScanBuilder) phyTableOperation.getPhyOperationBuilder();
@@ -326,7 +324,7 @@ public class SplitManager {
                 sqlTemplate,
                 orderBy,
                 params,
-                atomDataSource.getHost() + ":" + atomDataSource.getPort(),
+                address,
                 phyTableOperation.getTableNames(),
                 rw,
                 phyOperationBuilder.containLimit() || (logicalView.getLockMode() != null
@@ -334,15 +332,5 @@ public class SplitManager {
         } else {
             throw new UnsupportedOperationException("Unknown input " + input);
         }
-    }
-
-    private TAtomDataSource getAtomDatasource(DataSource s) {
-        if (s instanceof TAtomDataSource) {
-            return (TAtomDataSource) s;
-        }
-        if (s instanceof DataSourceWrapper) {
-            return getAtomDatasource(((DataSourceWrapper) s).getWrappedDataSource());
-        }
-        throw new IllegalAccessError();
     }
 }

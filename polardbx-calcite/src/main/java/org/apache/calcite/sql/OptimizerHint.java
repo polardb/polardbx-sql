@@ -35,6 +35,7 @@ public class OptimizerHint extends SqlNodeList {
     public final static String COMMIT_ON_SUCCESS = "COMMIT_ON_SUCCESS";
     public final static String ROLLBACK_ON_FAIL = "ROLLBACK_ON_FAIL";
     public final static String TARGET_AFFECT_ROW = "TARGET_AFFECT_ROW";
+    public final static String SQL_NO_CACHE = "SQL_NO_CACHE";
 
     private List<String> hints = new ArrayList<>();
 
@@ -50,6 +51,10 @@ public class OptimizerHint extends SqlNodeList {
     }
 
     public void addHint(String hint) {
+        if (hint.toUpperCase().contains(SQL_NO_CACHE)) {
+            // ignore SQL_NO_CACHE
+            return;
+        }
         hints.add(hint);
     }
 

@@ -124,6 +124,15 @@ public class GroupInfoUtil {
         return atomKey.toLowerCase();
     }
 
+    public static String parseStorageId(String atomKey) {
+        String[] rets = atomKey.split("#");
+        if (rets.length > 1) {
+            return rets[1];
+        } else {
+            return "";
+        }
+    }
+
     public static String buildWeightStr(int r, int w) {
         String atomKey = String.format("r%sw%s", r, w);
         return atomKey.toLowerCase();

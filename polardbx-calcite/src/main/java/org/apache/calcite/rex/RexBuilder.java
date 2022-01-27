@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
+import io.airlift.slice.Slice;
 import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.avatica.util.DateTimeUtils;
 import org.apache.calcite.avatica.util.Spaces;
@@ -1652,6 +1653,8 @@ public class RexBuilder {
     case VARCHAR:
       if (o instanceof NlsString) {
         return o;
+      }else if(o instanceof Slice){
+        o = ((Slice) o).toStringUtf8();
       }
       return new NlsString((String) o, type.getCharset().name(),
           type.getCollation());

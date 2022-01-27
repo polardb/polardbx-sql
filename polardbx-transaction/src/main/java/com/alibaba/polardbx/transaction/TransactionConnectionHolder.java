@@ -165,15 +165,7 @@ public class TransactionConnectionHolder implements IConnectionHolder {
             return false;
         }
 
-        if (ConfigDataMode.isMasterMode()) {
-            if (ConfigDataMode.enableSlaveReadForPolarDbX()) {
-                //主实例开启了备库读能力, 且当前查询强制要求走备库
-                return masterSlave == MasterSlave.SLAVE_ONLY;
-            } else {
-                return false;
-            }
-        }
-        return true;
+        return masterSlave != MasterSlave.MASTER_ONLY;
     }
 
     private IConnection getConnectionWithLsn(String schema, String group, IDataSource ds, RW rw)

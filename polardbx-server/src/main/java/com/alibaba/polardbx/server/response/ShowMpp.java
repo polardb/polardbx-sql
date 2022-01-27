@@ -36,7 +36,7 @@ import java.util.Set;
 
 public final class ShowMpp {
 
-    private static final int FIELD_COUNT = 5;
+    private static final int FIELD_COUNT = 4;
     private static final ResultSetHeaderPacket HEADER_PACKET = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] FIELD_PACKETS = new FieldPacket[FIELD_COUNT];
     private static final EOFPacket EOF_PACKET = new EOFPacket();
@@ -56,9 +56,6 @@ public final class ShowMpp {
         FIELD_PACKETS[i++].packetId = ++packetId;
 
         FIELD_PACKETS[i] = PacketUtil.getField("LEADER", Fields.FIELD_TYPE_VAR_STRING);
-        FIELD_PACKETS[i++].packetId = ++packetId;
-
-        FIELD_PACKETS[i] = PacketUtil.getField("Latency", Fields.FIELD_TYPE_VAR_STRING);
         FIELD_PACKETS[i++].packetId = ++packetId;
 
         EOF_PACKET.packetId = ++packetId;
@@ -109,13 +106,6 @@ public final class ShowMpp {
         row.add(StringUtil.encode(node.getHostPort(), charset));
         row.add(StringUtil.encode(node.isMaster() ? "W" : "R", charset));
         row.add(StringUtil.encode(node.isLeader() ? "Y" : "N", charset));
-        InternalNodeManager manager = ServiceProvider.getInstance().getServer().getNodeManager();
-        String delayStr = "UNKOWN";
-        if (manager != null && manager.getPolarDBXStatusManager() != null) {
-            boolean ret = manager.getPolarDBXStatusManager().isDelay(node.getInstId());
-            delayStr = ret ? "Y" : "N";
-        }
-        row.add(StringUtil.encode(delayStr, charset));
         return row;
     }
 

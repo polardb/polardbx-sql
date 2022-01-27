@@ -1038,6 +1038,7 @@ public enum SqlTypeName {
                 return SqlLiteral.createBoolean(((Number) o).intValue() == 1, pos);
             }
             return SqlLiteral.createBoolean((Boolean) o, pos);
+        case FLOAT:
         case TINYINT:
         case TINYINT_UNSIGNED:
         case SMALLINT:

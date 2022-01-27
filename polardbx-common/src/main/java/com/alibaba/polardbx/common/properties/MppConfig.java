@@ -51,8 +51,6 @@ import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_HT
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_HTTP_SERVER_MIN_THREADS;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_HTTP_TIMEOUT_THREAD_SIZE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_INFO_UPDATE_INTERVAL;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_LEARNER_DELAY_THRESHOLD;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_LEARNER_LOAD_THRESHOLD;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_LESS_REVOKE_BYTES;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_LOW_PRIORITY_ENABLED;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_QUERY_EXPIRED_RESERVETION_TIME;
@@ -297,13 +295,6 @@ public class MppConfig {
             case MPP_MAX_QUERY_SPILL_SPACE_THRESHOLD:
                 maxQuerySpillSpaceThreshold = parseValue(value, Double.class, DEFAULT_MAX_QUERY_SPILL_SPACE_THRESHOLD);
                 break;
-            case MPP_LEARNER_DELAY_THRESHOLD:
-                learnerDelayThreshold = parseValue(value, Integer.class, DEFAULT_MPP_LEARNER_DELAY_THRESHOLD);
-                break;
-            case MPP_LEARNER_LOAD_THRESHOLD:
-                learnerLoadThreshold = parseValue(
-                    value, Integer.class, DEFAULT_MPP_LEARNER_LOAD_THRESHOLD);
-                break;
             case MPP_SPILL_PATHS:
                 List<String> spillPathsSplit = ImmutableList.copyOf(
                     Splitter.on(",").trimResults().omitEmptyStrings().split(value));
@@ -517,7 +508,7 @@ public class MppConfig {
         return tpTaskWorkerThreadsRatio;
     }
 
-    private static final int DEFAULT_MPP_TASK_WORKER_THREADS_RATIO = 2;
+    private static final int DEFAULT_MPP_TASK_WORKER_THREADS_RATIO = 4;
     private int taskWorkerThreadsRatio = DEFAULT_MPP_TASK_WORKER_THREADS_RATIO;
 
     public int getTaskWorkerThreadsRatio() {
@@ -739,20 +730,6 @@ public class MppConfig {
 
     public double getMaxQuerySpillSpaceThreshold() {
         return maxQuerySpillSpaceThreshold;
-    }
-
-    private static final int DEFAULT_MPP_LEARNER_DELAY_THRESHOLD = 5;
-    private int learnerDelayThreshold = DEFAULT_MPP_LEARNER_DELAY_THRESHOLD;
-
-    public int getLearnerDelayThreshold() {
-        return learnerDelayThreshold;
-    }
-
-    private static final int DEFAULT_MPP_LEARNER_LOAD_THRESHOLD = 100;
-    private int learnerLoadThreshold = DEFAULT_MPP_LEARNER_LOAD_THRESHOLD;
-
-    public int getLearnerLoadThreshold() {
-        return learnerLoadThreshold;
     }
 
     private static final List<Path> DEFAULT_SPILL_PATHS = initDefaultPathList();

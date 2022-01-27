@@ -30,6 +30,7 @@ import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -54,6 +55,12 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
         super(executionContext, manager);
         this.consistentReplicaRead = executionContext.getParamManager().getBoolean(
             ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ);
+
+        final String schemaName = executionContext.getSchemaName();
+        if (!StringUtils.isEmpty(schemaName)) {
+            TransactionManager.getInstance(schemaName).enableXaRecoverScan();
+            TransactionManager.getInstance(schemaName).enableKillTimeoutTransaction();
+        }
     }
 
     @Override
@@ -62,6 +69,11 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
             snapshotTimestamp = nextTimestamp();
         }
         return snapshotTimestamp;
+    }
+
+    @Override
+    public boolean snapshotSeqIsEmpty() {
+        return snapshotTimestamp <= 0;
     }
 
     @Override
@@ -81,7 +93,7 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
                 false, rw.equals(ITransaction.RW.WRITE), executionContext);
 
             boolean needReadLsn = needReadLsn(this, schemaName, masterSlave, consistentReplicaRead);
-            IConnection conn = super.getConnection(schemaName, group, ds, rw, ec);
+            IConnection conn = super.getSelfConnection(schemaName, group, ds, masterSlave);
 
             if (needReadLsn) {
                 TopologyHandler topology;

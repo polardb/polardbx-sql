@@ -23,6 +23,8 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.node.StorageStatus;
+import com.alibaba.polardbx.gms.node.StorageStatusManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
@@ -61,7 +63,7 @@ import java.util.stream.Collectors;
  */
 public final class ShowStorage {
 
-    private static final int FIELD_COUNT = 8;
+    private static final int FIELD_COUNT = 10;
     private static final int EXTRA_FIELD_COUNT = 1;
 
     private static final ResultSetHeaderPacket HEADER_PACKET = PacketUtil.getHeader(FIELD_COUNT);
@@ -100,6 +102,12 @@ public final class ShowStorage {
         FIELD_PACKETS[i++].packetId = ++packetId;
 
         FIELD_PACKETS[i] = PacketUtil.getField("DELETABLE", Fields.FIELD_TYPE_VAR_STRING);
+        FIELD_PACKETS[i++].packetId = ++packetId;
+
+        FIELD_PACKETS[i] = PacketUtil.getField("DELAY", Fields.FIELD_TYPE_VAR_STRING);
+        FIELD_PACKETS[i++].packetId = ++packetId;
+
+        FIELD_PACKETS[i] = PacketUtil.getField("ACTIVE", Fields.FIELD_TYPE_VAR_STRING);
         FIELD_PACKETS[i++].packetId = ++packetId;
 
         EOF_PACKET.packetId = ++packetId;
@@ -222,7 +230,8 @@ public final class ShowStorage {
     private static RowDataPacket getRow(Map<String, String> storageInstInfoMap, String charset, boolean showReplicas) {
         int fieldCount = !showReplicas ? FIELD_COUNT : FIELD_COUNT + EXTRA_FIELD_COUNT;
         RowDataPacket row = new RowDataPacket(fieldCount);
-        row.add(StringUtil.encode(storageInstInfoMap.get("storageInstId"), charset));
+        String storageId = storageInstInfoMap.get("storageInstId");
+        row.add(StringUtil.encode(storageId, charset));
         row.add(StringUtil.encode(storageInstInfoMap.get("leaderNode"), charset));
         row.add(StringUtil.encode(storageInstInfoMap.get("isHealthy"), charset));
         row.add(StringUtil.encode(storageInstInfoMap.get("instKind"), charset));
@@ -230,6 +239,15 @@ public final class ShowStorage {
         row.add(StringUtil.encode(storageInstInfoMap.get("groupCnt"), charset));
         row.add(StringUtil.encode(storageInstInfoMap.get("status"), charset));
         row.add(StringUtil.encode(storageInstInfoMap.get("deletable"), charset));
+        StorageStatus storageStatus = StorageStatusManager.getInstance().getStorageStatus().get(storageId);
+        if (storageStatus != null) {
+            row.add(StringUtil.encode(storageStatus.getDelaySecond() + "", charset));
+            row.add(StringUtil.encode(storageStatus.getActiveSession() + "", charset));
+        } else {
+            row.add(StringUtil.encode("null", charset));
+            row.add(StringUtil.encode("null", charset));
+        }
+
         row.add(StringUtil.encode(storageInstInfoMap.get("replicas"), charset));
         return row;
     }

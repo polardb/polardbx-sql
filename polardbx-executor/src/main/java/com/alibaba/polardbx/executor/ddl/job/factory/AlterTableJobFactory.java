@@ -140,6 +140,7 @@ public class AlterTableJobFactory extends DdlJobFactory {
                 prepareData.isColumnReorder(),
                 prepareData.getDroppedIndexes(),
                 prepareData.getAddedIndexes(),
+                prepareData.getAddedIndexesWithoutNames(),
                 prepareData.getRenamedIndexes(),
                 prepareData.isPrimaryKeyDropped(),
                 prepareData.getAddedPrimaryKeyColumns(),

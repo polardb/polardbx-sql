@@ -249,12 +249,12 @@ public class GsiBackfillManager {
     }
 
     public Integer updateBackfillObject(List<BackfillObjectBean> backfillObject, List<ParameterContext> lastPk,
-                                        long successCount, BackfillStatus status) {
+                                        long successCount, BackfillStatus status, Map<Long, Long> primaryKeysIdMap) {
         final AtomicBoolean first = new AtomicBoolean(true);
         final AtomicInteger partitionProgress = new AtomicInteger(0);
         final AtomicInteger pkIndex = new AtomicInteger(0);
         final List<BackfillObjectRecord> backfillObjectRecords = backfillObject.stream()
-            .sorted(Comparator.comparingLong(o -> o.columnIndex))
+            .sorted(Comparator.comparingLong(o -> primaryKeysIdMap.get(o.columnIndex)))
             .map(bfo -> {
                 final boolean emptyMark = GeneralUtil.isEmpty(lastPk);
                 final ParameterContext param = emptyMark ? null : lastPk.get(pkIndex.getAndIncrement());

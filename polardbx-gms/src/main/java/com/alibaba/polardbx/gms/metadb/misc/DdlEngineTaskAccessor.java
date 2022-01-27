@@ -57,11 +57,18 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String WITH_TASK_ID = " and `task_id` = ?";
 
+    private static final String WITH_ONGOING_TASK = " and `state` <> 'SUCCESS' and `state` <> 'ROLLBACK_SUCCESS' ";
+
+    private static final String WITH_TASK_NAME = " and name = ?";
+
     private static final String SELECT_BASE = SELECT_FULL + FROM_TABLE;
 
     private static final String SELECT_BY_JOB_ID = SELECT_BASE + WHERE_JOB_ID;
 
     private static final String SELECT_BY_JOB_ID_TASK_ID = SELECT_BASE + WHERE_JOB_ID + WITH_TASK_ID;
+
+    private static final String SELECT_ONGOING_TASK =
+        SELECT_BASE + WHERE_SCHEMA_NAME + WITH_ONGOING_TASK + WITH_TASK_NAME;
 
     private static final String UPDATE_BASE = "update " + DDL_ENGINE_TASK_TABLE + " set ";
 
@@ -126,6 +133,20 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
                 return records.get(0);
             }
             return null;
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
+        }
+    }
+
+    public boolean hasOngoingTask(String schemaName, String taskName) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, taskName);
+
+            List<DdlEngineTaskRecord> records =
+                MetaDbUtil.query(SELECT_ONGOING_TASK, params, DdlEngineTaskRecord.class, connection);
+            return CollectionUtils.isNotEmpty(records);
         } catch (Exception e) {
             throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
         }

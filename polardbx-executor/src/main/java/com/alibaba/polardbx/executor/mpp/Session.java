@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.mpp;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MetricLevel;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
@@ -160,6 +159,14 @@ public final class Session {
             hintCmds.put(
                 ConnectionProperties.ENABLE_CONSISTENT_REPLICA_READ,
                 clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ));
+        }
+
+        if (!hintCmds.containsKey(ConnectionProperties.DELAY_EXECUTION_STRATEGY)) {
+            if (clientContext.getParamManager().getBoolean(ConnectionParams.KEEP_DELAY_EXECUTION_STRATEGY)) {
+                hintCmds.put(
+                    ConnectionProperties.DELAY_EXECUTION_STRATEGY,
+                    clientContext.getParamManager().getInt(ConnectionParams.DELAY_EXECUTION_STRATEGY));
+            }
         }
 
         if (!hintCmds.containsKey(ConnectionProperties.MPP_METRIC_LEVEL)) {

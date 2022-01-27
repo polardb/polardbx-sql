@@ -7496,7 +7496,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         SqlFunction function,
         List<RelDataType> argTypes,
         List<SqlNode> operands) {
-        throw new UnsupportedOperationException();
+        throw new UnsupportedOperationException("unsupported  function " + function + " with arg type " + argTypes.toString());
     }
 
     private static boolean isPhysicalNavigation(SqlKind kind) {

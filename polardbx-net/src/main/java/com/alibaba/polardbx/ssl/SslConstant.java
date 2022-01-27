@@ -19,11 +19,38 @@
  */
 package com.alibaba.polardbx.ssl;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import java.util.Arrays;
+
 /**
  * ssl constant values
  */
 public class SslConstant {
-    public static final String PROTOCOL = "TLS";
+    public static String PROTOCOL = "TLS";
+
+    public static String[] enabledProtocols;
+
+    static {
+        SSLSocket sslSocket = null;
+        try {
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, null, null);
+            sslSocket = (SSLSocket) sslContext.getSocketFactory().createSocket();
+            enabledProtocols = sslSocket.getSupportedProtocols();
+            System.out.println(String.format("The server supportedProtocols: %s", Arrays.toString(enabledProtocols)));
+        } catch (Throwable t) {
+
+        } finally {
+            try {
+                if (sslSocket != null) {
+                    sslSocket.close();
+                }
+            } catch (Throwable t) {
+                //ignore
+            }
+        }
+    }
 
     public static final String KEY_STORE_PASSWORD = "9YG$Cd!Y$@3!^mGX";
     public static final String DEFAULT_ALGORITHM = "SunX509";

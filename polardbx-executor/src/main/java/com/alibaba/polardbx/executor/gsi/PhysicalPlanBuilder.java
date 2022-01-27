@@ -35,7 +35,6 @@ import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.PhyOperationBuilderCommon;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
@@ -50,17 +49,15 @@ import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
-import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlBasicCall;
-import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -70,7 +67,6 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlSelect.LockMode;
@@ -81,15 +77,16 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
-import org.apache.calcite.util.Util;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -245,6 +242,12 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         SqlNode outerRow = new SqlBasicCall(SqlStdOperatorTable.ROW, allValues, SqlParserPos.ZERO);
 
         return new SqlBasicCall(SqlStdOperatorTable.IN, new SqlNode[] {keyNameNode, outerRow}, SqlParserPos.ZERO);
+    }
+
+    protected SqlNode buildConstant(Object value, String name) {
+        SqlIdentifier sqlIdentifier = new SqlIdentifier(name, SqlParserPos.ZERO);
+        SqlNode param = buildParam(ParameterMethod.setObject1, value);
+        return SqlStdOperatorTable.AS.createCall(SqlParserPos.ZERO, param, sqlIdentifier);
     }
 
     private SqlDynamicParam buildParam(ParameterMethod method, Object value) {
@@ -1145,431 +1148,238 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return Planner.getInstance().getPlan(sqlSelect, plannerContext);
     }
 
-    /**
-     * Build SELECT for UPSERT
-     *
-     * <pre>
-     * (SELECT * , ? AS __row__index__
-     *  FROM (
-     *         (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) = (?, ?))
-     *         UNION
-     *         (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) = (?, ?))
-     *       ) t
-     *  LIMIT 1 FOR UPDATE
-     * ) UNION (
-     *  SELECT * , ? AS __row__index__
-     *  FROM (
-     *         (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) = (?, ?))
-     *         UNION
-     *         (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) = (?, ?))
-     *       ) t
-     *  LIMIT 1 FOR UPDATE
-     * )
-     * </pre>
-     */
-    public List<RelNode> buildSelectUnionAndParam(LogicalInsert upsert, ExecutionContext selectEc,
-                                                  List<String> selectKeys, List<List<String>> conditionKeys,
-                                                  TableMeta baseTableMeta, LockMode lockMode, Integer fetchSize) {
-        // Build select list and row type
-        final ColumnMeta rowIndexColumn = buildRowIndexColumnMeta(Util.last(upsert.getTable().getQualifiedName()));
-        final SqlNodeList innerSelectList = new SqlNodeList(SqlParserPos.ZERO);
-        final RelDataType rowType = buildRowTypeForSelect(selectKeys, rowIndexColumn, baseTableMeta, innerSelectList);
-
-        // Build target table parameter
-        buildTargetTable();
-
-        // Build condition key nodes, [(key1, key2), (key3, key4)]
-        final List<SqlNode> conditionKeyNodes = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
-            .collect(Collectors.toList());
-
-        final Map<String, Integer> columnIndexMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        Ord.zip(upsert.getInput().getRowType().getFieldNames())
-            .forEach(o -> columnIndexMap.put(o.getValue(), o.getKey()));
-
-        // To implement concurrent query, gather all selects and apply once.
-        final List<Map<Integer, ParameterContext>> batchParameters = selectEc.getParams().getBatchParameters();
-
-        initParams(PlannerUtils.TABLE_NAME_PARAM_INDEX);
-
-        final LogicalDynamicValues input = RelUtils.getRelInput(upsert);
-
-        // Build sql directly, because UNION node can't be executed.
-        final StringBuilder unionSql = new StringBuilder();
-        final AtomicInteger phyTableCount = new AtomicInteger();
-        final List<Integer> tableParamIndexes = new ArrayList<>();
-
-        // Foreach parameter row
-        for (Ord<Map<Integer, ParameterContext>> ord : Ord.zip(batchParameters)) {
-            final Integer paramRowIndex = ord.getKey();
-            final Map<Integer, ParameterContext> rowParameters = ord.getValue();
-            final int valuesCount = input.getTuples().size();
-
-            // Foreach VALUE statement in INSERT VALUES(...),(...)
-            Ord.zip(input.getTuples()).forEach(o -> {
-                final ImmutableList<RexNode> row = o.getValue();
-                final Integer valuesIndex = o.getKey();
-                final int rowIndex = paramRowIndex * valuesCount + valuesIndex;
-
-                // SELECT * , ? AS __row__index__
-                final SqlNodeList outerSelectListWithRowIndex = innerSelectList.clone(SqlParserPos.ZERO);
-                final SqlDynamicParam paramForRowIndex = buildParam(ParameterMethod.setInt, rowIndex);
-                outerSelectListWithRowIndex.add(new SqlBasicCall(TddlOperatorTable.AS, new SqlNode[] {
-                    paramForRowIndex, new SqlIdentifier(rowIndexColumn.getName(), SqlParserPos.ZERO)},
-                    SqlParserPos.ZERO));
-
-                final List<SqlNode> unionOperands = new ArrayList<>();
-
-                // Foreach key
-                for (int i = 0; i < conditionKeys.size(); i++) {
-                    final List<String> keyColumns = conditionKeys.get(i);
-                    final SqlNode keyNameNode = conditionKeyNodes.get(i);
-
-                    // FROM DUAL
-                    final int tableParamIndex = buildParam(ParameterMethod.setTableName, "DUAL").getIndex() + 2;
-                    tableParamIndexes.add(tableParamIndex);
-
-                    //
-                    // (key_column1, key_column2) = (?, ?)
-                    //
-                    final List<Object> keyValue = new ArrayList<>();
-                    for (String key : keyColumns) {
-                        final Integer keyIndex = columnIndexMap.get(key);
-                        final RexNode rexNode = row.get(keyIndex);
-
-                        final Object value = RexUtils.getValueFromRexNode(rexNode, selectEc, rowParameters);
-
-                        keyValue.add(value);
-                    }
-                    final SqlNode condition = buildInCondition(ImmutableList.of(keyValue), keyNameNode);
-
-                    // Foreach unique key build :
-                    //
-                    // SELECT * FROM DUAL WHERE (key_column1, key_column2) = (?, ?)
-                    //
-                    SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                        null,
-                        innerSelectList,
-                        targetTableNode,
-                        condition,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null);
-                    phyTableCount.getAndIncrement();
-
-                    unionOperands.add(sqlSelect);
-                }
-
-                // Foreach value build :
-                //
-                // SELECT * , ? AS __row__index__
-                // FROM (
-                //        (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) = (?, ?))
-                //        UNION
-                //        (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) = (?, ?))
-                //      ) t
-                // LIMIT 1 FOR UPDATE
-                //
-                SqlNode union = unionOperands.get(0);
-                if (unionOperands.size() > 1) {
-                    for (int i = 1; i < unionOperands.size(); i++) {
-                        union = SqlStdOperatorTable.UNION
-                            .createCall(SqlParserPos.ZERO, ImmutableList.of(union, unionOperands.get(i)));
-                    }
-                }
-                final SqlCall from = SqlStdOperatorTable.AS
-                    .createCall(SqlParserPos.ZERO, union, new SqlIdentifier("t", SqlParserPos.ZERO));
-                final SqlNumericLiteral fetch =
-                    SqlLiteral.createExactNumeric(fetchSize.toString(), SqlParserPos.ZERO);
-
-                SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                    null,
-                    outerSelectListWithRowIndex,
-                    from,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    fetch);
-                sqlSelect.setLockMode(lockMode);
-
-                // Final sql :
-                //
-                //  SELECT * , ? AS __row__index__
-                //  FROM (
-                //         (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) = (?, ?))
-                //         UNION
-                //         (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) = (?, ?))
-                //       ) t
-                //  LIMIT 1 FOR UPDATE
-                // UNION (
-                //  SELECT * , ? AS __row__index__
-                //  FROM (
-                //         (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) = (?, ?))
-                //         UNION
-                //         (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) = (?, ?))
-                //       ) t
-                //  LIMIT 1 FOR UPDATE
-                // )
-
-                if (unionSql.length() > 0) {
-                    unionSql.append(" UNION ");
-                }
-                unionSql.append("(").append(RelUtils.toNativeSql(sqlSelect, DbType.MYSQL)).append(")");
-
-            });
-        }
-
-        return buildFullTableScan(upsert, rowType, unionSql.toString(), phyTableCount.get(), tableParamIndexes,
-            lockMode);
-    }
-
     public ColumnMeta buildRowIndexColumnMeta(String targetTableName) {
         final Field rowIndexField = new Field(typeFactory.createSqlType(SqlTypeName.BIGINT));
         return new ColumnMeta(targetTableName, "__row__index__", null, rowIndexField);
     }
 
     /**
-     * Build SELECT for INSERT IGNORE/REPLACE
-     * <p>
-     * (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) IN ((?, ?), ...) FOR UPDATE)
-     * UNION
-     * (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) IN ((?, ?), ...) FOR UPDATE)
+     * @return {targetDb: {targetTb: [[index, pk]]}}
      */
-    public List<RelNode> buildSelectUnionAndParam(LogicalInsert insert, ExecutionContext selectEc,
-                                                  List<String> selectKeys, List<List<String>> conditionKeys,
-                                                  TableMeta baseTableMeta, LockMode lockMode,
-                                                  final List<Map<GroupKey, List<Object>>> deduplicated) {
-        // Build select list and row type
-        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
-        RelDataType rowType = buildRowTypeForSelect(selectKeys, baseTableMeta, selectList);
+    protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResults(TableMeta tableMeta,
+                                                                                               List<List<Object>> values,
+                                                                                               List<String> columns) {
 
-        // Build target table parameter
-        buildTargetTable();
-
-        // Build condition key nodes, [(key1, key2), (key3, key4)]
-        List<SqlNode> conditionKeyNodes = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
+        // primary key indexes and ColumnMetas, columns must be upper case
+        List<String> primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(tableMeta);
+        List<Integer> primaryKeyIndexes = primaryKeyNames.stream()
+            .map(columns::indexOf)
             .collect(Collectors.toList());
 
-        initParams(PlannerUtils.TABLE_NAME_PARAM_INDEX);
+        // sharding key indexes and ColumnMetas
+        List<String> shardingKeyNames = GlobalIndexMeta.getShardingKeys(tableMeta, schemaName);
+        List<ColumnMeta> shardingKeyMetas = new ArrayList<>(shardingKeyNames.size());
+        List<Integer> shardingKeyIndexes = new ArrayList<>(shardingKeyNames.size());
+        for (String shardingKey : shardingKeyNames) {
+            shardingKeyIndexes.add(columns.indexOf(shardingKey));
+            shardingKeyMetas.add(tableMeta.getColumnIgnoreCase(shardingKey));
+        }
 
-        final LogicalDynamicValues input = RelUtils.getRelInput(insert);
-
-        // Build sql directly, because UNION node can't be executed.
-        final StringBuilder unionSql = new StringBuilder();
-        final AtomicInteger phyTableCount = new AtomicInteger();
-        final List<Integer> tableParamIndexes = new ArrayList<>();
-
-        Ord.zip(deduplicated).forEach(o -> {
-            final SqlNode keyNameNode = conditionKeyNodes.get(o.getKey());
-
-            o.getValue().values().forEach(row -> {
-                // Build target table
-                final int tableParamIndex = buildParam(ParameterMethod.setTableName, "DUAL").getIndex() + 2;
-                tableParamIndexes.add(tableParamIndex);
-
-                //
-                // (key_column1, key_column2) = (?, ?)
-                //
-                SqlNode condition = buildInCondition(ImmutableList.of(row), keyNameNode);
-
-                //
-                // SELECT * FROM DUAL WHERE (key_column1, key_column2) IN ((?, ?), ...) FOR UPDATE
-                //
-                SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                    null,
-                    selectList,
-                    targetTableNode,
-                    condition,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null);
-                sqlSelect.setLockMode(lockMode);
-
-                phyTableCount.getAndIncrement();
-
-                //
-                // (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) IN ((?, ?), ...) FOR UPDATE)
-                // UNION
-                // (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) IN ((?, ?), ...) FOR UPDATE)
-                //
-                if (unionSql.length() > 0) {
-                    unionSql.append(" UNION ");
-                }
-                unionSql.append("(").append(RelUtils.toNativeSql(sqlSelect, DbType.MYSQL)).append(")");
-            });
-        });
-
-        return buildFullTableScan(insert, rowType, unionSql.toString(), phyTableCount.get(), tableParamIndexes,
-            lockMode);
+        List<String> relShardingKeyNames = BuildPlanUtils.getRelColumnNames(tableMeta, shardingKeyMetas);
+        return BuildPlanUtils.buildResultForShardingTable(schemaName, tableMeta.getTableName(), values,
+            relShardingKeyNames, shardingKeyIndexes, shardingKeyMetas, primaryKeyIndexes, ec);
     }
 
     /**
-     * Build SELECT for INSERT IGNORE/REPLACE
-     * <p>
-     * (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) IN ((?, ?), ...) FOR UPDATE)
-     * UNION
-     * (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) IN ((?, ?), ...) FOR UPDATE)
+     * Build shard result for full table scan, we just add all values to each physical table
+     * @return {targetDb: {targetTb: [[index, pk]]}}
      */
-    public List<RelNode> buildSelectUnionAndParam(LogicalInsert insert, ExecutionContext selectEc,
-                                                  List<String> selectKeys, List<List<String>> conditionKeys,
-                                                  TableMeta baseTableMeta, LockMode lockMode) {
-        // Build select list and row type
-        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
-        RelDataType rowType = buildRowTypeForSelect(selectKeys, baseTableMeta, selectList);
+    protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResultsFullTableScan(
+        TableMeta tableMeta, Integer valuesCount) {
+        String tableName = tableMeta.getTableName();
+        String schemaName = tableMeta.getSchemaName();
 
-        // Build target table parameter
-        buildTargetTable();
-
-        // Build condition key nodes, [(key1, key2), (key3, key4)]
-        List<SqlNode> conditionKeyNodes = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
-            .collect(Collectors.toList());
-
-        final Map<String, Integer> columnIndexMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        Ord.zip(insert.getInput().getRowType().getFieldNames())
-            .forEach(o -> columnIndexMap.put(o.getValue(), o.getKey()));
-
-        // To implement concurrent query, gather all selects and apply once.
-        final List<Map<Integer, ParameterContext>> batchParameters = selectEc.getParams().getBatchParameters();
-
-        initParams(PlannerUtils.TABLE_NAME_PARAM_INDEX);
-
-        final LogicalDynamicValues input = RelUtils.getRelInput(insert);
-
-        // Build sql directly, because UNION node can't be executed.
-        final StringBuilder unionSql = new StringBuilder();
-        final AtomicInteger phyTableCount = new AtomicInteger();
-        final List<Integer> tableParamIndexes = new ArrayList<>();
-
-        // Foreach parameter row
-        for (Map<Integer, ParameterContext> rowParameters : batchParameters) {
-
-            // Foreach condition key
-            for (int i = 0; i < conditionKeys.size(); i++) {
-                final List<String> conditionKey = conditionKeys.get(i);
-                final SqlNode keyNameNode = conditionKeyNodes.get(i);
-
-                final List<List<Object>> keyValues = new ArrayList<>();
-                input.getTuples().forEach(row -> {
-                    final List<Object> keyValue = new ArrayList<>();
-                    for (String key : conditionKey) {
-                        final Integer keyIndex = columnIndexMap.get(key);
-                        final RexNode rexNode = row.get(keyIndex);
-
-                        final Object value = RexUtils.getValueFromRexNode(rexNode, selectEc, rowParameters);
-
-                        keyValue.add(value);
-                    }
-
-                    keyValues.add(keyValue);
-                });
-
-                // Foreach value statement in one parameter row
-                for (List<Object> row : keyValues) {
-                    // Build target table
-                    final int tableParamIndex = buildParam(ParameterMethod.setTableName, "DUAL").getIndex() + 2;
-                    tableParamIndexes.add(tableParamIndex);
-
-                    //
-                    // (key_column1, key_column2) = (?, ?)
-                    //
-                    SqlNode condition = buildInCondition(ImmutableList.of(row), keyNameNode);
-
-                    //
-                    // SELECT * FROM DUAL WHERE (key_column1, key_column2) IN ((?, ?), ...) FOR UPDATE
-                    //
-                    SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                        null,
-                        selectList,
-                        targetTableNode,
-                        condition,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null);
-                    sqlSelect.setLockMode(lockMode);
-
-                    phyTableCount.getAndIncrement();
-
-                    //
-                    // (SELECT * FROM DUAL WHERE (key1_column1, key1_column2) IN ((?, ?), ...) FOR UPDATE)
-                    // UNION
-                    // (SELECT * FROM DUAL WHERE (key2_column1, key2_column2) IN ((?, ?), ...) FOR UPDATE)
-                    //
-                    if (unionSql.length() > 0) {
-                        unionSql.append(" UNION ");
-                    }
-                    unionSql.append("(").append(RelUtils.toNativeSql(sqlSelect, DbType.MYSQL)).append(")");
-                }
-            }
-        }
-
-        return buildFullTableScan(insert, rowType, unionSql.toString(), phyTableCount.get(), tableParamIndexes,
-            lockMode);
-    }
-
-    public List<RelNode> buildFullTableScan(LogicalInsert replace, RelDataType rowType,
-                                            final String unionSql, final Integer phyTableCount,
-                                            final List<Integer> tableParamIndexes, LockMode lockMode) {
-        final List<RelNode> result = new ArrayList<>();
-
-        final Map<String, List<List<String>>> topology;
-
-        ExecutionContext executionContext = PlannerContext.getPlannerContext(replace).getExecutionContext();
-
-        TddlRuleManager tddlRuleManager =
-            executionContext.getSchemaManager(replace.getSchemaName())
-                .getTddlRuleManager();
+        TddlRuleManager tddlRuleManager = ec.getSchemaManager(schemaName).getTddlRuleManager();
         PartitionInfoManager partitionInfoManager = tddlRuleManager.getPartitionInfoManager();
 
-        if (partitionInfoManager.isNewPartDbTable(replace.getLogicalTableName())) {
+        final Map<String, List<List<String>>> topology;
+        if (partitionInfoManager.isNewPartDbTable(tableName)) {
             PartitionPruneStep partitionPruneStep = PartitionPruneStepBuilder.generateFullScanPrueStepInfo(schemaName,
-                replace.getLogicalTableName(), executionContext);
+                tableName, ec);
             PartPrunedResult partPrunedResult =
-                PartitionPruner.doPruningByStepInfo(partitionPruneStep, executionContext);
+                PartitionPruner.doPruningByStepInfo(partitionPruneStep, ec);
             List<PartPrunedResult> resultList = new ArrayList<>();
             resultList.add(partPrunedResult);
             topology = PartitionPrunerUtils.buildTargetTablesByPartPrunedResults(resultList);
         } else {
-            topology = HintPlanner.fullTableScan(ImmutableList.of(replace.getLogicalTableName()),
-                replace.getSchemaName(),
-                PlannerContext.getPlannerContext(replace.getCluster()).getExecutionContext());
+            topology = HintPlanner.fullTableScan(ImmutableList.of(tableName), schemaName, ec);
         }
+
+        // We do not need PK in result
+        List<Pair<Integer, List<Object>>> valueList =
+            IntStream.range(0, valuesCount).mapToObj(i -> new Pair<Integer, List<Object>>(i, null))
+                .collect(Collectors.toList());
+        Map<String, Map<String, List<Pair<Integer, List<Object>>>>> result = new HashMap<>();
 
         topology.forEach((group, phyTablesList) -> phyTablesList.stream()
             .map(phyTables -> phyTables.get(0))
-            .forEach(phyTable -> {
-                final List<String> targetTables = IntStream.range(0, phyTableCount).mapToObj(i -> {
-                    // Replace DUAL with physical table name
-                    tableParamIndexes.forEach(paramIndex -> currentParams.put(paramIndex,
-                        new ParameterContext(ParameterMethod.setTableName,
-                            new Object[] {paramIndex, phyTable})));
-                    return phyTable;
-                }).collect(Collectors.toList());
-
-                final PhyTableOperation select = new PhyTableOperation(replace, rowType);
-                select.setDbIndex(group);
-                select.setTableNames(ImmutableList.of(targetTables));
-                select.setSqlTemplate(unionSql);
-                select.setKind(SqlKind.SELECT);
-                select.setDbType(DbType.MYSQL);
-                select.setParam(new HashMap<>(currentParams));
-                select.setLockMode(lockMode);
-                result.add(select);
-            }));
+            .forEach(phyTable -> result.computeIfAbsent(group, v -> new HashMap<>()).put(phyTable, valueList)));
 
         return result;
+    }
+
+    /**
+     * Build SELECT for INSERT IGNORE / REPLACE / UPSERT
+     * <p>
+     * (SELECT ((value_index, uk_index), [select_key]) FROM DUAL WHERE (key1_column1, key1_column2) IN ((?, ?), ...) FOR UPDATE)
+     * UNION
+     * (SELECT ((value_index, uk_index), [select_key]) FROM DUAL WHERE (key2_column1, key2_column2) IN ((?, ?), ...) FOR UPDATE)
+     */
+    public List<RelNode> buildSelectUnionAndParam(LogicalInsert insert, List<List<String>> conditionKeys,
+                                                  TableMeta tableMeta, LockMode lockMode,
+                                                  List<List<Object>> values, List<String> insertColumns,
+                                                  final List<Map<GroupKey, List<Object>>> deduplicated,
+                                                  final List<Map<GroupKey, Pair<Integer, Integer>>> deduplicatedIndex,
+                                                  final List<String> selectKey, boolean withValueIndex,
+                                                  int maxSqlUnionCount, boolean isFullTableScan) {
+        Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults = isFullTableScan ?
+            getShardResultsFullTableScan(tableMeta, values.size()):
+            getShardResults(tableMeta, values, insertColumns);
+
+        // Build select row type
+        List<RelDataTypeFieldImpl> columns = new LinkedList<>();
+        int columnOffset = withValueIndex ? 2 : 0;
+
+        if (withValueIndex) {
+            columns.add(new RelDataTypeFieldImpl("value_index", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
+            columns.add(new RelDataTypeFieldImpl("uk_index", 1, typeFactory.createSqlType(SqlTypeName.INTEGER)));
+        }
+
+        for (int i = 0; i < selectKey.size(); i++) {
+            ColumnMeta columnMeta = tableMeta.getColumn(selectKey.get(i));
+            columns.add(
+                new RelDataTypeFieldImpl(columnMeta.getName(), i + columnOffset, columnMeta.getField().getRelType()));
+        }
+        RelDataType rowType = typeFactory.createStructType(columns);
+
+        // Build condition key nodes, [(key1, key2), (key3, key4)]
+        List<SqlNode> conditionKeyNodes = conditionKeys.stream()
+            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
+            .collect(Collectors.toList());
+
+        List<RelNode> results = new ArrayList<>();
+        for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbResult: shardResults.entrySet()) {
+            String dbIndex = dbResult.getKey();
+            Map<String, List<Pair<Integer, List<Object>>>> tbResults = dbResult.getValue();
+            for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbResult: tbResults.entrySet()) {
+                String tbName = tbResult.getKey();
+                Set<Integer> includeValueIndexes =
+                    tbResult.getValue().stream().map(p -> p.left).collect(Collectors.toCollection(HashSet::new));
+
+                // Build target table parameter
+                buildTargetTable();
+                initParams(PlannerUtils.TABLE_NAME_PARAM_INDEX);
+
+                // Build sql directly, because UNION node can't be executed.
+                StringBuilder unionSql = new StringBuilder();
+                int sqlUnionCount = 0;
+                final List<Integer> tableParamIndexes = new ArrayList<>();
+
+                for (int i = 0; i < deduplicated.size(); i++) {
+                    final SqlNode keyNameNode = conditionKeyNodes.get(i);
+                    for (Map.Entry<GroupKey, List<Object>> dedup: deduplicated.get(i).entrySet()) {
+                        GroupKey groupKey = dedup.getKey();
+                        Pair<Integer, Integer> index = deduplicatedIndex.get(i).get(groupKey);
+                        if (!isFullTableScan && !includeValueIndexes.contains(index.left)) {
+                            // Value not in current shard, just skip
+                            continue;
+                        }
+                        List<Object> key = dedup.getValue();
+
+                        // Build select (value_index, uk_index, [pk])
+                        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
+                        if (withValueIndex) {
+                            selectList.add(buildConstant(index.left, "value_index"));
+                            selectList.add(buildConstant(index.right, "uk_index"));
+                        }
+                        for (String s: selectKey) {
+                            selectList.add(new SqlIdentifier(s, SqlParserPos.ZERO));
+                        }
+
+                        // Build target table
+                        final int tableParamIndex = buildParam(ParameterMethod.setTableName, "DUAL").getIndex() + 2;
+                        tableParamIndexes.add(tableParamIndex);
+
+                        // (key_column1, key_column2) = (?, ?)
+                        SqlNode condition = buildInCondition(ImmutableList.of(key), keyNameNode);
+
+                        // SELECT (value_index, uk_index) FROM DUAL WHERE (key_column1, key_column2) IN ((?, ?), ...) FOR UPDATE
+                        SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
+                            null,
+                            selectList,
+                            targetTableNode,
+                            condition,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null);
+                        sqlSelect.setLockMode(lockMode);
+
+                        // (SELECT (value_index, uk_index) FROM DUAL WHERE (key1_column1, key1_column2) IN ((?, ?), ...) FOR UPDATE)
+                        // UNION
+                        // (SELECT (value_index, uk_index) FROM DUAL WHERE (key2_column1, key2_column2) IN ((?, ?), ...) FOR UPDATE)
+                        if (unionSql.length() > 0) {
+                            unionSql.append(" UNION ");
+                        }
+                        unionSql.append("(").append(RelUtils.toNativeSql(sqlSelect, DbType.MYSQL)).append(")");
+
+                        sqlUnionCount++;
+                        if (maxSqlUnionCount != 0 && sqlUnionCount >= maxSqlUnionCount) {
+                            final List<String> targetTables = IntStream.range(0, sqlUnionCount).mapToObj(j -> {
+                                // Replace DUAL with physical table name
+                                tableParamIndexes.forEach(paramIndex -> currentParams.put(paramIndex,
+                                    new ParameterContext(ParameterMethod.setTableName,
+                                        new Object[] {paramIndex, tbName})));
+                                return tbName;
+                            }).collect(Collectors.toList());
+
+                            final PhyTableOperation select = new PhyTableOperation(insert, rowType);
+                            select.setDbIndex(dbIndex);
+                            select.setTableNames(ImmutableList.of(targetTables));
+                            select.setSqlTemplate(unionSql.toString());
+                            select.setKind(SqlKind.SELECT);
+                            select.setDbType(DbType.MYSQL);
+                            select.setParam(new HashMap<>(currentParams));
+                            select.setLockMode(lockMode);
+
+                            results.add(select);
+
+                            // reset
+                            unionSql.setLength(0);
+                            sqlUnionCount = 0;
+                            tableParamIndexes.clear();
+
+                            buildTargetTable();
+                            initParams(PlannerUtils.TABLE_NAME_PARAM_INDEX);
+                        }
+                    }
+                }
+
+                if (sqlUnionCount != 0) {
+                    final List<String> targetTables = IntStream.range(0, sqlUnionCount).mapToObj(j -> {
+                        // Replace DUAL with physical table name
+                        tableParamIndexes.forEach(paramIndex -> currentParams.put(paramIndex,
+                            new ParameterContext(ParameterMethod.setTableName,
+                                new Object[] {paramIndex, tbName})));
+                        return tbName;
+                    }).collect(Collectors.toList());
+
+                    final PhyTableOperation select = new PhyTableOperation(insert, rowType);
+                    select.setDbIndex(dbIndex);
+                    select.setTableNames(ImmutableList.of(targetTables));
+                    select.setSqlTemplate(unionSql.toString());
+                    select.setKind(SqlKind.SELECT);
+                    select.setDbType(DbType.MYSQL);
+                    select.setParam(new HashMap<>(currentParams));
+                    select.setLockMode(lockMode);
+
+                    results.add(select);
+                }
+            }
+        }
+
+        return results;
     }
 }

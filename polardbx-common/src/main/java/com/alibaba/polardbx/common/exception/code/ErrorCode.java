@@ -183,6 +183,16 @@ public enum ErrorCode {
 
     ERR_MODIFY_SHARD_COLUMN_ON_TABLE_WITHOUT_PK(ErrorType.Optimizer, 4527),
 
+    /**
+     * Hint：Scan、node等hint用法不正确时，可能导致sql的目标表为空，执行结果与预期容易产生误解
+     * 例：1.\/*+TDDL:scan(node='10')*\/insert into sbtest1(k) values(30); 库不存在，返回affectRows为0
+     * 2.\/*+TDDL:scan(node='10')*\/select * from sbtest1;  库不存在，报错cannot be invoked directly
+     * 3.\/*+TDDL:scan()*\/insert into sbtest1 select * from sbtest2;  sbtest1与sbtest2库分布不一样，没法下推，返回affectRows为0
+     */
+    ERR_TABLE_EMPTY_WITH_HINT(ErrorType.Optimizer, 4528),
+
+    // ============= executor 从4600下标开始================
+    //
     ERR_FUNCTION(ErrorType.Executor, 4600),
 
     ERR_EXECUTOR(ErrorType.Executor, 4601),
@@ -328,7 +338,9 @@ public enum ErrorCode {
 
     ERR_PARTITION_TO_SINGLE_OR_BROADCAST_WITH_GSI(ErrorType.Executor, 4661),
 
+    ERR_PAUSED_DDL_JOB_EXISTS(ErrorType.Executor, 4662),
 
+    // ============= server 从4700下标开始================
     ERR_SERVER(ErrorType.Server, 4700),
 
     ERR_RPC(ErrorType.Server, 4701),
@@ -633,10 +645,12 @@ public enum ErrorCode {
     }
 
     public static ErrorCode match(String message, ErrorCode defaultCode) {
-        for (ErrorCode errorCode : values()) {
-            if (errorCode.pattern != null
-                && errorCode.pattern.matcher(message).find()) {
-                return errorCode;
+        if (message != null) {
+            for (ErrorCode errorCode : values()) {
+                if (errorCode.pattern != null
+                    && errorCode.pattern.matcher(message).find()) {
+                    return errorCode;
+                }
             }
         }
         return defaultCode;

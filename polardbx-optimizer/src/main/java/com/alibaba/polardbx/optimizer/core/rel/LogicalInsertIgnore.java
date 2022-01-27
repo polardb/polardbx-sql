@@ -37,6 +37,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNodeList;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -60,12 +61,21 @@ public class LogicalInsertIgnore extends LogicalInsert {
     protected final List<List<String>> ukColumnNamesList;
     protected final List<List<Integer>> afterUkMapping;
     protected final List<List<Integer>> beforeUkMapping;
+    protected final List<Integer> selectInsertColumnMapping;
     protected final List<String> pkColumnNames;
     protected final List<Integer> beforePkMapping;
     protected final List<Integer> afterPkMapping;
     protected final List<String> selectListForDuplicateCheck;
     protected final Set<String> allUkSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+    // tableUkMap contains each tables' uk
+    // map[tableName, map[generatedIndexKey, set[indexColumnName]]]
     protected final Map<String, Map<String, Set<String>>> tableUkMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+    // ukGroupByTable contains information that each UK should be looked up on which table
+    // If it is empty, we will look up all UK in primary table
+    // map[tableName, list[UK]]
+    protected final Map<String, List<List<String>>> ukGroupByTable = new HashMap<>();
 
     /**
      * the target/source tables status when scaleout
@@ -124,9 +134,12 @@ public class LogicalInsertIgnore extends LogicalInsert {
             gsiInsertWriters, autoIncParamIndex, logicalDynamicValues, unOpitimizedDuplicateKeyUpdateList);
         ExecutionContext ec = PlannerContext.getPlannerContext(cluster).getExecutionContext();
 
-        this.ukColumnNamesList = GlobalIndexMeta.getUniqueKeys(getLogicalTableName(), getSchemaName(), ec);
+        // Ignore DELETE_ONLY UK
+        this.ukColumnNamesList = GlobalIndexMeta.getUniqueKeys(getLogicalTableName(), getSchemaName(), true,
+            tm -> GlobalIndexMeta.canWrite(ec, tm), ec);
         this.beforeUkMapping = initBeforeUkMapping(this.ukColumnNamesList, selectListForDuplicateCheck);
         this.afterUkMapping = initAfterUkMapping(this.ukColumnNamesList, insertRowType.getFieldNames());
+        this.selectInsertColumnMapping = initSelectInsertRowMapping(selectListForDuplicateCheck, insertRowType.getFieldNames());
         this.pkColumnNames = GlobalIndexMeta.getPrimaryKeys(getLogicalTableName(), getSchemaName(), ec);
         this.beforePkMapping = IntStream.range(0, pkColumnNames.size()).boxed().collect(Collectors.toList());
         this.afterPkMapping = getColumnMapping(this.pkColumnNames, insertRowType.getFieldNames());
@@ -148,9 +161,10 @@ public class LogicalInsertIgnore extends LogicalInsert {
                                SqlNodeList hints, TableInfo tableInfo, InsertWriter primaryInsertWriter,
                                List<InsertWriter> gsiInsertWriters, List<Integer> autoIncParamIndex,
                                List<List<String>> ukColumnNamesList, List<List<Integer>> beforeUkMapping,
-                               List<List<Integer>> afterUkMapping, List<String> pkColumnNames,
-                               List<Integer> beforePkMapping, List<Integer> afterPkMapping, Set<String> allUkSet,
-                               Map<String, Map<String, Set<String>>> tableUkMap, List<ColumnMeta> rowColumnMetas,
+                               List<List<Integer>> afterUkMapping, List<Integer> selectInsertColumnMapping,
+                               List<String> pkColumnNames, List<Integer> beforePkMapping, List<Integer> afterPkMapping,
+                               Set<String> allUkSet, Map<String, Map<String, Set<String>>> tableUkMap,
+                               Map<String, List<List<String>>> ukGroupByTable, List<ColumnMeta> rowColumnMetas,
                                List<ColumnMeta> tableColumnMetas, List<String> selectListForDuplicateCheck,
                                boolean targetTableIsWritable, boolean targetTableIsReadyToPublish,
                                boolean sourceTablesIsReadyToPublish, LogicalDynamicValues logicalDynamicValues,
@@ -164,11 +178,13 @@ public class LogicalInsertIgnore extends LogicalInsert {
         this.ukColumnNamesList = ukColumnNamesList;
         this.beforeUkMapping = beforeUkMapping;
         this.afterUkMapping = afterUkMapping;
+        this.selectInsertColumnMapping = selectInsertColumnMapping;
         this.pkColumnNames = pkColumnNames;
         this.beforePkMapping = beforePkMapping;
         this.afterPkMapping = afterPkMapping;
         this.allUkSet.addAll(allUkSet);
         this.tableUkMap.putAll(tableUkMap);
+        this.ukGroupByTable.putAll(ukGroupByTable);
         this.rowColumnMetaList = rowColumnMetas;
         this.tableColumnMetaList = tableColumnMetas;
         this.selectListForDuplicateCheck = selectListForDuplicateCheck;
@@ -203,11 +219,13 @@ public class LogicalInsertIgnore extends LogicalInsert {
             getUkColumnNamesList(),
             getBeforeUkMapping(),
             getAfterUkMapping(),
+            getSelectInsertColumnMapping(),
             getPkColumnNames(),
             getBeforePkMapping(),
             getAfterPkMapping(),
             getAllUkSet(),
             getTableUkMap(),
+            getUkGroupByTable(),
             getRowColumnMetaList(),
             getTableColumnMetaList(),
             getSelectListForDuplicateCheck(),
@@ -274,14 +292,30 @@ public class LogicalInsertIgnore extends LogicalInsert {
         return ukColumnMetas;
     }
 
-    private static List<List<Integer>> initAfterUkMapping(List<List<String>> ukColumnNamesList,
+    public static List<List<Integer>> initAfterUkMapping(List<List<String>> ukColumnNamesList,
                                                           List<String> fieldNames) {
         return getUkColumnMapping(ukColumnNamesList, fieldNames);
     }
 
-    private List<List<Integer>> initBeforeUkMapping(List<List<String>> ukColumnNamesList,
+    public static List<List<Integer>> initBeforeUkMapping(List<List<String>> ukColumnNamesList,
                                                     List<String> selectListForDuplicateCheck) {
         return getUkColumnMapping(ukColumnNamesList, selectListForDuplicateCheck);
+    }
+
+    public static List<Integer> initSelectInsertRowMapping(List<String> selectColumns, List<String> insertColumns) {
+        // selectColumns must be a subset of insertColumns
+        List<Integer> result = new ArrayList<>();
+        for (int i = 0; i < selectColumns.size(); i++) {
+            int pos = -1;
+            for (int j = 0; j < insertColumns.size(); j++) {
+                if (selectColumns.get(i).equalsIgnoreCase(insertColumns.get(j))) {
+                    pos = j;
+                    break;
+                }
+            }
+            result.add(pos);
+        }
+        return result;
     }
 
     private static List<List<Integer>> getUkColumnMapping(List<List<String>> ukColumnNamesList,
@@ -375,12 +409,20 @@ public class LogicalInsertIgnore extends LogicalInsert {
         return afterUkMapping;
     }
 
+    public List<Integer> getSelectInsertColumnMapping() {
+        return selectInsertColumnMapping;
+    }
+
     public Set<String> getAllUkSet() {
         return allUkSet;
     }
 
     public Map<String, Map<String, Set<String>>> getTableUkMap() {
         return tableUkMap;
+    }
+
+    public Map<String, List<List<String>>> getUkGroupByTable() {
+        return ukGroupByTable;
     }
 
     public List<String> getSelectListForDuplicateCheck() {

@@ -17,6 +17,11 @@
 package com.alibaba.polardbx.optimizer.planmanager;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.core.datatype.RowType;
+import com.clearspring.analytics.stream.membership.BloomFilter;
+import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -50,11 +55,15 @@ import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -82,7 +91,9 @@ import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.PLAN_SOURCE
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.PLAN_SOURCE.SPM_PQO;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.getColumnsFromPlan;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.getRexNodeTableMap;
+import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.loggerSpm;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.mergeColumns;
+import static org.apache.calcite.util.Litmus.IGNORE;
 
 public class PlanManager extends AbstractLifecycle implements BaselineManageable, PlanManageable {
 
@@ -380,11 +391,12 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                 relNodeRuntimeStatisticsSketchEntry.getValue().getRowCount());
 
             String parameterizedSql = executionPlan.getCacheKey().getParameterizedSql();
-
+            final int maxBaselineSize = paramManager.getInt(ConnectionParams.SPM_MAX_BASELINE_SIZE);
             if (plannerContext.getExpectedRowcount() == -1) {
                 // record first
                 plannerContext.setExpectedRowcount((long) runtimeRowCount[0]);
-            } else if (!this.getBaselineMap().containsKey(parameterizedSql) &&
+            } else if (this.getBaselineMap().size() < maxBaselineSize &&
+                !this.getBaselineMap().containsKey(parameterizedSql) &&
                 !PlanManagerUtil.isTolerated(plannerContext.getExpectedRowcount(), runtimeRowCount[0],
                     executionContext.getParamManager().getInt(MINOR_TOLERANCE_VALUE))) {
                 // move stmt into spm from plan cache
@@ -468,22 +480,34 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         RelNode resultPlan = null;
 
         /**
-         * find all avalible plans
+         * Use fixed plan firstly
          */
+        Optional<PlanInfo> optionalPlanInfo =
+            acceptedPlans.values().stream().filter(planInfo -> planInfo.isFixed()).findFirst();
         int currentHashCode = PlanManagerUtil
             .computeTablesHashCode(baselineInfo.getTableSet(), schemaName, executionContext);
+        if (optionalPlanInfo.isPresent()) {
+            PLAN_SOURCE planSource = SPM_FIX;
+            if (optionalPlanInfo.get().getTablesHashCode() != currentHashCode &&
+                StringUtils.isNotEmpty(optionalPlanInfo.get().getFixHint())) {
+                // in case of repeated updates
+                synchronized (optionalPlanInfo) {
+                    planSource =
+                        tryUpdatePlan(optionalPlanInfo.get(), sqlParameterized, cluster, relOptSchema, currentHashCode,
+                            executionContext);
+                }
+            }
+            resultPlan = optionalPlanInfo.get().getPlan(cluster, relOptSchema);
+            return new Result(baselineInfo, optionalPlanInfo.get(), resultPlan, planSource);
+        }
+
+        /**
+         * find all avalible plans
+         */
+
         Collection<PlanInfo> avaliblePlans =
             acceptedPlans.values().stream().filter(planInfo -> planInfo.getTablesHashCode() == currentHashCode)
                 .collect(Collectors.toSet());
-
-        /**
-         * Use fixed plan firstly
-         */
-        Optional<PlanInfo> optionalPlanInfo = avaliblePlans.stream().filter(planInfo -> planInfo.isFixed()).findFirst();
-        if (optionalPlanInfo.isPresent()) {
-            resultPlan = optionalPlanInfo.get().getPlan(cluster, relOptSchema);
-            return new Result(baselineInfo, optionalPlanInfo.get(), resultPlan, SPM_FIX);
-        }
 
         /**
          * weed out plan
@@ -510,7 +534,12 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         if (plannerContext.getExprMap() == null) {
             plannerContext.setExprMap(getRexNodeTableMap(plan));
         }
-        if (plannerContext.getExprMap() != null && avaliblePlans != null && avaliblePlans.size() > 0) {
+        if (executionContext.getParams() != null &&
+            executionContext.getParams().getCurrentParameter().size() <= 50 &&
+            plannerContext.getExprMap() != null &&
+            plannerContext.getExprMap().size() > 0 &&
+            avaliblePlans != null &&
+            avaliblePlans.size() > 0) {
             Pair<Point, PlanInfo> planInfoPair = parametricQueryAdvisor
                 .advise(sqlParameterized.getSql(), avaliblePlans,
                     sqlParameterized.getParameters(),
@@ -521,12 +550,10 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                 return new Result(baselineInfo, planInfoPair.getValue(),
                     planInfoPair.getValue().getPlan(cluster, relOptSchema), SPM_PQO);
             }
-        }
-
-        /**
-         * expr map is null meaning this stmt shouldn't enter pqo
-         */
-        if (plannerContext.getExprMap() == null) {
+        } else {
+            /**
+             * expr map is null meaning this stmt shouldn't enter pqo
+             */
             resultPlanInfo =
                 findMinCostPlan(cluster, relOptSchema, avaliblePlans, baselineInfo, executionContext, null);
             if (resultPlanInfo != null) {
@@ -551,7 +578,7 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         }
 
         if (point == null) {
-            logger.error("find null point, sql:" + sqlParameterized + ", exprMap:" + plannerContext.getExprMap()
+            logger.debug("find null point, sql:" + sqlParameterized + ", exprMap:" + plannerContext.getExprMap()
                 + ", avaliblePlanSize: " + avaliblePlans.size());
         }
 
@@ -613,6 +640,53 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             executionContext.setPoint(point);
         }
         return new Result(baselineInfo, resultPlanInfo, resultPlanInfo.getPlan(cluster, relOptSchema), SPM_NEW_BUILD);
+    }
+
+    private PLAN_SOURCE tryUpdatePlan(PlanInfo planInfo,
+                                      SqlParameterized sqlParameterized,
+                                      RelOptCluster cluster,
+                                      RelOptSchema relOptSchema, int currentHashCode,
+                                      ExecutionContext executionContext) {
+        RelNode oldPlan = planInfo.getPlan(cluster, relOptSchema);
+        ExecutionPlan newPlan =
+            Planner.getInstance()
+                .plan(planInfo.getFixHint() + " " + sqlParameterized.getSql(), executionContext.copy());
+
+        PlanManagerUtil.jsonToRelNode(planInfo.getPlanJsonString(), cluster, relOptSchema);
+        // if row type changed(select * xxx), meaning plan should be rebuild
+        RelDataType oldRowType = oldPlan.getRowType();
+        RelDataType newRowType = newPlan.getPlan().getRowType();
+
+        // plan needed to be rebuild in two cases:
+        // 1: row type changed
+        // 2: old plan is not valid anymore
+        if (!oldRowType.getFullTypeString().equalsIgnoreCase(newRowType.getFullTypeString())) {
+            planInfo.resetPlan(newPlan.getPlan());
+            planInfo.setTablesHashCode(currentHashCode);
+            loggerSpm.warn(
+                "fix plan being rebuilt for row type change, fix hint:" + planInfo.getFixHint()
+                    + ", stmt:" + sqlParameterized.getSql()
+                    + ", old row type:" + oldRowType.getFullTypeString()
+                    + ", new row type:" + newRowType.getFullTypeString()
+            );
+            return PLAN_SOURCE.SPM_FIX_PLAN_UPDATE_FOR_ROW_TYPE;
+        } else if (!oldPlan.isValid(IGNORE, null)) {
+            planInfo.resetPlan(newPlan.getPlan());
+            planInfo.setTablesHashCode(currentHashCode);
+            loggerSpm.warn(
+                "fix plan being rebuilt for plan valid check, fix hint:" + planInfo.getFixHint()
+                    + ", stmt:" + sqlParameterized.getSql()
+                    + ", old plan:" + oldPlan.getDigest()
+            );
+            return PLAN_SOURCE.SPM_FIX_PLAN_UPDATE_FOR_INVALID;
+        } else {
+            planInfo.setTablesHashCode(currentHashCode);
+            loggerSpm.warn("fix plan reset ddl hashcode, fix hint:" + planInfo.getFixHint()
+                + ", stmt:" + sqlParameterized.getSql()
+                + ", tables:" + newPlan.getTableSet()
+            );
+            return PLAN_SOURCE.SPM_FIX_DDL_HASHCODE_UPDATE;
+        }
     }
 
     /**
@@ -1190,7 +1264,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
     }
 
     public enum PLAN_SOURCE {
-        PLAN_CACHE, SPM_FIX, SPM_PQO, SPM_ACCEPT, SPM_NEW_BUILD
+        PLAN_CACHE, SPM_FIX, SPM_PQO, SPM_ACCEPT, SPM_NEW_BUILD, SPM_FIX_PLAN_UPDATE_FOR_ROW_TYPE,
+        SPM_FIX_PLAN_UPDATE_FOR_INVALID, SPM_FIX_DDL_HASHCODE_UPDATE
     }
 }
 

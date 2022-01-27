@@ -58,6 +58,4 @@ public interface InternalNodeManager {
 
     void updateNodes(Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes, Set<InternalNode> inactiveNodes,
                      Set<InternalNode> shuttingDownNodes);
-
-    PolarDBXStatusManager getPolarDBXStatusManager();
 }

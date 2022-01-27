@@ -36,11 +36,15 @@ public class ULongBlock extends AbstractBlock {
     public ULongBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new long[slotLen];
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
     }
 
     public ULongBlock(DataType dataType, long[] values, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
     }
 
     public ULongBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] values) {

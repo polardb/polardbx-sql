@@ -40,7 +40,6 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
-import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.privilege.ActiveRoles;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
@@ -107,6 +106,7 @@ public final class SetHandler {
     static FastsqlParser fastsqlParser = new FastsqlParser();
 
     static Object IGNORE_VALUE = new Object();
+    static Object RETURN_VALUE = new Object();
 
     private static final Logger logger = LoggerFactory.getLogger(SetHandler.class);
 
@@ -122,7 +122,8 @@ public final class SetHandler {
         if (result instanceof SqlSet) {
             SqlSet statement = (SqlSet) result;
             // 不在server层处理，需要继续下推的set设置
-            List<Pair<SqlNode, SqlNode>> globalVariables = new ArrayList<>();
+            List<Pair<SqlNode, SqlNode>> globalDNVariables = new ArrayList<>();
+            List<Pair<String, String>> globalCnVariables = new ArrayList<>();
             for (org.apache.calcite.util.Pair<SqlNode, SqlNode> variable : statement.getVariableAssignmentList()) {
                 final SqlNode oriValue = variable.getValue();
                 if (variable.getKey() instanceof SqlUserDefVar) {
@@ -169,7 +170,10 @@ public final class SetHandler {
                         c.innerExecute(ByteString.from(sql), null, handler, null);
 
                         UserDefVarProcessingResult r = handler.getResult();
-                        if (r.moreThanOneColumn) {
+                        if (r == null) {
+                            c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "execute sql Error");
+                            return;
+                        } else if (r.moreThanOneColumn) {
                             c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR,
                                 "Operand should contain 1 column(s)");
                             return;
@@ -215,9 +219,6 @@ public final class SetHandler {
                         enableSetGlobal = Boolean.parseBoolean(sessionValue.toString());
                     }
 
-                    if (key.getScope() == VariableScope.GLOBAL && enableSetGlobal) {
-                        globalVariables.add(variable);
-                    }
                     if ("NAMES".equalsIgnoreCase(key.getName())) {
                         String charset = c.getVarStringValue(oriValue);
                         if (!setCharset(charset, c)) {
@@ -304,7 +305,6 @@ public final class SetHandler {
                                     + RelUtils.stringValue(oriValue));
                             return;
                         } else {
-//                            Long limit = RelUtils.longValue(oriValue);
                             Long limit = Long.parseUnsignedLong(((SqlNumericLiteral) oriValue).getValue().toString());
                             c.setSqlSelectLimit(limit);
                             c.getExtraServerVariables().put(key.getName().toLowerCase(), limit);
@@ -590,7 +590,9 @@ public final class SetHandler {
                         //在内部添加到customizeVar中
                         c.setTimeZone(c.getVarStringValue(oriValue));
                         Object parserValue = parserValue(oriValue, key, c);
-                        if (parserValue != IGNORE_VALUE) {
+                        if (parserValue == RETURN_VALUE) {
+                            return;
+                        } else if (parserValue != IGNORE_VALUE) {
                             c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
                         }
                     } else if ("block_encryption_mode".equalsIgnoreCase(key.getName())) {
@@ -637,35 +639,41 @@ public final class SetHandler {
                         c.setSqlMode(val);
                         c.getExtraServerVariables().put(key.getName().toLowerCase(), val);
                         Object parserValue = parserValue(oriValue, key, c);
-                        if (parserValue != IGNORE_VALUE) {
+                        if (parserValue == RETURN_VALUE) {
+                            return;
+                        } else if (parserValue != IGNORE_VALUE) {
                             c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                            if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
+                                globalDNVariables.add(variable);
+                            }
                         }
                     } else if (!isCnVariable(key.getName())) {
                         if (!ServerVariables.isWritable(key.getName())) {
                             if (enableSetGlobal && key.getScope() == org.apache.calcite.sql.VariableScope.GLOBAL) {
-                                continue;
-                            }
-                            if (!ServerVariables.contains(key.getName())) {
-                                c.writeErrMessage(ErrorCode.ER_UNKNOWN_SYSTEM_VARIABLE, "Unknown system variable '"
-                                    + key.getName() + "'");
-                                return;
-                            }
-
-                            if (ServerVariables.isReadonly(key.getName())) {
-                                c.writeErrMessage(ErrorCode.ER_INCORRECT_GLOBAL_LOCAL_VAR,
-                                    "Variable '" + key.getName() + "' is a read only variable");
-                                return;
-                            }
-                            if (!enableSetGlobal && key.getScope() == org.apache.calcite.sql.VariableScope.GLOBAL) {
-                                c.writeErrMessage(ErrorCode.ER_INCORRECT_GLOBAL_LOCAL_VAR,
-                                    "Don't support SET GLOBAL now!");
+                                //ignore
                             } else {
-                                c.writeErrMessage(ErrorCode.ER_INCORRECT_GLOBAL_LOCAL_VAR,
-                                    "Variable '" + key.getName()
-                                        + "' is a GLOBAL variable and should be set with SET GLOBAL");
-                            }
+                                if (!ServerVariables.contains(key.getName())) {
+                                    c.writeErrMessage(ErrorCode.ER_UNKNOWN_SYSTEM_VARIABLE, "Unknown system variable '"
+                                        + key.getName() + "'");
+                                    return;
+                                }
 
-                            return;
+                                if (ServerVariables.isReadonly(key.getName())) {
+                                    c.writeErrMessage(ErrorCode.ER_INCORRECT_GLOBAL_LOCAL_VAR,
+                                        "Variable '" + key.getName() + "' is a read only variable");
+                                    return;
+                                }
+                                if (!enableSetGlobal && key.getScope() == org.apache.calcite.sql.VariableScope.GLOBAL) {
+                                    c.writeErrMessage(ErrorCode.ER_INCORRECT_GLOBAL_LOCAL_VAR,
+                                        "Don't support SET GLOBAL now!");
+                                } else {
+                                    c.writeErrMessage(ErrorCode.ER_INCORRECT_GLOBAL_LOCAL_VAR,
+                                        "Variable '" + key.getName()
+                                            + "' is a GLOBAL variable and should be set with SET GLOBAL");
+                                }
+
+                                return;
+                            }
                         }
                         if (ServerVariables.isBanned(key.getName())) {
                             c.writeErrMessage(ErrorCode.ER_UNKNOWN_SYSTEM_VARIABLE,
@@ -673,17 +681,36 @@ public final class SetHandler {
                             return;
                         }
                         Object parserValue = parserValue(oriValue, key, c);
-                        if (parserValue != IGNORE_VALUE) {
-                            c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                        if (parserValue == RETURN_VALUE) {
+                            return;
+                        } else if (parserValue != IGNORE_VALUE) {
+                            if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
+                                globalDNVariables.add(variable);
+                                if (ServerVariables.isWritable(key.getName())) {
+                                    //global变量，只有属于writableVariables才属于同时set session
+                                    c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                                }
+                            } else {
+                                c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                            }
                         }
                     } else {
-                        c.getConnectionVariables().put(key.getName().toUpperCase(Locale.ROOT), oriValue.toString());
+                        Object parserValue = parserValue(oriValue, key, c);
+                        if (parserValue == RETURN_VALUE) {
+                            return;
+                        } else if (parserValue != IGNORE_VALUE && parserValue != null) {
+                            c.getConnectionVariables().put(
+                                key.getName().toUpperCase(Locale.ROOT), parserValue.toString());
+                            if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
+                                globalCnVariables.add(new Pair<String, String>(key.getName(), parserValue.toString()));
+                            }
+                        }
                     }
                 }
             }
 
-            if (!GeneralUtil.isEmpty(globalVariables)) {
-                boolean isOk = handleGlobalVariable(c, globalVariables);
+            if (!GeneralUtil.isEmpty(globalDNVariables) || !GeneralUtil.isEmpty(globalCnVariables)) {
+                boolean isOk = handleGlobalVariable(c, globalCnVariables, globalDNVariables);
                 if (isOk) {
                     return;
                 }
@@ -847,56 +874,20 @@ public final class SetHandler {
         return new UserDefVarProcessingResult(moreThanOneColumn, moreThanOneRow, otherError, value);
     }
 
-    private static void logOldValue(ServerConnection c, List<Pair<SqlNode, SqlNode>> globalVariableList) {
-
-        StringBuilder logString =
-            new StringBuilder("Variable value before setting(VARIABLE_NAME: CURRENT_VALUE / GLOBALE_VALUE):\n");
-        for (Pair<SqlNode, SqlNode> item : globalVariableList) {
-            String variableName = ((SqlSystemVar) item.getKey()).getName().toLowerCase(Locale.ROOT);
-            Object currentValue = null, globalValue = null;
-            try {
-                if (isCnVariable(variableName)) {
-                    currentValue =
-                        c.getTddlConnection().getExecutionContext().getParamManager().get(variableName.toUpperCase());
-                    globalValue = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().get(variableName);
-                } else if (isDnVariable(variableName)) {
-                    currentValue = c.getSysVarValue((SqlSystemVar) item.getKey());
-                    globalValue = MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap().get(variableName);
-                }
-                logString.append(variableName).append(": ").append(currentValue.toString()).append(" / ")
-                    .append(globalValue.toString()).append("\n");
-            } catch (Throwable t) {
-                logger.error("Error occurred when retrieving the old value of variable '" + variableName + "': " + t
-                    .getMessage());
-            }
-        }
-
-        logger.info(logString.toString());
-    }
-
     // return value demonstrates whether write packet
     private static boolean handleGlobalVariable(ServerConnection c,
-                                                List<Pair<SqlNode, SqlNode>> globalVariableList) {
-
-        logOldValue(c, globalVariableList);
-
+                                                List<Pair<String, String>> globalCNVariableList,
+                                                List<Pair<SqlNode, SqlNode>> globalDNVariableList) {
         List<Pair<SqlNode, SqlNode>> dnVariableAssignmentList = new ArrayList<>();
 
-        Properties dnProps = new Properties();
         Properties cnProps = new Properties();
 
-        for (Pair<SqlNode, SqlNode> variable : globalVariableList) {
+        for (Pair<String, String> variable : globalCNVariableList) {
 
-            String systemVarName = ((SqlSystemVar) variable.getKey()).getName().toLowerCase(Locale.ROOT);
-            String systemVarValue = c.getVarStringValue(variable.getValue());
+            String systemVarName = variable.getKey();
+            String systemVarValue = variable.getValue();
 
             try {
-
-                if (ServerVariables.isGlobalBanned(systemVarName)) {
-                    c.writeErrMessage(ErrorCode.ER_NOT_SUPPORTED_YET,
-                        "The global variable '" + systemVarName + "' is no supported setting using SET GLOBAL");
-                    return true;
-                }
                 if (!extraCheck(systemVarName, systemVarValue)) {
                     c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR,
                         "The global variable '" + systemVarName + "' cannot be set to the value of '"
@@ -908,16 +899,34 @@ public final class SetHandler {
 
                 if (isCnVariable(systemVarName)) {
                     systemVarName = systemVarName.toUpperCase(Locale.ROOT);
-                    // TODO: determine whether the variable can be set
-//                    ConfigParam configParam = ConnectionParams.SUPPORTED_PARAMS.get(systemVarName);
-//                    if (configParam == null /*|| !configParam.isMutable()*/) {
-//                        c.writeErrMessage(ErrorCode.ER_VARIABLE_IS_READONLY,
-//                            "The global variable '" + systemVarName + "' is readonly");
-//                        return true;
-//                    }
                     cnProps.setProperty(systemVarName, systemVarValue);
 
-                } else if (isDnVariable(systemVarName)) {
+                } else {
+                    c.writeErrMessage(ErrorCode.ER_GLOBAL_VARIABLE,
+                        "Unsupported variable '" + systemVarName + "'");
+                    return true;
+                }
+            } catch (Throwable t) {
+                c.writeErrMessage(ErrorCode.ER_GLOBAL_VARIABLE, "Error occurred when setting global variables");
+                logger.error(t.getMessage());
+                return true;
+            }
+        }
+
+        Properties dnProps = new Properties();
+
+        for (Pair<SqlNode, SqlNode> variable : globalDNVariableList) {
+
+            String systemVarName = ((SqlSystemVar) variable.getKey()).getName().toLowerCase(Locale.ROOT);
+            String systemVarValue = c.getVarStringValue(variable.getValue());
+
+            try {
+                if (ServerVariables.isGlobalBanned(systemVarName)) {
+                    c.writeErrMessage(ErrorCode.ER_NOT_SUPPORTED_YET,
+                        "The global variable '" + systemVarName + "' is no supported setting using SET GLOBAL");
+                    return true;
+                }
+                if (isDnVariable(systemVarName)) {
                     if ((ServerVariables.isMysqlBoth(systemVarName) || ServerVariables.isMysqlGlobal(systemVarName))
                         && !ServerVariables.isMysqlDynamic(systemVarName)) {
                         c.writeErrMessage(ErrorCode.ER_VARIABLE_IS_READONLY,
@@ -955,7 +964,7 @@ public final class SetHandler {
                     Object o = topologyHandler.get(groupName).getDataSource();
                     if (o instanceof TGroupDataSource) {
                         TGroupDataSource groupDataSource = (TGroupDataSource) o;
-                        String instanceId = groupDataSource.getWriteInstanceId();
+                        String instanceId = groupDataSource.getMasterSourceAddress();
                         instanceDataSources.putIfAbsent(instanceId, groupDataSource);
                     }
                 }
@@ -1100,6 +1109,7 @@ public final class SetHandler {
                 c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR, "Variable " + key.getName()
                     + " can't be set to the value of "
                     + RelUtils.stringValue(oriValue));
+                return RETURN_VALUE;
             }
         } else if (oriValue instanceof SqlSystemVar) {
             SqlSystemVar var = (SqlSystemVar) oriValue;
@@ -1107,6 +1117,7 @@ public final class SetHandler {
                 .isExtra(var.getName())) {
                 c.writeErrMessage(ErrorCode.ER_UNKNOWN_SYSTEM_VARIABLE, "Unknown system variable '"
                     + var.getName() + "'");
+                return RETURN_VALUE;
             }
             value = c.getSysVarValue(var);
         } else if (oriValue instanceof SqlLiteral

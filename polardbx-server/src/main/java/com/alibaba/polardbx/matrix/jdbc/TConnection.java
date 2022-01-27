@@ -81,7 +81,6 @@ import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
@@ -739,7 +738,11 @@ public class TConnection implements IConnection {
             PlannerContext plannerContext = PlannerContext.getPlannerContext(plan);
             BaselineInfo baselineInfo = plannerContext.getBaselineInfo();
             PlanInfo planInfo = plannerContext.getPlanInfo();
-            PlanManager planManager = OptimizerContext.getContext(executionContext.getSchemaName()).getPlanManager();
+            OptimizerContext optimizerContext = OptimizerContext.getContext(executionContext.getSchemaName());
+            if (optimizerContext == null) {
+                return null;
+            }
+            PlanManager planManager = optimizerContext.getPlanManager();
             if (planInfo != null && baselineInfo != null && planManager != null) {
                 synchronized (baselineInfo) {
                     planManager.doEvolution(baselineInfo, planInfo, lastExecuteUnixTime, executionTimeInSeconds, ex);
@@ -1267,6 +1270,9 @@ public class TConnection implements IConnection {
                 }
             } finally {
                 closed = true;
+                if (executionContext != null) {
+                    executionContext.clearAllMemoryPool();
+                }
                 lock.unlock();
             }
 

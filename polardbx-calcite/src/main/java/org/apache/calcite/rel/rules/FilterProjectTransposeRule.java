@@ -127,7 +127,10 @@ public class FilterProjectTransposeRule extends RelOptRule {
         RelOptUtil.pushPastProject(filter.getCondition(), project);
     RexUtil.DynamicFinder dynamicFinder = new RexUtil.DynamicFinder();
     newCondition.accept(dynamicFinder);
-    if (dynamicFinder.getScalar().size() > 0 || dynamicFinder.getCorrelateScalar().size() > 0) {
+    if ((dynamicFinder.getScalar().size() > 0 &&
+        project.getVariablesSet() != null &&
+        project.getVariablesSet().size() > 0) ||
+        dynamicFinder.getCorrelateScalar().size() > 0) {
       return;
     }
 

@@ -56,7 +56,6 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
-import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
@@ -100,6 +99,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.SQL_REWRITE_RULE_PHASE;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinSemiJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.PushBloomFilterRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CheapestFractionalPlanReplacer;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.SubQueryPlanEnumerator;
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
@@ -107,7 +107,6 @@ import com.alibaba.polardbx.optimizer.core.rel.CollectorTableVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.CountVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.RemoveSchemaNameVisitor;
@@ -128,11 +127,10 @@ import com.alibaba.polardbx.optimizer.parse.SqlTypeUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.hint.SimpleHintParser;
 import com.alibaba.polardbx.optimizer.parse.visitor.DrdsParameterizeSqlVisitor;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
-import com.alibaba.polardbx.optimizer.planmanager.parametric.MyParametricQueryAdvisor;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
@@ -1323,6 +1321,10 @@ public class Planner {
 
     private boolean shouldDirect(ToDrdsRelVisitor toDrdsRelVisitor, SqlNode sqlNode, PlannerContext plannerContext) {
         if (!plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DIRECT_PLAN)) {
+            return false;
+        }
+        final ExecutionStrategy strategy = ExecutionStrategy.fromHint(plannerContext.getExecutionContext());
+        if (ExecutionStrategy.LOGICAL == strategy) {
             return false;
         }
         if (toDrdsRelVisitor.existsWindow()) {

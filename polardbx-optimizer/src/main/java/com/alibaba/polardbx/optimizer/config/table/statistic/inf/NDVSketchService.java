@@ -47,5 +47,10 @@ public interface NDVSketchService {
     /**
      * cal the ndv value
      */
+    void remove(String tableName);
+
+    /**
+     * cal the ndv value
+     */
     StatisticResult getCardinality(String tableName, String columnName);
 }

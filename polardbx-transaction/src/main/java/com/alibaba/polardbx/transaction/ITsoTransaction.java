@@ -28,6 +28,8 @@ import java.sql.SQLException;
 public interface ITsoTransaction extends IMppTsoTransaction {
     long getSnapshotSeq();
 
+    boolean snapshotSeqIsEmpty();
+
     TransactionManager getManager();
 
     @Override

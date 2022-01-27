@@ -410,7 +410,8 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             return StatisticResult.EMPTY;
         }
         for (Object value : rowValue.getValues()) {
-            StatisticResult statisticResult = getFrequency(logicalTableName, columnName, value.toString());
+            StatisticResult statisticResult =
+                getFrequency(logicalTableName, columnName, value == null ? null : value.toString());
             if (statisticResult != StatisticResult.EMPTY) {
                 frequency += statisticResult.getLongValue();
             }
@@ -454,8 +455,8 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             if (cacheLine.getTopNMap() != null && cacheLine.getTopNMap().get(columnName) != null) {
                 TopN topN = cacheLine.getTopNMap().get(columnName);
                 long topNCount = topN.rangeCount(value, true, value, true);
-                if (topNCount != 0) {
-                    return StatisticResult.build(TOP_N).setValue(topNCount);
+                if (topNCount != 0 && cacheLine.getSampleRate() > 0) {
+                    return StatisticResult.build(TOP_N).setValue(topNCount / cacheLine.getSampleRate());
                 }
             }
             return StatisticResult.build(CACHE_LINE)
@@ -684,9 +685,17 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         }
         for (String logicalTableName : logicalTableNameList) {
             this.statisticCache.remove(logicalTableName.toLowerCase());
+            if (ndvSketch != null) {
+                this.ndvSketch.remove(logicalTableName.toLowerCase());
+            }
         }
         systemTableTableStatistic.removeLogicalTableList(logicalTableNameList);
         systemTableColumnStatistic.removeLogicalTableList(logicalTableNameList);
+        if (ndvSketchStatistic != null) {
+            for (String logicalTableName : logicalTableNameList) {
+                ndvSketchStatistic.deleteByTableName(schemaName, logicalTableName);
+            }
+        }
     }
 
     /**

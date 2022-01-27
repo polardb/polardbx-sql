@@ -1036,6 +1036,7 @@ public class SqlCreateTable extends SqlCreate {
         case "MULTIPOLYGON":
         case "GEOMETRYCOLLECTION":
         case "BINARY":
+        case "SET":
             throw new UnsupportedOperationException("Invalid type for a sharding key.");
         default:
             break;

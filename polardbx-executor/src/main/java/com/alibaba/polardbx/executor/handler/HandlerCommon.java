@@ -79,6 +79,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Future;
 import java.util.function.BiPredicate;
@@ -479,7 +480,9 @@ public abstract class HandlerCommon implements PlanHandler {
         // If there's a broadcast table, the concurrency will be set to
         // FIRST_THEN. But when modifying multi tb, the concurrency can't be
         // FIRST_THEN, which causes concurrent transaction error.
-        if (!isBroadcast && queryConcurrencyPolicy == QueryConcurrencyPolicy.FIRST_THEN_CONCURRENT) {
+
+        if (queryConcurrencyPolicy == QueryConcurrencyPolicy.FIRST_THEN_CONCURRENT && (!isBroadcast
+            || !canUseFirstThenConcurrent(physicalPlans))) {
             queryConcurrencyPolicy = QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
         }
         if (physicalPlans.size() == 1) {
@@ -493,6 +496,18 @@ public abstract class HandlerCommon implements PlanHandler {
         executionContext.setPhySqlId(executionContext.getPhySqlId() + 1);
 
         return ExecUtils.getAffectRowsByCursors(inputCursors, isBroadcast);
+    }
+
+    protected boolean canUseFirstThenConcurrent(List<RelNode> physicalPlans) {
+        Set<String> groups = new HashSet<>();
+        for (RelNode plan: physicalPlans) {
+            String groupName = ((BaseQueryOperation) plan).getDbIndex();
+            if (groups.contains(groupName)) {
+                return false;
+            }
+            groups.add(groupName);
+        }
+        return true;
     }
 
     /**

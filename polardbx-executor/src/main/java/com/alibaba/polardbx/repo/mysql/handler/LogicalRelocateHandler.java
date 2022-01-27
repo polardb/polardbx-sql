@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -33,6 +35,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
@@ -77,6 +80,10 @@ public class LogicalRelocateHandler extends HandlerCommon {
             poolName, Math.max(BLOCK_SIZE, maxMemoryLimit), MemoryType.OPERATOR);
         final MemoryAllocatorCtx memoryAllocator = selectValuesPool.getMemoryAllocatorCtx();
 
+        final List<Integer> autoIncColumns = relocate.getAutoIncColumns();
+        int offset = input.getRowType().getFieldList().size() - relocate.getUpdateColumnList().size();
+        final boolean autoValueOnZero = SequenceAttribute.getAutoValueOnZero(executionContext.getSqlMode());
+
         int affectRows = 0;
         Cursor selectCursor = null;
         try {
@@ -90,6 +97,16 @@ public class LogicalRelocateHandler extends HandlerCommon {
 
                 if (values.isEmpty()) {
                     break;
+                }
+
+                for (Integer autoIncColumnIndex : autoIncColumns) {
+                    for (List<Object> value : values) {
+                        final Object autoIncValue = value.get(offset + autoIncColumnIndex);
+                        if (null == autoIncValue || (autoValueOnZero && 0L == RexUtils.valueOfObject1(autoIncValue))) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_UPDATE_PRIMARY_KEY_WITH_NULL_OR_ZERO,
+                                "Do not support update AUTO_INC columns to null or zero");
+                        }
+                    }
                 }
 
                 final List<ColumnMeta> returnColumns = selectCursor.getReturnColumns();

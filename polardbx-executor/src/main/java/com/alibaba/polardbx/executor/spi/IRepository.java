@@ -54,5 +54,4 @@ public interface IRepository extends Lifecycle {
      */
     void invalidateGroupExecutor(Group group);
 
-    IGroupExecutor getMasterGroupExecutor(Group group);
 }

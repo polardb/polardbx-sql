@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.hint.util;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.hint.operator.HintAddOperator;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdCoronaDbJson;
@@ -325,6 +326,9 @@ public class HintConverter {
                     hintCollection.cmdHintOperator(new HintCmdExtraOperator(hintOp, ec));
                     break;
                 case CMD_NODE:
+                    if (ConfigDataMode.isFastMock()) {
+                        break;
+                    }
                     hintCollection.cmdHintOperator(new HintCmdNode(hintOp, ec));
                     break;
                 case CMD_SCAN:

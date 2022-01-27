@@ -72,6 +72,10 @@ public class SqlTypeAssignmentRule implements SqlTypeMappingRule {
     rule.add(SqlTypeName.YEAR);
     rules.add(SqlTypeName.YEAR, rule);
 
+    // BIG_BIT is assignable from ...
+    rule.clear();
+    rules.add(SqlTypeName.BIG_BIT, EnumSet.of(SqlTypeName.BIG_BIT));
+
     // BIT is assignable from ...
     rule.clear();
     rule.add(SqlTypeName.BIT);

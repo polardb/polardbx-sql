@@ -31,13 +31,11 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.properties.ParamManager;
-import com.alibaba.polardbx.common.properties.PropUtil;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -54,11 +52,13 @@ import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
+import com.alibaba.polardbx.gms.node.StorageStatusManager;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -116,7 +116,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -125,13 +124,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
-import static com.alibaba.polardbx.common.properties.ConnectionParams.SUPPORT_READ_FOLLOWER_STRATEGY;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
@@ -385,40 +385,60 @@ public class ExecUtils {
         if (isWrite) {
             masterSlaveVal = MasterSlave.MASTER_ONLY;
         } else if (inTrans) {
-            if (ConfigDataMode.enableSlaveReadForPolarDbX() && ec.isAutoCommit()) {
-                //autocommit为true的时候才可能走备库
-                return getFollowerStrategy(ec);
-            } else {
-                masterSlaveVal = MasterSlave.MASTER_ONLY;
-            }
+            masterSlaveVal = MasterSlave.MASTER_ONLY;
+        } else if (ConfigDataMode.isMasterMode() && (ec.getSqlType() != SqlType.SELECT && !ExecUtils.isMppMode(ec))) {
+            //FIXME MPP SqlType is null now!
+            masterSlaveVal = MasterSlave.MASTER_ONLY;
+        } else if (ec.isInternalSystemSql()) {
+            masterSlaveVal = MasterSlave.MASTER_ONLY;
         } else if (ec != null && ec.getExtraCmds() != null) {
             if (ec.getExtraCmds().containsKey(ConnectionProperties.MASTER)) {
                 masterSlaveVal = MasterSlave.MASTER_ONLY;
             } else if (ec.getExtraCmds().containsKey(ConnectionProperties.SLAVE)) {
-                masterSlaveVal =
-                    ConfigDataMode.enableSlaveReadForPolarDbX() ? getFollowerStrategy(ec) : MasterSlave.MASTER_ONLY;
-            } else if (ConfigDataMode.enableSlaveReadForPolarDbX()) {
-                masterSlaveVal = getFollowerStrategy(ec);
+                masterSlaveVal = MasterSlave.SLAVE_ONLY;
+            } else {
+                masterSlaveVal = getMasterSlaveByWeight(ec);
             }
-        } else if (ConfigDataMode.enableSlaveReadForPolarDbX()) {
-            masterSlaveVal = getFollowerStrategy(ec);
+        } else {
+            masterSlaveVal = getMasterSlaveByWeight(ec);
         }
         return masterSlaveVal;
     }
 
-    private static MasterSlave getFollowerStrategy(ExecutionContext ec) {
-        String stategy = ec.getParamManager().getString(SUPPORT_READ_FOLLOWER_STRATEGY);
-        if (stategy.equalsIgnoreCase(PropUtil.FOLLOWERSTRATEGY.FORCE.toString())) {
-            return MasterSlave.SLAVE_ONLY;
-        } else if (stategy.equalsIgnoreCase(PropUtil.FOLLOWERSTRATEGY.AUTO.toString())) {
-            if (ExecUtils.isTpMode(ec)) {
+    private static MasterSlave getMasterSlaveByWeight(ExecutionContext ec) {
+        MasterSlave ret = null;
+        if (!ConfigDataMode.isMasterMode()) {
+            ret = MasterSlave.SLAVE_ONLY;
+        } else if (!StorageStatusManager.getInstance().getAllowReadLearnerStorageMap().isEmpty() ||
+            ConfigDataMode.enableSlaveReadForPolarDbX()) {
+            int readMasterWeight = ec.getParamManager().getInt(MASTER_READ_WEIGHT);
+            if (readMasterWeight >= 100 || readMasterWeight < 0) {
                 return MasterSlave.MASTER_ONLY;
             } else {
-                return MasterSlave.SLAVE_ONLY;
+                if (Math.random() * 100 < readMasterWeight) {
+                    ret = MasterSlave.MASTER_ONLY;
+                } else {
+                    ret = MasterSlave.SLAVE_ONLY;
+                }
             }
         } else {
-            return MasterSlave.MASTER_ONLY;
+            //当不存在允许备库读能力资源时，则应该路由给主库
+            ret = MasterSlave.MASTER_ONLY;
         }
+
+        if (ret == MasterSlave.SLAVE_ONLY) {
+            int executeStrategy = ec.getParamManager().getInt(ConnectionParams.DELAY_EXECUTION_STRATEGY);
+            if (executeStrategy == 2) {
+                //all slave is delay, so can't continue use slave connection!
+                ret = MasterSlave.LOW_DELAY_SLAVE_ONLY;
+            } else if (executeStrategy == 1) {
+                //all slave is delay, so change to master
+                ret = MasterSlave.SLAVE_FIRST;
+            } else {
+                ret = MasterSlave.SLAVE_ONLY;
+            }
+        }
+        return ret;
     }
 
     public static QueryConcurrencyPolicy getQueryConcurrencyPolicy(ExecutionContext executionContext) {
@@ -815,7 +835,7 @@ public class ExecUtils {
         BaseQueryOperation phyOperation = (BaseQueryOperation) inputs.get(0);
 
         Map<String, RepoInst> groupRepoInstMap =
-            ExecutorContext.getContext(schemaName).getTopologyHandler().getGroupRepoInstMaps();
+            ExecutorContext.getContext(schemaName).getTopologyHandler().getGroupRepoInstMapsForzigzig();
 
         int instCount = 0;
         List<List<RelNode>> instPhyRelArrList = new ArrayList<List<RelNode>>();
@@ -1007,7 +1027,7 @@ public class ExecUtils {
             final List<Integer> ukColumns = o.getValue();
             final List<ColumnMeta> metas = ukColumnMetas.get(o.i);
 
-            final Set<GroupKey> checker = new HashSet<>();
+            final Set<GroupKey> checker = new TreeSet<>();
             duplicateValues.forEach(row -> {
                 final Object[] groupKeys = ukColumns.stream().map(row::get).toArray();
                 checker.add(new GroupKey(groupKeys, metas));
@@ -1230,7 +1250,7 @@ public class ExecUtils {
     public static void getLsn(
         TopologyHandler topologyHandler, String group, Map<String, Long> lsnMap)
         throws SQLException {
-        try (IConnection masterConn = topologyHandler.get(group, true).getDataSource().getConnection(
+        try (IConnection masterConn = topologyHandler.get(group).getDataSource().getConnection(
             MasterSlave.MASTER_ONLY);
             Statement stmt = masterConn.createStatement()) {
             ResultSet result =

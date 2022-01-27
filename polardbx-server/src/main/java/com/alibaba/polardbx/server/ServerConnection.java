@@ -972,7 +972,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 }
             }
         } catch (Throwable e) {
-            if (executingFuture.isCancelled() && futureCancelErrorCode != null) {
+            if (futureCancelErrorCode != null) {
                 exception = new TddlRuntimeException(futureCancelErrorCode, e);
             } else {
                 exception = e;
@@ -1420,34 +1420,34 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
     /**
      * 回滚事务
-     *
-     * @param sendOKPacket if sendOKPacket is true, send an OK-packet in the end, otherwise, do not send.
      */
-    public synchronized void rollback(boolean hasMore, boolean sendOKPacket) {
+    public synchronized void rollback(boolean hasMore) {
         try {
-            this.txId = null;
+            innerRollback();
 
-            if (this.conn != null) {
-                conn.rollback();
-            }
-
-            if (this.beginTransaction) {
-                this.beginTransaction = false;
-                this.setAutocommit(true);
-                this.setReadOnly(false);
-                this.recoverTxIsolation();
-            }
-
-            // if the rollback is caused by a deadlock,
-            // do not sent an OK-packet,
-            // since an error packet has been sent already
-            if (sendOKPacket) {
-                ByteBufferHolder buffer = this.allocate();
-                PacketOutputProxyFactory.getInstance().createProxy(this, buffer)
-                    .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
-            }
+            ByteBufferHolder buffer = this.allocate();
+            PacketOutputProxyFactory.getInstance().createProxy(this, buffer)
+                .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
         } catch (Exception ex) {
             this.handleError(ErrorCode.ERR_HANDLE_DATA, ex, "rollback", false);
+        }
+    }
+
+    /**
+     * Rollback a transaction
+     */
+    private void innerRollback() throws SQLException {
+        this.txId = null;
+
+        if (this.conn != null) {
+            conn.rollback();
+        }
+
+        if (this.beginTransaction) {
+            this.beginTransaction = false;
+            this.setAutocommit(true);
+            this.setReadOnly(false);
+            this.recoverTxIsolation();
         }
     }
 
@@ -1545,9 +1545,17 @@ public final class ServerConnection extends FrontendConnection implements Resche
             }
         }
 
+        // Handle deadlock error
         if (null != this.conn && null != this.conn.getTrx() && isDeadLockException(t)) {
             // Prevent this transaction from committing
             this.conn.getTrx().setCrucialError(ERR_TRANS_DEADLOCK);
+
+            // Rollback this trx
+            try {
+                innerRollback();
+            } catch (SQLException exception) {
+                logger.warn("rollback failed when deadlock found", exception);
+            }
         }
 
         switch (errCode) {
@@ -1564,8 +1572,19 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     private static boolean isDeadLockException(Throwable t) {
-        return t instanceof TddlNestableRuntimeException && vendorErrorIs((TddlNestableRuntimeException) t,
-            SQLSTATE_DEADLOCK, ER_LOCK_DEADLOCK);
+        if (t instanceof TddlNestableRuntimeException && vendorErrorIs((TddlNestableRuntimeException) t,
+            SQLSTATE_DEADLOCK, ER_LOCK_DEADLOCK)) {
+            // A local deadlock causes this exception
+            return true;
+        }
+
+        if (t instanceof TddlRuntimeException && ((TddlRuntimeException) t).getErrorCodeType()
+            .equals(ERR_TRANS_DEADLOCK)) {
+            // A global/MDL deadlock causes this exception
+            return true;
+        }
+
+        return false;
     }
 
     @Override
@@ -1691,21 +1710,45 @@ public final class ServerConnection extends FrontendConnection implements Resche
      */
     private class CancelQueryTask implements Runnable {
 
+        /**
+         * If a user sends a kill query command, or the memory is running out, or a slow sql is killed automatically,
+         * the errorCode is {@link com.alibaba.polardbx.common.exception.code.ErrorCode#ERR_USER_CANCELED}.
+         * If a deadlock occurs and causes this kill,
+         * the errorCode is {@link com.alibaba.polardbx.common.exception.code.ErrorCode#ERR_TRANS_DEADLOCK}.
+         * If an MDL is preempted and causes this kill,
+         * the errorCode is {@link com.alibaba.polardbx.common.exception.code.ErrorCode#ERR_TRANS_PREEMPTED_BY_DDL}.
+         */
         private final com.alibaba.polardbx.common.exception.code.ErrorCode errorCode;
         private final int retried;
         private final int retryLimit;
+        // Only kill query with this traceId.
+        private final String traceIdToBeKilled;
 
         public CancelQueryTask(com.alibaba.polardbx.common.exception.code.ErrorCode errorCode,
                                int retried, int retryLimit) {
             this.errorCode = errorCode;
             this.retried = retried;
             this.retryLimit = retryLimit;
+            this.traceIdToBeKilled = ServerConnection.this.getTraceId();
+        }
+
+        public CancelQueryTask(com.alibaba.polardbx.common.exception.code.ErrorCode errorCode,
+                               int retried, int retryLimit, String traceIdToBeKilled) {
+            this.errorCode = errorCode;
+            this.retried = retried;
+            this.retryLimit = retryLimit;
+            this.traceIdToBeKilled = traceIdToBeKilled;
         }
 
         @Override
         public void run() {
+            if (!StringUtils.equals(ServerConnection.this.getTraceId(), this.traceIdToBeKilled)) {
+                // Maybe the query to be killed has already finishes executing,
+                // just return and do not kill the current executing query.
+                return;
+            }
+
             if (retried >= retryLimit || !statementExecuting.get()) {
-                finishTask();
                 return;
             }
 
@@ -1718,33 +1761,34 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
 
         private void doCancel() throws SQLException {
+            // First, set the futureCancelErrorCode,
+            // which will be used for error handling in innerExecute().
+            futureCancelErrorCode = this.errorCode;
+
+            // Then, kill the trx in the connection,
+            // during which all physical connections are killed.
+            // If a physical connection is still executing a statement,
+            // innerExecute() is waiting for this statement to be finished.
+            // If such a physical connection is killed,
+            // it throws an interrupted exception to innerExecute(),
+            // and innerExecute() will handle the futureCancelErrorCode set before
+            // instead of the interrupted exception.
             if (conn != null) {
                 conn.kill();
             }
 
             Future f = executingFuture;
             if (f != null) {
-                futureCancelErrorCode = errorCode;
+                // Finally, cancel(interrupt) the thread in which innerExecute() is executing.
                 f.cancel(true);
-            }
-        }
-
-        /**
-         * Whether succeed or fail
-         */
-        private void finishTask() {
-            ITransaction trx = conn.getTrx();
-            if (errorCode == com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TRANS_DEADLOCK
-                && trx != null) {
-                trx.setCrucialError(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TRANS_DEADLOCK);
-                rollback(false, false);
             }
         }
 
         private void retryWithBackoff() {
             long delay = 5 + (long) this.retried * 10;
             CobarServer.getInstance().getTimerTaskExecutor().schedule(() -> {
-                CancelQueryTask task = new CancelQueryTask(this.errorCode, this.retried + 1, retryLimit);
+                CancelQueryTask task = new CancelQueryTask(this.errorCode, this.retried + 1, retryLimit,
+                    traceIdToBeKilled);
                 CobarServer.getInstance().getKillExecutor().execute(task);
             }, delay, TimeUnit.MILLISECONDS);
         }
@@ -1899,22 +1943,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
             TConnection oldConn = this.conn;
             if (null != oldConn) {
-                /**
-                 * In mysql, its transaction can be commit 
-                 *  on different database after using 'use xxx_db',
-                 * such as:
-                 * <pre>
-                 *      use d1;
-                 *      begin;
-                 *      delete from t1;--trx1
-                 *      use d2;
-                 *      commit;
-                 * the transaction trx1 can be commit or rollback after using database d2.
-                 * </pre>
-                 *
-                 * But in PolarDB-X, after use a new database by using `use xxx_db`;
-                 * the trx of the last db will be auto rollback and closed.
-                 */
                 oldConn.close();
             }
 
@@ -2276,6 +2304,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     public boolean isReadOnly() {
+        if (ConfigDataMode.isFastMock()) {
+            return false;
+        }
         return this.readOnly;
     }
 

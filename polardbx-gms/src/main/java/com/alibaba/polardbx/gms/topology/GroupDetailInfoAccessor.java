@@ -23,17 +23,19 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -48,12 +50,14 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
     private static final String SELECT_ALL_GROUP_DETAIL_INFO = "select * from `" + GROUP_DETAIL_INFO_TABLE + "`";
     private static final String SELECT_GROUP_DETAILS_BY_INST_ID_AND_DB_NAME =
         "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where inst_id=? and db_name=?";
+    private static final String SELECT_GROUP_DETAILS_BY_INST_ID =
+        "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where inst_id=?";
 
     private static final String SELECT_GROUP_DETAIL_BY_INST_DB_GROUP =
         "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where inst_id=? and db_name=? and group_name=?";
 
-    private static final String SELECT_GROUP_DETAIL_LIST_BY_INST_DB_GROUPS =
-        "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where inst_id=? and db_name=? and group_name in (%s)";
+    private static final String SELECT_GROUP_DETAIL_BY_DB_GROUP =
+        "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where db_name=? and group_name=?";
 
     protected static final String INSERT_IGNORE_NEW_GROUP_DETAIL_INFO =
         "insert ignore into group_detail_info (id, gmt_created, gmt_modified, inst_id, db_name, group_name, storage_inst_id) values (null, now(), now(), ?, ?, ?, ?)";
@@ -82,6 +86,9 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
 
     private static final String SELECT_DISTINCT_INST_ID_LIST_BY_DB_GROUP =
         "select distinct g.inst_id as inst_id from group_detail_info g where g.db_name=? and g.group_name=?";
+
+    private static final String SELECT_STORAGE_INST_ID_LIST_BY_STORAGE_DB_GROUP =
+        "select g.storage_inst_id as storage_inst_id from group_detail_info g where g.storage_inst_id in (%s) and g.db_name=? and g.group_name=?";
 
     private static final String SELECT_GROUP_DETAIL_PHY_DB_INFO_BY_INST_ID =
         "select group_detail.storage_inst_id as storage_inst_id, group_detail.db_name as db_name, group_detail.group_name as group_name, db_group.phy_db_name as phy_db_name from db_group_info db_group inner join group_detail_info group_detail on db_group.db_name = group_detail.db_name and db_group.group_name = group_detail.group_name where  group_detail.inst_id=? and group_detail.db_name!=? order by   storage_inst_id,   db_name,  group_name,  phy_db_name;\n";
@@ -173,6 +180,23 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
         }
     }
 
+    public List<GroupDetailInfoRecord> getGroupDetailInfoByInstId(String instId) {
+        try {
+            List<GroupDetailInfoRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, instId);
+            records = MetaDbUtil
+                .query(SELECT_GROUP_DETAILS_BY_INST_ID, params, GroupDetailInfoRecord.class,
+                    connection);
+            return records;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                GROUP_DETAIL_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
     public List<GroupDetailInfoRecord> getGroupDetailInfoByStorageInstId(String storageInstId) {
         try {
             List<GroupDetailInfoRecord> records;
@@ -253,6 +277,36 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
         }
     }
 
+    public Set<String> getStorageInstIdListByStorageIdAndDbNameAndGroupName(
+        Set<String> storageIds, String dbName, String groupName) {
+        try {
+            Set<String> instIdList = new HashSet<>();
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, groupName);
+
+            try (PreparedStatement ps = connection.prepareStatement(
+                String.format(SELECT_STORAGE_INST_ID_LIST_BY_STORAGE_DB_GROUP, concat(storageIds)))) {
+                if (params != null && params.size() > 0) {
+                    for (ParameterContext param : params.values()) {
+                        param.getParameterMethod().setParameter(ps, param.getArgs());
+                    }
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        instIdList.add(rs.getString(1));
+                    }
+                }
+            }
+            return instIdList;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                GROUP_DETAIL_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
     public GroupDetailInfoRecord getGroupDetailInfoByInstIdAndGroupName(String instId, String dbName,
                                                                         String groupName) {
         try {
@@ -268,6 +322,38 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
                 return null;
             }
             return records.get(0);
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                GROUP_DETAIL_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<GroupDetailInfoRecord> getGroupDetailInfoByInstIdAndGroupName(Set<String> instIds, String dbName,
+                                                                              String groupName) {
+        try {
+            List<GroupDetailInfoRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, groupName);
+
+            StringBuilder sqlBuilder = new StringBuilder();
+            sqlBuilder.append(SELECT_GROUP_DETAIL_BY_DB_GROUP);
+            sqlBuilder.append(" and (");
+            int index = 0;
+            for (String instId : instIds) {
+                if (index != 0) {
+                    sqlBuilder.append(" or ");
+                }
+                sqlBuilder.append(" inst_id= ").append("'" + instId + "'");
+                index++;
+            }
+            sqlBuilder.append(" )");
+            records = MetaDbUtil
+                .query(sqlBuilder.toString(), params, GroupDetailInfoRecord.class,
+                    connection);
+            return records;
         } catch (Exception e) {
             logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",

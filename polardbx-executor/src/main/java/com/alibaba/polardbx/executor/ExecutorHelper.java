@@ -260,34 +260,16 @@ public class ExecutorHelper {
         return ret || !isAssignableFrom(plan.getClass());
     }
 
-    private static ExecutorMode amendExecutorModeByReadWeight(ExecutorMode executorMode, int readWeight) {
-        if (readWeight >= 0) {
-            if (Math.random() * 100 < readWeight) {
-                return executorMode;
-            } else {
-                return ExecutorMode.MPP;
-            }
-        } else {
-            return executorMode;
-        }
-    }
-
     private static ExecutorMode amendExecutorMode(ExecutorMode executorMode, ExecutionContext context) {
         if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_HTAP)) {
             //open htap route
-            if (executorMode == ExecutorMode.MPP) {
-                return executorMode;
-            } else {
-                return amendExecutorModeByReadWeight(executorMode,
-                    context.getParamManager().getInt(ConnectionParams.MASTER_READ_WEIGHT));
-            }
+            return executorMode;
         } else {
             //close htap route
             if (executorMode == ExecutorMode.MPP) {
                 executorMode = ExecutorMode.AP_LOCAL;
             }
-            return amendExecutorModeByReadWeight(executorMode,
-                context.getParamManager().getInt(ConnectionParams.MASTER_READ_WEIGHT));
+            return executorMode;
         }
     }
 }

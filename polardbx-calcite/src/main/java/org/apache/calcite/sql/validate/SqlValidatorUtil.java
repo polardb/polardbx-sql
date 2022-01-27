@@ -666,7 +666,7 @@ public class SqlValidatorUtil {
             ? new HashSet<String>()
             : new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     addFields(leftType.getFieldList(), typeList, nameList, uniqueNameList);
-    typeList.add(typeFactory.createSqlType(SqlTypeName.BOOLEAN));
+    typeList.add(typeFactory.createSqlType(SqlTypeName.BIGINT));
 
     String applyColumnName = APPLY_BOOLEAN;
     // Ensure that name is unique from all previous field names

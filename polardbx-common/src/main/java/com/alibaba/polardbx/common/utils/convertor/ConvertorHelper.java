@@ -260,6 +260,7 @@ public class ConvertorHelper {
         repository.registerConvertor(Long.class, byte[].class, numberTobytes);
         repository.registerConvertor(Character.class, byte[].class, numberTobytes);
         repository.registerConvertor(Double.class, byte[].class, numberTobytes);
+        repository.registerConvertor(Decimal.class, byte[].class, numberTobytes);
         repository.registerConvertor(Timestamp.class, BigInteger.class, timeTypeToNum);
         repository.registerConvertor(Timestamp.class, Short.class, timeTypeToNum);
         repository.registerConvertor(Time.class, BigInteger.class, timeTypeToNum);

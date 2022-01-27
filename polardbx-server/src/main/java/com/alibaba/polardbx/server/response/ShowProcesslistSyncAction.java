@@ -150,8 +150,7 @@ public class ShowProcesslistSyncAction implements ISyncAction {
 
                             PlanCache.CacheKey cacheKey = plan.getCacheKey();
                             if (cacheKey != null) {
-                                int templateId = cacheKey.getParameterizedSql().hashCode();
-                                sqlTid = TStringUtil.int2FixedLenHexStr(templateId);
+                                sqlTid = cacheKey.getTemplateId();
                             }
                         }
                     }

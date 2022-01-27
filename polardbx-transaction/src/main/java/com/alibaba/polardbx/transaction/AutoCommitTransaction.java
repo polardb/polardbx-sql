@@ -52,6 +52,13 @@ public class AutoCommitTransaction extends BaseTransaction {
     @Override
     public IConnection getConnection(String schemaName, String groupName, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
+        MasterSlave masterSlave = ExecUtils.getMasterSlave(false, rw.equals(RW.WRITE), ec);
+        return getSelfConnection(schemaName, groupName, ds, masterSlave);
+    }
+
+    protected IConnection getSelfConnection(
+        String schemaName, String groupName, IDataSource ds, MasterSlave masterSlave)
+        throws SQLException {
         if (groupName == null) {
             throw new IllegalArgumentException("group name is null");
         }
@@ -68,7 +75,6 @@ public class AutoCommitTransaction extends BaseTransaction {
             }
 
             IConnection conn;
-            MasterSlave masterSlave = ExecUtils.getMasterSlave(false, rw.equals(RW.WRITE), ec);
             conn = this.getConnectionHolder().getConnection(schemaName, groupName, ds, masterSlave);
             return conn;
         } finally {

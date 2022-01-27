@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
+import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -77,7 +78,8 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
 
         String charset = Optional.ofNullable(sqlCreateDatabase.getCharSet())
             .orElse(DbTopologyManager.defaultCharacterSetForCreatingDb);
-        String collate = Strings.nullToEmpty(sqlCreateDatabase.getCollate());
+        String collate = Optional.ofNullable(sqlCreateDatabase.getCollate())
+            .orElse(CharsetName.getDefaultCollationName(charset));
         String locality = Strings.nullToEmpty(sqlCreateDatabase.getLocality());
         String partitionMode = Strings.nullToEmpty(sqlCreateDatabase.getPartitionMode());
         boolean isCreateIfNotExists = sqlCreateDatabase.isIfNotExists();

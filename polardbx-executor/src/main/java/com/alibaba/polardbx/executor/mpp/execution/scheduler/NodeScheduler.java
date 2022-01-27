@@ -44,20 +44,8 @@ public class NodeScheduler {
         boolean slaveFirst =
             session.getClientContext().getParamManager().getBoolean(ConnectionParams.POLARDBX_SLAVE_INSTANCE_FIRST);
 
-        boolean enableSlaveDelay =
-            session.getClientContext().getParamManager().getBoolean(ConnectionParams.ENABLE_AWARE_LEARNER_DELAY);
-
-        boolean enableAwareLoad =
-            session.getClientContext().getParamManager().getBoolean(ConnectionParams.ENABLE_AWARE_LEARNER_LOAD);
-
         Set<InternalNode> nodes = nodeManager.getNodes(NodeState.ACTIVE, ConfigDataMode.isMasterMode() && slaveFirst);
 
-        if (ConfigDataMode.isMasterMode() && (enableAwareLoad || enableSlaveDelay) &&
-            nodeManager.getPolarDBXStatusManager() != null &&
-            nodeManager.getPolarDBXStatusManager().existMultiLearnPolarDBX()) {
-            return new DNAwareNodeSelector(nodeManager, nodes, limit, enableAwareLoad, enableSlaveDelay);
-        } else {
-            return new SimpleNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode);
-        }
+        return new SimpleNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode);
     }
 }

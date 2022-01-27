@@ -46,7 +46,7 @@ public class LeaderStatusBridge {
      *
      * @return true if this node is leader
      */
-    public boolean hasLeaderShip() {
+    public boolean hasLeadership() {
         // the server has not been initialized
         if (nodeStatusManager == null) {
             return false;

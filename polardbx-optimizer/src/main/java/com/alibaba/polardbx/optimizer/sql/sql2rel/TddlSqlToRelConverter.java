@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.sql.sql2rel;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
+import com.google.common.base.Supplier;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableList.Builder;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -82,6 +87,7 @@ import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlDmlKeyword;
 import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlDynamicParam;
@@ -93,6 +99,7 @@ import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.SqlReplace;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlShow;
 import org.apache.calcite.sql.SqlShowCreateTable;
@@ -190,7 +197,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final Set<String> updateColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                 Blackboard bb = createBlackboard(null, nameToNodeMap, false);
                 // convert SqlNode to RexNode
-                Builder<RexNode> rexNodeSourceExpressionListBuilder = ImmutableList.builder();
+                ImmutableList.Builder<RexNode> rexNodeSourceExpressionListBuilder = ImmutableList.builder();
                 for (SqlNode n : updateList) {
                     RexNode rn = bb.convertExpression(n);
                     rexNodeSourceExpressionListBuilder.add(rn);
@@ -223,10 +230,11 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final boolean replaceNonDeterministicFunction = hintEx.replaceNonDeterministicFunction();
                 final boolean pushdownDuplicateCheck = isPushdownDuplicateCheck();
 
-                final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(tableName, schema, ec);
+                final List<List<String>> uniqueKeys =
+                    GlobalIndexMeta.getUniqueKeys(tableName, schema, true, tm -> true, ec);
                 final boolean withoutPkAndUk = uniqueKeys.isEmpty() || uniqueKeys.get(0).isEmpty();
                 final boolean ukContainsPartitionKey =
-                    GlobalIndexMeta.isEveryUkContainsPartitionKey(tableName, schema, true, ec);
+                    GlobalIndexMeta.isEveryUkContainsAllPartitionKey(tableName, schema, true, ec);
 
                 final boolean canPushDuplicateCheck =
                     withoutPkAndUk || (ukContainsPartitionKey && allGsiPublished && scaleOutConsistentBaseData);
@@ -338,6 +346,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final boolean withScaleOutMultiWrite = ComplexTaskPlanUtils.canWrite(tableMeta);
         final ExecutionStrategy hintEx = getExecutionStrategy();
         final boolean replaceNonDeterministicFunction = hintEx.replaceNonDeterministicFunction();
+        final boolean isReplaceOrInsertIgnore =
+            (call instanceof SqlReplace) || call.getModifierNode(SqlDmlKeyword.IGNORE) != null;
 
         // Add auto_increment column to insert with value of NULL;
         final Set<String> autoIncrementColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -353,7 +363,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
         // Add default value for unique keys of primary and gsi
         final Set<String> uniqueKeys = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        if (isPartitioned || (withScaleOutMultiWrite && isBroadcast)) {
+        if (isPartitioned || (withScaleOutMultiWrite && isBroadcast) || (isReplaceOrInsertIgnore && (withGsi
+            || hintEx == ExecutionStrategy.LOGICAL))) {
             uniqueKeys.addAll(GlobalIndexMeta
                 .getUniqueKeyColumnList(tableName, schemaName, false, plannerContext.getExecutionContext()));
         }
@@ -416,12 +427,19 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             }
         });
 
-        // Append all column in target table for upsert with multi write
         final SqlNodeList duplicateKeyUpdateList = (SqlNodeList) call.getOperandList().get(4);
+        // Whether UPSERT modify partition key
+        final List<String> updateColumns = BuildPlanUtils.buildUpdateColumnList(duplicateKeyUpdateList, (sqlNode) -> {
+            throw new SqlValidateException(validator.newValidationError(sqlNode,
+                RESOURCE.unsupportedCallInDuplicateKeyUpdate(RelUtils.stringValue(sqlNode))));
+        });
+        final boolean upsertModifyPartitionKey = updateColumns.stream().anyMatch(partitionKeys::contains);
+
+        // Append all column in target table for upsert with multi write
         final Boolean pushdownDuplicateCheck = isPushdownDuplicateCheck();
         final boolean appendAllColumnsForUpsert =
             duplicateKeyUpdateList.size() > 0 && (isBroadcast || withGsi || withScaleOutMultiWrite
-                || !pushdownDuplicateCheck || hintEx == ExecutionStrategy.LOGICAL);
+                || !pushdownDuplicateCheck || upsertModifyPartitionKey || hintEx == ExecutionStrategy.LOGICAL);
 
         // Walk the expression list and get default values for columns that were wanted and not supplied
         // in the statement. Get field names too.
@@ -1176,10 +1194,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final boolean modifyPartitionKey =
             CheckModifyLimitation.checkModifyShardingColumnWithGsi(targetTables, targetColumns,
                 this.plannerContext.getExecutionContext());
-
-        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning) {
-            return update.getSourceSelect();
-        }
+        final boolean gsiHasAutoUpdateColumns =
+            CheckModifyLimitation.checkGsiHasAutoUpdateColumns(srcTables, this.plannerContext.getExecutionContext());
 
         final Set<Integer> targetTableIndexSet = new LinkedHashSet<>(targetTableIndexes);
         final TreeSet<String> targetColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -1188,6 +1204,35 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final SqlSelect sourceSelect = update.getSourceSelect();
         final List<SqlNode> selectList = sourceSelect.getSelectList().getList();
         final AtomicInteger ordinal = new AtomicInteger(selectList.size() - 1);
+
+        int offset = selectList.size() - targetColumns.size();
+
+        // Add (cast ... as binary) for blob type
+        for (int i = 0; i < targetColumns.size(); i++) {
+            final RelOptTable table = srcTables.get(targetTableIndexes.get(i)).getRefTable();
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(table);
+            final TableMeta tableMeta =
+                plannerContext.getExecutionContext().getSchemaManager(qn.left).getTable(qn.right);
+            final ColumnMeta columnMeta = tableMeta.getColumn(targetColumns.get(i));
+            if (DataTypeUtil.isBinaryType(columnMeta.getDataType())) {
+                SqlNode sqlNode = selectList.get(i + offset);
+                SqlNode newSqlNode = SqlStdOperatorTable.CAST.createCall(SqlParserPos.ZERO, sqlNode, new SqlDataTypeSpec(
+                    new SqlIdentifier("BINARY", SqlParserPos.ZERO),
+                    -1,
+                    -1,
+                    null,
+                    null,
+                    SqlParserPos.ZERO
+                ));
+                selectList.set(i + offset,
+                    SqlValidatorUtil.addAlias(newSqlNode, SqlUtil.deriveAliasFromOrdinal(ordinal.getAndIncrement())));
+            }
+        }
+
+        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning && !gsiHasAutoUpdateColumns) {
+            sourceSelect.setSelectList(new SqlNodeList(selectList, SqlParserPos.ZERO));
+            return update.getSourceSelect();
+        }
 
         for (Integer tableIndex : targetTableIndexSet) {
             final RelOptTable table = srcTables.get(tableIndex).getRefTable();

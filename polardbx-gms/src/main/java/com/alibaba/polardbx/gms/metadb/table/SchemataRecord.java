@@ -16,15 +16,18 @@
 
 package com.alibaba.polardbx.gms.metadb.table;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 public class SchemataRecord implements SystemTableRecord {
 
@@ -38,6 +41,11 @@ public class SchemataRecord implements SystemTableRecord {
         this.schemaName = rs.getString("schema_name");
         this.defaultCharSetName = rs.getString("default_character_set_name");
         this.defaultCollationName = rs.getString("default_collation_name");
+        /* when default_collation_name doesn't exist
+            uses default_character_set_name to get default_collation_name */
+        if (StringUtils.isEmpty(defaultCollationName)) {
+            this.defaultCollationName = CharsetName.getDefaultCollationName(defaultCharSetName);
+        }
         this.defaultDbIndex = rs.getString("default_db_index");
         return this;
     }

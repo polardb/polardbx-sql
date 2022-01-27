@@ -528,6 +528,9 @@ public class StorageHaChecker {
                 /**
                  * The addr cannot be connected or connected timeout, treate it as healthy
                  */
+                MetaDbLogUtil.META_DB_LOG.warn(
+                    String.format(
+                        "Fail to get conn from storage node[%s:%s], err is %s", host, port, ex.getMessage()), ex);
                 isHealthy = false;
             } else {
                 MetaDbLogUtil.META_DB_LOG.warn(

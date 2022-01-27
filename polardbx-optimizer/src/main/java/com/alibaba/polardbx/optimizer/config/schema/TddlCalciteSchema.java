@@ -201,14 +201,17 @@ public class TddlCalciteSchema extends CalciteSchema {
 
         try {
             // use logical table name to acquaire table meta in cache
-            if (ConfigDataMode.isFastMock()) {
-                tableName = MockDataManager.phyTableToLogicalTableName.get(tableName);
-            }
+//            if (ConfigDataMode.isFastMock()) {
+//                tableName = MockDataManager.phyTableToLogicalTableName.get(tableName.toLowerCase());
+//            }
             table = schema.getTable(tableName);
             if (table instanceof TableMeta && ((TableMeta) table).getStatus() != TableStatus.PUBLIC) {
                 throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, tableName);
             }
         } catch (Throwable t) {
+            if (OptimizerContext.getContext(schemaName) == null) {
+                throw new RuntimeException(t);
+            }
             SystemTableView.Row row = OptimizerContext.getContext(schemaName).getViewManager().select(tableName);
             if (row != null) {
                 String viewDefinition = row.getViewDefinition();

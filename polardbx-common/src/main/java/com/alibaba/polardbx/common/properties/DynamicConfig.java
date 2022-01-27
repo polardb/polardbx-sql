@@ -43,6 +43,28 @@ public class DynamicConfig {
                 autoPartitionPartitions = parseValue(value, Long.class, autoPartitionPartitionsDefault);
                 break;
 
+            case ConnectionProperties.STORAGE_DELAY_THRESHOLD:
+                delayThreshold = parseValue(value, Integer.class, 3);
+                break;
+            case ConnectionProperties.STORAGE_BUSY_THRESHOLD:
+                busyThreshold = parseValue(value, Integer.class, 100);
+                break;
+            case ConnectionProperties.KEEP_TSO_HEARTBEAT_ON_CDC_CON:
+                keepTsoBasedCDC = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.FORCE_RECREATE_GROUP_DATASOURCE:
+                enableCreateGroupDataSource = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.PURGE_HISTORY_MS: {
+                long tempPurgeHistoryMs = parseValue(value, Long.class, 600 * 1000L);
+                if (tempPurgeHistoryMs > 0 && tempPurgeHistoryMs < purgeHistoryMs) {
+                    purgeHistoryMs = tempPurgeHistoryMs;
+                } else {
+                    logger.warn("invalid values " + tempPurgeHistoryMs);
+                }
+                break;
+            }
+
             default:
                 break;
             }
@@ -79,6 +101,40 @@ public class DynamicConfig {
 
     public long getAutoPartitionPartitions() {
         return autoPartitionPartitions;
+    }
+
+    private volatile int delayThreshold = 3;
+
+    public int getDelayThreshold() {
+        return delayThreshold;
+    }
+
+    private volatile int busyThreshold = 100;
+
+    public int getBusyThreshold() {
+        return busyThreshold;
+    }
+
+    private volatile boolean keepTsoBasedCDC = true;
+
+    public boolean isKeepTsoBasedCDC() {
+        return keepTsoBasedCDC;
+    }
+
+    private volatile boolean enableCreateGroupDataSource = false;
+
+    public boolean forceCreateGroupDataSource() {
+        return enableCreateGroupDataSource;
+    }
+
+    private static final long defaultPurgeHistoryMs = 600 * 1000L;
+
+    private static final long maxPurgeHistoryMs = 600 * 1000L;
+
+    private volatile long purgeHistoryMs = 36 * 24 * 60 * 60 * 1000L;
+
+    public long getPurgeHistoryMs() {
+        return purgeHistoryMs;
     }
 
     public static <T> T parseValue(String value, Class<T> type, T defaultValue) {

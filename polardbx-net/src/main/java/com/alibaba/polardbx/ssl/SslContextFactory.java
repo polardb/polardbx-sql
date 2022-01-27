@@ -84,14 +84,17 @@ public final class SslContextFactory {
                 && checkFile(sslRootCertPath)) {
                 // new logic of reading .key and .cert file.
                 serverContext = sslContextInit(sslCertPath, sslKeyPath, sslRootCertPath);
-                LOGGER.info("SSL config success, the configurations are " +
-                    newConfigLogMessage(sslKeyPath, sslCertPath, sslRootCertPath));
+                LOGGER.warn(
+                    String.format("SSL config success, the configurations are %s, the getProtocol is %s",
+                        newConfigLogMessage(sslKeyPath, sslCertPath, sslRootCertPath), serverContext.getProtocol()));
             } else if (checkFile(keyStorePath)
                 && checkFile(trustStorePath)) {
                 // old logic of reading keystore & truststore from path.
                 serverContext = oldSSLContextInit(keyStorePath, trustStorePath);
-                LOGGER.info("SSL config success, the configurations are " +
-                    oldConfigLogMessage(keyStorePath, trustStorePath));
+                LOGGER.warn(
+                    String.format("SSL config success, the configurations are %s, the getProtocol is %s",
+                        oldConfigLogMessage(keyStorePath, trustStorePath), serverContext.getProtocol())
+                );
             }
             if (serverContext == null) {
                 String errorMessage;
@@ -106,6 +109,7 @@ public final class SslContextFactory {
 
             SERVER_CONTEXT = serverContext;
             INIT = true;
+
             return SERVER_CONTEXT;
         }
     }

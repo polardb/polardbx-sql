@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -31,6 +32,7 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Correlate;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
+import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SemiJoinType;
@@ -41,7 +43,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.PUSH_CORRELATE_MATERIALIZED_LIMIT;
 import static org.apache.calcite.sql.SqlKind.DML;
+import static org.apache.calcite.sql.SqlKind.EQUALS;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.IN;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.ROW;
 
 /**
  * @author fangwu
@@ -76,14 +82,32 @@ public class PushCorrelateRule extends RelOptRule {
         boolean allSingleTable = false;
         Set<RelOptTable> tables = RelOptUtil.findTables(leftView.getPushedRelNode());
         tables.addAll(RelOptUtil.findTables(rightPlan));
+        RelNode subqueryRel = rightPlan;
         if (!RelUtils.isAllSingleTableInSameSchema(tables)) {
             // meaning has correlate columns
-            if ((logicalCorrelate.getLeftConditions() != null && logicalCorrelate.getLeftConditions().size() > 0)
-                || RelOptUtil.getVariablesUsed(rightPlan).size() > 0) {
+            if (RelOptUtil.getVariablesUsed(rightPlan).size() > 0) {
                 return;
             }
 
+            // right plan should contains correlate node
             if (RelOptUtil.findCorrelates(rightPlan).size() > 0) {
+                return;
+            }
+
+            // for IN subquery
+            ParamManager paramManager = PlannerContext.getPlannerContext(rightPlan).getParamManager();
+            int limit = paramManager.getInt(PUSH_CORRELATE_MATERIALIZED_LIMIT);
+            if (logicalCorrelate.getJoinType() == SemiJoinType.SEMI) {
+                if (logicalCorrelate.getLeftConditions().size() != 1 ||
+                    logicalCorrelate.getOpKind() != EQUALS ||
+                    logicalCorrelate.getRight().getRowType().getFieldList().get(0).getType().getSqlTypeName()
+                        == SqlTypeName.FLOAT ||
+                    subqueryRel.estimateRowCount(subqueryRel.getCluster().getMetadataQuery()) > limit) {
+                    return;
+                }
+                // optimize path for in subquery
+            } else if (logicalCorrelate.getJoinType() == SemiJoinType.ANTI) {
+                // not support pushing down anti subquery
                 return;
             }
         } else {
@@ -95,13 +119,15 @@ public class PushCorrelateRule extends RelOptRule {
         relBuilder.push(newLogicalView);
         List<RexNode> projects = (List<RexNode>) relBuilder.getRexBuilder().identityProjects(leftView.getRowType());
         final ImmutableList.Builder<RexNode> builder = ImmutableList.builder();
-        rightPlan = Planner.getInstance().optimizeBySqlWriter(rightPlan, PlannerContext.getPlannerContext(rightPlan));
+        rightPlan =
+            Planner.getInstance().optimizeBySqlWriter(rightPlan, PlannerContext.getPlannerContext(rightPlan));
         RexDynamicParam rexDynamicParam =
             relBuilder.getRexBuilder()
                 .makeDynamicParam(logicalCorrelate.getJoinType() == SemiJoinType.LEFT ?
-                    relBuilder.getTypeFactory()
-                        .createTypeWithNullability(rightPlan.getRowType().getFieldList().get(0).getType(), true) :
-                    logicalCorrelate.getCluster().getTypeFactory().createSqlType(SqlTypeName.BOOLEAN), -2, rightPlan);
+                        relBuilder.getTypeFactory()
+                            .createTypeWithNullability(rightPlan.getRowType().getFieldList().get(0).getType(), true) :
+                        logicalCorrelate.getCluster().getTypeFactory().createSqlType(SqlTypeName.BIGINT), -2,
+                    rightPlan);
 
         rexDynamicParam.setSemiType(logicalCorrelate.getJoinType());
 
@@ -111,14 +137,45 @@ public class PushCorrelateRule extends RelOptRule {
             rexDynamicParam.setLeftCondition(logicalCorrelate.getLeftConditions());
             rexDynamicParam.setSubqueryKind(logicalCorrelate.getOpKind());
         }
-        builder
-            .addAll(projects)
-            .add(rexDynamicParam);
+        builder.addAll(projects);
+        // `not all single table` case do not support correlate columns
+
+        ParamManager paramManager = PlannerContext.getPlannerContext(rightPlan).getParamManager();
+        int limit = paramManager.getInt(PUSH_CORRELATE_MATERIALIZED_LIMIT);
+        if (logicalCorrelate.getLeftConditions() != null &&
+            logicalCorrelate.getLeftConditions().size() == 1 &&
+            logicalCorrelate.getJoinType() == SemiJoinType.SEMI &&
+            logicalCorrelate.getOpKind() == EQUALS &&
+            subqueryRel.estimateRowCount(subqueryRel.getCluster().getMetadataQuery()) < limit
+        ) {
+            // Materialized optimize option for IN subquery
+            if (logicalCorrelate.getJoinType() == SemiJoinType.SEMI) {
+                RexBuilder rexBuilder = relBuilder.getRexBuilder();
+                rexDynamicParam =
+                    (RexDynamicParam) rexBuilder
+                        .makeDynamicParam(rexDynamicParam.getRel().getRowType().getFieldList().get(0).getType(),
+                            rexDynamicParam.getIndex(), rexDynamicParam.getRel()
+                            , rexDynamicParam.getSubqueryOperands(), rexDynamicParam.getSubqueryOp(),
+                            rexDynamicParam.getSubqueryKind());
+                rexDynamicParam.setSemiType(SemiJoinType.LEFT);
+                rexDynamicParam.setMaxOnerow(false);
+                builder.add(rexBuilder.makeCall(IN, logicalCorrelate.getLeftConditions().get(0),
+                    rexBuilder.makeCall(ROW, rexDynamicParam)));
+            }
+        } else {
+            builder.add(rexDynamicParam);
+        }
+
         List<RexNode> newProjects = builder.build();
 
-        call.transformTo(relBuilder
-            .project(newProjects, Collections.emptyList(), ImmutableSet.of(logicalCorrelate.getCorrelationId()))
-            .build());
+        if (allSingleTable) {
+            call.transformTo(relBuilder
+                .project(newProjects, Collections.emptyList(), ImmutableSet.of(logicalCorrelate.getCorrelationId()))
+                .build());
+        } else {
+            call.transformTo(relBuilder
+                .project(newProjects, Collections.emptyList())
+                .build());
+        }
     }
-
 }

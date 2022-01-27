@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.sharding.result.PlanShardInfo;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.BitSets;
 
 import java.util.ArrayList;
 import java.util.BitSet;

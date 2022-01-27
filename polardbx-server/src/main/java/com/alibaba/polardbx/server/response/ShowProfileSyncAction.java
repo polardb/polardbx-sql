@@ -17,9 +17,6 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.net.FrontendConnection;
-import com.alibaba.polardbx.net.NIOProcessor;
-import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.common.constants.CpuStatAttribute;
 import com.alibaba.polardbx.common.constants.CpuStatAttribute.CpuStatAttr;
 import com.alibaba.polardbx.common.model.SqlType;
@@ -29,6 +26,8 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.LogicalShowProfileHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.net.FrontendConnection;
+import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.profiler.cpu.CpuStat;
@@ -43,6 +42,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.memory.QueryMemoryPool;
 import com.alibaba.polardbx.optimizer.parse.SqlTypeUtils;
 import com.alibaba.polardbx.optimizer.statis.MemoryStatisticsGroup;
+import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.statistics.RuntimeStatistics.Metrics;
 import org.apache.calcite.rel.RelNode;
@@ -776,7 +776,7 @@ public class ShowProfileSyncAction implements ISyncAction {
             if (targetSc != null) {
                 if (targetSc.isStatementExecuting().get()) {
                     ec = targetSc.getTddlConnection().getExecutionContext();
-                    if (profileIgnoreSqlTypeSet.contains(ec.getSqlType())) {
+                    if (ec.getSqlType() != null && profileIgnoreSqlTypeSet.contains(ec.getSqlType())) {
                         runTimeStat = targetSc.getLastSqlRunTimeStat();
                     } else {
                         runTimeStat = (RuntimeStatistics) targetSc.getTddlConnection()

@@ -100,7 +100,7 @@ public enum ExecutionStrategy {
         }
 
         // Unique key detail
-        final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(targetTable, schema, ec);
+        final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(targetTable, schema, true, tm -> true, ec);
         final boolean withoutPkAndUk = uniqueKeys.isEmpty() || uniqueKeys.get(0).isEmpty();
 
         // Scale out task detail
@@ -116,7 +116,7 @@ public enum ExecutionStrategy {
         // Get relation between uk and partition key
         final TreeSet<String> partitionKeys = GlobalIndexMeta.getPartitionKeySet(targetTable, schema, ec);
         final boolean ukContainsPartitionKey =
-            GlobalIndexMeta.isEveryUkContainsPartitionKey(targetTable, schema, true, ec);
+            GlobalIndexMeta.isEveryUkContainsAllPartitionKey(targetTable, schema, true, ec);
 
         // Statement detail
         final boolean canPushDuplicateCheck =

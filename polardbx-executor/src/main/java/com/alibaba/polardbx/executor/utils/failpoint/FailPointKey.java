@@ -61,6 +61,12 @@ public interface FailPointKey {
     String FP_RANDOM_PHYSICAL_DDL_EXCEPTION = "FP_RANDOM_PHYSICAL_DDL_EXCEPTION";
 
     /**
+     * set @FP_PHYSICAL_DDL_EXCEPTION='true';
+     * 执行物理DDL时失败
+     */
+    String FP_PHYSICAL_DDL_EXCEPTION = "FP_PHYSICAL_DDL_EXCEPTION";
+
+    /**
      * set @FP_RANDOM_BACKFILL_EXCEPTION='30';
      * Backfill时随机失败，可指定失败概率
      */

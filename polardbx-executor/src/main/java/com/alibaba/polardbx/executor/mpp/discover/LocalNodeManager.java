@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.discover;
 
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.node.AllNodes;
@@ -25,7 +24,7 @@ import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeServer;
 import com.alibaba.polardbx.gms.node.NodeState;
-import com.alibaba.polardbx.gms.node.PolarDBXStatusManager;
+import com.google.common.collect.ImmutableSet;
 
 import javax.inject.Inject;
 import java.util.HashSet;
@@ -117,10 +116,5 @@ public class LocalNodeManager implements InternalNodeManager {
     @Override
     public List<Node> getAllCoordinators() {
         return allNodes.getAllCoordinators();
-    }
-
-    @Override
-    public PolarDBXStatusManager getPolarDBXStatusManager() {
-        return null;
     }
 }

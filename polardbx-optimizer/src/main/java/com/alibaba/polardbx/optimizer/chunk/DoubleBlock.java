@@ -34,11 +34,17 @@ public class DoubleBlock extends AbstractBlock {
     public DoubleBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new double[slotLen];
+
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = (Double.BYTES + Byte.BYTES) * positionCount;
     }
 
     public DoubleBlock(DataType dataType, double[] values, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
+
+        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
+        sizeInBytes = (Double.BYTES + Byte.BYTES) * positionCount;
     }
 
     public DoubleBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, double[] values) {

@@ -114,7 +114,7 @@ public class Rex2ExprUtil {
         MySQLStandardFieldType rFieldType = rightType.fieldType();
 
         MySQLResultType lResultType = leftType.fieldType().toResultType();
-        MySQLResultType rResultType = leftType.fieldType().toResultType();
+        MySQLResultType rResultType = rightType.fieldType().toResultType();
 
         if ((lResultType == STRING_RESULT && lFieldType == MYSQL_TYPE_JSON)
             || (rResultType == STRING_RESULT && rFieldType == MYSQL_TYPE_JSON)) {

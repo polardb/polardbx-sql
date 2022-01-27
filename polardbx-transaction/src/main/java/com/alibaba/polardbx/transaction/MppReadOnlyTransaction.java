@@ -29,7 +29,7 @@ import java.util.Map;
 
 public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMppReadOnlyTransaction, ITsoTransaction {
 
-    private long tsoTimestamp;
+    private long tsoTimestamp = -1;
     private Map<String, Long> lsnMap;
     private boolean omitTso;
 
@@ -40,6 +40,11 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
     @Override
     public long getSnapshotSeq() {
         return tsoTimestamp;
+    }
+
+    @Override
+    public boolean snapshotSeqIsEmpty() {
+        return tsoTimestamp <= 0;
     }
 
     @Override

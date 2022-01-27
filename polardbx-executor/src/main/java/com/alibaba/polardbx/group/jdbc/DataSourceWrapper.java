@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.group.jdbc;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
-import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.group.config.Weight;
 
 import javax.sql.CommonDataSource;
 import javax.sql.DataSource;
@@ -47,6 +47,7 @@ import java.util.logging.Logger;
  */
 public class DataSourceWrapper extends AbstractLifecycle implements DataSource {
 
+    protected String storageId;
     protected final String dbKey;             // 这个DataSource对应的dbKey
     protected final String weightStr;         // 权重信息字符串
     protected final Weight weight;            // 权重信息
@@ -71,19 +72,14 @@ public class DataSourceWrapper extends AbstractLifecycle implements DataSource {
         this.isInited = true;
     }
 
-    public DataSourceWrapper(String dbKey, String weightStr, TAtomDataSource wrappedDataSource) {
-        this(dbKey, weightStr, wrappedDataSource, -1);
+    public DataSourceWrapper(String storageId, String dbKey, String weightStr, TAtomDataSource wrappedDataSource,
+                             int dataSourceIndex) {
+        this(dbKey, weightStr, wrappedDataSource, dataSourceIndex);
+        this.storageId = storageId;
     }
 
-    /**
-     * 验证此DataSource的路由index信息中，是否包含指定的index--add by mazhidan.pt
-     */
-    public boolean isMatchDataSourceIndex(int specifiedIndex) {
-        if (weight.indexes != null && !weight.indexes.isEmpty()) {
-            return weight.indexes.contains(specifiedIndex);
-        } else {
-            return this.dataSourceIndex == specifiedIndex;
-        }
+    public DataSourceWrapper(String dbKey, String weightStr, TAtomDataSource wrappedDataSource) {
+        this(dbKey, weightStr, wrappedDataSource, -1);
     }
 
     /**
@@ -193,4 +189,7 @@ public class DataSourceWrapper extends AbstractLifecycle implements DataSource {
         return dataSourceIndex;
     }
 
+    public String getStorageId() {
+        return storageId;
+    }
 }

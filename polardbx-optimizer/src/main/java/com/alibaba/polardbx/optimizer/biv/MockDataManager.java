@@ -36,15 +36,6 @@ import java.util.concurrent.TimeUnit;
 
 public class MockDataManager {
 
-    public static final LoadingCache<String, String> phyTableToLogicalTableName = CacheBuilder.newBuilder()
-        .maximumSize(100000)
-        .build(new CacheLoader<String, String>() {
-            @Override
-            public String load(String phyTableName) throws Exception {
-                return phyTableName;
-            }
-        });
-
     private static final LoadingCache<String, MockCacheData> cacheData = CacheBuilder.newBuilder()
         .expireAfterAccess(10000, TimeUnit.SECONDS)
         .maximumSize(1000)

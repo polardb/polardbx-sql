@@ -815,7 +815,26 @@ public class LoptSemiJoinOptimizer {
       if ((c1 == null) || (c2 == null)) {
         return -1;
       }
-      return (c1.isLt(c2)) ? -1 : ((c1.equals(c2)) ? 0 : 1);
+      if (c1.isLt(c2)) {
+        return -1;
+      }
+      if (c2.isLt(c1)) {
+        return 1;
+      }
+      if (c1.equals(c2)) {
+        return 0;
+      }
+      double[] c1Values = new double[]{c1.getRows(), c1.getCpu(), c1.getMemory(), c1.getIo(), c1.getNet()};
+      double[] c2Values = new double[]{c2.getRows(), c2.getCpu(), c2.getMemory(), c2.getIo(), c2.getNet()};
+      for (int i = 0; i < c1Values.length; i++) {
+        if (c1Values[i] < c2Values[i]) {
+          return -1;
+        }
+        if (c1Values[i] > c2Values[i]) {
+          return 1;
+        }
+      }
+      return 0;
     }
   }
 

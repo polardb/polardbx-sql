@@ -84,12 +84,12 @@ public class NormalShardProcessor extends ShardProcessor {
 
         Preconditions.checkArgument(targetDBs.size() == 1);
         TargetDB tdb = targetDBs.get(0);
-        // record phy table refer to logical table in mock mode
-        if (ConfigDataMode.isFastMock()) {
-            for (String phyTable : tdb.getTableNames()) {
-                MockDataManager.phyTableToLogicalTableName.put(phyTable, tableName);
-            }
-        }
+//        // record phy table refer to logical table in mock mode
+//        if (ConfigDataMode.isFastMock()) {
+//            for (String phyTable : tdb.getTableNames()) {
+//                MockDataManager.phyTableToLogicalTableName.put(phyTable, tableName);
+//            }
+//        }
 
         Set<String> tableNames = tdb.getTableNames();
         Preconditions.checkArgument(tableNames.size() == 1);

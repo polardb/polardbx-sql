@@ -16,16 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.Xplan;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.XPlanUtil;
+import com.alibaba.polardbx.rpc.XUtil;
 import com.google.protobuf.ByteString;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
-import com.alibaba.polardbx.rpc.XUtil;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.type.SqlTypeName;
 
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.MessageDigest;
@@ -84,6 +85,10 @@ public class XPlanTemplate implements IXPlan {
                 if (!info.isNullable() && null == val) {
                     return null; // Forbidden. This happens when use GetPlan and SQL is xx=? and parameter is null.
                 }
+                // Forbid binary/decimal/Date compare with plan(collation/precision/format may mismatch).
+                if (val instanceof byte[] || val instanceof BigDecimal || val instanceof java.util.Date) {
+                    return null;
+                }
                 // NOTE: When compare value with BIT type, uint must be used.
                 if (info.getDataType().getSqlTypeName() == SqlTypeName.BIT && val instanceof byte[]) {
                     final ByteBuffer buf =
@@ -126,16 +131,20 @@ public class XPlanTemplate implements IXPlan {
                     if (!info.isNullable() && null == params.get(info.getId() + 1).getValue()) {
                         return null; // Forbidden. This happens when use GetPlan and SQL is xx=? and parameter is null.
                     }
+                    // Forbid binary/decimal/Date compare with plan(collation/precision/format may mismatch).
+                    final Object val = params.get(info.getId() + 1).getValue();
+                    if (val instanceof byte[] || val instanceof BigDecimal || val instanceof java.util.Date) {
+                        return null;
+                    }
                     // NOTE: When compare value with BIT type, uint must be used.
-                    if (info.getDataType().getSqlTypeName() == SqlTypeName.BIT &&
-                        params.get(info.getId() + 1).getValue() instanceof byte[]) {
+                    if (info.getDataType().getSqlTypeName() == SqlTypeName.BIT && val instanceof byte[]) {
                         final ByteBuffer buf =
-                            ByteBuffer.allocate(Long.BYTES).put((byte[]) params.get(info.getId() + 1).getValue())
+                            ByteBuffer.allocate(Long.BYTES).put((byte[]) val)
                                 .order(ByteOrder.LITTLE_ENDIAN);
                         buf.rewind();
                         builder.addParameters(XUtil.genUIntScalar(buf.getLong(0)));
                     } else {
-                        builder.addParameters(XUtil.genScalar(params.get(info.getId() + 1).getValue(), null));
+                        builder.addParameters(XUtil.genScalar(val, null));
                     }
                 }
                 break;

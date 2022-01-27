@@ -166,6 +166,7 @@ public class Corrector implements CheckerCallback {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(checker.getSchemaName(), ec);
         final List<String> pks = checker.getPrimaryKeys()
             .stream()
+            .mapToInt(idx -> idx)
             .mapToObj(idx -> checker.getIndexColumns().get(idx))
             .collect(Collectors.toList());
         final PhyTableOperation deletePlan = builder.buildDeleteForCorrector(pks);
@@ -362,6 +363,7 @@ public class Corrector implements CheckerCallback {
                 for (List<ParameterContext> row : dropRows) {
                     final List<ParameterContext> pks = checker.getPrimaryKeys()
                         .stream()
+                        .mapToInt(idx -> idx)
                         .mapToObj(row::get)
                         .collect(Collectors.toList());
                     // Delete always on base row(base table).

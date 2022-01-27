@@ -101,7 +101,7 @@ public class MockResultSet implements ResultSet {
         if (mockCacheData != null) {
             return String.valueOf(mockCacheData.getDatas().get(rowNum).get(columnIndex - 1));
         }
-        return "a";
+        return "1";
     }
 
     @Override
@@ -218,7 +218,7 @@ public class MockResultSet implements ResultSet {
             int index = findIndex(columnLabel, mockCacheData.getResultSetMetaData());
             return getString(index);
         }
-        return "a";
+        return "1";
     }
 
     private int findIndex(String columnLabel, ResultSetMetaData resultSetMetaData) throws SQLException {
@@ -417,8 +417,8 @@ public class MockResultSet implements ResultSet {
         } else if (clazz == Double.class) {
             return 1.0d;
         } else if (clazz == String.class) {
-            return "a";
-        } else if (clazz == BigInteger.class || clazz == UInt64.class) {
+            return "1";
+        } else if (clazz == BigInteger.class) {
             return 1;
         } else if (clazz == Decimal.class) {
             return 1;
@@ -437,7 +437,7 @@ public class MockResultSet implements ResultSet {
         } else if (clazz == Enum.class) {
             return null;
         } else if (clazz == Slice.class) {
-            return type.convertFrom("a");
+            return type.convertFrom("1");
         } else {
             throw new AssertionError("Data type " + clazz.getName() + " not supported");
         }

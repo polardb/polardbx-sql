@@ -18,6 +18,7 @@ package com.alibaba.polardbx.gms.metadb.table;
 
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.util.List;
 
@@ -35,7 +36,9 @@ public class SchemataAccessor extends AbstractAccessor {
     private static final String SELECT_CLAUSE =
         "select `schema_name`, `default_character_set_name`, `default_collation_name`, `default_db_index` from ";
 
-    private static final String SELECT_TABLES = SELECT_CLAUSE + SCHEMATA_TABLE + WHERE_CLAUSE;
+    private static final String SELECT_TABLES_WITH_WHERE = SELECT_CLAUSE + SCHEMATA_TABLE + WHERE_CLAUSE;
+
+    private static final String SELECT_TABLES = SELECT_CLAUSE + SCHEMATA_TABLE;
 
     private static final String DELETE_TABLES = "delete from " + SCHEMATA_TABLE + WHERE_CLAUSE;
 
@@ -43,8 +46,15 @@ public class SchemataAccessor extends AbstractAccessor {
         return insert(INSERT_TABLES, SCHEMATA_TABLE, record.buildParams());
     }
 
+    public static List<SchemataRecord> getAllSchemata() {
+        List<SchemataRecord> records =
+            AbstractAccessor.query(SELECT_TABLES, SCHEMATA_TABLE, SchemataRecord.class, null,
+                null, MetaDbUtil.getConnection());
+        return records;
+    }
+
     public SchemataRecord query(String schemaName) {
-        List<SchemataRecord> records = query(SELECT_TABLES, SCHEMATA_TABLE, SchemataRecord.class, schemaName);
+        List<SchemataRecord> records = query(SELECT_TABLES_WITH_WHERE, SCHEMATA_TABLE, SchemataRecord.class, schemaName);
         if (records != null && records.size() > 0) {
             return records.get(0);
         }

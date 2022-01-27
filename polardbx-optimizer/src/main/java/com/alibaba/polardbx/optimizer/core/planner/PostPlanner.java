@@ -734,12 +734,7 @@ public class PostPlanner {
 
             @Override
             public void visit(RelNode relNode, int ordinal, RelNode parent) {
-                if (relNode instanceof LogicalView) {
-                    final boolean singleGroup = ((LogicalView) relNode).getSize() <= 1;
-                    if (!singleGroup) {
-                        exists = true;
-                    }
-                } else if (relNode instanceof Project) {
+                if (relNode instanceof Project) {
                     exists = PushProjectRule.doNotPush((Project) relNode) ? true : exists;
                 }
                 super.visit(relNode, ordinal, parent);

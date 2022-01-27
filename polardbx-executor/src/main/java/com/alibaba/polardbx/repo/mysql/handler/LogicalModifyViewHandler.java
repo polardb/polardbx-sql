@@ -75,7 +75,8 @@ public class LogicalModifyViewHandler extends HandlerCommon {
         SubqueryUtils.buildScalarSubqueryValue(scalarList, executionContext);// handle scalar subquery
 
         boolean isBroadcast = true;
-        final List<RelOptTable> tables = logicalModifyView.getTableModify().getTargetTables();
+        final List<RelOptTable> tables =
+            (logicalModifyView.getTableModify() != null) ? logicalModifyView.getTableModify().getTargetTables() : null;
         if (null != tables && tables.size() > 0) {
             if (logicalModifyView.getTableModify().isDelete()) {
                 for (RelOptTable table : tables) {

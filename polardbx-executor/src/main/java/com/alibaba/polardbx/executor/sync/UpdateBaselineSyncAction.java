@@ -46,7 +46,7 @@ public class UpdateBaselineSyncAction implements ISyncAction {
     }
 
     public String getJsonString() {
-        if (jsonString != null) {
+        if (jsonString == null) {
             jsonString = BaselineInfo.serializeBaseInfoToJson(baselineInfo);
         }
         return jsonString;

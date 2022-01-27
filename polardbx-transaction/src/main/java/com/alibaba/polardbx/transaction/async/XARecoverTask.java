@@ -16,18 +16,6 @@
 
 package com.alibaba.polardbx.transaction.async;
 
-import com.alibaba.polardbx.transaction.TransactionExecutor;
-import com.alibaba.polardbx.transaction.TransactionLogger;
-import com.alibaba.polardbx.transaction.TransactionManager;
-import com.alibaba.polardbx.transaction.TransactionType;
-import com.alibaba.polardbx.transaction.rawsql.RawSqlUtils;
-import com.alibaba.polardbx.transaction.utils.XAUtils;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
-import com.alibaba.polardbx.rpc.compatible.XStatement;
-import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -35,13 +23,25 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
+import com.alibaba.polardbx.rpc.compatible.XStatement;
+import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.transaction.TransactionExecutor;
+import com.alibaba.polardbx.transaction.TransactionLogger;
+import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.TransactionState;
+import com.alibaba.polardbx.transaction.TransactionType;
 import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 import com.alibaba.polardbx.transaction.log.ConnectionContext;
 import com.alibaba.polardbx.transaction.log.GlobalTxLog;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
+import com.alibaba.polardbx.transaction.rawsql.RawSqlUtils;
+import com.alibaba.polardbx.transaction.utils.XAUtils;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -106,7 +106,7 @@ public class XARecoverTask implements Runnable {
                 TGroupDataSource dataSource = (TGroupDataSource) ExecutorContext.getContext(schema)
                     .getTopologyExecutor()
                     .getGroupExecutor(group).getDataSource();
-                String instanceId = dataSource.getWriteInstanceId();
+                String instanceId = dataSource.getMasterSourceAddress();
                 instanceDataSources.putIfAbsent(instanceId, dataSource);
             }
 

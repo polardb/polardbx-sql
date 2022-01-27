@@ -74,6 +74,7 @@ public class Reporter implements CheckerCallback {
     public static String pkString(Checker checker, List<Pair<ParameterContext, byte[]>> row) {
         return '(' + checker.getPrimaryKeys()
             .stream()
+            .mapToInt(idx -> idx)
             .mapToObj(idx -> String.valueOf(row.get(idx).getKey().getArgs()[1]))
             .collect(Collectors.joining(",")) + ')';
     }

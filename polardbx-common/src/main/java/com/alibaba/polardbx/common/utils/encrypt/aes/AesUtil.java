@@ -95,9 +95,12 @@ public class AesUtil {
 
     private static byte[] getRealKey(BlockEncryptionMode encryptionMode,
                                      byte[] keyBytes) {
-        int realKeyLen = encryptionMode.keylen / 8;
+        final int realKeyLen = encryptionMode.keylen / 8;
         byte[] realKey = new byte[realKeyLen];
-        System.arraycopy(keyBytes, 0, realKey, 0, Math.min(keyBytes.length, realKeyLen));
+        for (int iWorkingKey = 0, jRealKey = 0; iWorkingKey < keyBytes.length;
+             iWorkingKey++, jRealKey++) {
+            realKey[jRealKey % realKeyLen] ^= keyBytes[iWorkingKey];
+        }
         return realKey;
     }
 

@@ -34,7 +34,7 @@
 
   plan: |
     MergeSort(sort="", offset=?2, fetch=?3)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM (SELECT `id`, `name`, `create_time`, ? AS `$f3` FROM `test_hash_tb` AS `test_hash_tb`) AS `t` WHERE (`name` = `$f3`) LIMIT (? + ?)")
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`name` = ?) limit (? + ?)")
 
     >> individual scalar subquery :
     LogicalView(tables="optest_0000.test_broadcast_tb", sql="SELECT `name` FROM `test_broadcast_tb` AS `test_broadcast_tb` LIMIT ? OFFSET ?")

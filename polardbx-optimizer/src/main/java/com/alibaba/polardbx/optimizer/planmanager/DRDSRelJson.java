@@ -398,6 +398,9 @@ public class DRDSRelJson extends RelJson {
             if (rexDynamicParam.getSubqueryOp() != null) {
                 map.put("subqueryOp", toJson(rexDynamicParam.getSubqueryOp()));
             }
+            if (!rexDynamicParam.isMaxOnerow()) {
+                map.put("maxonerow", "false");
+            }
             return map;
         case RUNTIME_FILTER_BUILD:
             map = jsonBuilder.map();
@@ -554,6 +557,7 @@ public class DRDSRelJson extends RelJson {
                     SqlKind sqlKind = null;
                     SqlOperator sqlOperator = null;
                     SemiJoinType semiJoinType = null;
+                    boolean maxonerow = true;
                     ImmutableList<RexNode> subqueryOperands = ImmutableList.of();
                     if (map.get("subqueryKind") != null) {
                         sqlKind = Enum.valueOf(SqlKind.class, (String) map.get("subqueryKind"));
@@ -571,11 +575,15 @@ public class DRDSRelJson extends RelJson {
                     if (map.get("semitype") != null) {
                         semiJoinType = Enum.valueOf(SemiJoinType.class, (String) map.get("semitype"));
                     }
+                    if (map.get("maxonerow") != null && "false".equalsIgnoreCase((String) map.get("maxonerow"))) {
+                        maxonerow = false;
+                    }
                     RexDynamicParam rexDynamicParam = new RexDynamicParam(toType(typeFactory, map.get("reltype")),
                         (Integer) map.get("index"),
                         fromJson((List<Map<String, Object>>) map.get("rel"), relInput), subqueryOperands, sqlOperator,
                         sqlKind);
                     rexDynamicParam.setSemiType(semiJoinType);
+                    rexDynamicParam.setMaxOnerow(maxonerow);
                     return rexDynamicParam;
                 }
                 RexDynamicParam rexDynamicParam = new RexDynamicParam(toType(typeFactory, map.get("reltype")),

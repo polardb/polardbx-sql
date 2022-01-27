@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.SelectWithLockVisitor;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -115,11 +119,10 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
         });
         final boolean notModifyGsi =
             gsiUpdateColumnMappings.values().stream().flatMap(List::stream).allMatch(List::isEmpty);
-        final boolean modifyPk =
-            CheckModifyLimitation.checkModifyPk(modify, ec) && !CheckModifyLimitation
-                .isAllTablesCouldPushDown(modify, ec);
-        if (notPrimarySk && notModifyGsi && !modifyPk) {
-            // Do not modify sharding key
+        final boolean modifyPk = CheckModifyLimitation.checkModifyPk(modify, ec);
+        final boolean canPushDownInScaleOut = CheckModifyLimitation.isAllTablesCouldPushDown(modify, ec);
+        if (notPrimarySk && notModifyGsi && !modifyPk && canPushDownInScaleOut) {
+            // Do not modify sharding key or primary key
             return;
         }
 
@@ -183,6 +186,7 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
         final AtomicBoolean modifyGsiSk = new AtomicBoolean(false);
         final AtomicBoolean modifyGsi = new AtomicBoolean(false);
         final AtomicBoolean withGsi = new AtomicBoolean(false);
+        final AtomicBoolean allGsiPublished = new AtomicBoolean(true);
         gsiUpdateColumnMappings.forEach((primaryIndex, mappings) -> {
             if (GeneralUtil.isEmpty(mappings)) {
                 return;
@@ -218,12 +222,13 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
                 final Pair<String, String> qn = RelUtils.getQualifiedTableName(gsiTable);
                 final OptimizerContext oc = OptimizerContext.getContext(qn.left);
 
-                final boolean allGsiPublished = GlobalIndexMeta
+                final boolean tableAllGsiPublished = GlobalIndexMeta
                     .isAllGsiPublished(ImmutableList.of(gsiMeta), plannerContext);
 
                 final boolean needRelocate = CheckModifyLimitation
                     .checkModifyShardingColumn(updateColumns, updateTables, (x, y) -> modifyGsiSk.getAndSet(true)) || (
-                    modifyPk && (!allGsiPublished || ComplexTaskPlanUtils.canWrite(gsiMeta)));
+                    modifyPk && (!tableAllGsiPublished || ComplexTaskPlanUtils.canWrite(gsiMeta)));
+                allGsiPublished.set(allGsiPublished.get() && tableAllGsiPublished);
 
                 // Currently do not allow create gsi on table without primary key
                 if (needRelocate) {
@@ -238,7 +243,8 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
         });
 
         // Check whether update modifying sharding column
-        if (!modifyPrimarySk.get() && !modifyGsiSk.get() && !modifyPk) {
+        if (!modifyPrimarySk.get() && !modifyGsiSk.get() && !(modifyPk && !allGsiPublished.get())
+            && !(modifyPk && !canPushDownInScaleOut)) {
             return;
         }
 
@@ -249,14 +255,28 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
 
         modify.accept(new SelectWithLockVisitor(true));
 
+        // Collect AUTO_INCREMENT columns in update list
+        final List<Integer> autoIncColumns = new ArrayList<>();
+        for (int i = 0; i < targetColumns.size(); i++) {
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTables.get(targetTableIndexes.get(i)));
+            final TableMeta tableMeta =
+                plannerContext.getExecutionContext().getSchemaManager(qn.left).getTable(qn.right);
+            final String columnName = targetColumns.get(i);
+            final ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
+            if (columnMeta.isAutoIncrement()) {
+                autoIncColumns.add(i);
+            }
+        }
+
         if (modifyPrimarySk.get() && !modifyGsi.get() && primaryUpdateColumnMappings.size() == 1) {
             // Single target table without gsi
-            call.transformTo(LogicalRelocate.singleTargetWithoutGsi(modify, primaryRelocateWriters));
+            call.transformTo(LogicalRelocate.singleTargetWithoutGsi(modify, primaryRelocateWriters, autoIncColumns));
             return;
         }
 
-        call.transformTo(LogicalRelocate
-            .create(modify, primaryRelocateWriters, primaryModifyWriters, gsiRelocateWriters, gsiModifyWriters));
+        call.transformTo(
+            LogicalRelocate.create(modify, primaryRelocateWriters, primaryModifyWriters, gsiRelocateWriters,
+                gsiModifyWriters, autoIncColumns));
     }
 
 }

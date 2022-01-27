@@ -58,6 +58,12 @@ public class MetaDbDataIdBuilder {
      */
     public static final MessageFormat GROUP_CONFIG_DATA_ID = new MessageFormat("polardbx.group.config.{0}.{1}.{2}");
 
+    /**
+     * {0} : instId, {1}: dbName, {2}: groupName
+     */
+    public static final MessageFormat GROUP_STORAGE_CONFIG_DATA_ID =
+        new MessageFormat("polardbx.group.storage.config.{0}.{1}.{2}");
+
     public static final String INST_INFO_DATA_ID = "polardbx.inst.info";
 
     public static final String PRIVILEGE_INFO_DATA_ID = "polardbx.privilege.info";
@@ -163,6 +169,12 @@ public class MetaDbDataIdBuilder {
     public static String getGroupConfigDataId(String instId, String dbName, String groupName) {
 
         String grpConfigDataId = GROUP_CONFIG_DATA_ID.format(new Object[] {instId, dbName, groupName});
+        return grpConfigDataId.toLowerCase();
+    }
+
+    public static String getConfigStorageDataId(String instId, String dbName, String groupName) {
+
+        String grpConfigDataId = GROUP_STORAGE_CONFIG_DATA_ID.format(new Object[] {instId, dbName, groupName});
         return grpConfigDataId.toLowerCase();
     }
 

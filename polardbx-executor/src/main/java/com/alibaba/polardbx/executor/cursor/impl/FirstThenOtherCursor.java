@@ -23,8 +23,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
-import com.alibaba.polardbx.executor.ddl.newengine.cross.GenericPhyObjectRecorder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -115,51 +113,31 @@ public class FirstThenOtherCursor extends AbstractCursor {
                         return;
                     }
                     if (!inited) {
-                        GenericPhyObjectRecorder phyObjectRecorder =
-                            CrossEngineValidator.getPhyObjectRecorder(relNodes.get(0), executionContext);
                         // execute the zero node firstly
-                        if (!phyObjectRecorder.checkIfDone()) {
-                            try {
-                                Cursor cursor = ExecutorContext.getContext(schema)
-                                    .getTopologyExecutor()
-                                    .execByExecPlanNode(relNodes.get(0), executionContext);
-                                cursors.add(cursor);
-                                phyObjectRecorder.recordDone();
-                            } catch (Exception e) {
-                                if (!phyObjectRecorder.checkIfIgnoreException(e)) {
-                                    throw e;
-                                }
-                            }
+                        try {
+                            Cursor cursor = ExecutorContext.getContext(schema)
+                                .getTopologyExecutor()
+                                .execByExecPlanNode(relNodes.get(0), executionContext);
+                            cursors.add(cursor);
+                        } catch (Exception e) {
+                            throw e;
                         }
 
                         // execute rest subNode concurrently
                         List<Future<Cursor>> futures = new ArrayList<>(relNodes.size());
                         for (int iSubNode = 1; iSubNode < relNodes.size(); iSubNode++) {
-                            final RelNode subNode = relNodes.get(iSubNode);
-                            if (!CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext).checkIfDone()) {
-                                Future<Cursor> rcfuture = ExecutorContext.getContext(schema).getTopologyExecutor()
-                                    .execByExecPlanNodeFuture(subNode, executionContext, null);
-                                futures.add(rcfuture);
-                            }
+                            Future<Cursor> rcfuture = ExecutorContext.getContext(schema).getTopologyExecutor()
+                                .execByExecPlanNodeFuture(relNodes.get(iSubNode), executionContext, null);
+                            futures.add(rcfuture);
                         }
 
                         List<Throwable> exs = new ArrayList<>();
                         for (int i = 0; i < futures.size(); i++) {
-                            if (i < futures.size() - 1) {
-                                phyObjectRecorder =
-                                    CrossEngineValidator.getPhyObjectRecorder(relNodes.get(i + 1), executionContext);
-                            }
                             try {
                                 Cursor cursor = futures.get(i).get();
                                 cursors.add(cursor);
-                                if (i < futures.size() - 1) {
-                                    // Record the physical object already done.
-                                    phyObjectRecorder.recordDone();
-                                }
                             } catch (Exception e) {
-                                if (!phyObjectRecorder.checkIfIgnoreException(e)) {
-                                    exs.add(new TddlException(e));
-                                }
+                                exs.add(new TddlException(e));
                             }
                         }
                         if (!GeneralUtil.isEmpty(exs)) {

@@ -18,19 +18,13 @@ package com.alibaba.polardbx.executor.partitionmanagement.backfill;
 
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import org.apache.calcite.sql.SqlSelect;
 
-import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Created by luoyanxin.
@@ -49,11 +43,11 @@ public class AlterTableGroupExtractor extends Extractor {
                                        PhyTableOperation planSelectWithMin,
                                        PhyTableOperation planSelectWithMinAndMax,
                                        PhyTableOperation planSelectMaxPk,
-                                       BitSet primaryKeys,
+                                       List<Integer> primaryKeysId,
                                        Map<String, Set<String>> sourcePhyTables) {
         super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
             planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeys);
+            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
     }
 
@@ -61,28 +55,9 @@ public class AlterTableGroupExtractor extends Extractor {
                                    long speedMin, long speedLimit, long parallelism,
                                    Map<String, Set<String>> sourcePhyTables,
                                    ExecutionContext ec) {
-        // Build select plan
-        final SchemaManager sm = ec.getSchemaManager(schemaName);
-        final TableMeta sourceTableMeta = sm.getTable(sourceTableName);
-        final TableMeta targetTableMeta = sm.getTable(targetTableName);
-        final List<String> targetTableColumns = targetTableMeta.getWriteColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
-
-        List<String> primaryKeys = GlobalIndexMeta.getPrimaryKeys(sourceTableMeta);
-        final BitSet primaryKeySet = new BitSet(primaryKeys.size());
-        for (String primaryKey : primaryKeys) {
-            for (int i = 0; i < targetTableColumns.size(); i++) {
-                if (primaryKey.equalsIgnoreCase(targetTableColumns.get(i))) {
-                    primaryKeySet.set(i);
-                }
-            }
-        }
-
-        primaryKeys = primaryKeySet.stream().mapToObj(i -> targetTableColumns.get(i)).collect(Collectors.toList());
-
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
+
+        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName);
 
         return new AlterTableGroupExtractor(schemaName,
             sourceTableName,
@@ -91,14 +66,16 @@ public class AlterTableGroupExtractor extends Extractor {
             speedMin,
             speedLimit,
             parallelism,
-            builder.buildSelectForBackfill(sourceTableMeta, targetTableColumns, primaryKeys, false, true,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                false, true, SqlSelect.LockMode.SHARED_LOCK),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                true, false,
                 SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(sourceTableMeta, targetTableColumns, primaryKeys, true, false,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+                true, true,
                 SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(sourceTableMeta, targetTableColumns, primaryKeys, true, true,
-                SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectMaxPkForBackfill(sourceTableMeta, primaryKeys),
-            primaryKeySet,
+            builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
+            info.getPrimaryKeysId(),
             sourcePhyTables);
     }
 

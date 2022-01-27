@@ -50,6 +50,7 @@ public class DdlMetaLogUtil {
         ddlTables.add(GmsSystemTables.REFERENTIAL_CONSTRAINTS);
         ddlTables.add(GmsSystemTables.BACKFILL_OBJECTS);
         ddlTables.add(GmsSystemTables.CHECKER_REPORTS);
+        ddlTables.add(GmsSystemTables.DDL_JOBS);
         ddlTables.add(GmsSystemTables.DDL_ENGINE);
         ddlTables.add(GmsSystemTables.DDL_ENGINE_TASK);
         ddlTables.add(GmsSystemTables.READ_WRITE_LOCK);

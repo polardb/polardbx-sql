@@ -569,10 +569,21 @@ public abstract class FrontendConnection extends AbstractConnection {
                             }
                             return;
                         }
-                        logger.error("binlog dump from cdc failed", t);
-                        final String description = status.getDescription();
-                        JSONObject obj = JSON.parseObject(description);
-                        writeErrMessage((Integer) obj.get("error_code"), (String) obj.get("error_message"));
+                        logger.error("[" + host + ":" + port + "] binlog dump from cdc failed", t);
+                        if (status.getCode() == Status.Code.INVALID_ARGUMENT) {
+                            final String description = status.getDescription();
+                            JSONObject obj = JSON.parseObject(description);
+                            logger.error("[" + host + ":" + port + "] binlog dump from cdc failed with " + obj);
+                            writeErrMessage((Integer) obj.get("error_code"), (String) obj.get("error_message"));
+                        } else if (status.getCode() == Status.Code.UNAVAILABLE) {
+                            logger.error("[" + host + ":" + port
+                                + "] binlog dump from cdc failed cause of UNAVAILABLE, please try later");
+                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, "please try later...");
+                        } else {
+                            logger.error("[" + host + ":" + port
+                                + "] binlog dump from cdc failed cause of unknown, please try later");
+                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
+                        }
                     } else {
                         logger.error("binlog dump from cdc failed", t);
                         writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
@@ -730,6 +741,8 @@ public abstract class FrontendConnection extends AbstractConnection {
 
             // schema maybe null
             final Future previousFuture = this.executingFuture;
+            // Ensure futureCancelErrorCode is reset
+            this.futureCancelErrorCode = null;
             this.executingFuture = processor.getHandler().submit(this.schema, null, processor.getIndex(), () -> {
                 if (previousFuture != null) {
                     try {

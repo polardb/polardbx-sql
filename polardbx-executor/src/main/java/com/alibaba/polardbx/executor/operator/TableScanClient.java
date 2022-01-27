@@ -39,7 +39,6 @@ import com.alibaba.polardbx.common.utils.logger.support.LogFormat;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
 import com.alibaba.polardbx.optimizer.chunk.SliceBlockBuilder;
@@ -137,7 +136,6 @@ public class TableScanClient {
     protected final AtomicInteger completeExecuteNum = new AtomicInteger(0);
     protected final AtomicInteger pushdownSplitIndex = new AtomicInteger(0);
     protected final AtomicInteger completePrefetchNum = new AtomicInteger(0);
-    private final MasterSlave scanStrategy;
     private final int socketTimeout;
     private final long slowTimeThreshold;
     private final Set<SourceExec> sourceExecHashSet = Collections.synchronizedSet(new HashSet<SourceExec>());
@@ -168,8 +166,6 @@ public class TableScanClient {
         this.socketTimeout = (int) context.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         this.prefetchNum = prefetchNum;
         this.slowTimeThreshold = context.getPhysicalRecorder().getSlowSqlTime();
-        this.scanStrategy =
-            getConnectionStrategy(context.getParamManager().getInt(ConnectionParams.MPP_TABLESCAN_CONNECTION_STRATEGY));
         this.enableTaskCpu = ExecUtils.isSQLMetricEnabled(context);
         if (context.getRuntimeStatistics() != null) {
             this.runtimeStat = (RuntimeStatistics) context.getRuntimeStatistics();
@@ -221,19 +217,6 @@ public class TableScanClient {
 
     public void registerSouceExec(SourceExec sourceExec) {
         this.sourceExecHashSet.add(sourceExec);
-    }
-
-    private MasterSlave getConnectionStrategy(int scanStrategy) {
-        switch (scanStrategy) {
-        case 1:
-            return MasterSlave.MASTER_ONLY;
-        case 2:
-            return MasterSlave.SLAVE_FIRST;
-        case 3:
-            return MasterSlave.SLAVE_ONLY;
-        default:
-            return MasterSlave.READ_WEIGHT;
-        }
     }
 
     public void addSplit(Split split) {
@@ -507,7 +490,7 @@ public class TableScanClient {
                     conn.unwrap(XConnection.class).setTraceId(context.getTraceId());
                 }
 
-                if (conn instanceof TGroupDirectConnection) {
+                if (conn.getRealConnection() instanceof TGroupDirectConnection) {
                     this.connectionStats = conn.getConnectionStats();
                     collectConnectionStats();
                 }
@@ -577,16 +560,20 @@ public class TableScanClient {
                 .getTopologyHandler().get(jdbcSplit.getDbIndex()).getDataSource();
             String currentDbKey = ANONAMOUS_DBKEY;
             if (o != null && o instanceof TGroupDataSource) {
-                MasterSlave masterSlave = scanStrategy;
-                if (ConfigDataMode.enableSlaveReadForPolarDbX()) {
-                    masterSlave = ExecUtils.getMasterSlave(useTransaction, jdbcSplit.getTransactionRw().equals(
-                        ITransaction.RW.WRITE), context);
-                } else if (useTransaction) {
-                    masterSlave = ExecUtils.getMasterSlave(useTransaction, jdbcSplit.getTransactionRw().equals(
-                        ITransaction.RW.WRITE), context);
+                if (conn != null) {
+                    IConnection realConneciton = conn.getRealConnection();
+                    if (realConneciton instanceof TGroupDirectConnection) {
+                        currentDbKey = ((TGroupDirectConnection) realConneciton).getDbKey();
+                    }
                 }
-                currentDbKey =
-                    ((TGroupDataSource) o).getConfigManager().getDataSource(masterSlave).getDsConfHandle().getDbKey();
+                if (ANONAMOUS_DBKEY == currentDbKey) {
+                    MasterSlave masterSlave =
+                        ExecUtils.getMasterSlave(useTransaction, jdbcSplit.getTransactionRw().equals(
+                            ITransaction.RW.WRITE), context);
+                    currentDbKey =
+                        ((TGroupDataSource) o).getConfigManager().getDataSource(masterSlave).getDsConfHandle()
+                            .getDbKey();
+                }
                 if (StringUtils.isEmpty(currentDbKey)) {
                     currentDbKey = ANONAMOUS_DBKEY;
                 }

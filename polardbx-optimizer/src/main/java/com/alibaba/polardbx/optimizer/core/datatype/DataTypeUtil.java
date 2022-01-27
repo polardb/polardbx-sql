@@ -412,6 +412,11 @@ public class DataTypeUtil {
             || DataTypeUtil.equalsSemantically(DataTypes.SensitiveStringType, type));
     }
 
+    public static boolean isBinaryType(DataType type) {
+        return type != null && (DataTypeUtil.equalsSemantically(DataTypes.BlobType, type)
+            || DataTypeUtil.equalsSemantically(DataTypes.BinaryType, type));
+    }
+
     public static boolean isFloatSqlType(DataType dataType) {
         switch (dataType.getSqlType()) {
         case Types.FLOAT:

@@ -2309,6 +2309,10 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                     String normalize = SQLUtils.normalizeNoTrim(sqlColumnDefinition.getName().getSimpleName());
                     addColumnOpts(columnOpts, normalize, ColumnOpt.ADD);
                 }
+            } else if (sqlAlterTableItem instanceof SQLAlterTableAddConstraint &&
+                ((SQLAlterTableAddConstraint) sqlAlterTableItem).getConstraint() instanceof MysqlForeignKey) {
+                throw new FastSqlParserException(FastSqlParserException.ExceptionType.NOT_SUPPORT,
+                    "Do not support foreign key.");
             } else if (sqlAlterTableItem instanceof MySqlAlterTableModifyColumn) {
                 final SQLColumnDefinition sqlColumnDefinition =
                     ((MySqlAlterTableModifyColumn) sqlAlterTableItem).getNewColumnDefinition();

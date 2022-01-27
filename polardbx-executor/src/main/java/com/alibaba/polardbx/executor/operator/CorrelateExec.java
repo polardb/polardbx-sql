@@ -29,6 +29,7 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SemiJoinType;
 import org.apache.calcite.sql.SqlKind;
@@ -108,7 +109,11 @@ public class CorrelateExec extends AbstractExecutor {
                 for (int i = 0; i < left.getDataTypes().size(); i++) {
                     currentChunk.getBlock(i).writePositionTo(applyRowIndex, blockBuilders[i]);
                 }
-                blockBuilders[getDataTypes().size() - 1].writeObject(outColumnType.convertFrom(constantValue));
+                if (constantValue == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
+                    blockBuilders[getDataTypes().size() - 1].writeObject(null);
+                } else {
+                    blockBuilders[getDataTypes().size() - 1].writeObject(outColumnType.convertFrom(constantValue));
+                }
             }
             currentChunk = null;
             return buildChunkAndReset();
@@ -132,9 +137,13 @@ public class CorrelateExec extends AbstractExecutor {
                 currentChunk.getBlock(i).writePositionTo(applyRowIndex, blockBuilders[i]);
             }
 
-            blockBuilders[getDataTypes().size() - 1].writeObject(
-                getDataTypes().get(getDataTypes().size() - 1)
-                    .convertFrom(curSubqueryApply.getResultValue()));
+            if (curSubqueryApply.getResultValue() == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
+                blockBuilders[getDataTypes().size() - 1].writeObject(null);
+            } else {
+                blockBuilders[getDataTypes().size() - 1].writeObject(
+                        getDataTypes().get(getDataTypes().size() - 1)
+                                .convertFrom(curSubqueryApply.getResultValue()));
+            }
 
             curSubqueryApply = null;
             if (++applyRowIndex == currentChunk.getPositionCount()) {
@@ -199,10 +208,10 @@ public class CorrelateExec extends AbstractExecutor {
         Chunk.ChunkRow chunkRow = currentChunk.rowAt(rowIndex);
         // handle apply subquerys
         return SubqueryUtils
-            .createSubqueryApply(
-                correlateId + "_" + Thread.currentThread().getName() + "_" + SubqueryUtils.nextSubqueryId
-                    .getAndIncrement(), chunkRow,
-                plan, leftConditions, opKind, context,
-                correlateId, correlateDataRowType, semiJoinType);
+                .createSubqueryApply(
+                        correlateId + "_" + Thread.currentThread().getName() + "_" + SubqueryUtils.nextSubqueryId
+                                .getAndIncrement(), chunkRow,
+                        plan, leftConditions, opKind, context,
+                        correlateId, correlateDataRowType, semiJoinType, true);
     }
 }

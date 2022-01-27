@@ -119,8 +119,13 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         return resultCursor;
     }
 
+    private static int MAX_SHOW_LEN = 5000;
+
     private Object[] buildRow(DdlEngineRecord record, boolean isFull) {
         String phyProcess = checkPhyProcess(record);
+        if (phyProcess != null && phyProcess != StringUtils.EMPTY) {
+            phyProcess = phyProcess.substring(0, Math.min(phyProcess.length(), MAX_SHOW_LEN));
+        }
         String backfillProgress = getBackfillProgress(record.jobId);
         String totalProgress = getTaskProgress(record.jobId);
         String cancelable = Boolean.valueOf(record.isSupportCancel()).toString();

@@ -226,17 +226,21 @@ public class SequenceMetaChanger {
             if (start != null && start >= 0) {
                 // If it's a single table, maybe there's no sequence.
                 if (SequenceManagerProxy.getInstance().isUsingSequence(schemaName, logicalTableName)) {
-                    SequenceValidator.validateSimpleSequence(sequenceBean, executionContext);
-
                     sequenceBean.setSchemaName(schemaName);
                     sequenceBean.setSequenceName(seqName);
+
                     if (sequenceBean.getInnerStep() == null) {
                         sequenceBean.setInnerStep(DEFAULT_INNER_STEP);
                     }
+
                     if (sequenceBean.getToType() == null) {
                         sequenceBean.setToType(SequenceAttribute.Type.NA);
                     }
+
                     sequenceBean.setKind(SqlKind.ALTER_SEQUENCE);
+
+                    SequenceValidator.validateSimpleSequence(sequenceBean, executionContext);
+
                     return sequenceBean;
                 }
             }

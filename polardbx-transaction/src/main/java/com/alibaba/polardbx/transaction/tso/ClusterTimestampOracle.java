@@ -46,7 +46,7 @@ public class ClusterTimestampOracle extends AbstractLifecycle implements ITimest
 
     private long timeout = 10000;
 
-    private static final int BitReserved = 6;
+    public static final int BitReserved = 6;
 
     @Override
     public void setTimeout(long timeout) {

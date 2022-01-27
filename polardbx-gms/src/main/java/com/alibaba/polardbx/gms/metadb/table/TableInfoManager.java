@@ -19,6 +19,7 @@ package com.alibaba.polardbx.gms.metadb.table;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
@@ -41,6 +42,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
+import org.apache.commons.collections.CollectionUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -48,10 +50,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class TableInfoManager extends AbstractAccessor {
 
@@ -206,7 +208,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public Map<String, List<ColumnsRecord>> queryVisibleColumns(String tableSchema) {
-        Map<String, List<ColumnsRecord>> visibleRecords = new HashMap<>();
+        Map<String, List<ColumnsRecord>> visibleRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<ColumnsRecord> records = queryColumns(tableSchema);
         for (ColumnsRecord record : records) {
             if (record.status != TableStatus.ABSENT.getValue()) {
@@ -240,7 +242,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public Map<String, List<IndexesRecord>> queryVisibleIndexes(String tableSchema) {
-        Map<String, List<IndexesRecord>> visibleRecords = new HashMap<>();
+        Map<String, List<IndexesRecord>> visibleRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         List<IndexesRecord> records = queryIndexes(tableSchema);
         for (IndexesRecord record : records) {
             if (record.indexStatus == IndexStatus.PUBLIC.getValue()) {
@@ -348,7 +350,7 @@ public class TableInfoManager extends AbstractAccessor {
 
         // Index Meta
         List<IndexesInfoSchemaRecord> indexesInfoSchemaRecords =
-            fetchIndexMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, null, context.dataSource);
+            fetchIndexMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, context.dataSource);
 
         if (indexesInfoSchemaRecords != null && !indexesInfoSchemaRecords.isEmpty()) {
             List<IndexesRecord> indexesRecords =
@@ -582,12 +584,6 @@ public class TableInfoManager extends AbstractAccessor {
         columnsAccessor.update(columnsRecords);
     }
 
-    public void addIndex(PhyInfoSchemaContext context, String indexName) {
-        List<String> indexNames = new ArrayList<>(1);
-        indexNames.add(indexName);
-        addIndexes(context, indexNames);
-    }
-
     public void updateAllIndexColumn(String tableSchema, String tableName, String indexName, Integer indexColumnType,
                                      Integer indexStatus) {
         indexesAccessor.updateAllColumnType(tableSchema, tableName, indexName, indexColumnType, indexStatus);
@@ -624,14 +620,37 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
+    public void addIndex(PhyInfoSchemaContext context, String indexName) {
+        List<String> indexNames = new ArrayList<>(1);
+        indexNames.add(indexName);
+        addIndexes(context, indexNames);
+    }
+
     public void addIndexes(PhyInfoSchemaContext context, List<String> indexNames) {
         List<IndexesInfoSchemaRecord> indexesInfoSchemaRecords =
             fetchIndexMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, indexNames, context.dataSource);
-
         List<IndexesRecord> indexesRecords =
             RecordConverter.convertIndex(indexesInfoSchemaRecords, context.tableSchema, context.tableName);
-
         indexesAccessor.insert(indexesRecords, context.tableSchema, context.tableName);
+    }
+
+    public void addIndexes(PhyInfoSchemaContext context, List<String> indexNamesSpecified,
+                           List<String> firstColumnsWithoutIndexNames) {
+        if (CollectionUtils.isNotEmpty(indexNamesSpecified)) {
+            // Fetch physical info directly with specified index names.
+            addIndexes(context, indexNamesSpecified);
+        }
+
+        if (CollectionUtils.isNotEmpty(firstColumnsWithoutIndexNames)) {
+            // User didn't specify an index name, so we have to check physical table to avoid conflict.
+            List<String> indexNamesGenerated = new ArrayList<>();
+            for (String firstColumnName : firstColumnsWithoutIndexNames) {
+                if (TStringUtil.isNotEmpty(firstColumnName)) {
+                    indexNamesGenerated.addAll(fetchIndexNamesFromInfoSchema(context, firstColumnName));
+                }
+            }
+            addIndexes(context, indexNamesGenerated);
+        }
     }
 
     public void renameIndexes(String tableSchema, String tableName, Map<String, String> indexNamePairs) {
@@ -744,6 +763,11 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     private List<IndexesInfoSchemaRecord> fetchIndexMetaFromInfoSchema(String phyTableSchema, String phyTableName,
+                                                                       DataSource dataSource) {
+        return fetchIndexMetaFromInfoSchema(phyTableSchema, phyTableName, null, dataSource, false);
+    }
+
+    private List<IndexesInfoSchemaRecord> fetchIndexMetaFromInfoSchema(String phyTableSchema, String phyTableName,
                                                                        List<String> indexNames, DataSource dataSource) {
         return fetchIndexMetaFromInfoSchema(phyTableSchema, phyTableName, indexNames, dataSource, false);
     }
@@ -752,7 +776,7 @@ public class TableInfoManager extends AbstractAccessor {
                                                                        List<String> indexNames, DataSource dataSource,
                                                                        boolean onlyForPrimaryKey) {
         List<IndexesInfoSchemaRecord> infoSchemaRecords;
-        if (indexNames != null && indexNames.size() > 0) {
+        if (CollectionUtils.isNotEmpty(indexNames)) {
             infoSchemaRecords = indexesAccessor.queryInfoSchema(phyTableSchema, phyTableName, indexNames, dataSource);
         } else if (onlyForPrimaryKey) {
             infoSchemaRecords = indexesAccessor.queryInfoSchemaForPrimaryKey(phyTableSchema, phyTableName, dataSource);
@@ -771,6 +795,66 @@ public class TableInfoManager extends AbstractAccessor {
         }
 
         return infoSchemaRecords;
+    }
+
+    private List<String> fetchIndexNamesFromInfoSchema(PhyInfoSchemaContext context, String firstColumnName) {
+        List<String> indexNames = new ArrayList<>();
+
+        List<IndexesInfoSchemaRecord> infoSchemaRecordsByFirstColumn =
+            fetchIndexMetaByFirstColumnFromInfoSchema(context.phyTableSchema, context.phyTableName, firstColumnName,
+                context.dataSource);
+
+        List<IndexesRecord> existingIndexesRecords =
+            fetchIndexMetaByFirstColumn(context.tableSchema, context.tableName, firstColumnName);
+
+        if (CollectionUtils.isEmpty(existingIndexesRecords)) {
+            for (IndexesInfoSchemaRecord infoSchemaRecord : infoSchemaRecordsByFirstColumn) {
+                indexNames.add(infoSchemaRecord.indexName);
+            }
+        } else {
+            List<IndexesInfoSchemaRecord> indexesInfoSchemaRecords = new ArrayList<>();
+            for (IndexesInfoSchemaRecord infoSchemaRecord : infoSchemaRecordsByFirstColumn) {
+                if (!containIndex(existingIndexesRecords, infoSchemaRecord)) {
+                    indexNames.add(infoSchemaRecord.indexName);
+                }
+            }
+        }
+
+        return indexNames;
+    }
+
+    private boolean containIndex(List<IndexesRecord> indexesRecords, IndexesInfoSchemaRecord infoSchemaRecord) {
+        if (CollectionUtils.isEmpty(indexesRecords)) {
+            return true;
+        }
+        for (IndexesRecord indexesRecord : indexesRecords) {
+            if (TStringUtil.equalsIgnoreCase(indexesRecord.indexName, infoSchemaRecord.indexName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<IndexesInfoSchemaRecord> fetchIndexMetaByFirstColumnFromInfoSchema(String phyTableSchema,
+                                                                                    String phyTableName,
+                                                                                    String firstColumnName,
+                                                                                    DataSource dataSource) {
+        List<IndexesInfoSchemaRecord> infoSchemaRecords =
+            indexesAccessor.queryInfoSchemaByFirstColumn(phyTableSchema, phyTableName, firstColumnName, dataSource);
+
+        if (infoSchemaRecords == null || infoSchemaRecords.isEmpty()) {
+            String message =
+                String.format("Not found any information_schema.statistics record for %s.%s first column: %s",
+                    wrap(phyTableSchema), wrap(phyTableName), firstColumnName);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "fetch", message);
+        }
+
+        return infoSchemaRecords;
+    }
+
+    private List<IndexesRecord> fetchIndexMetaByFirstColumn(String tableSchema, String tableName,
+                                                            String firstColumnName) {
+        return indexesAccessor.queryByFirstColumn(tableSchema, tableName, firstColumnName);
     }
 
     public static class PhyInfoSchemaContext {

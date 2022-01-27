@@ -150,13 +150,13 @@ public class ExtPartitionOptimizerRule extends AbstractLifecycle {
         if (targetDbs == null || targetDbs.isEmpty()) {
             throw new IllegalArgumentException("can't find target db. table is " + logicTable);
         }
-        if (ConfigDataMode.isFastMock()) {
-            for (TargetDB targetDB : targetDbs) {
-                for (String tableName : targetDB.getTableNames()) {
-                    MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
-                }
-            }
-        }
+//        if (ConfigDataMode.isFastMock()) {
+//            for (TargetDB targetDB : targetDbs) {
+//                for (String tableName : targetDB.getTableNames()) {
+//                    MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
+//                }
+//            }
+//        }
         return targetDbs;
     }
 

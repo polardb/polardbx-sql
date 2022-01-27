@@ -1297,7 +1297,8 @@ public class LocalExecutionPlanner {
             }
 
             if (logicalView.isUnderMergeSort() ||
-                (logicalView.pushedRelNodeIsSort() && logicalView.isSingleGroupSingleTable())) {
+                (logicalView.pushedRelNodeIsSort() && logicalView.isSingleGroupSingleTable())
+                || parent instanceof SortWindow) {
                 holdCollation = true;
             }
 
@@ -1375,7 +1376,8 @@ public class LocalExecutionPlanner {
 
         Map<Integer, ParameterContext> params = context.getParams().getCurrentParameter();
         Sort sort = null;
-        if (parent instanceof Sort && logicalView.pushedRelNodeIsSort() && pipelineFragment.getParallelism() == 1) {
+        if (parent instanceof Sort && (logicalView.pushedRelNodeIsSort() || logicalView.isUnderMergeSort())
+            && pipelineFragment.getParallelism() == 1) {
             sort = (Sort) parent;
             if (sort.fetch != null) {
                 fetched = CBOUtil.getRexParam(sort.fetch, params);
@@ -1383,14 +1385,12 @@ public class LocalExecutionPlanner {
                     offset = CBOUtil.getRexParam(sort.offset, params);
                 }
             }
-
         } else if (logicalView.pushedRelNodeIsSort()) {
             sort = (Sort) logicalView.getOptimizedPushedRelNodeForMetaQuery();
         }
 
         if (sort != null) {
             bSort = true;
-
         }
         long maxRowCount = ExecUtils.getMaxRowCount(sort, context);
         return new LogicalViewExecutorFactory(logicalView, prefetch, pipelineFragment.getParallelism(),

@@ -128,7 +128,7 @@ public class DuplicateValueFinder {
     }
 
     private void initKeyIndexes(TableMeta tableMeta, SqlNodeList targetColumnList, List<String> duplicateColumnNames) {
-        List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(tableMeta, ec);
+        List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(tableMeta, true, tm -> true, ec);
         uniqueKeyDataTypes = uniqueKeys.stream()
             .map(list -> list.stream()
                 .map(name -> tableMeta.getColumnIgnoreCase(name).getDataType())

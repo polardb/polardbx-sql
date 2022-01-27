@@ -302,13 +302,13 @@ public class ConfigListenerAccessor extends AbstractAccessor {
         }
     }
 
-    public void updateMultipleOpVersion(List<String> dataIds) {
+    public void updateMultipleOpVersion(List<String> dataIds, boolean ignoreCntError) {
         try {
             try (PreparedStatement ps = connection
                 .prepareStatement(String.format(UPDATE_DATA_IDS_OPVERSION, concat(dataIds)))) {
                 DdlMetaLogUtil.logSql(String.format(UPDATE_DATA_IDS_OPVERSION, concat(dataIds)));
                 int updateCount = ps.executeUpdate();
-                if (updateCount != dataIds.size()) {
+                if (updateCount != dataIds.size() && !ignoreCntError) {
                     throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
                         "Fail to update all dataIds");
                 }

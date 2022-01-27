@@ -44,11 +44,17 @@ public class DecimalBlock extends AbstractBlock {
     public DecimalBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.memorySegments = Slices.allocate(slotLen * DECIMAL_MEMORY_SIZE);
+
+        estimatedSize = INSTANCE_SIZE + memorySegments.length();
+        sizeInBytes = (DECIMAL_MEMORY_SIZE + Byte.BYTES) * positionCount;
     }
 
     public DecimalBlock(DataType dataType, Slice memorySegments, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.memorySegments = memorySegments;
+
+        estimatedSize = INSTANCE_SIZE + memorySegments.length();
+        sizeInBytes = (DECIMAL_MEMORY_SIZE + Byte.BYTES) * positionCount;
     }
 
     public DecimalBlock(int arrayOffset, int positionCount, boolean[] valueIsNull,

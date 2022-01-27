@@ -52,6 +52,7 @@ import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.rpc.XConfig;
+import com.google.common.collect.Sets;
 import lombok.val;
 import org.apache.commons.lang.StringUtils;
 
@@ -79,6 +80,9 @@ import java.util.stream.Collectors;
  */
 public class StorageHaManager extends AbstractLifecycle {
 
+    public static final String UNAVAILABLE_URL_FOR_LEARNER = "unavailable_access_for_learner";
+
+    public static final String UNAVAILABLE_ACCESS_FOR_LEARNER = UNAVAILABLE_URL_FOR_LEARNER + ":3306";
     /**
      * The log for storage check ha log
      */
@@ -130,12 +134,18 @@ public class StorageHaManager extends AbstractLifecycle {
      */
     private Supplier<PrimaryZoneInfo> primaryZoneInfoSupplier = null;
 
+    private Set<String> listenerReadOnlyInstIdSet = new HashSet<>();
+
     protected static class StorageInfoConfigListener implements ConfigListener {
 
         @Override
         public void onHandleConfig(String dataId, long newOpVersion) {
             String instId = InstIdUtil.getInstIdFromStorageInfoDataId(dataId);
             StorageHaManager.getInstance().updateStorageInstHaContext(instId);
+            ServerInstIdManager.getInstance().loadAllInstIdAndStorageIdSet();
+            if (ServerInstIdManager.getInstance().isMasterInst()) {
+                StorageHaManager.getInstance().updateGroupConfigVersion();
+            }
         }
     }
 
@@ -166,18 +176,14 @@ public class StorageHaManager extends AbstractLifecycle {
             Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("CheckStorageHaTaskExecutor", true));
 
         checkStorageHaTaskExecutor = initStorageHaCheckTaskExecutor(checkStorageTaskPeriod, checkStorageHaTask);
-        MetaDbConfigManager.getInstance()
-            .register(MetaDbDataIdBuilder.getStorageInfoDataId(InstIdUtil.getInstId()), null);
-        MetaDbConfigManager.getInstance()
-            .bindListener(MetaDbDataIdBuilder.getStorageInfoDataId(InstIdUtil.getInstId()),
-                new StorageInfoConfigListener());
+
+        registerStorageInfoConfigListener(InstIdUtil.getInstId());
+
         if (!ServerInstIdManager.getInstance().isMasterInst()) {
             String serverMasterInstId = ServerInstIdManager.getInstance().getMasterInstId();
-            MetaDbConfigManager.getInstance()
-                .register(MetaDbDataIdBuilder.getStorageInfoDataId(serverMasterInstId), null);
-            MetaDbConfigManager.getInstance()
-                .bindListener(MetaDbDataIdBuilder.getStorageInfoDataId(serverMasterInstId),
-                    new StorageInfoConfigListener());
+            registerStorageInfoConfigListener(serverMasterInstId);
+        } else {
+            registerLearnerStorageInstId();
         }
 
         if (ConfigDataMode.isMasterMode()) {
@@ -189,6 +195,12 @@ public class StorageHaManager extends AbstractLifecycle {
                     refreshStorageInfoOfMetaDbTarkInterval, TimeUnit.MILLISECONDS);
         }
 
+    }
+
+    private void registerStorageInfoConfigListener(String instId) {
+        MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getStorageInfoDataId(instId), null);
+        MetaDbConfigManager.getInstance().bindListener(MetaDbDataIdBuilder.getStorageInfoDataId(instId),
+            new StorageInfoConfigListener());
     }
 
     public void adjustStorageHaTaskPeriod(int newPeriod) {
@@ -367,46 +379,130 @@ public class StorageHaManager extends AbstractLifecycle {
             storageInstHaContext.allStorageNodeHaInfoMap.get(storageInstHaContext.currAvailableNodeAddr));
         haSwitchParams.phyDbName = null;
         haSwitchParams.storageKind = storageInstHaContext.storageKind;
+        haSwitchParams.instId = storageInstHaContext.instId;
         return haSwitchParams;
     }
 
-    public HaSwitchParams getStorageHaSwitchParamsForInitGroupDs(String instId,
-                                                                 String dbName,
-                                                                 String groupName) {
+    public List<HaSwitchParams> getStorageHaSwitchParamsForInitGroupDs(Set<String> instIds,
+                                                                       String dbName,
+                                                                       String groupName) {
 
-        GroupDetailInfoRecord groupDetailInfoRecord = null;
+        List<GroupDetailInfoRecord> groupDetailInfoRecords = null;
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
             groupDetailInfoAccessor.setConnection(metaDbConn);
-            groupDetailInfoRecord =
-                groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndGroupName(instId, dbName, groupName);
-            if (groupDetailInfoRecord == null) {
+            groupDetailInfoRecords =
+                groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndGroupName(instIds, dbName, groupName);
+            if (groupDetailInfoRecords == null || groupDetailInfoRecords.size() == 0) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                    String.format("No find any group detail for [%s/%s/%s]", instId, dbName, groupName));
+                    String.format("No find any group detail for [%s/%s/%s]", instIds, dbName, groupName));
             }
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
         }
 
-        String storageInstId = null;
-        HaSwitchParams haSwitchParams = null;
+        List<HaSwitchParams> haSwitchParams = new ArrayList<>();
+        String phyDbName = null;
         try {
-            String phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKey(dbName, groupName);
-            storageInstId = groupDetailInfoRecord.storageInstId;
-            if (SystemDbHelper.DEFAULT_DB_NAME.equals(dbName)) {
-                storageInstId = metaDbStorageHaCtx.getStorageInstId();
-            }
-            haSwitchParams = getStorageHaSwitchParamsWithReadLock(storageInstId);
-            if (haSwitchParams == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                    String.format("No find any storage ha info for [%s/%s/%s/%s]", instId, dbName, groupName,
-                        storageInstId));
-            }
-            haSwitchParams.phyDbName = phyDbName;
+            phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKey(dbName, groupName);
         } catch (Throwable ex) {
             throw ex;
         }
+
+        for (GroupDetailInfoRecord groupDetailInfoRecord : groupDetailInfoRecords) {
+            try {
+                String storageInstId = null;
+                storageInstId = groupDetailInfoRecord.storageInstId;
+                if (SystemDbHelper.DEFAULT_DB_NAME.equals(dbName)) {
+                    storageInstId = metaDbStorageHaCtx.getStorageInstId();
+                }
+                HaSwitchParams haSwitchParam = getStorageHaSwitchParamsWithReadLock(storageInstId);
+                if (haSwitchParam == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                        String.format("No find any storage ha info for [%s/%s/%s/%s]", groupDetailInfoRecord.instId,
+                            dbName, groupName,
+                            storageInstId));
+                }
+                haSwitchParam.phyDbName = phyDbName;
+                haSwitchParams.add(haSwitchParam);
+            } catch (Throwable ex) {
+                if (InstIdUtil.getInstId() == groupDetailInfoRecord.instId) {
+                    throw ex;
+                } else {
+                    //ignore the haSwitchParam if the instId is not InstIdUtil.getInstId().
+                    logger.warn(String.format(
+                        "No find any other storage ha info for [%s/%s/%s]", groupDetailInfoRecord.instId, dbName,
+                        groupName), ex);
+                }
+            }
+        }
         return haSwitchParams;
+    }
+
+    public synchronized void registerLearnerStorageInstId() {
+        Set<String> allReadOnlyInstIdSet = ServerInstIdManager.getInstance().getAllReadOnlyInstIdSet();
+
+        Set<String> newReadOnlyInstIdSet = Sets.difference(allReadOnlyInstIdSet, listenerReadOnlyInstIdSet);
+
+        Set<String> removeReadOnlyInstIdSet = Sets.difference(listenerReadOnlyInstIdSet, allReadOnlyInstIdSet);
+
+        for (String instId : newReadOnlyInstIdSet) {
+            //The master instId only listener the learner's dataId which maybe not write in time.
+            // Here the init version is -1, thus the listener can be invoke once the learner instId write the dataId.
+            MetaDbConfigManager.getInstance().bindListener(
+                MetaDbDataIdBuilder.getStorageInfoDataId(instId), -1, new StorageInfoConfigListener());
+        }
+
+        //make sure clean up the StorageInstHaContext firstly, because the dataId maybe clean by learner.
+        for (String instId : removeReadOnlyInstIdSet) {
+            StorageHaManager.getInstance().updateStorageInstHaContext(instId);
+        }
+
+        //make sure clean up the useless bind.
+        for (String instId : removeReadOnlyInstIdSet) {
+            MetaDbConfigManager.getInstance().unbindListener(MetaDbDataIdBuilder.getStorageInfoDataId(instId));
+        }
+
+        logger.warn(String
+            .format("register the learner info for [%s], add the [%s], remove the [%s]", allReadOnlyInstIdSet,
+                newReadOnlyInstIdSet, removeReadOnlyInstIdSet));
+        this.listenerReadOnlyInstIdSet.clear();
+        this.listenerReadOnlyInstIdSet.addAll(allReadOnlyInstIdSet);
+    }
+
+    public synchronized void updateGroupConfigVersion() {
+
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            metaDbConn.setAutoCommit(true);
+
+            String instId = InstIdUtil.getInstId();
+            GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+            groupDetailInfoAccessor.setConnection(metaDbConn);
+
+            // Find all group detail info of master inst
+            List<GroupDetailInfoRecord> groupDetails =
+                groupDetailInfoAccessor.getGroupDetailInfoByInstId(instId);
+
+            for (GroupDetailInfoRecord groupDetailInfoRecord : groupDetails) {
+                //ignore the buildInDB which needn't the separation of reading and writing!
+                if (SystemDbHelper.isDBBuildIn(groupDetailInfoRecord.getDbName())) {
+                    continue;
+                }
+                String dataId = MetaDbDataIdBuilder.getGroupConfigDataId(
+                    instId, groupDetailInfoRecord.getDbName(), groupDetailInfoRecord.groupName);
+                try {
+                    boolean ret = MetaDbConfigManager.getInstance().localSync(dataId);
+                    if (!ret) {
+                        logger.warn(String.format("update the group version for [%s] failed!", dataId));
+                    }
+                } catch (Throwable t) {
+                    //ignore
+                }
+            }
+        } catch (Throwable t) {
+            MetaDbLogUtil.META_DB_LOG.error(t);
+            throw GeneralUtil.nestedException(t);
+        }
     }
 
     protected synchronized void updateStorageInstHaContext(String instId) {
@@ -420,7 +516,7 @@ public class StorageHaManager extends AbstractLifecycle {
             storageInfoAccessor.setConnection(metaDbConn);
 
             // Get storage all nodes of one polardbx inst
-            List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
+            List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getAliveStorageInfosByInstId(instId);
 
             // Group the storage node by storageInstId
             // key: storageInstId, val: the node list of storage inst
@@ -725,6 +821,7 @@ public class StorageHaManager extends AbstractLifecycle {
             haParams.storageHaInfoMap = haSwitchParams.storageHaInfoMap;
             haParams.xport = haSwitchParams.xport;
             haParams.storageKind = haSwitchParams.storageKind;
+            haParams.instId = haSwitchParams.instId;
             haSwitcher.doHaSwitch(haParams);
         }
     }
@@ -875,6 +972,7 @@ public class StorageHaManager extends AbstractLifecycle {
             haSwitchParams.xport = newXport =
                 getAndCheckXport(this.newAvailableAddr, haContext, addrWithRoleMap.get(this.newAvailableAddr));
             haSwitchParams.storageKind = haContext.storageKind;
+            haSwitchParams.instId = haContext.instId;
             int storageInstKind = haContext.storageKind;
 
             if (storageInstKind == StorageInfoRecord.INST_KIND_META_DB) {
@@ -1034,8 +1132,13 @@ public class StorageHaManager extends AbstractLifecycle {
                         break;
                     }
                 } else {
-                    if (haInfo.role == StorageRole.LEARNER && haInfo.isHealthy) {
-                        availableAddr = addr;
+                    if (haInfo.role == StorageRole.LEARNER) {
+                        if (haInfo.isHealthy) {
+                            availableAddr = addr;
+                        } else if (ConfigDataMode.isMasterMode()) {
+                            //the learner storage is set by unhealthy access url in master instId.
+                            availableAddr = UNAVAILABLE_ACCESS_FOR_LEARNER;
+                        }
                         break;
                     }
                 }
@@ -1282,7 +1385,7 @@ public class StorageHaManager extends AbstractLifecycle {
             if (!enablePrimaryZoneMaintain) {
                 return;
             }
-            if (!LeaderStatusBridge.getInstance().hasLeaderShip()) {
+            if (!LeaderStatusBridge.getInstance().hasLeadership()) {
                 return;
             }
             PrimaryZoneInfo primaryZone = getInstance().getPrimaryZone();

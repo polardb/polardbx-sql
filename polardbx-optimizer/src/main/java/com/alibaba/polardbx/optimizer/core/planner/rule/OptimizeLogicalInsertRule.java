@@ -25,6 +25,9 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
@@ -366,6 +369,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         insertIgnore.setTargetTableIsReadyToPublish(scaleOutReadyToPublish);
         insertIgnore.setSourceTablesIsReadyToPublish(false);
         insertIgnore.setPushDownInsertWriter(scaleoutPushdownWriter);
+        insertIgnore.getUkGroupByTable().putAll(groupUkByTable(insertIgnore, ec));
 
         return insertIgnore;
     }
@@ -457,6 +461,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         newReplace.setTargetTableIsReadyToPublish(scaleOutReadyToPublish);
         newReplace.setSourceTablesIsReadyToPublish(false);
         newReplace.setPushDownInsertWriter(scaleoutPushdownWriter);
+        newReplace.getUkGroupByTable().putAll(groupUkByTable(newReplace, ec));
 
         // TODO need exclusive lock for REPLACE SELECT ?
         newReplace.initAutoIncrementColumn();
@@ -476,7 +481,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         final boolean isBroadcast = oc.getRuleManager().isBroadCast(targetTable);
         final boolean isSingleTable = oc.getRuleManager().isTableInSingleDb(targetTable);
 
-        final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(targetTable, schema, ec);
+        final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(targetTable, schema, true, tm -> true, ec);
         final boolean withoutPkAndUk = uniqueKeys.isEmpty() || uniqueKeys.get(0).isEmpty();
 
         if (withoutPkAndUk) {
@@ -587,7 +592,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             final boolean isPublished = GlobalIndexMeta.isPublished(context.getExecutionContext(), gsiMeta);
             final boolean isGsiTableCanScaleOutWrite = ComplexTaskPlanUtils.canWrite(gsiMeta);
             if (!doRelocate && (scaleOutCanWrite || !isPublished || isGsiTableCanScaleOutWrite)) {
-                final List<String> pkName = GlobalIndexMeta.getPrimaryKeys(gsiMeta);
+                final Set<String> pkName = GlobalIndexMeta.getPrimaryKeys(gsiMeta).stream()
+                    .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
                 doRelocate |= gsiUpdateColumns.stream().anyMatch(pkName::contains);
             }
 
@@ -619,11 +625,121 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         result.setSourceTablesIsReadyToPublish(false);
         result.setTargetTableIsWritable(scaleOutCanWrite);
         result.setTargetTableIsReadyToPublish(scaleOutReadyToPublish);
+        result.getUkGroupByTable().putAll(groupUkByTable(result, ec));
 
         // TODO need exclusive lock for UPSERT SELECT ?
         result.initAutoIncrementColumn();
 
         return result;
+    }
+
+    protected Map<String, List<List<String>>> groupUkByTable(LogicalInsertIgnore insertIgnore,
+                                                             ExecutionContext executionContext) {
+        // Map uk to table
+        Map<String, List<List<String>>> tableUkMap = new HashMap<>();
+        final String schemaName = insertIgnore.getSchemaName();
+        final String primaryTableName = insertIgnore.getLogicalTableName();
+
+        // Get plan for finding duplicate values
+        final OptimizerContext oc = OptimizerContext.getContext(schemaName);
+        final SchemaManager sm = executionContext.getSchemaManager(schemaName);
+        assert oc != null;
+        final TableMeta baseTableMeta = sm.getTable(primaryTableName);
+
+        // Get all uk constraints from WRITABLE tables
+        // [[columnName(upper case)]]
+        List<List<String>> uniqueKeys =
+            GlobalIndexMeta.getUniqueKeys(primaryTableName, schemaName, true,
+                tm -> GlobalIndexMeta.canWrite(executionContext, tm), executionContext);
+
+        // Only lookup primary table, could be
+        // 1. Set by hint
+        // 2. Primary table contains all the UK
+        if (!executionContext.getParamManager().getBoolean(ConnectionParams.DML_GET_DUP_USING_GSI)
+            || insertIgnore.containsAllUk(primaryTableName)) {
+            tableUkMap.put(primaryTableName, uniqueKeys);
+            return tableUkMap;
+        }
+
+        final GsiMetaManager.GsiTableMetaBean gsiTableMeta = baseTableMeta.getGsiTableMetaBean();
+        List<String> writableIndexTables = new ArrayList<>();
+        // Get all PUBLIC / WRITE_ONLY gsi
+        if (null != gsiTableMeta && GeneralUtil.isNotEmpty(gsiTableMeta.indexMap)) {
+            gsiTableMeta.indexMap.entrySet().stream().filter(e -> GlobalIndexMeta.canWrite(executionContext,
+                    executionContext.getSchemaManager().getTable(e.getValue().indexName)))
+                .forEach(e -> writableIndexTables.add(e.getKey().toUpperCase()));
+        }
+
+        // Get all tables' local uk, include PUBLIC / WRITE_ONLY gsi
+        // tableName -> [indexName -> [columnName(upper case)]]
+        Map<String, Map<String, Set<String>>> writableTableUkMap =
+            insertIgnore.getTableUkMap()
+                .entrySet()
+                .stream()
+                .filter(e -> writableIndexTables.contains(e.getKey().toUpperCase()) || primaryTableName.equalsIgnoreCase(
+                    e.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        // Map uk to tables, must be exact match for uk
+        // i -> [tableName]
+        Map<Integer, List<String>> ukAllTableMap = new HashMap<>();
+        for (int i = 0; i < uniqueKeys.size(); i++) {
+            List<String> uniqueKey = uniqueKeys.get(i);
+            for (Map.Entry<String, Map<String, Set<String>>> e : writableTableUkMap.entrySet()) {
+                String currentTableName = e.getKey().toUpperCase();
+                Map<String, Set<String>> currentUniqueKeys = e.getValue();
+                // At least match one uk in table
+                boolean found = false;
+                for (Set<String> currentUniqueKey : currentUniqueKeys.values()) {
+                    if (currentUniqueKey.size() != uniqueKey.size()) {
+                        continue;
+                    }
+                    boolean match = currentUniqueKey.containsAll(uniqueKey);
+                    if (match) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) {
+                    ukAllTableMap.computeIfAbsent(i, k -> new ArrayList<>()).add(currentTableName);
+                }
+            }
+        }
+
+        for (Map.Entry<Integer, List<String>> e : ukAllTableMap.entrySet()) {
+            List<String> tableNames = e.getValue();
+
+            if (tableNames.contains(primaryTableName.toUpperCase())) {
+                // Always choose primary table first, so PK must be searched on primary table
+                tableUkMap.computeIfAbsent(primaryTableName.toUpperCase(), k -> new ArrayList<>())
+                    .add(uniqueKeys.get(e.getKey()));
+            } else {
+                // TODO: Maybe we should choose table to reduce total number of tables, or based on sharding key
+                final boolean onlyNonPublicGsi =
+                    tableNames.stream().noneMatch(tn -> GlobalIndexMeta.isPublished(executionContext, sm.getTable(tn)));
+
+                boolean found = false;
+                for (String tableName : tableNames) {
+                    if (!onlyNonPublicGsi && GlobalIndexMeta.isPublished(executionContext, sm.getTable(tableName))) {
+                        tableUkMap.computeIfAbsent(tableName, k -> new ArrayList<>()).add(uniqueKeys.get(e.getKey()));
+                        found = true;
+                        break;
+                    } else if (onlyNonPublicGsi && GlobalIndexMeta.canWrite(executionContext, sm.getTable(tableName))) {
+                        tableUkMap.computeIfAbsent(tableName, k -> new ArrayList<>()).add(uniqueKeys.get(e.getKey()));
+                        found = true;
+                        break;
+                    }
+                }
+
+                // One of the UK can not find corresponding tables, which should be impossible
+                if (!found) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        "can not find corresponding gsi for uk " + uniqueKeys.get(e.getKey()));
+                }
+            }
+        }
+
+        return tableUkMap;
     }
 
     private LogicalInsert processOnDuplicateKeyUpdate(LogicalInsert upsert,
@@ -690,7 +806,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
     private static boolean isModifyUniqueKey(List<String> updateColumnList, String logicalTableName, String schema,
                                              ExecutionContext ec) {
         final Set<String> ukColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        ukColumnSet.addAll(GlobalIndexMeta.getUniqueKeyColumnList(logicalTableName, schema, false, ec));
+        ukColumnSet.addAll(GlobalIndexMeta.getUniqueKeyColumnList(logicalTableName, schema, true, ec));
         return updateColumnList.stream().anyMatch(ukColumnSet::contains);
     }
 

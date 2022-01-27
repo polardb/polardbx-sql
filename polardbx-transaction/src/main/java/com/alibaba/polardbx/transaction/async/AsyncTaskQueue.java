@@ -207,8 +207,8 @@ public class AsyncTaskQueue {
         return timerTask;
     }
 
-    public TimerTask scheduleTsoHeartbeatTask(TransactionExecutor te, ITimestampOracle tso, int intervalMs) {
-        final TsoHeartbeatTask heartbeatTask = new TsoHeartbeatTask(this, te, tso);
+    public TimerTask scheduleTsoHeartbeatTask(ITimestampOracle tso, int intervalMs) {
+        final TsoHeartbeatTask heartbeatTask = new TsoHeartbeatTask(this, tso);
         final ScheduleAsyncTask task = ScheduleAsyncTask.build(heartbeatTask);
 
         TimerTask timerTask = new TimerTask() {
@@ -231,6 +231,34 @@ public class AsyncTaskQueue {
 
         timer.scheduleAtFixedRate(timerTask, 0, intervalMs);
         TransactionLogger.getLogger().info("Scheduled TSO heartbeat task");
+
+        return timerTask;
+    }
+
+    public TimerTask scheduleTsoPurgeTask(int intervalMs) {
+        final PurgeTsoTimerTask purgeTsoTimerTask = new PurgeTsoTimerTask(this);
+        final ScheduleAsyncTask task = ScheduleAsyncTask.build(purgeTsoTimerTask);
+
+        TimerTask timerTask = new TimerTask() {
+
+            @Override
+            public void run() {
+                if (!task.schedule()) {
+                    logger.warn("Ignore re-submit TSO purge task");
+                    return;
+                }
+
+                try {
+                    executor.submit(schema, null, task);
+                } catch (Throwable e) {
+                    task.cancel();
+                    logger.error("Submit TSO purge task failed", e);
+                }
+            }
+        };
+
+        timer.scheduleAtFixedRate(timerTask, 0, intervalMs);
+        TransactionLogger.getLogger().info("Scheduled TSO purge task");
 
         return timerTask;
     }
