@@ -79,7 +79,9 @@ public class SortAggExec extends AbstractExecutor {
                     return null;
                 }
                 if (!hasAddToResult) {
-                    buildRow();
+                    if (currentKey != null) {
+                        buildRow();
+                    }
                     hasAddToResult = true;
                 }
                 break;
