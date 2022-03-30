@@ -91,13 +91,13 @@ public class TruncateMetaChanger {
         String random = UUID.randomUUID().toString();
 
         List<TablePartitionRecord> sourceTablePartitions =
-            tableInfoManager.queryTablePartitions(schemaName, sourceTableName);
+            tableInfoManager.queryTablePartitions(schemaName, sourceTableName, false);
         if (sourceTablePartitions.size() == 0) {
             String msgContent = String.format("Table '%s.%s' doesn't exist", schemaName, sourceTableName);
             throw new TddlNestableRuntimeException(msgContent);
         }
         List<TablePartitionRecord> targetTablePartitions =
-            tableInfoManager.queryTablePartitions(schemaName, targetTableName);
+            tableInfoManager.queryTablePartitions(schemaName, targetTableName, false);
         if (targetTablePartitions.size() == 0) {
             String msgContent = String.format("Table '%s.%s' doesn't exist", schemaName, targetTableName);
             throw new TddlNestableRuntimeException(msgContent);

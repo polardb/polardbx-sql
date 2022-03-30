@@ -18,10 +18,11 @@ package com.alibaba.polardbx.optimizer.chunk;
 
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.SortKey;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import com.google.common.base.Preconditions;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
@@ -127,7 +128,7 @@ public class SliceBlock extends AbstractCommonBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
             sink.putBytes(EMPTY_BYTES);
         } else {

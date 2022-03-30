@@ -19,11 +19,16 @@ package com.alibaba.polardbx.gms.tablegroup;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import org.apache.commons.collections.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Combine the table group and partition group.
@@ -126,5 +131,39 @@ public class TableGroupConfig {
     public boolean isEmpty() {
         return CollectionUtils.isEmpty(this.partitionGroupRecords) &&
             CollectionUtils.isEmpty(this.tables);
+    }
+
+    public boolean containsTable(String tableName) {
+        if (tables == null) {
+            return false;
+        }
+
+        for (TablePartRecordInfoContext entry : tables) {
+            if (StringUtils.equalsIgnoreCase(entry.getTableName(), tableName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Map<String, List<String>> logicalToPhyTables() {
+        Map<String, List<String>> res = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (TablePartRecordInfoContext tableInfo : GeneralUtil.emptyIfNull(getTables())) {
+            for (TablePartitionRecord tablePart : tableInfo.getPartitionRecList()) {
+                res.computeIfAbsent(tablePart.getTableName(), (x) -> new ArrayList<>())
+                    .add(tablePart.getPhyTable());
+            }
+        }
+        return res;
+    }
+
+    public Map<String, String> phyToLogicalTables() {
+        Map<String, String> res = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (TablePartRecordInfoContext tableInfo : GeneralUtil.emptyIfNull(getTables())) {
+            for (TablePartitionRecord tablePart : tableInfo.getPartitionRecList()) {
+                res.put(tablePart.getPhyTable(), tablePart.getTableName());
+            }
+        }
+        return res;
     }
 }

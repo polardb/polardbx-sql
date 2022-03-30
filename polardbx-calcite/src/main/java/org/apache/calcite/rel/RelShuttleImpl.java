@@ -116,6 +116,11 @@ public class RelShuttleImpl implements RelShuttle {
     return visitChildren(join);
   }
 
+  public RelNode visit(LogicalSemiJoin semiJoin) {
+    // redirect to RelNode visit(RelNode other)
+    return visit((RelNode) semiJoin);
+  }
+
   public RelNode visit(LogicalCorrelate correlate) {
     return visitChildren(correlate);
   }

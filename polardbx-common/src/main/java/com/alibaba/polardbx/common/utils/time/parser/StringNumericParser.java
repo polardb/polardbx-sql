@@ -97,7 +97,7 @@ public class StringNumericParser extends MySQLTimeParserBase {
         final int end = endPos;
         long iMax = 0L, jMax = 0L, kMax = 0L;
         long i = 0L, j = 0L, k = 0L;
-        long[] result = {0L, endPos, 0L};
+        long[] result = {0L, startPos, 0L};
 
         while (pos < end && (bytes[pos] == ' ' || bytes[pos] == '\t')) {
             pos++;

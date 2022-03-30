@@ -85,11 +85,7 @@ public class PartPruneStepPruningContext {
     public void putEvalResult(Integer partClauseId, ExprEvalResult result) {
         partClauseEvalResultCache.put(partClauseId, result);
     }
-
-    public void clearPartClauseEvalResultCache() {
-        this.partClauseEvalResultCache.clear();
-    }
-
+    
     public boolean isEnableConstExprEvalCache() {
         return enableConstExprEvalCache;
     }

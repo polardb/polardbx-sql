@@ -85,6 +85,8 @@ public abstract class PlanTestCommon extends BasePlannerTest {
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_MPP, enableMpp);
         executionContext.getExtraCmds().put(ConnectionProperties.STORAGE_SUPPORTS_BLOOM_FILTER,
             storageSupportsBloomFilter);
+        executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_RUNTIME_FILTER_XXHASH,
+            storageUsingXxHashInBloomFilter);
         if (forceWorkloadTypeAP) {
             executionContext.getExtraCmds().put(ConnectionProperties.WORKLOAD_TYPE, "AP");
         }

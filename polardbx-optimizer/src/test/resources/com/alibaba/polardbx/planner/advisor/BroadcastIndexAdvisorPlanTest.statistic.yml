@@ -1,0 +1,80 @@
+tp_parcel_info:
+  1132114559
+tp_user:
+  260464
+zt_level_user:
+  102
+zt_level_user_and_user_relation:
+  99731
+zt_level_user_level_relation:
+  99731
+tp_parcel_info.f_app_notice_status.cardinality:
+  2
+tp_parcel_info.express_box.cardinality:
+  1
+tp_parcel_info.f_arrive_time.cardinality:
+  157064884
+tp_parcel_info.f_arrive_timestamp.cardinality:
+  157289025
+tp_parcel_info.f_branch_id.cardinality:
+  1
+tp_parcel_info.f_comment.cardinality:
+  110034
+tp_parcel_info.f_company_id.cardinality:
+  394
+tp_parcel_info.f_company_name.cardinality:
+  395
+tp_parcel_info.f_exp_id.cardinality:
+  32254
+tp_parcel_info.f_frame_code.cardinality:
+  6733323
+tp_parcel_info.f_input_source.cardinality:
+  3
+tp_parcel_info.f_input_way.cardinality:
+  2
+tp_parcel_info.f_is_detention.cardinality:
+  1
+tp_parcel_info.f_last_time.cardinality:
+  170159033
+tp_parcel_info.f_last_timestamp.cardinality:
+  137028860
+tp_parcel_info.f_mail_no.cardinality:
+  9457330
+tp_parcel_info.f_num.cardinality:
+  4660729
+tp_parcel_info.f_out_source.cardinality:
+  9
+tp_parcel_info.f_out_time.cardinality:
+  59425593
+tp_parcel_info.f_out_timestamp.cardinality:
+  57825617
+tp_parcel_info.f_out_way.cardinality:
+  5
+tp_parcel_info.f_parcel_id.cardinality:
+  9483905
+tp_parcel_info.f_parcel_status.cardinality:
+  8
+tp_parcel_info.f_recipient_mobile.cardinality:
+  32714873
+tp_parcel_info.f_recipient_name.cardinality:
+  2729056
+tp_parcel_info.f_recipient_type.cardinality:
+  2
+tp_parcel_info.f_sms_notice_status.cardinality:
+  4
+tp_parcel_info.f_station_id.cardinality:
+  801948
+tp_parcel_info.f_take_code.cardinality:
+  27187336
+tp_parcel_info.f_type.cardinality:
+  4
+tp_parcel_info.f_weixin_notice_status.cardinality:
+  4
+tp_parcel_info.intelligent_voice_notice_status.cardinality:
+  4
+zt_level_user_level_relation.f_level_parent_user_id.cardinality:
+  99731
+zt_level_user_level_relation.addtime.cardinality:
+  89731
+tp_user.free_sms_count.cardinality:
+  26046

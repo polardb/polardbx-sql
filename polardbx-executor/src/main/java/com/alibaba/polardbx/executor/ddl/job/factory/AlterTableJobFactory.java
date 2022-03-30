@@ -17,9 +17,12 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterColumnDefaultTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableHideMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableInsertColumnsMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
@@ -30,9 +33,14 @@ import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4AlterTable;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -55,6 +63,11 @@ public class AlterTableJobFactory extends DdlJobFactory {
      */
     private boolean alterGsiTable = false;
     private String primaryTableName;
+
+    /**
+     * Whether altering a gsi table for repartition
+     */
+    private boolean repartition = false;
 
     /**
      * Whether generate validate table task
@@ -80,16 +93,24 @@ public class AlterTableJobFactory extends DdlJobFactory {
         this.primaryTableName = primaryTableName;
     }
 
+    public void withAlterGsi4Repartition(boolean alterGsi, boolean repartition, String primaryTableName) {
+        withAlterGsi(alterGsi, primaryTableName);
+        this.repartition = repartition;
+    }
+
     @Override
     protected void validate() {
     }
 
     @Override
     protected ExecutableDdlJob doCreate() {
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+
+        TableGroupConfig tableGroupConfig = isNewPart ? physicalPlanData.getTableGroupConfig() : null;
         DdlTask validateTask =
             this.validateExistence ?
                 new AlterTableValidateTask(schemaName, logicalTableName,
-                    logicalAlterTable.getSqlAlterTable().getSourceSql()) :
+                    logicalAlterTable.getSqlAlterTable().getSourceSql(), prepareData.getTableVersion(), tableGroupConfig) :
                 new EmptyTask(schemaName);
 
         final boolean isDropColumnOrDropIndex =
@@ -108,7 +129,7 @@ public class AlterTableJobFactory extends DdlJobFactory {
             }
 
             if (CollectionUtils.isNotEmpty(prepareData.getAddedColumns())) {
-                alterGsiMetaTasks.addAll(GsiTaskFactory.alterGlobalIndexAddColumnTasks(
+                alterGsiMetaTasks.addAll(GsiTaskFactory.alterGlobalIndexAddColumnsStatusTasks(
                     schemaName,
                     primaryTableName,
                     logicalTableName,
@@ -127,29 +148,55 @@ public class AlterTableJobFactory extends DdlJobFactory {
         }
 
         DdlTask phyDdlTask = new AlterTablePhyDdlTask(schemaName, logicalTableName, physicalPlanData);
+        if (this.repartition) {
+            ((AlterTablePhyDdlTask) phyDdlTask).setSourceSql(logicalAlterTable.getNativeSql());
+        }
 
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
+        physicalPlanData.setAlterTablePreparedData(prepareData);
+        DdlTask cdcDdlMarkTask =
+            this.alterGsiTable ? null : new CdcDdlMarkTask(schemaName, physicalPlanData);
 
-        DdlTask updateMetaTask =
-            new AlterTableChangeMetaTask(schemaName, logicalTableName, physicalPlanData.getDefaultDbIndex(),
-                physicalPlanData.getDefaultPhyTableName(), physicalPlanData.getKind(), physicalPlanData.isPartitioned(),
+        DdlTask updateMetaTask = null;
+        if (!this.repartition) {
+            updateMetaTask = new AlterTableChangeMetaTask(
+                schemaName,
+                logicalTableName,
+                physicalPlanData.getDefaultDbIndex(),
+                physicalPlanData.getDefaultPhyTableName(),
+                physicalPlanData.getKind(),
+                physicalPlanData.isPartitioned(),
                 prepareData.getDroppedColumns(),
                 prepareData.getAddedColumns(),
                 prepareData.getUpdatedColumns(),
                 prepareData.getChangedColumns(),
-                prepareData.isColumnReorder(),
+                prepareData.isTimestampColumnDefault(),
+                prepareData.getBinaryColumnDefaultValues(),
                 prepareData.getDroppedIndexes(),
                 prepareData.getAddedIndexes(),
                 prepareData.getAddedIndexesWithoutNames(),
                 prepareData.getRenamedIndexes(),
                 prepareData.isPrimaryKeyDropped(),
                 prepareData.getAddedPrimaryKeyColumns(),
+                prepareData.getColumnAfterAnother(),
+                prepareData.isLogicalColumnOrder(),
                 prepareData.getTableComment(),
-                physicalPlanData.getSequence());
+                prepareData.getTableRowFormat(),
+                physicalPlanData.getSequence()
+            );
+        } else {
+            // only add columns
+            updateMetaTask = new AlterTableInsertColumnsMetaTask(
+                schemaName,
+                logicalTableName,
+                physicalPlanData.getDefaultDbIndex(),
+                physicalPlanData.getDefaultPhyTableName(),
+                prepareData.getAddedColumns()
+            );
+        }
 
         DdlTask tableSyncTaskAfterShowing = new TableSyncTask(schemaName, logicalTableName);
 
-        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        ExecutableDdlJob4AlterTable executableDdlJob = new ExecutableDdlJob4AlterTable();
 
         List<DdlTask> taskList = null;
         if (isDropColumnOrDropIndex) {
@@ -165,7 +212,7 @@ public class AlterTableJobFactory extends DdlJobFactory {
                 phyDdlTask,
                 cdcDdlMarkTask,
                 updateMetaTask
-            );
+            ).stream().filter(Objects::nonNull).collect(Collectors.toList());
         } else {
             // 1. physical DDL
             // 2. alter GSI meta if necessary
@@ -193,12 +240,20 @@ public class AlterTableJobFactory extends DdlJobFactory {
         executableDdlJob.labelAsHead(validateTask);
         executableDdlJob.labelAsTail(tableSyncTaskAfterShowing);
 
+        executableDdlJob.setTableValidateTask((BaseValidateTask) validateTask);
+        executableDdlJob.setTableSyncTask((TableSyncTask) tableSyncTaskAfterShowing);
+
         return executableDdlJob;
     }
 
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(schemaName, logicalTableName));
+
+        String tgName = FactoryUtils.getTableGroupNameByTableName(schemaName, logicalTableName);
+        if (tgName != null) {
+            resources.add(concatWithDot(schemaName, tgName));
+        }
     }
 
     @Override

@@ -17,9 +17,10 @@
 package com.alibaba.polardbx.optimizer.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
@@ -31,7 +32,7 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
  *
  */
 public class LongBlock extends AbstractBlock {
-    public static final long NULL_VALUE = Long.MIN_VALUE;
+    public static final long NULL_VALUE = 0L;
     public static final long TRUE_VALUE = 1;
     public static final long FALSE_VALUE = 0;
 
@@ -97,9 +98,9 @@ public class LongBlock extends AbstractBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putLong(0L);
+            sink.putLong(NULL_VALUE);
         } else {
             sink.putLong(getLong(position));
         }

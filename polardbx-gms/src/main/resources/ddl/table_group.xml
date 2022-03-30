@@ -43,7 +43,7 @@
     </SystemTable>
 
     <SystemTable name="partition_group_delta">
-            <Create><![CDATA[
+        <Create><![CDATA[
             create table if not exists `partition_group_delta` (
                   `id` bigint not null default 0,
                   `partition_name` varchar(64) not null,
@@ -61,7 +61,7 @@
                    unique key `u_pname`(`tg_id`,`partition_name`, `type`)
             ) charset=utf8
             ]]></Create>
-        </SystemTable>
+    </SystemTable>
 
     <SystemTable name="tablegroup_outline">
         <Create><![CDATA[
@@ -89,7 +89,7 @@
         ]]></Create>
     </SystemTable>
     <SystemTable name="complex_task_outline">
-            <Create><![CDATA[
+        <Create><![CDATA[
                 create table if not exists `complex_task_outline` (
                   `id` bigint(21) unsigned not null auto_increment,
                   `job_id` bigint unsigned not null,
@@ -104,9 +104,9 @@
                   `source_sql` text default null,
                   `sub_task` int not null comment '0:parent task, 1:sub task',
                   primary key(`id`),
-                  key `k_job_id`(`job_id`),
-                  key `k_sch_obj`(`table_schema`, `object_name`, `sub_task`)
+                  KEY `k_sch_job_id` (`table_schema`,`job_id`),
+                  KEY `k_sch_job_id_obj` (`table_schema`,`job_id`,`object_name`)
                 ) charset=utf8mb4
             ]]></Create>
-        </SystemTable>
+    </SystemTable>
 </SystemTables>

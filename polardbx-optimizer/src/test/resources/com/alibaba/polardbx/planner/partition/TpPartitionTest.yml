@@ -59,7 +59,7 @@
         LogicalView(tables="orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `o_orderkey` FROM `orders` AS `orders` WHERE ((`o_custkey` = 1) AND (`o_orderkey` IN (...)))")
       Project(l_orderkey="l_orderkey")
         BKAJoin(condition="l_partkey = p_partkey", type="inner")
-          LogicalView(tables="part[p3]", sql="SELECT `p_partkey` FROM `part` AS `part` WHERE (`p_partkey` = 1)")
+          LogicalView(tables="part[p4]", sql="SELECT `p_partkey` FROM `part` AS `part` WHERE (`p_partkey` = 1)")
           Gather(concurrent=true)
             LogicalView(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_orderkey`, `l_partkey` FROM `lineitem` AS `lineitem` WHERE ((`l_partkey` = 1) AND (`l_partkey` IN (...)))")
 
@@ -68,8 +68,8 @@
     .l_orderkey = o_orderkey;
 
   plan: |
-    Gather(concurrent=true)
-      LogicalView(tables="lineitem[p1,p2,p3,p4],orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `orders`.`o_orderkey`, `t`.`l_orderkey` FROM (SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_partkey` = 1)) AS `t` INNER JOIN `orders` AS `orders` ON (`t`.`l_orderkey` = `orders`.`o_orderkey`)")
+    gather(concurrent=true)
+      logicalview(tables="lineitem[p1,p2,p3,p4],orders[p1,p2,p3,p4]", shardcount=4, sql="select `orders`.`o_orderkey`, `lineitem`.`l_orderkey` from `lineitem` as `lineitem` inner join `orders` as `orders` on (`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) where (`lineitem`.`l_partkey` = 1)")
 
 - sql: |
     select * from lineitem join orders on l_orderkey = o_orderkey where o_custkey = 1;
@@ -118,8 +118,8 @@
 
   plan: |
     BKAJoin(condition="b = b", type="inner")
-      LogicalView(tables="X[p3]", sql="SELECT `b`, `id` FROM `X` AS `X` WHERE (`id` = 1)")
-      LogicalView(tables="Y[p2]", sql="SELECT `a`, `b` FROM `Y` AS `Y` WHERE ((`a` = 2) AND (`b` IN (...)))")
+      LogicalView(tables="X[p4]", sql="SELECT `b`, `id` FROM `X` AS `X` WHERE (`id` = 1)")
+      LogicalView(tables="Y[p1]", sql="SELECT `a`, `b` FROM `Y` AS `Y` WHERE ((`a` = 2) AND (`b` IN (...)))")
 
 - sql: |
     select * from lineitem_index_reverse where l_linenumber = 1 and l_orderkey in (1,2,3);
@@ -190,7 +190,7 @@
     select * from lineitem ignore index(primary) use index(IDX_LINEITEM_ORDERKEY) where l_orderkey = 1;
 
   plan: |
-    LogicalView(tables="lineitem[p3]", sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` IGNORE INDEX(PRIMARY) WHERE (`l_orderkey` = 1)")
+    LogicalView(tables="lineitem[p4]", sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` IGNORE INDEX(PRIMARY) WHERE (`l_orderkey` = 1)")
 
 - sql: |
     select * from lineitem use index(IDX_LINEITEM_ORDERKEY) join orders on o_orderkey =  l_orderkey where o_custkey = 1;
@@ -205,7 +205,7 @@
   plan: |
     Project(pad="pad")
       BKAJoin(condition="id = id", type="inner")
-        IndexScan(tables="gig[p1]", sql="SELECT `id` FROM `gig` AS `gig` WHERE (`g` = 79733308)")
+        IndexScan(tables="gig[p2]", sql="SELECT `id` FROM `gig` AS `gig` WHERE (`g` = 79733308)")
         Gather(concurrent=true)
           LogicalView(tables="sbtest1[p1,p2,p3,p4]", shardCount=4, sql="SELECT `id`, `pad` FROM `sbtest1` AS `sbtest1` WHERE ((`g` = 79733308) AND (`id` IN (...)))")
 
@@ -215,8 +215,8 @@
   plan: |
     Project(pad="pad")
       BKAJoin(condition="id = id", type="inner")
-        IndexScan(tables="gig[p1]", sql="SELECT `id` FROM `gig` AS `gig` WHERE ((`g` = 79733308) AND (`id` = 1))")
-        LogicalView(tables="sbtest1[p3]", sql="SELECT `id`, `pad` FROM `sbtest1` AS `sbtest1` WHERE (((`g` = 79733308) AND (`id` = 1)) AND (`id` IN (...)))")
+        IndexScan(tables="gig[p2]", sql="SELECT `id` FROM `gig` AS `gig` WHERE ((`g` = 79733308) AND (`id` = 1))")
+        LogicalView(tables="sbtest1[p4]", sql="SELECT `id`, `pad` FROM `sbtest1` AS `sbtest1` WHERE (((`g` = 79733308) AND (`id` = 1)) AND (`id` IN (...)))")
 
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_PUSH_JOIN=false,ENABLE_CBO_PUSH_JOIN=false)*/

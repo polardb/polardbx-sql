@@ -677,27 +677,25 @@
     select t_order10.id,t_order10.order_detail,t_buyer10.name from t_order10 join t_buyer10 on t_buyer10.buyer_id = t_order10.buyer_id where t_buyer10.buyer_id = 1
 
   plan: |
+    project(id="id", order_detail="order_detail", name="name")
+      bkajoin(condition="id = id and order_id <=> order_id", type="inner")
+        gather(concurrent=true)
+          indexscan(tables="optest_0000.t_buyer10_09,g_i_buyer10_09", sql="select `t_buyer10`.`buyer_id`, `t_buyer10`.`name`, `g_i_buyer10`.`id`, `g_i_buyer10`.`order_id`, `g_i_buyer10`.`buyer_id` as `buyer_id0` from `t_buyer10` as `t_buyer10` inner join `g_i_buyer10` as `g_i_buyer10` on (`t_buyer10`.`buyer_id` = `g_i_buyer10`.`buyer_id`) where ((`g_i_buyer10`.`buyer_id` = 1) and (`t_buyer10`.`buyer_id` = 1))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_order10_[00-39]", shardcount=40, sql="select `id`, `order_id`, `order_detail` from `t_order10` as `t_order10` where ((`buyer_id` = 1) and (`id` in (...)))")
 
-    Project(id="id", order_detail="order_detail", name="name")
-      BKAJoin(condition="id = id AND order_id <=> order_id", type="inner")
-        Gather(concurrent=true)
-          IndexScan(tables="optest_0000.t_buyer10_09,g_i_buyer10_09", sql="SELECT `t`.`buyer_id`, `t`.`name`, `t0`.`id`, `t0`.`order_id`, `t0`.`buyer_id` AS `buyer_id0` FROM (SELECT `id`, `order_id`, `buyer_id`, `name`, `nationkey` FROM `t_buyer10` AS `t_buyer10` WHERE (`buyer_id` = 1)) AS `t` INNER JOIN (SELECT `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot` FROM `g_i_buyer10` AS `g_i_buyer10` WHERE (`buyer_id` = 1)) AS `t0` ON (`t`.`buyer_id` = `t0`.`buyer_id`)")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t_order10_[00-39]", shardCount=40, sql="SELECT `id`, `order_id`, `order_detail` FROM `t_order10` AS `t_order10` WHERE ((`buyer_id` = 1) AND (`id` IN (...)))")
-
--
-  sql: |
+- sql: |
     select t_order10.id,t_order10.order_detail,t_buyer10.name from t_order10 join t_buyer10 on t_buyer10.buyer_id =
     t_order10.buyer_id where t_buyer10.name = "dylan"
 
   plan: |
+    project(id="id", order_detail="order_detail", name="name")
+      bkajoin(condition="id = id and order_id <=> order_id", type="inner")
+        gather(concurrent=true)
+          indexscan(tables="[0000-0003].t_buyer10_[00-39],g_i_buyer10_[00-39]", shardcount=40, sql="select `t_buyer10`.`buyer_id`, `t_buyer10`.`name`, `g_i_buyer10`.`id`, `g_i_buyer10`.`order_id`, `g_i_buyer10`.`buyer_id` as `buyer_id0` from `t_buyer10` as `t_buyer10` inner join `g_i_buyer10` as `g_i_buyer10` on (`t_buyer10`.`buyer_id` = `g_i_buyer10`.`buyer_id`) where (`t_buyer10`.`name` = 'dylan')")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_order10_[00-39]", shardcount=40, sql="select `id`, `order_id`, `order_detail` from `t_order10` as `t_order10` where (`id` in (...))")
 
-    Project(id="id", order_detail="order_detail", name="name")
-      BKAJoin(condition="id = id AND order_id <=> order_id", type="inner")
-        Gather(concurrent=true)
-          IndexScan(tables="[0000-0003].t_buyer10_[00-39],g_i_buyer10_[00-39]", shardCount=40, sql="SELECT `t`.`buyer_id`, `t`.`name`, `g_i_buyer10`.`id`, `g_i_buyer10`.`order_id`, `g_i_buyer10`.`buyer_id` AS `buyer_id0` FROM (SELECT `id`, `order_id`, `buyer_id`, `name`, `nationkey` FROM `t_buyer10` AS `t_buyer10` WHERE (`name` = 'dylan')) AS `t` INNER JOIN `g_i_buyer10` AS `g_i_buyer10` ON (`t`.`buyer_id` = `g_i_buyer10`.`buyer_id`)")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t_order10_[00-39]", shardCount=40, sql="SELECT `id`, `order_id`, `order_detail` FROM `t_order10` AS `t_order10` WHERE (`id` IN (...))")
 
 -
   sql: |

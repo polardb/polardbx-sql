@@ -90,11 +90,15 @@ public class TablesAccessor extends AbstractAccessor {
 
     private static final String UPDATE_TABLES_COMMENT = UPDATE_TABLES + "`table_comment` = ?" + WHERE_SCHEMA_TABLE;
 
+    private static final String UPDATE_TABLES_ROW_FORMAT = UPDATE_TABLES + "`row_format` = ?" + WHERE_SCHEMA_TABLE;
+
     private static final String UPDATE_TABLES_STATISTIC =
         UPDATE_TABLES
             + "`table_rows` = ?, `avg_row_length` = ?, `data_length` = ?, `max_data_length` = ?, `index_length` = ?, "
             + "`data_free` = ?"
             + WHERE_SCHEMA_TABLE;
+
+    private static final String UPDATE_TABLES_FLAG = UPDATE_TABLES + "`flag` = ?" + WHERE_SCHEMA_TABLE;
 
     private static final String UPDATE_TABLES_RENAME =
         UPDATE_TABLES + "`table_name` = ?, `new_table_name` = ''" + WHERE_SCHEMA_TABLE;
@@ -223,6 +227,10 @@ public class TablesAccessor extends AbstractAccessor {
         return update(UPDATE_TABLES_COMMENT, TABLES_TABLE, tableSchema, tableName, comment);
     }
 
+    public int updateRowFormat(String tableSchema, String tableName, String rowFormat) {
+        return update(UPDATE_TABLES_ROW_FORMAT, TABLES_TABLE, tableSchema, tableName, rowFormat);
+    }
+
     public int updateStatistic(String tableSchema, String tableName, Long tableRows, Long avgRowLength, Long dataLength,
                                Long maxDataLength, Long indexLength, Long dataFree) {
         try {
@@ -243,6 +251,20 @@ public class TablesAccessor extends AbstractAccessor {
                 e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update",
                 TABLES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int updateFlag(String tableSchema, String tableName, long flag) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, flag);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableSchema);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableName);
+            DdlMetaLogUtil.logSql(UPDATE_TABLES_FLAG, params);
+            return MetaDbUtil.update(UPDATE_TABLES_FLAG, params, connection);
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update flag", TABLES_TABLE,
                 e.getMessage());
         }
     }

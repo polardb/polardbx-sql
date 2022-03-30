@@ -26,6 +26,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.logical.LogicalSemiJoin;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
@@ -141,6 +142,8 @@ public class OptimizerUtils {
         case DROP_TABLEGROUP:
         case ALTER_TABLE_SET_TABLEGROUP:
         case REFRESH_TOPOLOGY:
+        case CREATE_SCHEDULE:
+        case DROP_SCHEDULE:
             return true;
         default:
             if (ast.isA(SqlKind.DAL)) {
@@ -162,6 +165,8 @@ public class OptimizerUtils {
                     if (((LogicalProject) node).getProjects().stream().anyMatch(rex -> RexUtil.hasSubQuery(rex))) {
                         throw Util.FoundOne.NULL;
                     }
+                } else if (node instanceof LogicalSemiJoin) {
+                    throw Util.FoundOne.NULL;
                 }
                 super.visit(node, ordinal, parent);
             }

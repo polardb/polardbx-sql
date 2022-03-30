@@ -16,8 +16,17 @@
 
 package com.alibaba.polardbx.repo.mysql.checktable;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 表描述
@@ -29,6 +38,20 @@ public class TableDescription {
     protected String groupName;
     protected String tableName;
     protected Map<String, FieldDescription> fields = new HashMap<String, FieldDescription>();
+    protected Map<String, FieldDescription> physicalOrderFields = new LinkedHashMap<String, FieldDescription>();
+    /**
+     * key: partition name
+     * value: partition detail info
+     */
+    protected List<LocalPartitionDescription> partitions = new ArrayList<>();
+
+    public TableDescription() {
+    }
+
+    public TableDescription(final String groupName, final String tableName) {
+        this.groupName = groupName;
+        this.tableName = tableName;
+    }
 
     public String getGroupName() {
         return groupName;
@@ -52,5 +75,49 @@ public class TableDescription {
 
     public void setFields(Map<String, FieldDescription> fields) {
         this.fields = fields;
+    }
+
+    public Map<String, FieldDescription> getPhysicalOrderFields() {
+        return physicalOrderFields;
+    }
+
+    public void setPhysicalOrderFields(Map<String, FieldDescription> fields) {
+        this.physicalOrderFields = fields;
+    }
+    public List<LocalPartitionDescription> getPartitions() {
+        return this.partitions;
+    }
+
+    public void setPartitions(final List<LocalPartitionDescription> partitions) {
+        Preconditions.checkNotNull(partitions);
+        this.partitions = partitions;
+    }
+
+    public String getPartitionDescriptionString(){
+        if(CollectionUtils.isEmpty(partitions) || (partitions.size()==1 && partitions.get(0).getPartitionName()==null)){
+            return "";
+        }
+        List<String> partitionDescriptionList =
+            partitions.stream()
+                .map(LocalPartitionDescription::getPartitionDescription)
+                .map(e-> StringUtils.replace(e, "'", ""))
+                .collect(Collectors.toList());
+        return Joiner.on(",").join(partitionDescriptionList);
+    }
+
+    public boolean containsLocalPartition(String name){
+        if(StringUtils.isEmpty(name)){
+            return false;
+        }
+        for(LocalPartitionDescription localPartitionDescription: partitions){
+            if(StringUtils.equalsIgnoreCase(localPartitionDescription.getPartitionName(), name)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isEmptyPartition(){
+        return fields == null || fields.isEmpty();
     }
 }

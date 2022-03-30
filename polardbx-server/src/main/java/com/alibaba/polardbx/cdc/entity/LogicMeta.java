@@ -50,6 +50,7 @@ public class LogicMeta {
         private int tableMode;
         private int tableType;
         private String createSql;
+        private String createSql4Phy;
         private String tableCollation;
         private List<PhySchema> phySchemas;
     }

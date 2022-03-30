@@ -25,6 +25,8 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.util.ArrayList;
@@ -58,7 +60,9 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName);
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        TableGroupConfig tableGroupConfig = isNewPart ? physicalPlanData.getTableGroupConfig() : null;
+        DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName, tableGroupConfig);
         DdlTask primaryPhyTruncateTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();

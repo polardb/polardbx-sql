@@ -41,4 +41,10 @@ public class BigBitType extends BigIntegerType {
     public MySQLStandardFieldType fieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_BIT;
     }
+
+    @Override
+    public String getStringSqlType() {
+        return "BIT";
+    }
+
 }

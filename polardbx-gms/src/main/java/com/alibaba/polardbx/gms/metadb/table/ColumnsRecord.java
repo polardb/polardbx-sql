@@ -34,6 +34,7 @@ public class ColumnsRecord extends ColumnsInfoSchemaRecord {
     public long flag;
 
     public static final long FLAG_FILL_DEFAULT = 0x1;
+    public static final long FLAG_BINARY_DEFAULT = 0x2; // If default value is hex string
 
     @Override
     public ColumnsRecord fill(ResultSet rs) throws SQLException {
@@ -80,5 +81,17 @@ public class ColumnsRecord extends ColumnsInfoSchemaRecord {
 
     public void clearFillDefault() {
         flag &= ~FLAG_FILL_DEFAULT;
+    }
+
+    public boolean isBinaryDefault() {
+        return (flag & FLAG_BINARY_DEFAULT) != 0L;
+    }
+
+    public void setBinaryDefault() {
+        flag |= FLAG_BINARY_DEFAULT;
+    }
+
+    public void clearBinaryDefault() {
+        flag &= ~FLAG_BINARY_DEFAULT;
     }
 }

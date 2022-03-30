@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.balancer.action;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -28,6 +29,11 @@ import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Move partition to balance data
@@ -46,7 +52,7 @@ public class ActionMovePartition implements BalanceAction {
 
     private String schema;
     private String tableGroupName;
-    private String partitionName;
+    private List<String> partitionNames;
     private String toGroup;
     private String toInst;
 
@@ -59,23 +65,64 @@ public class ActionMovePartition implements BalanceAction {
                                String toGroup, String toInst) {
         this.schema = schemaName;
         this.tableGroupName = tableGroupName;
-        this.partitionName = partitionName;
+        this.partitionNames = Arrays.asList(partitionName);
         this.toGroup = toGroup;
         this.toInst = toInst;
     }
 
-    public static ActionMovePartition createMoveToGroup(String schema, PartitionStat partition, String toGroup) {
+    public static List<ActionMovePartition> createMoveToGroups(String schema,
+                                                               List<PartitionStat> partitions,
+                                                               String toGroup) {
+        List<ActionMovePartition> res = new ArrayList<>();
+
+        GeneralUtil.emptyIfNull(partitions).stream()
+            .collect(
+                Collectors.groupingBy(
+                    PartitionStat::getTableGroupName,
+                    Collectors.mapping(PartitionStat::getPartitionName, Collectors.toList())))
+            .forEach((tableGroupName, partList) -> {
+                res.add(createMoveToGroup(schema, tableGroupName, partList, toGroup));
+            });
+
+        return res;
+    }
+
+    public static List<ActionMovePartition> createMoveToInsts(String schema,
+                                                              List<PartitionStat> partitions,
+                                                              String toInst) {
+        List<ActionMovePartition> res = new ArrayList<>();
+
+        GeneralUtil.emptyIfNull(partitions).stream()
+            .collect(
+                Collectors.groupingBy(
+                    PartitionStat::getTableGroupName,
+                    Collectors.mapping(PartitionStat::getPartitionName, Collectors.toList())))
+            .forEach((tableGroupName, partList) -> {
+                res.add(createMoveToInst(schema, tableGroupName, partList, toInst));
+            });
+
+        return res;
+    }
+
+    public static ActionMovePartition createMoveToGroup(String schema,
+                                                        String tgName,
+                                                        List<String> partitions,
+                                                        String toGroup) {
+
         ActionMovePartition res = new ActionMovePartition(schema);
-        res.tableGroupName = partition.getTableGroupName();
-        res.partitionName = partition.getPartitionName();
+        res.tableGroupName = tgName;
+        res.partitionNames = partitions;
         res.toGroup = toGroup;
         return res;
     }
 
-    public static ActionMovePartition createMoveToInst(String schema, PartitionStat partition, String toInst) {
+    public static ActionMovePartition createMoveToInst(String schema,
+                                                       String tgName,
+                                                       List<String> partitions,
+                                                       String toInst) {
         ActionMovePartition res = new ActionMovePartition(schema);
-        res.tableGroupName = partition.getTableGroupName();
-        res.partitionName = partition.getPartitionName();
+        res.tableGroupName = tgName;
+        res.partitionNames = partitions;
         res.toInst = toInst;
         return res;
     }
@@ -95,22 +142,30 @@ public class ActionMovePartition implements BalanceAction {
         String target = this.toInst != null ?
             "instance(" + this.toInst + ")" :
             "group(" + this.toGroup + ")";
-        return String.format("move partition %s to %s",
-            this.partitionName, target);
+        return String.format("move partition %s.%s to %s",
+            this.tableGroupName, TStringUtil.join(this.partitionNames, ","), target);
     }
 
-    @Override
-    public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
-        String schema = ec.getSchemaName();
+    public String getSql() {
         String targetStorage = this.toInst != null ?
             this.toInst : DbTopologyManager.getStorageInstIdByGroupName(schema, this.toGroup);
         if (TStringUtil.isBlank(targetStorage)) {
             throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE,
                 "target storage not found: group=" + this.toGroup);
         }
-        String sql = String.format(MOVE_PARTITION_SQL, this.tableGroupName, this.partitionName,
+        String partitionList =
+            this.partitionNames.stream().map(TStringUtil::backQuote).collect(Collectors.joining(","));
+        String sql = String.format(MOVE_PARTITION_SQL,
+            TStringUtil.backQuote(this.tableGroupName),
+            partitionList,
             TStringUtil.quoteString(targetStorage));
-        return ActionUtils.convertToDDLJob(ec, sql);
+        return sql;
+    }
+
+    @Override
+    public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
+        String sql = getSql();
+        return ActionUtils.convertToDelegatorJob(ec, schema, sql);
     }
 
     @Override

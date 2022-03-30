@@ -47,10 +47,15 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
 
     @Override
     public void buildTableRuleAndTopology() {
+        this.tableTopology = PartitionInfoUtil.buildTargetTablesFromPartitionInfo(getPartitionInfo());
+    }
+
+    @Override
+    public PartitionInfo getPartitionInfo() {
         if (partitionInfo == null) {
             partitionInfo = buildPartitionInfo();
         }
-        this.tableTopology = PartitionInfoUtil.buildTargetTablesFromPartitionInfo(partitionInfo);
+        return partitionInfo;
     }
 
     protected PartitionInfo buildPartitionInfo() {
@@ -71,10 +76,17 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
                 String.format("%s with locality", tblType.getTableTypeName()));
         }
 
+        PartitionTableType partitionTableType = tblType;
+        if (preparedData.isGsi() && preparedData.isBroadcast()) {
+            partitionTableType = PartitionTableType.GSI_BROADCAST_TABLE;
+        } else if (preparedData.isGsi() && !preparedData.isSharding() && preparedData.getPartitioning() == null) {
+            partitionTableType = PartitionTableType.GSI_SINGLE_TABLE;
+        }
         partitionInfo =
             PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
                 (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(), pkColMetas,
-                allColMetas, tblType, executionContext);
+                allColMetas, partitionTableType, executionContext);
+        partitionInfo.setTableType(partitionTableType);
 
         // Set auto partition flag only on primary table.
         if (tblType == PartitionTableType.PARTITION_TABLE) {

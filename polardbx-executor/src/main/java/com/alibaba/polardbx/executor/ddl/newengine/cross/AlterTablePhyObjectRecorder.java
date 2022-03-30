@@ -17,11 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.newengine.cross;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
-import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 
@@ -31,126 +28,150 @@ import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.COLON;
 
 public class AlterTablePhyObjectRecorder extends GenericPhyObjectRecorder {
 
+    private static final String BEFORE_PHY_DDL = "false";
+    private static final String AFTER_PHY_DDL = "true";
+
+    private String hashcodeBeforePhyDdl = null;
+
     public AlterTablePhyObjectRecorder(RelNode physicalPlan, ExecutionContext executionContext) {
         super(physicalPlan, executionContext);
     }
 
     @Override
     protected boolean checkIfPhyObjectDone() {
+        DdlHelper.waitUntilPhyDdlDone(schemaName, groupName, phyTableName, ddlContext.getTraceId());
+
+        String keyPrefix = genPhyObjectInfoKey();
         Set<String> phyObjectsDone = phyDdlExecutionRecord.getPhyObjectsDone();
 
-        DdlHelper.waitUntilPhyDdlDone(schemaName, physicalDdlPlan.getDbIndex(), executionContext.getTraceId());
+        String keyBefore = keyPrefix + BEFORE_PHY_DDL;
+        String phyObjectDoneBefore =
+            phyObjectsDone.stream().filter(obj -> 0 == obj.indexOf(keyBefore)).findFirst().orElse(null);
 
-        // Currently physical object info
-        String phyObjectInfo = genPhyObjectInfo(false);
-        String[] objectParts = phyObjectInfo.split(COLON);
-        assert 4 == objectParts.length;
+        String keyAfter = keyPrefix + AFTER_PHY_DDL;
+        String phyObjectDoneAfter =
+            phyObjectsDone.stream().filter(obj -> 0 == obj.indexOf(keyAfter)).findFirst().orElse(null);
 
-        // Physical object already done
-        String keyInfo = objectParts[0] + COLON + objectParts[1] + COLON;
-        String phyObjectDone =
-            phyObjectsDone.stream().filter(object -> 0 == object.indexOf(keyInfo)).findFirst().orElse(null);
+        boolean isPhyObjectDone;
+        if (TStringUtil.isBlank(phyObjectDoneBefore) && TStringUtil.isBlank(phyObjectDoneAfter)) {
+            String phyObjectInfoForDebug;
 
-        if (phyObjectDone != null) {
-            String[] doneParts = phyObjectDone.split(COLON);
-            assert 4 == doneParts.length;
-            return compareHashCodeAndProbe(objectParts, doneParts);
-        } else if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
-            return true;
-        } else {
-            recordObjectNormal(phyObjectInfo, false);
-            return false;
-        }
-    }
-
-    private boolean compareHashCodeAndProbe(String[] objectParts, String[] doneParts) {
-        String groupName = objectParts[0];
-        String phyTableName = objectParts[1];
-
-        String currentHashCode = objectParts[2];
-        String recordedHashCode = doneParts[2];
-        String recordedProbe = doneParts[3];
-
-        if (TStringUtil.equalsIgnoreCase(currentHashCode, recordedHashCode)
-            && TStringUtil.equalsIgnoreCase(recordedProbe, Boolean.TRUE.toString())) {
-            // If current hash code is the same as recorded after
-            // the physical DDL was done (TRUE), then it has been
-            // done and recorded as well, so skip it.
-            return ddlContext.getState() != DdlState.ROLLBACK_RUNNING;
-        } else if (!TStringUtil.equalsIgnoreCase(currentHashCode, recordedHashCode)
-            && TStringUtil.equalsIgnoreCase(recordedProbe, Boolean.FALSE.toString())) {
-            // If current hash code is different from recorded before
-            // the physical DDL was done (FALSE), then means that the
-            // physical DDL is already been done (asynchronously) even
-            // if not recorded, so we can record and skip it.
             if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
-                return false;
+                isPhyObjectDone = true;
+                phyObjectInfoForDebug = keyPrefix;
             } else {
-                String phyObjectInfo = genPhyObjectInfo(true);
-                recordObjectNormal(phyObjectInfo, true);
-                return true;
-            }
-        } else if (!TStringUtil.equalsIgnoreCase(currentHashCode, recordedHashCode)
-            && TStringUtil.equalsIgnoreCase(recordedProbe, Boolean.TRUE.toString())) {
-            // If current hash code is different from recorded after
-            // the physical DDL was done (TRUE), then means that the
-            // physical table has been changed again unexpectedly,
-            // so we have to throw an exception to report it to user.
-            StringBuilder buf = new StringBuilder();
-            buf.append("the physical object '" + groupName + "." + phyTableName);
-            buf.append(" has been changed, please use 'CHECK TABLE ").append(ddlContext.getObjectName());
-            buf.append("' to check the consistency of the logical table. ");
-            buf.append("If the check result is OK or just contains a warning to prompt ");
-            buf.append("a PENDING job, then you can use 'REMOVE DDL ").append(ddlContext.getJobId());
-            buf.append("' to safely remove the job, otherwise you may need to ");
-            buf.append("change the inconsistent physical table manually or ask for support.");
-            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNEXPECTED, buf.toString());
-        } else {
-            // If current hash code is the same as recorded before
-            // the physical DDL was done (FALSE), then let's do it.
-            // However, we should decrease the number if we load
-            // and calculate all records previously.
-            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+                isPhyObjectDone = false;
+
                 String phyObjectInfo = genPhyObjectInfo(false);
-                recordObjectRollback(phyObjectInfo);
-                return true;
-            } else {
-                return false;
+                phyObjectInfoForDebug = phyObjectInfo;
+
+                String[] currentParts = phyObjectInfo.split(COLON);
+                hashcodeBeforePhyDdl = currentParts[3];
+
+                recordObjectNormal(phyObjectInfo, false);
             }
+
+            printDebugInfo("AlterTablePhyObjectRecorder.checkIfPhyObjectDone() - " + isPhyObjectDone,
+                phyDdlExecutionRecord, phyObjectInfoForDebug);
+        } else {
+            isPhyObjectDone = checkAndCompensate(phyObjectDoneBefore, phyObjectDoneAfter);
         }
+
+        return isPhyObjectDone;
     }
 
-    @Override
-    protected String genPhyObjectInfo(boolean afterPhyDdl) {
-        return DdlHelper.genPhyTableInfo(schemaName, physicalDdlPlan, true, afterPhyDdl, ddlContext);
-    }
+    private boolean checkAndCompensate(String phyObjectDoneBefore, String phyObjectDoneAfter) {
+        boolean isPhyObjectDone;
+        String phyObjectInfoForDebug;
 
-    @Override
-    protected void removePhyObjectDone(String phyObjectInfo, Set<String> phyObjectsDone) {
-        final String[] objectParts = phyObjectInfo.split(COLON);
-        assert 4 == objectParts.length;
-        // Remove target group & table.
-        phyObjectsDone.removeIf(object -> 0 == object.indexOf(objectParts[0] + COLON + objectParts[1] + COLON));
-    }
+        if (TStringUtil.isBlank(phyObjectDoneAfter)) {
+            // Only the hashcode record before physical DDL exists, so we
+            // should check if the physical DDL has been actually done.
+            String phyObjectInfo = genPhyObjectInfo(true);
+            String[] currentParts = phyObjectInfo.split(COLON);
+            String currentHashcode = currentParts[3];
 
-    @Override
-    protected void recordObjectNormal(String phyObjectInfo, boolean withProgress) {
-        if (withProgress) {
-            synchronized (AlterTablePhyObjectRecorder.class) {
-                DdlJobManagerUtils.reloadPhyTablesDone(phyDdlExecutionRecord);
-                Set<String> phyObjectsDone = phyDdlExecutionRecord.getPhyObjectsDone();
+            String[] partsBefore = phyObjectDoneBefore.split(COLON);
+            String hashcodeBefore = partsBefore[3];
 
-                String newPhyObjectsDone =
-                    DdlHelper.overwritePhyTablesDone(phyObjectInfo, phyObjectsDone, executionContext);
+            phyObjectInfoForDebug = phyObjectDoneBefore;
 
-                if (TStringUtil.isNotEmpty(newPhyObjectsDone)) {
+            if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
+                // Rolling back
+                isPhyObjectDone = TStringUtil.equalsIgnoreCase(currentHashcode, hashcodeBefore);
+                if (isPhyObjectDone) {
+                    recordObjectRollback(false);
+                } else {
+                    hashcodeBeforePhyDdl = currentHashcode;
+                    // For subsequent rollback to decrease.
                     phyDdlExecutionRecord.increasePhyObjsDone();
-                    DdlJobManagerUtils.resetPhyTablesDone(phyDdlExecutionRecord, newPhyObjectsDone, true);
+                }
+            } else {
+                // Recovering
+                isPhyObjectDone = !TStringUtil.equalsIgnoreCase(currentHashcode, hashcodeBefore);
+                if (isPhyObjectDone) {
+                    phyObjectInfoForDebug = phyObjectInfo;
+                    recordObjectNormal(phyObjectInfo, true);
+                } else {
+                    hashcodeBeforePhyDdl = hashcodeBefore;
                 }
             }
         } else {
-            DdlJobManagerUtils.appendPhyTableDone(phyDdlExecutionRecord, phyObjectInfo, false);
+            // We think that the physical DDL has been done as long as
+            // the hashcode record after physical DDL exists.
+            isPhyObjectDone = ddlContext.getState() != DdlState.ROLLBACK_RUNNING;
+            if (!isPhyObjectDone) {
+                String[] partsAfter = phyObjectDoneAfter.split(COLON);
+                hashcodeBeforePhyDdl = partsAfter[3];
+            }
+            phyObjectInfoForDebug = phyObjectDoneAfter;
         }
+
+        printDebugInfo("AlterTablePhyObjectRecorder.checkIfPhyObjectDone():check - " + isPhyObjectDone,
+            phyDdlExecutionRecord, phyObjectInfoForDebug);
+
+        return isPhyObjectDone;
+    }
+
+    @Override
+    protected boolean checkIfPhyObjectDoneByHashcode() {
+        String hashcodeAfterDdl = DdlHelper.genHashCodeForPhyTableDDL(schemaName, groupName, phyTableName);
+        return !TStringUtil.equalsIgnoreCase(hashcodeBeforePhyDdl, hashcodeAfterDdl);
+    }
+
+    @Override
+    protected void recordObjectNormal() {
+        recordObjectNormal(true);
+    }
+
+    protected void recordObjectNormal(boolean afterPhyDdl) {
+        String phyObjectInfo = genPhyObjectInfo(afterPhyDdl);
+        recordObjectNormal(phyObjectInfo, afterPhyDdl);
+    }
+
+    @Override
+    protected void recordObjectRollback() {
+        resetPhyObjectsDone(genPhyObjectInfoKey(), true);
+    }
+
+    protected void recordObjectRollback(boolean afterPhyDdl) {
+        resetPhyObjectsDone(genPhyObjectInfoKey(), afterPhyDdl);
+    }
+
+    @Override
+    protected void removePhyObjectDone(String phyObjectInfo, boolean afterPhyDdl) {
+        phyDdlExecutionRecord.getPhyObjectsDone().removeIf(obj -> 0 == obj.indexOf(phyObjectInfo));
+        if (afterPhyDdl) {
+            phyDdlExecutionRecord.decreasePhyObjsDone();
+        }
+    }
+
+    protected String genPhyObjectInfoKey() {
+        return genPhyObjectInfo() + COLON;
+    }
+
+    protected String genPhyObjectInfo(boolean afterPhyDdl) {
+        return DdlHelper.genPhyTableInfoWithHashcode(schemaName, groupName, phyTableName, afterPhyDdl);
     }
 
 }

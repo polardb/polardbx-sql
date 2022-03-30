@@ -114,7 +114,7 @@ public abstract class MergeUnionValuesRule extends RelOptRule {
             // if the project node contains un-pushable function, don't transform in order to the insert rel node.
             List<RexNode> exps = project.getChildExps();
             for (RexNode node : exps) {
-                if (RexUtils.containsUnPushableFunction(node)) {
+                if (RexUtils.containsUnPushableFunction(node, false)) {
                     return false;
                 }
             }

@@ -49,9 +49,9 @@ public class InformationSchemaTableDetail extends VirtualView {
         List<RelDataTypeFieldImpl> columns = new ArrayList<>();
 
         int i = 0;
-        columns.add(new RelDataTypeFieldImpl("SCHEMA_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_SCHEMA", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_GROUP_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOGICAL_TABLE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PHYSICAL_TABLE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PARTITION_SEQ", i++,
             typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));

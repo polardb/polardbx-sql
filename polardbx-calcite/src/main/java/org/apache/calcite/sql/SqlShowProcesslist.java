@@ -129,9 +129,10 @@ public class SqlShowProcesslist extends SqlShow {
                 columns.add(new RelDataTypeFieldImpl("Time", 5, typeFactory.createSqlType(SqlTypeName.BIGINT)));
                 columns.add(new RelDataTypeFieldImpl("State", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
                 columns.add(new RelDataTypeFieldImpl("Info", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+                columns.add(new RelDataTypeFieldImpl("TraceId", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
                 if (full) {
                     columns.add(
-                        new RelDataTypeFieldImpl("SQL_Template_Id", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+                        new RelDataTypeFieldImpl("SQL_Template_Id", 9, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
                 }
             }
 

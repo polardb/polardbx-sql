@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.ccl;
 
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -341,7 +342,6 @@ public class CclManagerTest {
             Assert.assertTrue(cclRuleInfo.getStayCount().get() == 0);
             Assert.assertTrue(cclRuleInfo.getRunningCount().get() == 0);
         }
-        System.out.println("end");
     }
 
     @Test
@@ -524,7 +524,6 @@ public class CclManagerTest {
         service.end(executionContext2);
         service.begin(executionContext2);
         service.end(executionContext2);
-        System.out.println(service.getCacheStats());
         Assert.assertEquals(service.getCacheStats().get(3).intValue(), 0);
     }
 
@@ -553,7 +552,6 @@ public class CclManagerTest {
         service.end(executionContext2);
         service.begin(executionContext2);
         service.end(executionContext2);
-        System.out.println(service.getCacheStats());
         Assert.assertEquals(service.getCacheStats().get(3).intValue(), 1);
     }
 
@@ -582,7 +580,6 @@ public class CclManagerTest {
         service.end(executionContext2);
         service.begin(executionContext2);
         service.end(executionContext2);
-        System.out.println(service.getCacheStats());
         Assert.assertEquals(service.getCacheStats().get(1).intValue(), 1);
     }
 
@@ -612,7 +609,6 @@ public class CclManagerTest {
         service.end(executionContext2);
         service.begin(executionContext2);
         service.end(executionContext2);
-        System.out.println(service.getCacheStats());
         Assert.assertEquals(service.getCacheStats().get(0).intValue(), 1);
     }
 
@@ -641,7 +637,6 @@ public class CclManagerTest {
         service.end(executionContext2);
         service.begin(executionContext2);
         service.end(executionContext2);
-        System.out.println(service.getCacheStats());
         Assert.assertEquals(service.getCacheStats().get(1).intValue(), 1);
     }
 
@@ -670,7 +665,6 @@ public class CclManagerTest {
         service.end(executionContext2);
         service.begin(executionContext2);
         service.end(executionContext2);
-        System.out.println(service.getCacheStats());
         Assert.assertEquals(service.getCacheStats().get(2).intValue(), 1);
     }
 
@@ -700,7 +694,6 @@ public class CclManagerTest {
         service.end(executionContext2);
         service.begin(executionContext2);
         service.end(executionContext2);
-        System.out.println(service.getCacheStats());
         Assert.assertEquals(service.getCacheStats().get(2).intValue(), 1);
     }
 
@@ -728,6 +721,13 @@ public class CclManagerTest {
         service.begin(executionContext2);
     }
 
+    @Test
+    public void test21() {
+        String sql = "select ?";
+        PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(sql, null, null, true, true);
+        Assert.assertTrue(sql.hashCode() == cacheKey.getTemplateHash());
+    }
+
     static class TestCclService extends CclService {
 
         Map<Long, String> actionMap = new ConcurrentHashMap<>();
@@ -742,28 +742,24 @@ public class CclManagerTest {
 
         @Override
         protected void doWait(ExecutionContext executionContext) {
-            System.out.println("doWait " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), WAIT);
             super.doWait(executionContext);
         }
 
         @Override
         protected void doRun(ExecutionContext executionContext) {
-            System.out.println("doRun " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), RUN);
             super.doRun(executionContext);
         }
 
         @Override
         protected void doKill(ExecutionContext executionContext) {
-            System.out.println("doKill " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), KILL);
             super.doKill(executionContext);
         }
 
         @Override
         protected void doNone(ExecutionContext executionContext) {
-            System.out.println("doNone " + executionContext.getOriginSql());
             actionMap.put(executionContext.getConnId(), NONE);
         }
 

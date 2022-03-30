@@ -17,27 +17,31 @@
 package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.taobao.tddl.common.utils.TddlToStringStyle;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
+import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupOutlineRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.google.common.collect.ImmutableList;
+import com.taobao.tddl.common.utils.TddlToStringStyle;
 import org.apache.calcite.config.CalciteConnectionConfig;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.type.RelDataType;
@@ -61,11 +65,13 @@ import org.apache.calcite.util.NlsString;
 import org.apache.commons.lang.builder.ToStringBuilder;
 
 import java.io.Serializable;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
@@ -93,6 +99,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private final TableStatus status;
 
     private final long version;
+
+    private final long flag;
 
     /**
      * 主键索引描述
@@ -133,8 +141,11 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     // when split/merge/move the table, this entry will save the new partitionInfo temporarily
     private volatile PartitionInfo newPartitionInfo = null;
 
+    private volatile LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
+
     public TableMeta(String tableName, List<ColumnMeta> allColumnsOrderByDefined, IndexMeta primaryIndex,
-                     List<IndexMeta> secondaryIndexes, boolean hasPrimaryKey, TableStatus status, long version) {
+                     List<IndexMeta> secondaryIndexes, boolean hasPrimaryKey, TableStatus status, long version,
+                     long flag) {
         this.hasPrimaryKey = hasPrimaryKey;
         this.tableName = tableName;
         if (hasPrimaryKey && primaryIndex != null) {
@@ -157,6 +168,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         this.allColumnsOrderByDefined.addAll(allColumnsOrderByDefined);
         this.status = status;
         this.version = version;
+        this.flag = flag;
         this.digest = tableName + "#version:" + version;
     }
 
@@ -174,6 +186,14 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     public long getVersion() {
         return version;
+    }
+
+    public long getFlag() {
+        return flag;
+    }
+
+    public boolean requireLogicalColumnOrder() {
+        return (flag & TablesRecord.FLAG_LOGICAL_COLUMN_ORDER) != 0L;
     }
 
     public String getSchemaName() {
@@ -222,7 +242,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     public Collection<ColumnMeta> getGsiImplicitPrimaryKey() {
         final IndexMeta pk = secondaryIndexes.get(TddlConstants.UGSI_PK_INDEX_NAME);
         if (null == pk) {
-            return null;
+            return new ArrayList<>();
         }
         return pk.getKeyColumns();
     }
@@ -438,8 +458,16 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap);
     }
 
+    public boolean hasGsi(String indexName) {
+        List<String> gsiNames = new ArrayList<>();
+        getGsiTableMetaBean().indexMap.forEach((key, value) -> {
+            gsiNames.add(TddlSqlToRelConverter.unwrapGsiName(key));
+        });
+        return gsiNames.contains(indexName);
+    }
+
     public boolean withGsi(String indexName) {
-        return withGsi() && getGsiTableMetaBean().indexMap.containsKey(indexName);
+        return withGsi() && hasGsi(indexName);
     }
 
     public boolean withClustered() {
@@ -526,6 +554,14 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         this.partitionInfo = partitionInfo;
     }
 
+    public LocalPartitionDefinitionInfo getLocalPartitionDefinitionInfo() {
+        return this.localPartitionDefinitionInfo;
+    }
+
+    public void setLocalPartitionDefinitionInfo(final LocalPartitionDefinitionInfo localPartitionDefinitionInfo) {
+        this.localPartitionDefinitionInfo = localPartitionDefinitionInfo;
+    }
+
     public String getDigest() {
         return this.digest;
     }
@@ -610,8 +646,30 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     public void initPartitionInfo(String schemaName, String tableName, TddlRuleManager rule) {
-        rule.getPartitionInfoManager().reloadPartitionInfo(schemaName, tableName);
+        initPartitionInfo(null, schemaName, tableName, rule);
+    }
+
+    public void initPartitionInfo(Connection conn, String schemaName, String tableName, TddlRuleManager rule) {
+        rule.getPartitionInfoManager().reloadPartitionInfo(conn, schemaName, tableName);
         this.partitionInfo = rule.getPartitionInfoManager().getPartitionInfo(tableName);
+    }
+
+    public void initPartitionInfo(String schemaName, String tableName, TddlRuleManager rule,
+                                  List<TablePartitionRecord> tablePartitionRecords,
+                                  List<TablePartitionRecord> tablePartitionRecordsFromDelta) {
+        rule.getPartitionInfoManager()
+            .reloadPartitionInfo(schemaName, tableName, this, tablePartitionRecords, tablePartitionRecordsFromDelta);
+        this.partitionInfo = rule.getPartitionInfoManager().getPartitionInfo(tableName);
+    }
+
+    public Map<String, Set<String>> getLatestTopology() {
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (isNewPart) {
+            return OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName)
+                .getTopology();
+        } else {
+            return OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tableName).getActualTopology();
+        }
     }
 
 }

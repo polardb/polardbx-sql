@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.server;
 
+import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.PolarPrivileges;
@@ -65,6 +66,7 @@ import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.TPreparedStatement;
 import com.alibaba.polardbx.matrix.jdbc.TResultSet;
+import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -492,6 +494,34 @@ public final class ServerConnection extends FrontendConnection implements Resche
             } else {
                 releaseLockAndRemoveMdlContext();
             }
+        } else {
+            TConnection oldConn = this.conn;
+            if (null != oldConn) {
+                /**
+                 * In mysql, its transaction can be commit
+                 *  on different database after using 'use xxx_db',
+                 * such as:
+                 * <pre>
+                 *      use d1;
+                 *      begin;
+                 *      delete from t1;--trx1
+                 *      use d2;
+                 *      commit;
+                 * the transaction trx1 can be commit or rollback after using database d2.
+                 * </pre>
+                 *
+                 * But in PolarDB-X, after use a new database by using `use xxx_db`;
+                 * the trx of the last db will be auto rollback and closed.
+                 */
+                try {
+                    oldConn.close();
+                    this.conn = null;
+                } catch (SQLException e) {
+                    logger.warn("error when close trx conn for last db", e);
+                } finally {
+                    //
+                }
+            }
         }
         schemaConfig = null;
         tablePrivCache = null;
@@ -525,7 +555,23 @@ public final class ServerConnection extends FrontendConnection implements Resche
         if (schemaConfig == null) {
             this.stats = MatrixStatistics.EMPTY;
         } else {
-            this.stats = schemaConfig.getDataSource().getStatistics();
+            TDataSource ds = schemaConfig.getDataSource();
+            this.stats = ds.getStatistics();
+            warmUpDb(ds);
+        }
+    }
+
+    private void warmUpDb(TDataSource ds) {
+        if (CobarServer.getInstance().getConfig().getSystem().getEnableLogicalDbWarmmingUp()) {
+            Throwable ex = null;
+            try {
+                ex = TDataSourceInitUtils.initDataSource(ds);
+                if (ex != null) {
+                    logger.warn("Failed to init schema " + ds.getSchemaName() + " during using db, the cause is " + ex.getMessage(), ex);
+                }
+            } catch (Throwable e){
+                throw GeneralUtil.nestedException(e);
+            }
         }
     }
 
@@ -1172,10 +1218,15 @@ public final class ServerConnection extends FrontendConnection implements Resche
         ec.setTraceId(traceId);
         ec.setPhySqlId(phySqlId);
         ec.setSchemaName(schema);
+        ec.setClientFoundRows(clientFoundRows());
 
         buildMDC();
 
         ec.renewMemoryPoolHolder();
+    }
+
+    private boolean clientFoundRows() {
+        return (clientFlags & Capabilities.CLIENT_FOUND_ROWS) > 0;
     }
 
     private void beforeExecution() {
@@ -1242,9 +1293,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
         /*
          * Record sql info to sql.log
          */
-        recordSlowSql(user, host, String.valueOf(port), schema, sql, lastAffectedRows);
+        boolean slowRecorded = recordSlowSql(user, host, String.valueOf(port), schema, sql, lastAffectedRows);
         LogUtils.recordSql(this, "", sql, params, trxPolicy, lastAffectedRows, finishFetchSqlRsNano, metrics,
-            baselineId, planId, workloadType, cost, ec.getExecuteMode());
+            baselineId, planId, workloadType, cost, ec.getExecuteMode(), slowRecorded);
 
         cclMetrics(ec, metrics);
         statCpu(ec, finishFetchSqlRsNano, sqlMetricEnabled, runtimeStat);
@@ -1351,16 +1402,16 @@ public final class ServerConnection extends FrontendConnection implements Resche
     /**
      * 记录sql执行信息
      */
-    private void recordSlowSql(String user, String host, String port, SchemaConfig schema, ByteString sqlBytes,
-                               long affectRow) {
+    private boolean recordSlowSql(String user, String host, String port, SchemaConfig schema, ByteString sqlBytes,
+                                  long affectRow) {
+        boolean slowRecorded = false;
         if (!SQLRecorderLogger.slowLogger.isInfoEnabled()) {
-            return;
+            return slowRecorded;
         }
 
         SQLRecorder sqlRecorder = schema.getDataSource().getRecorder();
         long endTime = System.nanoTime() / 1000_000;
         long startTime = getLastActiveTime() / 1000_000;
-
         try {
             long time = endTime - startTime;
             long thresold = sqlRecorder.getSlowSqlTime();
@@ -1371,6 +1422,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             }
 
             if (time > thresold) {
+                slowRecorded = true;
                 this.getStatistics().slowRequest++;
 
                 String sql;
@@ -1391,6 +1443,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
         } catch (Throwable e) {
             logger.error("error when record sql", e);
         }
+        return slowRecorded;
     }
 
     /**
@@ -1821,6 +1874,13 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 loadDataHandler = null;
             }
             if (this.statementExecuting.get()) {
+                if(conn.isDdlStatement()){
+                    logger.warn("Connection Killed By Client While Executing DDL");
+                    if(conn.getExecutionContext().getDdlContext() != null){
+                        conn.getExecutionContext().getDdlContext().setClientConnectionResetAsTrue();
+                    }
+                    return true;
+                }
                 CobarServer.getInstance().getKillExecutor().execute(() -> {
                     buildMDC();
                     CobarServer.getInstance().getServerExecutor().closeByTraceId(traceId);
@@ -1942,7 +2002,27 @@ public final class ServerConnection extends FrontendConnection implements Resche
             OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
 
             TConnection oldConn = this.conn;
+            /**
+             * oldConn should be null here !
+             */
             if (null != oldConn) {
+                /**
+                 * In mysql, its transaction can be commit
+                 *  on different database after using 'use xxx_db',
+                 * such as:
+                 * <pre>
+                 *      use d1;
+                 *      begin;
+                 *      delete from t1;--trx1
+                 *      use d2;
+                 *      commit;
+                 * the transaction trx1 can be commit or rollback after using database d2.
+                 * </pre>
+                 *
+                 * But in PolarDB-X, after use a new database by using `use xxx_db`;
+                 * the trx of the last db will be auto rollback and closed.
+                 */
+                // Clear trx of old conn
                 oldConn.close();
             }
 
@@ -1959,6 +2039,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             this.conn.setReadOnly(isReadOnly());
             int txIsolation = getTxIsolation();
             this.conn.setTraceId(this.getTraceId());
+            this.conn.setClientFoundRows(clientFoundRows());
             if (txIsolation >= 0) {
                 this.conn.setTransactionIsolation(txIsolation);
             }

@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.chunk;
 
+import com.alibaba.polardbx.common.utils.hash.HashResult128;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.row.AbstractRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.VectorUtils;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import com.google.common.hash.HashCode;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -189,9 +191,9 @@ public class Chunk implements Iterable<Row> {
             return position;
         }
 
-        public HashCode hashCode(TddlHasher hasher, Iterable<Integer> columns) {
+        public HashResult128 hashCode(IStreamingHasher hasher, Iterable<Integer> columns) {
             for (int columnIndex : columns) {
-                getBlock(columnIndex).addToBloomFilter(hasher, position);
+                getBlock(columnIndex).addToHasher(hasher, position);
             }
 
             return hasher.hash();

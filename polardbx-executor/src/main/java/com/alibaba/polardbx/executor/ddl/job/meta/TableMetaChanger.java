@@ -20,20 +20,28 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
+import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
 import com.alibaba.polardbx.executor.gms.TableRuleManager;
 import com.alibaba.polardbx.executor.gms.util.SequenceUtil;
 import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
@@ -44,9 +52,14 @@ import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 
 import static com.alibaba.polardbx.gms.metadb.table.TableInfoManager.PhyInfoSchemaContext;
 
@@ -55,6 +68,9 @@ public class TableMetaChanger {
     private static final Logger LOGGER = LoggerFactory.getLogger(TableMetaChanger.class);
 
     private static final ConfigManager CONFIG_MANAGER = MetaDbConfigManager.getInstance();
+
+    private static final String VARIABLE_TIME_ZONE = "time_zone";
+    private static final String QUERY_PHY_TIME_ZONE = "show variables like '" + VARIABLE_TIME_ZONE + "'";
 
     public static void addTableExt(Connection metaDbConn, TablesExtRecord tablesExtRecord) {
         TableInfoManager tableInfoManager = new TableInfoManager();
@@ -68,10 +84,25 @@ public class TableMetaChanger {
         tableInfoManager.removeTableExt(schemaName, logicalTableName);
     }
 
-    public static void addTableMeta(Connection metaDbConn, PhyInfoSchemaContext phyInfoSchemaContext) {
+    public static void addTableMeta(Connection metaDbConn, PhyInfoSchemaContext phyInfoSchemaContext,
+                                    boolean hasTimestampColumnDefault, ExecutionContext executionContext,
+                                    Map<String, String> binaryColumnDefaultValues) {
+        String schemaName = phyInfoSchemaContext.tableSchema;
+        String tableName = phyInfoSchemaContext.tableName;
+
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
         tableInfoManager.addTable(phyInfoSchemaContext);
+        if (hasTimestampColumnDefault) {
+            Map<String, String> convertedColumnDefaults =
+                convertColumnDefaults(phyInfoSchemaContext, null, executionContext);
+            tableInfoManager.resetColumnDefaults(schemaName, tableName, null, convertedColumnDefaults);
+        }
+
+        // Update binary default value as hex string
+        if (!binaryColumnDefaultValues.isEmpty()) {
+            tableInfoManager.updateBinaryColumnDefaults(schemaName, tableName, binaryColumnDefaultValues);
+        }
     }
 
     public static PhyInfoSchemaContext buildPhyInfoSchemaContext(String schemaName, String logicalTableName,
@@ -279,11 +310,12 @@ public class TableMetaChanger {
                                        String dbIndex, String phyTableName, SqlKind sqlKind, boolean isPartitioned,
                                        List<String> droppedColumns, List<String> addedColumns,
                                        List<String> updatedColumns, Map<String, String> changedColumns,
-                                       boolean columnReorder, List<String> droppedIndexes,
-                                       List<String> addedIndexes, List<String> addedIndexesWithoutNames,
-                                       Map<String, String> renamedIndexes, boolean primaryKeyDropped,
-                                       List<String> addedPrimaryKeyColumns, String tableComment,
-                                        SequenceBean sequenceBean,
+                                       boolean hasTimestampColumnDefault, Map<String, String> binaryColumnDefaultValues,
+                                       List<String> droppedIndexes, List<String> addedIndexes,
+                                       List<String> addedIndexesWithoutNames, Map<String, String> renamedIndexes,
+                                       boolean primaryKeyDropped, List<String> addedPrimaryKeyColumns,
+                                       List<Pair<String, String>> columnAfterAnother, boolean requireLogicalColumnOrder,
+                                       String tableComment, String tableRowFormat, SequenceBean sequenceBean,
                                        ExecutionContext executionContext) {
         TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
             CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
@@ -308,6 +340,10 @@ public class TableMetaChanger {
         // Update existing column meta if exist and column name may be changed as well.
         if (GeneralUtil.isNotEmpty(changedColumns)) {
             tableInfoManager.changeColumns(phyInfoSchemaContext, columnJdbcExtInfo, changedColumns);
+            // Reset binary default value flag
+            for (String columnName: changedColumns.keySet()) {
+                tableInfoManager.resetColumnBinaryDefaultFlag(schemaName, logicalTableName, columnName);
+            }
         }
 
         // Add new column meta if exist.
@@ -318,11 +354,36 @@ public class TableMetaChanger {
         // Update existing column meta if exist.
         if (GeneralUtil.isNotEmpty(updatedColumns)) {
             tableInfoManager.updateColumns(phyInfoSchemaContext, columnJdbcExtInfo, updatedColumns);
+            // Clear binary default value flag
+            for (String columnName: updatedColumns) {
+                tableInfoManager.resetColumnBinaryDefaultFlag(schemaName, logicalTableName, columnName);
+            }
         }
 
-        // Need to refresh all column to ensure the correct order of column.
-        if (columnReorder) {
-            tableInfoManager.refreshColumnOrder(phyInfoSchemaContext, columnJdbcExtInfo);
+        // Refresh related column order.
+        refreshColumnOrder(schemaName, logicalTableName, columnAfterAnother, requireLogicalColumnOrder,
+            tableInfoManager);
+
+        // Update column defaults with particular time zone if needed.
+        if (hasTimestampColumnDefault) {
+            List<String> allChangedColumns = new ArrayList<>();
+
+            if (GeneralUtil.isNotEmpty(changedColumns)) {
+                allChangedColumns.addAll(GeneralUtil.emptyIfNull(changedColumns.keySet()));
+            }
+            allChangedColumns.addAll(GeneralUtil.emptyIfNull(addedColumns));
+            allChangedColumns.addAll(GeneralUtil.emptyIfNull(updatedColumns));
+
+            Map<String, String> convertedColumnDefaults =
+                convertColumnDefaults(phyInfoSchemaContext, allChangedColumns, executionContext);
+
+            tableInfoManager.resetColumnDefaults(schemaName, logicalTableName, allChangedColumns,
+                convertedColumnDefaults);
+        }
+
+        // Update binary default value as hex string
+        if (!binaryColumnDefaultValues.isEmpty()) {
+            tableInfoManager.updateBinaryColumnDefaults(schemaName, logicalTableName, binaryColumnDefaultValues);
         }
 
         // Remove existing index meta.
@@ -364,7 +425,54 @@ public class TableMetaChanger {
             tableInfoManager.updateTableComment(schemaName, logicalTableName, tableComment);
         }
 
+        if (tableRowFormat != null) {
+            tableInfoManager.updateTableRowFormat(schemaName, logicalTableName, tableRowFormat);
+        }
+
         tableInfoManager.showTable(schemaName, logicalTableName, sequenceRecord);
+    }
+
+    public static void changeTableMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
+                                       String dbIndex, String phyTableName, List<String> addedColumns,
+                                       List<String> droppedColumns) {
+
+        TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
+            CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
+
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        Map<String, Map<String, Object>> columnJdbcExtInfo = tableInfoManager.fetchColumnJdbcExtInfo(
+            phyInfoSchemaContext.phyTableSchema, phyInfoSchemaContext.phyTableName, phyInfoSchemaContext.dataSource);
+
+        // Remove dropped column meta if exist.
+        if (GeneralUtil.isNotEmpty(droppedColumns)) {
+            tableInfoManager.removeColumns(schemaName, logicalTableName, droppedColumns);
+        }
+
+        // Add new column meta if exist.
+        if (GeneralUtil.isNotEmpty(addedColumns)) {
+            tableInfoManager.addColumns(phyInfoSchemaContext, columnJdbcExtInfo, addedColumns);
+        }
+
+        tableInfoManager.showTable(schemaName, logicalTableName, phyInfoSchemaContext.sequenceRecord);
+    }
+
+    protected static void refreshColumnOrder(String tableSchema, String tableName,
+                                             List<Pair<String, String>> columnAfterAnother,
+                                             boolean requireLogicalColumnOrder,
+                                             TableInfoManager tableInfoManager) {
+        // Reorganize related columns to ensure the correct logical column order.
+        if (!columnAfterAnother.isEmpty()) {
+            tableInfoManager.reorgColumnOrder(tableSchema, tableName, columnAfterAnother);
+            // Update flag for logical column expansion during inserting only if
+            // logical and physical column order are different.
+            if (requireLogicalColumnOrder) {
+                tableInfoManager.updateLogicalColumnOrderFlag(tableSchema, tableName);
+            }
+        }
+        // Reset column positions to make them continuous.
+        tableInfoManager.resetColumnOrder(tableSchema, tableName);
     }
 
     public static void addIndexMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
@@ -518,10 +626,107 @@ public class TableMetaChanger {
         CommonMetaChanger.sync(binTableDataId);
     }
 
+    public static Map<String, String> convertColumnDefaults(PhyInfoSchemaContext context, List<String> columnNames,
+                                                            ExecutionContext executionContext) {
+        try (Connection phyDbConn = context.dataSource.getConnection()) {
+            TimeZone sessionTimeZone = getSessionTimeZone(phyDbConn, executionContext);
+
+            if (sessionTimeZone == null) {
+                // No conversion needed.
+                return null;
+            }
+
+            TableInfoManager tableInfoManager = new TableInfoManager();
+            List<ColumnsInfoSchemaRecord> columnRecords =
+                tableInfoManager.fetchColumnInfoSchema(context.phyTableSchema, context.phyTableName, columnNames,
+                    phyDbConn);
+
+            if (GeneralUtil.isEmpty(columnRecords)) {
+                LOGGER.error("Cannot find column records from physical info schema");
+                return null;
+            }
+
+            Map<String, String> columnDefaults = new HashMap<>();
+            for (ColumnsInfoSchemaRecord record : columnRecords) {
+                if (TStringUtil.equalsIgnoreCase(TimestampUtils.TYPE_NAME_TIMESTAMP, record.dataType)) {
+                    String convertedTimestamp =
+                        TimestampUtils.convertToGMT8(record.columnDefault, sessionTimeZone, record.datetimePrecision);
+                    columnDefaults.put(record.columnName, convertedTimestamp);
+                }
+            }
+
+            return columnDefaults;
+        } catch (Exception e) {
+            LOGGER.error("Failed to convert column defaults with time zone. Caused by: " + e.getMessage(), e);
+            // Don't convert column defaults instead of throwing an exception.
+            return null;
+        }
+    }
+
+    private static TimeZone getSessionTimeZone(Connection phyDbConn, ExecutionContext executionContext)
+        throws Exception {
+        String mysqlTimeZoneId = null;
+
+        if (executionContext.getServerVariables() != null) {
+            mysqlTimeZoneId = (String) executionContext.getServerVariables().get(VARIABLE_TIME_ZONE);
+        }
+
+        if (phyDbConn instanceof TGroupDirectConnection) {
+            ((TGroupDirectConnection) phyDbConn).setServerVariables(executionContext.getServerVariables());
+        }
+
+        if (TStringUtil.isBlank(mysqlTimeZoneId)) {
+            try (Statement stmt = phyDbConn.createStatement();
+                ResultSet rs = stmt.executeQuery(QUERY_PHY_TIME_ZONE)) {
+                if (rs.next()) {
+                    mysqlTimeZoneId = rs.getString(2);
+                }
+            }
+        }
+
+        if (!TimestampUtils.needTimeZoneConversion(mysqlTimeZoneId)) {
+            return null;
+        }
+
+        InternalTimeZone internalTimeZone = TimeZoneUtils.convertFromMySqlTZ(mysqlTimeZoneId);
+        return internalTimeZone != null ? internalTimeZone.getTimeZone() :
+            TimeZone.getTimeZone("GMT" + mysqlTimeZoneId);
+    }
+
     public static void beginAlterColumnDefaultValue(Connection metaDbConn, String schema, String table, String column) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
         tableInfoManager.beginUpdateColumnDefaultVal(schema, table, column);
+    }
+
+    public static void addLocalPartitionMeta(Connection metaDbConnection,
+                                             TableLocalPartitionRecord localPartitionRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.addLocalPartitionRecord(localPartitionRecord);
+    }
+
+    public static void addScheduledJob(Connection metaDbConnection,
+                                       ScheduledJobsRecord scheduledJobsRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.addScheduledJob(scheduledJobsRecord);
+    }
+
+    public static void removeLocalPartitionMeta(Connection metaDbConnection,
+                                                String schemaName,
+                                                String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.removeLocalPartitionRecord(schemaName, tableName);
+    }
+
+    public static void removeScheduledJobs(Connection metaDbConnection,
+                                           String schemaName,
+                                           String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.removeScheduledJobRecord(schemaName, tableName);
     }
 
     public static void endAlterColumnDefaultValue(Connection metaDbConn, String schema, String table, String column) {

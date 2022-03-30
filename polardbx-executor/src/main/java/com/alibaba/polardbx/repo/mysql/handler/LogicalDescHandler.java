@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
+import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
@@ -41,10 +42,15 @@ import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.optimizer.view.VirtualViewType;
+import com.alibaba.polardbx.repo.mysql.common.ResultSetHelper;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlDesc;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author chenmo.cm
@@ -61,7 +67,16 @@ public class LogicalDescHandler extends HandlerCommon {
         final SqlDesc desc = (SqlDesc) show.getNativeSqlNode();
         final String tableName = RelUtils.lastStringValue(desc.getTableName());
 
-        String schemaName = executionContext.getSchemaName();
+        String schemaName = null;
+        if (desc.getDbName() != null) {
+            schemaName = ((SqlIdentifier) desc.getDbName()).getLastName();
+        }
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = show.getSchemaName();
+        }
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = executionContext.getSchemaName();
+        }
 
         try {
             TableMeta tableMeta =
@@ -104,12 +119,12 @@ public class LogicalDescHandler extends HandlerCommon {
 
                     ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
 //                    | Field | Type    | Null | Key | Default | Extra |
-                    resultCursor.addColumn("Field", DataTypes.StringType);
-                    resultCursor.addColumn("Type", DataTypes.StringType);
-                    resultCursor.addColumn("Null", DataTypes.StringType);
-                    resultCursor.addColumn("Key", DataTypes.StringType);
-                    resultCursor.addColumn("Default", DataTypes.StringType);
-                    resultCursor.addColumn("Extra", DataTypes.StringType);
+                    resultCursor.addColumn("Field", DataTypes.StringType, false);
+                    resultCursor.addColumn("Type", DataTypes.StringType, false);
+                    resultCursor.addColumn("Null", DataTypes.StringType, false);
+                    resultCursor.addColumn("Key", DataTypes.StringType, false);
+                    resultCursor.addColumn("Default", DataTypes.StringType, false);
+                    resultCursor.addColumn("Extra", DataTypes.StringType, false);
 
                     for (int i = 0; i < rowType.getFieldCount(); i++) {
                         String field = rowType.getFieldList().get(i).getName();
@@ -142,6 +157,44 @@ public class LogicalDescHandler extends HandlerCommon {
         }
         phyShow.setSqlTemplate("DESC " + descTableName);
 
-        return repo.getCursorFactory().repoCursor(executionContext, phyShow);
+        Cursor cursor = repo.getCursorFactory().repoCursor(executionContext, phyShow);
+        return reorgLogicalColumnOrder(schemaName, tableName, cursor);
     }
+
+    private Cursor reorgLogicalColumnOrder(String schemaName, String tableName, Cursor cursor) {
+        ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
+
+        resultCursor.addColumn("Field", DataTypes.StringType);
+        resultCursor.addColumn("Type", DataTypes.StringType);
+        resultCursor.addColumn("Null", DataTypes.StringType);
+        resultCursor.addColumn("Key", DataTypes.StringType);
+        resultCursor.addColumn("Default", DataTypes.StringType);
+        resultCursor.addColumn("Extra", DataTypes.StringType);
+
+        resultCursor.initMeta();
+
+        List<Object[]> rows = new ArrayList<>();
+        try {
+            Row row;
+            while ((row = cursor.next()) != null) {
+                rows.add(new Object[] {
+                    row.getString(0),
+                    row.getString(1),
+                    row.getString(2),
+                    row.getString(3),
+                    row.getString(4),
+                    row.getString(5)
+                });
+            }
+        } finally {
+            if (cursor != null) {
+                cursor.close(new ArrayList<>());
+            }
+        }
+
+        ResultSetHelper.reorgLogicalColumnOrder(schemaName, tableName, rows, resultCursor);
+
+        return resultCursor;
+    }
+
 }

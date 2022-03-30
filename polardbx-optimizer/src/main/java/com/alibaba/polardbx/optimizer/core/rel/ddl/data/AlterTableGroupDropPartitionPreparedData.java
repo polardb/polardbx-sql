@@ -111,7 +111,11 @@ public class AlterTableGroupDropPartitionPreparedData extends AlterTableGroupBas
                     neighborPartitionList.add(delPartPosList.get(i));
                 }
             }
-            neighborPartitionList.add(delPartPosList.get(delPartPosList.size() - 1));
+            int totalParts = firstTblPartInfo.getPartitionBy().getPartitions().size();
+            PartitionSpec lastPart = firstTblPartInfo.getPartitionBy().getNthPartition(totalParts);
+            if (delPartPosList.get(delPartPosList.size() - 1) != (lastPart.getPosition() - 1)) {
+                neighborPartitionList.add(delPartPosList.get(delPartPosList.size() - 1));
+            }
         }
         return neighborPartitionList;
     }

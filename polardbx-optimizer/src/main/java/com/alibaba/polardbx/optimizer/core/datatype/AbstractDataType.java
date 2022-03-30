@@ -135,4 +135,12 @@ public abstract class AbstractDataType<DATA> implements DataType<DATA> {
         return 0;
     }
 
+    @Override
+    public boolean equalDeeply(DataType that) {
+        if (that == null || that.getClass() != this.getClass()) {
+            return false;
+        }
+        return true;
+    }
+
 }

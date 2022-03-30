@@ -21,27 +21,35 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+
+import java.util.List;
 
 @Getter
 @TaskName(name = "DropPartitionTableValidateTask")
 public class DropPartitionTableValidateTask extends BaseValidateTask {
 
     private String logicalTableName;
-    private boolean ifExists;
+    private List<Long> tableGroupIds;
+    private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public DropPartitionTableValidateTask(String schemaName, String logicalTableName, boolean ifExists) {
+    public DropPartitionTableValidateTask(String schemaName, String logicalTableName, List<Long> tableGroupIds,
+                                          TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
-        this.ifExists = ifExists;
+        this.tableGroupIds = tableGroupIds;
+        this.tableGroupConfig = tableGroupConfig;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
+        TableValidator.validateTableInTableGroup(schemaName, logicalTableName, tableGroupIds, executionContext);
         GsiValidator.validateAllowDdlOnTable(schemaName, logicalTableName, executionContext);
+        TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
     }
 
     @Override

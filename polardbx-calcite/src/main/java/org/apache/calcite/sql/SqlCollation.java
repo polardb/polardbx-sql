@@ -142,7 +142,7 @@ public class SqlCollation implements Serializable {
 
       resultCharset = Optional.of(charset)
           .map(CharsetName::of)
-          .filter(c -> c.isSupported(resultCollation))
+          .filter(c -> c.match(resultCollation))
           .map(CharsetName::toJavaCharset)
           .orElseGet(
               () -> CollationName.getCharsetOf(resultCollation).toJavaCharset()

@@ -21,18 +21,24 @@ import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropTableWithGsiBuilder
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.DropPartitionGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropPartitionTableWithGsiValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionTable;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropTableWithGsiPreparedData;
 import org.apache.calcite.rel.core.DDL;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -85,6 +91,10 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         ExecutableDdlJob result = new ExecutableDdlJob();
+        Map<String, Long> tableVersions = new HashMap<>();
+
+        tableVersions.put(preparedData.getPrimaryTablePreparedData().getTableName(),
+            preparedData.getPrimaryTablePreparedData().getTableVersion());
 
         PhysicalPlanData physicalPlanData =
             DdlJobDataConverter.convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans);
@@ -92,9 +102,12 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
         ExecutableDdlJob4DropPartitionTable dropPrimaryTableJob = (ExecutableDdlJob4DropPartitionTable)
             new DropPartitionTableJobFactory(physicalPlanData).create();
 
-        DdlTask hidePrimaryTableTask = dropPrimaryTableJob.getDropTableHideTableMetaTask();
+        DdlTask validateTask = dropPrimaryTableJob.getValidateTask();
         DdlTask dropPrimaryTableSyncTask = dropPrimaryTableJob.getTableSyncTask();
+        DdlTask storeTableLocalityTask = dropPrimaryTableJob.getStoreTableLocalityTask();
         result.combineTasks(dropPrimaryTableJob);
+
+        result.addExcludeResources(dropPrimaryTableJob.getExcludeResources());
 
         Map<String, DropGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
         for (Map.Entry<String, DropGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
@@ -103,7 +116,8 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
             ExecutableDdlJob4DropPartitionGsi dropGsiJob = (ExecutableDdlJob4DropPartitionGsi)
                 DropPartitionGsiJobFactory.create(gsiPreparedData, executionContext, true, false);
 
-            result.addTaskRelationship(dropGsiJob.getValidateTask(), hidePrimaryTableTask);
+            result.addTaskRelationship(validateTask, dropGsiJob.getValidateTask());
+            result.addTaskRelationship(dropGsiJob.getValidateTask(), storeTableLocalityTask);
             result.addTaskRelationship(dropPrimaryTableSyncTask, dropGsiJob.getDropGsiTableHideTableMetaTask());
             result.addTaskRelationship(
                 dropGsiJob.getDropGsiTableHideTableMetaTask(), dropGsiJob.getDropGsiPhyDdlTask());
@@ -113,7 +127,26 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
                 dropGsiJob.getGsiDropCleanUpTask(), dropGsiJob.getDropGsiTableRemoveMetaTask());
             result.addTaskRelationship(
                 dropGsiJob.getDropGsiTableRemoveMetaTask(), new TableSyncTask(schemaName, indexTableName));
+            result.addExcludeResources(dropGsiJob.getExcludeResources());
+            tableVersions.put(gsiPreparedData.getTableName(),
+                gsiPreparedData.getTableVersion());
         }
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(preparedData.getPrimaryTablePreparedData().getSchemaName(), tableVersions);
+
+        result.addTask(validateTableVersionTask);
+        result.addTaskRelationship(validateTableVersionTask, dropPrimaryTableJob.getHead());
+
+        List<String> tableNames = new ArrayList<>();
+        tableNames.add(primaryTableName);
+        tableNames.addAll(indexTableTopologyMap.keySet());
+        List<TableGroupConfig> tableGroupConfigs = FactoryUtils.getTableGroupConfigByTableName(schemaName, tableNames);
+        DropPartitionTableWithGsiValidateTask tableGroupValidateTask =
+            new DropPartitionTableWithGsiValidateTask(schemaName, primaryTableName,
+                new ArrayList<>(indexTableTopologyMap.keySet()), tableGroupConfigs);
+
+        result.addTask(tableGroupValidateTask);
+        result.addTaskRelationship(tableGroupValidateTask, validateTableVersionTask);
 
 //        result.setMaxParallelism(gsiPreparedDataMap.size() + 1);
 

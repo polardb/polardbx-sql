@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.gsi;
 
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
@@ -44,12 +41,14 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import org.apache.calcite.linq4j.Ord;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
@@ -87,7 +86,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -832,7 +830,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      */
     public Pair<SqlSelect, PhyTableOperation> buildSelectWithInForChecker(TableMeta tableMeta, List<String> selectKeys,
                                                                           List<String> primaryKeys,
-                                                                          boolean forcePrimary) {
+                                                                          String forceIndex) {
         initParams(0);
 
         // build select list
@@ -868,22 +866,27 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
          * index. So the only way to optimize it is to prune the PK before select.
          */
         // from ? as `tb` force index(PRIMARY)
-        final SqlIdentifier asNode = new SqlIdentifier("tb", SqlParserPos.ZERO);
-        asNode.indexNode = new SqlNodeList(
-            ImmutableList.of(new SqlIndexHint(SqlLiteral.createCharString("FORCE INDEX", SqlParserPos.ZERO),
-                null,
-                new SqlNodeList(ImmutableList.of(SqlLiteral.createCharString("PRIMARY", SqlParserPos.ZERO)),
-                    SqlParserPos.ZERO),
-                SqlParserPos.ZERO)),
-            SqlParserPos.ZERO);
-        final SqlNode from = new SqlBasicCall(SqlStdOperatorTable.AS,
-            new SqlNode[] {targetTableNode, asNode},
-            SqlParserPos.ZERO);
+        final SqlNode from;
+        if (forceIndex != null) {
+            final SqlIdentifier asNode = new SqlIdentifier("tb", SqlParserPos.ZERO);
+            asNode.indexNode = new SqlNodeList(
+                ImmutableList.of(new SqlIndexHint(SqlLiteral.createCharString("FORCE INDEX", SqlParserPos.ZERO),
+                    null,
+                    new SqlNodeList(ImmutableList.of(SqlLiteral.createCharString(forceIndex, SqlParserPos.ZERO)),
+                        SqlParserPos.ZERO),
+                    SqlParserPos.ZERO)),
+                SqlParserPos.ZERO);
+            from = new SqlBasicCall(SqlStdOperatorTable.AS,
+                new SqlNode[] {targetTableNode, asNode},
+                SqlParserPos.ZERO);
+        } else {
+            from = null;
+        }
 
         final SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
             null,
             selectList,
-            forcePrimary ? from : targetTableNode,
+            from != null ? from : targetTableNode,
             condition,
             null,
             null,
@@ -917,7 +920,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         // build target table
         buildTargetTable();
 
-        final SqlNode functionCallNode = new SqlBasicCall(new SqlHashCheckAggFunction(), selectList.toArray(), SqlParserPos.ZERO);
+        final SqlNode functionCallNode =
+            new SqlBasicCall(new SqlHashCheckAggFunction(), selectList.toArray(), SqlParserPos.ZERO);
 
         final SqlNodeList selectListWithFunctionCall = new SqlNodeList(SqlParserPos.ZERO);
         selectListWithFunctionCall.add(functionCallNode);
@@ -1157,8 +1161,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * @return {targetDb: {targetTb: [[index, pk]]}}
      */
     protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResults(TableMeta tableMeta,
-                                                                                               List<List<Object>> values,
-                                                                                               List<String> columns) {
+                                                                                          List<List<Object>> values,
+                                                                                          List<String> columns) {
 
         // primary key indexes and ColumnMetas, columns must be upper case
         List<String> primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(tableMeta);
@@ -1182,6 +1186,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
     /**
      * Build shard result for full table scan, we just add all values to each physical table
+     *
      * @return {targetDb: {targetTb: [[index, pk]]}}
      */
     protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResultsFullTableScan(
@@ -1194,7 +1199,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
         final Map<String, List<List<String>>> topology;
         if (partitionInfoManager.isNewPartDbTable(tableName)) {
-            PartitionPruneStep partitionPruneStep = PartitionPruneStepBuilder.generateFullScanPrueStepInfo(schemaName,
+            PartitionPruneStep partitionPruneStep = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(schemaName,
                 tableName, ec);
             PartPrunedResult partPrunedResult =
                 PartitionPruner.doPruningByStepInfo(partitionPruneStep, ec);
@@ -1233,7 +1238,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                                                   final List<String> selectKey, boolean withValueIndex,
                                                   int maxSqlUnionCount, boolean isFullTableScan) {
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults = isFullTableScan ?
-            getShardResultsFullTableScan(tableMeta, values.size()):
+            getShardResultsFullTableScan(tableMeta, values.size()) :
             getShardResults(tableMeta, values, insertColumns);
 
         // Build select row type
@@ -1258,10 +1263,10 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             .collect(Collectors.toList());
 
         List<RelNode> results = new ArrayList<>();
-        for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbResult: shardResults.entrySet()) {
+        for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbResult : shardResults.entrySet()) {
             String dbIndex = dbResult.getKey();
             Map<String, List<Pair<Integer, List<Object>>>> tbResults = dbResult.getValue();
-            for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbResult: tbResults.entrySet()) {
+            for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbResult : tbResults.entrySet()) {
                 String tbName = tbResult.getKey();
                 Set<Integer> includeValueIndexes =
                     tbResult.getValue().stream().map(p -> p.left).collect(Collectors.toCollection(HashSet::new));
@@ -1277,7 +1282,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
                 for (int i = 0; i < deduplicated.size(); i++) {
                     final SqlNode keyNameNode = conditionKeyNodes.get(i);
-                    for (Map.Entry<GroupKey, List<Object>> dedup: deduplicated.get(i).entrySet()) {
+                    for (Map.Entry<GroupKey, List<Object>> dedup : deduplicated.get(i).entrySet()) {
                         GroupKey groupKey = dedup.getKey();
                         Pair<Integer, Integer> index = deduplicatedIndex.get(i).get(groupKey);
                         if (!isFullTableScan && !includeValueIndexes.contains(index.left)) {
@@ -1292,7 +1297,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                             selectList.add(buildConstant(index.left, "value_index"));
                             selectList.add(buildConstant(index.right, "uk_index"));
                         }
-                        for (String s: selectKey) {
+                        for (String s : selectKey) {
                             selectList.add(new SqlIdentifier(s, SqlParserPos.ZERO));
                         }
 

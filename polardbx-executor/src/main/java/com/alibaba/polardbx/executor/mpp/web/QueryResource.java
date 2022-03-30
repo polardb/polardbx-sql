@@ -40,7 +40,7 @@ import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
 import com.alibaba.polardbx.executor.mpp.execution.QueryState;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.mpp.server.BasicQueryInfo;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
 

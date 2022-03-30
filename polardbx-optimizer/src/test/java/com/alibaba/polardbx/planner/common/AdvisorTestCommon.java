@@ -34,6 +34,9 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 
+import java.util.Map;
+import java.util.Set;
+
 /**
  * @author dylan
  */
@@ -104,6 +107,23 @@ public abstract class AdvisorTestCommon extends PlanTestCommon {
             throw new AssertionError("advisor test can not advise an index");
         }
 
+        // deal with advising broadcast table
+        if (adviseType == IndexAdvisor.AdviseType.BROADCAST) {
+            Map<String, Set<String>> broadcasts = adviceResult.getConfiguration().getBroadcastTable();
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, Set<String>> entry : broadcasts.entrySet()) {
+                if (appName.equals(entry.getKey())) {
+                    for (String table : entry.getValue()) {
+                        sb.append(' ').append(table);
+                    }
+                } else {
+                    for (String table : entry.getValue()) {
+                        sb.append(' ').append(entry.getKey()).append('.').append(table);
+                    }
+                }
+            }
+            return sb.toString().trim();
+        }
         assertPlanProperty(advisedPlan);
 
         planStr = adviceResult.getAfterPlanForDisplay();

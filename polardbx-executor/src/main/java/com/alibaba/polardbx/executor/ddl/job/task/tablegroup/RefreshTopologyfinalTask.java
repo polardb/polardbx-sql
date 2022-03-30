@@ -34,6 +34,7 @@ import lombok.Getter;
 import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Getter
 @TaskName(name = "RefreshTopologyfinalTask")
@@ -52,53 +53,43 @@ public class RefreshTopologyfinalTask extends BaseGmsTask {
 
     @Override
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        for (Map.Entry<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbsEntry : dbTableGroupAndInstGroupInfo
-            .entrySet()) {
+        for (Map.Entry<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbsEntry :
+            dbTableGroupAndInstGroupInfo.entrySet()) {
             String logicalDb = dbsEntry.getKey();
             //key:instId, value:group/phyDb
             for (Map.Entry<String, List<Pair<String, String>>> dbEntry : dbsEntry.getValue().getValue().entrySet()) {
-                for (Pair<String, String> pair : dbEntry.getValue()) {
-                    ScaleOutUtils.setGroupTypeByDbAndGroup(logicalDb, pair.getKey(),
-                        DbGroupInfoRecord.GROUP_TYPE_NORMAL, metaDbConnection);
-                    String instIdOfGroup = InstIdUtil.getInstId();
-                    String groupConfigDataId =
-                        MetaDbDataIdBuilder
-                            .getGroupConfigDataId(instIdOfGroup, schemaName, pair.getKey());
-                    MetaDbConfigManager.getInstance().notify(groupConfigDataId, metaDbConnection);
 
-                    FailPoint.injectRandomExceptionFromHint(executionContext);
-                    FailPoint.injectRandomSuspendFromHint(executionContext);
-                }
+                List<String> groupList = dbEntry.getValue().stream().map(Pair::getKey).collect(Collectors.toList());
+                ScaleOutUtils.updateGroupType(logicalDb, groupList, DbGroupInfoRecord.GROUP_TYPE_ADDED,
+                    DbGroupInfoRecord.GROUP_TYPE_NORMAL,
+                    metaDbConnection);
+
+                FailPoint.injectRandomExceptionFromHint(executionContext);
+                FailPoint.injectRandomSuspendFromHint(executionContext);
             }
         }
     }
 
     @Override
     public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        for (Map.Entry<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbsEntry : dbTableGroupAndInstGroupInfo
-            .entrySet()) {
+        for (Map.Entry<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbsEntry :
+            dbTableGroupAndInstGroupInfo.entrySet()) {
             String logicalDb = dbsEntry.getKey();
             //key:instId, value:group/phyDb
             for (Map.Entry<String, List<Pair<String, String>>> dbEntry : dbsEntry.getValue().getValue().entrySet()) {
-                for (Pair<String, String> pair : dbEntry.getValue()) {
-                    ScaleOutUtils.setGroupTypeByDbAndGroup(logicalDb, pair.getKey(),
-                        DbGroupInfoRecord.GROUP_TYPE_ADDED, metaDbConnection);
-                    String instIdOfGroup = InstIdUtil.getInstId();
-                    String groupConfigDataId =
-                        MetaDbDataIdBuilder
-                            .getGroupConfigDataId(instIdOfGroup, schemaName, pair.getKey());
-                    MetaDbConfigManager.getInstance().notify(groupConfigDataId, metaDbConnection);
 
-                    FailPoint.injectRandomExceptionFromHint(executionContext);
-                    FailPoint.injectRandomSuspendFromHint(executionContext);
-                }
+                List<String> groupList = dbEntry.getValue().stream().map(Pair::getKey).collect(Collectors.toList());
+                ScaleOutUtils.updateGroupType(logicalDb, groupList, DbGroupInfoRecord.GROUP_TYPE_NORMAL,
+                    metaDbConnection);
+
+                FailPoint.injectRandomExceptionFromHint(executionContext);
+                FailPoint.injectRandomSuspendFromHint(executionContext);
             }
         }
     }
 
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
-        syncGroupId();
     }
 
     @Override
@@ -110,6 +101,10 @@ public class RefreshTopologyfinalTask extends BaseGmsTask {
         for (Map.Entry<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbsEntry : dbTableGroupAndInstGroupInfo
             .entrySet()) {
             String logicalDb = dbsEntry.getKey();
+
+            String topologyDataId = MetaDbDataIdBuilder.getDbTopologyDataId(logicalDb);
+            MetaDbConfigManager.getInstance().sync(topologyDataId);
+
             //key:instId, value:group/phyDb
             for (Map.Entry<String, List<Pair<String, String>>> dbEntry : dbsEntry.getValue().getValue().entrySet()) {
                 String instIdOfGroup = InstIdUtil.getInstId();

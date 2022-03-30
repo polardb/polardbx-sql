@@ -43,7 +43,9 @@ public class PushSemiJoinRule extends PushJoinRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
-        return PlannerContext.getPlannerContext(call).getParamManager().getBoolean(ConnectionParams.ENABLE_PUSH_JOIN);
+        return PlannerContext.getPlannerContext(call).getParamManager().getBoolean(ConnectionParams.ENABLE_PUSH_JOIN)
+            && !PlannerContext.getPlannerContext(call).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP);
     }
 
     @Override
@@ -86,7 +88,8 @@ public class PushSemiJoinRule extends PushJoinRule {
                 call.builder(),
                 call.builder().getRexBuilder(),
                 leftFilters,
-                rightFilters));
+                rightFilters,
+                false));
 
         RelUtils.changeRowType(newLeftView, logicalSemiJoin.getRowType());
         call.transformTo(newLeftView);

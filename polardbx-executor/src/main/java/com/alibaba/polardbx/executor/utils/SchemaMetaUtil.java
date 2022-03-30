@@ -25,6 +25,7 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.misc.SchemaInfoCleaner;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.SchemaMetaCleaner;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
@@ -57,12 +58,14 @@ public class SchemaMetaUtil {
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         SchemaInfoCleaner schemaInfoCleaner = new SchemaInfoCleaner();
+        DdlPlanAccessor ddlPlanAccessor = new DdlPlanAccessor();
 
         try {
             assert metaDbConn != null;
 
             tableInfoManager.setConnection(metaDbConn);
             schemaInfoCleaner.setConnection(metaDbConn);
+            ddlPlanAccessor.setConnection(metaDbConn);
 
             // If the schema has been dropped, then we have to do some cleanup.
             String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
@@ -89,6 +92,7 @@ public class SchemaMetaUtil {
 
             GsiBackfillManager.deleteAll(schemaName, metaDbConn);
             CheckerManager.deleteAll(schemaName, metaDbConn);
+            ddlPlanAccessor.deleteAll(schemaName);
 
             TableGroupUtils.deleteTableGroupInfoBySchema(schemaName, metaDbConn);
 

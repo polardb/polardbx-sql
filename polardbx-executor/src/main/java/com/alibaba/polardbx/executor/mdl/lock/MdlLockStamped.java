@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.mdl.lock;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.mdl.MdlKey;
 import com.alibaba.polardbx.executor.mdl.MdlLock;
 
@@ -41,7 +43,11 @@ public class MdlLockStamped extends MdlLock {
 
     @Override
     public long readLock() {
-        return stampedLock.readLock();
+        try {
+            return stampedLock.readLockInterruptibly();
+        } catch (InterruptedException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "mdl readlock interrupted", e);
+        }
     }
 
     @Override

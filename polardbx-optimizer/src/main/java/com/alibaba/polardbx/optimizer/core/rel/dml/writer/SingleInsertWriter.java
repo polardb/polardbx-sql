@@ -50,8 +50,7 @@ public class SingleInsertWriter extends InsertWriter {
     public SingleInsertWriter(RelOptTable targetTable,
                               LogicalInsert insert,
                               TableMeta tableMeta,
-                              TableRule tableRule
-    ) {
+                              TableRule tableRule) {
         super(targetTable, insert);
         this.tableMeta = tableMeta;
         this.tableRule = tableRule;

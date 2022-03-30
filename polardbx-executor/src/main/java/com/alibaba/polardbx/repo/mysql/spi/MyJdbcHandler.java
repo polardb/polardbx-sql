@@ -18,6 +18,21 @@ package com.alibaba.polardbx.repo.mysql.spi;
 
 import com.alibaba.polardbx.atom.utils.LoadFileUtils;
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
+import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
+import com.google.common.collect.ImmutableList;
+import com.googlecode.protobuf.format.JsonFormat;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
+import com.mysql.jdbc.CommunicationsException;
+import com.mysql.jdbc.Statement;
+import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
+import com.google.common.collect.ImmutableList;
+import com.googlecode.protobuf.format.JsonFormat;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
+import com.mysql.jdbc.CommunicationsException;
+import com.mysql.jdbc.Statement;
+import com.alibaba.polardbx.atom.utils.LoadFileUtils;
+import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlException;
@@ -59,6 +74,7 @@ import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
@@ -895,6 +911,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         } else if (queryOperation instanceof DirectTableOperation) {
             final DirectTableOperation directTableOperation = (DirectTableOperation) queryOperation;
             tableNames = directTableOperation.getTableNames();
+        } else if (queryOperation instanceof DirectShardingKeyTableOperation) {
+            tableNames = Collections.singletonList(executionContext.getDbIndexAndTableName().getValue());
         } else {
             tableNames = null;
         }
@@ -903,9 +921,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             // XPlan have individual parameter mapper.
             final Map<Integer, ParameterContext> params =
                 null == executionContext.getParams() ? null : executionContext.getParams().getCurrentParameter();
-            final boolean compactMeta = (queryOperation instanceof SingleTableOperation
-                || queryOperation instanceof DirectTableOperation)
-                && null == executionContext.getGroupHint() && null == executionContext.getExplain();
+            final boolean compactMeta =
+                null == executionContext.getGroupHint() && null == executionContext.getExplain();
             return executeQueryX(XTemplate, tableNames, params, queryOperation.getNativeSql(), compactMeta);
         }
         return false;
@@ -1574,6 +1591,12 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_EXCEPTION, executionContext, () -> {
                     FailPoint.injectException(FailPointKey.FP_PHYSICAL_DDL_EXCEPTION);
                 });
+                FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_PARTIAL_EXCEPTION, executionContext, () -> {
+                    long taskId = executionContext.getPhyDdlExecutionRecord().getTaskId();
+                    if (!executionContext.getDdlContext().compareAndSetPhysicalDdlInjectionFlag(taskId)) {
+                        FailPoint.injectException(FailPointKey.FP_PHYSICAL_DDL_PARTIAL_EXCEPTION);
+                    }
+                });
 
                 /**
                  * 真正将SQL发向物理数据源并执行：一定需要返回是否真正对DB产生了影响，后面会根据这个来决定是否上推新规则
@@ -1641,7 +1664,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     1L);
             }
 
-            waitUntilPhyDdlDoneAfterTimeout(e);
+            waitUntilPhyDdlDoneAfterTimeout(tableOperation, e);
 
             try {
                 if (tableOperation.isPartitioned()) {
@@ -1697,7 +1720,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
      * check the physical process until it's done, so that the logical
      * ddl executor can determine if the physical ddl is already done.
      */
-    private void waitUntilPhyDdlDoneAfterTimeout(Throwable t) {
+    private void waitUntilPhyDdlDoneAfterTimeout(PhyDdlTableOperation tableOperation, Throwable t) {
         boolean isTimeoutOnJdbc = t instanceof CommunicationsException &&
             TStringUtil.equalsIgnoreCase(((CommunicationsException) t).getSQLState(), "08S01") &&
             TStringUtil.containsIgnoreCase(t.getMessage(), "Communications link failure");
@@ -1711,7 +1734,9 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             TStringUtil.containsIgnoreCase(t.getMessage(), "previous unfinished");
 
         if (isTimeoutOnJdbc || isTimeoutOnXProtocol || isUnfinishedOnXProtocol) {
-            DdlHelper.waitUntilPhyDdlDone(connection, executionContext.getTraceId());
+            String phyTableName =
+                DdlHelper.genPhyTablePair(tableOperation, executionContext.getDdlContext()).getValue();
+            DdlHelper.waitUntilPhyDdlDone(connection, phyTableName, executionContext.getTraceId());
         }
     }
 
@@ -1836,16 +1861,15 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     private void storeFailedDDLRecords(PhyDdlTableOperation ddl, String group, int code, String message) {
         String tableName = null;
 
-        Pair<String, String> objectInfo = DdlHelper.genPhyTableInfo(ddl, executionContext.getDdlContext());
-        tableName = objectInfo.getValue();
+        tableName = DdlHelper.genPhyTablePair(ddl, executionContext.getDdlContext()).getValue();
 
         if (TStringUtil.isNotEmpty(tableName)) {
             String pureTableName = tableName.replaceAll(DdlConstants.BACKTICK, DdlConstants.EMPTY_CONTENT);
             String pureMessage = message.replaceAll(DdlConstants.BACKTICK, DdlConstants.EMPTY_CONTENT);
             if (!pureMessage.toLowerCase().contains(pureTableName.toLowerCase())) {
                 // Make sure that the error message contains physical table name
-                // so that AsyncDDLManager can determine if the physical DDL has
-                // been executed successfully later.
+                // so that logical ddl executor can determine if the physical DDL
+                // has been executed successfully later.
                 message += " on " + tableName;
             }
         }

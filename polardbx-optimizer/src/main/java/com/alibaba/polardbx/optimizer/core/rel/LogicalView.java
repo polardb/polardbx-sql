@@ -53,10 +53,6 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRul
 import com.alibaba.polardbx.optimizer.core.planner.rule.SubQueryToSemiJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.TddlFilterJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.core.rel.segmented.SegmentedSharding;
-import com.alibaba.polardbx.optimizer.core.rel.segmented.rule.BetweenTableScanSplitRule;
-import com.alibaba.polardbx.optimizer.core.rel.segmented.rule.GreaterTableScanSplitRule;
-import com.alibaba.polardbx.optimizer.core.rel.segmented.rule.LessThanOrEqualTableScanSplitRule;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
@@ -97,7 +93,6 @@ import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
-import org.apache.calcite.plan.hep.HepMatchOrder;
 import org.apache.calcite.plan.hep.HepPlanner;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.rel.RelCollation;
@@ -165,7 +160,6 @@ import java.util.BitSet;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -214,12 +208,7 @@ public class LogicalView extends TableScan {
     private volatile RelNode optimizedPushedRelNodeForMetaQueryCache = null;
     private volatile RelNode lastPushedRelNodeCache = null;
     private volatile RelNode mysqlNodeCache = null;
-    //为下推做准备，暂时不使用
-    private LinkedHashMap<String, SegmentedSharding> pushedSingleParallelShardings = new LinkedHashMap<>();
-    private List<RelNode> replacedRelNodes;
-    private List<RelNode> subRelNode = new ArrayList<>();
-    private TableScanNodeFinder tableScanNodeFinder;
-    private boolean segmented = false;
+
     private boolean expandView = false;
     private boolean newPartDbTbl = false;
     private BaseQueryOperation queryOperation;
@@ -246,12 +235,13 @@ public class LogicalView extends TableScan {
         super(relInput.getCluster(),
             relInput.getTraitSet(),
             SqlConverter.getInstance(relInput.getString("schemaName"),
-                PlannerContext.getPlannerContext(relInput.getCluster()).getExecutionContext()).getCatalog()
+                    PlannerContext.getPlannerContext(relInput.getCluster()).getExecutionContext()).getCatalog()
                 .getTableForMember(relInput.getStringList("table")));
         this.tableNames = relInput.getStringList("tableNames");
         this.dbType = DbType.MYSQL;
         this.schemaName = relInput.getString("schemaName");
         this.newPartDbTbl = checkIfNewPartDbTbl(this.tableNames);
+        this.partitions = extractPartitionsFromStrList(relInput.getStringList("partitions"));
         isMGetEnabled = relInput.getBoolean("isMGetEnabled", false);
         Map<String, Object> pushDownOptParams = (Map) relInput.get("pushDownOpt");
         DRDSRelJsonReader drdsRelJsonReader = new DRDSRelJsonReader(relInput.getCluster(),
@@ -270,10 +260,6 @@ public class LogicalView extends TableScan {
             throw new RuntimeException("PLAN EXTERNALIZE TEST error:" + e.getMessage());
         }
         buildApply();
-        segmented = relInput.getBoolean("segmented", false);
-        if (segmented) {
-            initTableScanFinder();
-        }
         mqCache = RelMetadataQuery.instance();
     }
 
@@ -419,47 +405,6 @@ public class LogicalView extends TableScan {
         return rexLiteral;
     }
 
-    public int getSize() {
-        int size = 0;
-        if (tableScanNodeFinder == null) {
-            initTableScanFinder();
-        }
-        if (segmented) {
-            size = tableScanNodeFinder.segmentedSharding.getSize();
-        }
-        return size;
-    }
-
-    private void initTableScanFinder() {
-        TableScanNodeFinder tsFinder = new TableScanNodeFinder().invoke();
-        this.tableScanNodeFinder = tsFinder;
-        if (tableScanNodeFinder.is()) {
-
-            if (tableScanNodeFinder.segmentedSharding.getSize() > 1) {
-                segmented = true;
-            }
-        }
-    }
-
-    public LinkedHashMap<String, SegmentedSharding> getPushedSingleParallelShardings() {
-        return pushedSingleParallelShardings;
-    }
-
-    public void setPushedSingleParallelShardings(
-        LinkedHashMap<String, SegmentedSharding> pushedSingleParallelShardings) {
-        if (pushedSingleParallelShardings == null) {
-            return;
-        }
-        this.pushedSingleParallelShardings = pushedSingleParallelShardings;
-    }
-
-    public void addPushedSingleParallelShardings(SegmentedSharding segmentedSharding) {
-        if (segmentedSharding == null) {
-            return;
-        }
-        this.pushedSingleParallelShardings.put(segmentedSharding.getTableName(), segmentedSharding);
-    }
-
     private void buildApply() {
         class ApplyBuilder extends RelVisitor {
 
@@ -485,7 +430,7 @@ public class LogicalView extends TableScan {
                 go(node);
             }
         }
-        new ApplyBuilder().run(pushDownOpt.getPushedRelNode());
+        new ApplyBuilder().run(getPushedRelNode());
     }
 
     @Override
@@ -496,8 +441,42 @@ public class LogicalView extends TableScan {
             .item("pushDownOpt", pushDownOpt)
             .item("schemaName", schemaName)
             .itemIf("isMGetEnabled", isMGetEnabled, isMGetEnabled)
-            .itemIf("segmented", segmented, segmented)
+            .item("partitions", convertPartitionsToStrList())
             ;
+    }
+
+    private SqlNode extractPartitionsFromStrList(List<String> partNameList) {
+        if (partNameList == null || partNameList.size() == 0) {
+            return null;
+        }
+
+        List<SqlNode> nodeList = new ArrayList<>();
+        for (int i = 0; i < partNameList.size(); i++) {
+            String partNameStr = partNameList.get(i);
+            List<String> tmpVal = new ArrayList<>();
+            tmpVal.add(partNameStr);
+            SqlIdentifier partNameId = new SqlIdentifier(tmpVal, SqlParserPos.ZERO);
+            nodeList.add(partNameId);
+        }
+        SqlNodeList partNameIds = new SqlNodeList(nodeList, SqlParserPos.ZERO);
+        return partNameIds;
+    }
+
+    private List<String> convertPartitionsToStrList() {
+        List<String> strList = new ArrayList<>();
+        if (partitions == null) {
+            return strList;
+        }
+        try {
+            SqlNodeList partNameIds = (SqlNodeList) this.partitions;
+            for (int i = 0; i < partNameIds.size(); i++) {
+                SqlIdentifier partNameId = (SqlIdentifier) partNameIds.get(i);
+                strList.add(partNameId.toString());
+            }
+        } catch (Throwable ex) {
+            // ignore
+        }
+        return strList;
     }
 
     public boolean isUnderMergeSort() {
@@ -653,7 +632,8 @@ public class LogicalView extends TableScan {
 
         //final Set<String> groupIntersection = getGroupIntersection(targetDBs, schemaName);
         //targetDBs = filterGroup(targetDBs, groupIntersection, schemaName);
-        Map<String, List<List<String>>> result = PlannerUtils.convertTargetDB(targetDBs, schemaName, crossSingleTable);
+        Map<String, List<List<String>>> result = PlannerUtils.convertTargetDB(targetDBs, schemaName, crossSingleTable,
+            executionContext);
 
         if (GeneralUtil.isEmpty(result) && null == comparativeHintCache) {
             logger.warn("Empty target tables got, use full table scan for instead. logical tables: "
@@ -858,7 +838,6 @@ public class LogicalView extends TableScan {
             correlateVariableScalar.addAll(dynamicFinder.getCorrelateVariableScalar());
         }
         pushDownOpt.push(relNode);
-        initTableScanFinder();
     }
 
     /**
@@ -922,7 +901,7 @@ public class LogicalView extends TableScan {
             return false;
         }
         Set<RelOptTable> tables = RelOptUtil.findTables(e.getRel());
-        tables.addAll(RelOptUtil.findTables(pushDownOpt.getPushedRelNode()));
+        tables.addAll(RelOptUtil.findTables(getPushedRelNode()));
         return RelUtils.isAllSingleTableInSameSchema(tables);
     }
 
@@ -946,11 +925,14 @@ public class LogicalView extends TableScan {
         pushDownOpt.pushJoin(join, rightView, leftFilters, rightFilters, getCluster());
         tableNames = collectTableNames();
         mergeHints(join, rightView);
-        if (rightView instanceof LogicalView) {
-            this.getPushedSingleParallelShardings()
-                .putAll(((LogicalView) rightView).getPushedSingleParallelShardings());
-        }
-        initTableScanFinder();
+        rebuildPartRoutingPlanInfo();
+    }
+
+    public void pushSemiJoinDirect(LogicalSemiJoin join, LogicalView rightView, List<RexNode> leftFilters,
+                                   List<RexNode> rightFilters) {
+        pushDownOpt.pushSemiJoinDirect(join, rightView, leftFilters, rightFilters, getCluster());
+        tableNames = collectTableNames();
+        mergeHints(join, rightView);
         rebuildPartRoutingPlanInfo();
     }
 
@@ -960,11 +942,6 @@ public class LogicalView extends TableScan {
         push(relNode);
         tableNames = collectTableNames();
         mergeHints(join, rightView);
-        if (rightView instanceof LogicalView) {
-            this.getPushedSingleParallelShardings()
-                .putAll(((LogicalView) rightView).getPushedSingleParallelShardings());
-        }
-        initTableScanFinder();
         rebuildPartRoutingPlanInfo();
     }
 
@@ -1184,6 +1161,16 @@ public class LogicalView extends TableScan {
 
     public RelNode getPushedRelNode() {
         return pushDownOpt.getPushedRelNode();
+    }
+
+    public RelNode getSemiJoinRemovedRelNode() {
+        // in case of wrong cache, ignore it directly when disabling subquery_unwrap
+        if (!PlannerContext.getPlannerContext(pushDownOpt.getPushedRelNode()).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP)) {
+            return pushDownOpt.getPushedRelNode();
+        }
+
+        return pushDownOpt.removeSemiJoin();
     }
 
     public RelNode getMysqlNode() {
@@ -1684,162 +1671,16 @@ public class LogicalView extends TableScan {
 
     public List<RelNode> getInput(UnionOptHelper helper, ExecutionContext executionContext,
                                   boolean forceIgnoreRF) {
-        Map<String, Object> extraCmd = executionContext.getExtraCmds();
-        RelNode acceptTsFoundNode = null;
-        initTableScanFinder();
-        if (!tableScanNodeFinder.is()) {
-            return getInnerInput(helper, executionContext, forceIgnoreRF);
-        }
-        acceptTsFoundNode = tableScanNodeFinder.getAcceptTsFoundNode();
-
-        buildSubRelNode(acceptTsFoundNode);
-
-        SegmentedSharding segmentedSharding = tableScanNodeFinder.segmentedSharding;
-
-        //replace back parameters,and the new Relnode is saved in replacedRelNodes
-        List<RelNode> relNodes = new ArrayList<>();
-        final List<Object> parameters = segmentedSharding.getParameters();
-        List<Object> temp = new ArrayList<>();
-        if (parameters == null || parameters.size() == 0) {
-            return getInnerInput(helper, executionContext, forceIgnoreRF);
-        }
-        if (replacedRelNodes == null) {
-            for (int i = 0; i < parameters.size(); i++) {
-                final Object e = parameters.get(i);
-                if (!segmentedSharding.isParamsSplitFlag(e)) {
-                    temp.add(e);
-                } else {
-                    RelNode relNode = null;
-                    if (temp.size() == 1 && i == 1) {
-                        relNode = replaceParameter(subRelNode.get(0), temp);
-                    } else if (temp.size() == 2) {
-                        relNode = replaceParameter(subRelNode.get(1), temp);
-                    } else if (temp.size() == 1) {
-                        relNode = replaceParameter(subRelNode.get(2), temp);
-                    }
-                    temp.clear();
-                    if (relNode == null) {
-                        relNodes.clear();
-                        return getInnerInput(helper, executionContext, forceIgnoreRF);
-                    }
-                    relNodes.add(relNode);
-                }
-            }
-            replacedRelNodes = relNodes;
-        }
-        Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
-        List<SqlSelect> sqlNodes = new ArrayList<>();
-        for (int i = 0; i < replacedRelNodes.size(); i++) {
-            SqlNode sqlTemplate = getConverter().visitChild(0, replacedRelNodes.get(i)).asStatement();
-            ReplaceTableNameWithQuestionMarkVisitor visitor =
-                new ReplaceTableNameWithQuestionMarkVisitor(schemaName, executionContext);
-            final SqlNode accept = sqlTemplate.accept(visitor);
-            sqlNodes.add((SqlSelect) accept);
-        }
-        SegmentedPhyTableScanBuilder phyTableScanBuilder = new SegmentedPhyTableScanBuilder(replacedRelNodes, sqlNodes,
-            targetTables,
-            executionContext,
-            this,
-            dbType,
-            schemaName,
-            tableNames);
-
-        phyTableScanBuilder.setUnionOptHelper(helper);
-        final List<RelNode> buildResult = phyTableScanBuilder.build(extraCmd);
-        return buildResult;
-    }
-
-    private void buildSubRelNode(RelNode pushedRelNode) {
-        //生成left
-        HepProgramBuilder singleTableParallel = getLSingleTableParallel();
-        HepPlanner planner = new HepPlanner(singleTableParallel.build());
-        planner.startOptimizerTrace();
-        planner.setRoot(pushedRelNode);
-        RelNode bestExp = planner.findBestExp();
-        subRelNode.add(bestExp);
-        if (logger.isDebugEnabled()) {
-            logger.debug("Rel left:" + getConverter().visitChild(0, bestExp).asStatement().toString());
-        }
-
-        //生成both
-        singleTableParallel = getBSingleTableParallel();
-        planner = new HepPlanner(singleTableParallel.build());
-        planner.startOptimizerTrace();
-        planner.setRoot(pushedRelNode);
-        bestExp = planner.findBestExp();
-        subRelNode.add(bestExp);
-        if (logger.isDebugEnabled()) {
-            logger.debug("Rel Middle:" + getConverter().visitChild(0, bestExp).asStatement().toString());
-        }
-        //生成right
-        singleTableParallel = getRSingleTableParallel();
-        planner = new HepPlanner(singleTableParallel.build());
-        planner.startOptimizerTrace();
-        planner.setRoot(pushedRelNode);
-        bestExp = planner.findBestExp();
-        if (logger.isDebugEnabled()) {
-            logger.debug("Rel right:" + getConverter().visitChild(0, bestExp).asStatement().toString());
-        }
-        subRelNode.add(bestExp);
-    }
-
-    private RelNode replaceParameter(RelNode relNode, List<Object> temp) {
-        final LogicalView.ReplacedTableCondition parallelRelNode = getParallelRelNode(relNode, temp);
-        if (parallelRelNode == null) {
-            return null;
-        }
-        if (!parallelRelNode.replaced) {
-            return null;
-        }
-        return parallelRelNode.relNode;
-
-    }
-
-    protected HepProgramBuilder getLSingleTableParallel() {
-
-        HepProgramBuilder hepPgmBuilder = new HepProgramBuilder();
-        hepPgmBuilder.addMatchOrder(HepMatchOrder.TOP_DOWN);
-        hepPgmBuilder.addRuleInstance(LessThanOrEqualTableScanSplitRule.INSTANCE);
-        hepPgmBuilder.addRuleInstance(FilterMergeRule.INSTANCE);
-        return hepPgmBuilder;
-    }
-
-    protected HepProgramBuilder getBSingleTableParallel() {
-
-        HepProgramBuilder hepPgmBuilder = new HepProgramBuilder();
-        hepPgmBuilder.addMatchOrder(HepMatchOrder.TOP_DOWN);
-        hepPgmBuilder.addRuleInstance(BetweenTableScanSplitRule.INSTANCE);
-        hepPgmBuilder.addRuleInstance(FilterMergeRule.INSTANCE);
-        return hepPgmBuilder;
-    }
-
-    protected HepProgramBuilder getRSingleTableParallel() {
-
-        HepProgramBuilder hepPgmBuilder = new HepProgramBuilder();
-        hepPgmBuilder.addMatchOrder(HepMatchOrder.TOP_DOWN);
-        hepPgmBuilder.addRuleInstance(GreaterTableScanSplitRule.INSTANCE);
-        hepPgmBuilder.addRuleInstance(FilterMergeRule.INSTANCE);
-        return hepPgmBuilder;
+        return getInnerInput(helper, executionContext, forceIgnoreRF);
     }
 
     public boolean isSingleGroup() {
         final boolean singleGroup = isSingleGroup(false);
-        if (singleGroup) {
-            if (this.getSize() > 1) {
-                return false;
-            }
-        }
         return singleGroup;
     }
 
     public String explainNodeName() {
         String name = "LogicalView";
-        if (tableScanNodeFinder == null) {
-            initTableScanFinder();
-        }
-        if (isSegmented()) {
-            name = name + "(Segmented=true)";
-        }
         return name;
 
     }
@@ -1879,7 +1720,6 @@ public class LogicalView extends TableScan {
         final LogicalView logicalView = new LogicalView(this, lockMode);
         logicalView.setScalarList(scalarList);
         logicalView.correlateVariableScalar.addAll(correlateVariableScalar);
-        logicalView.setPushedSingleParallelShardings(this.getPushedSingleParallelShardings());
         return logicalView;
     }
 
@@ -1893,9 +1733,6 @@ public class LogicalView extends TableScan {
         newLogicalView.traitSet = traitSet;
         newLogicalView.newPartDbTbl = this.newPartDbTbl;
         newLogicalView.pushDownOpt = pushDownOpt.copy(newLogicalView, this.getPushedRelNode());
-        newLogicalView.segmented = this.segmented;
-
-        newLogicalView.setPushedSingleParallelShardings(this.getPushedSingleParallelShardings());
         return newLogicalView;
     }
 
@@ -1993,10 +1830,6 @@ public class LogicalView extends TableScan {
     public LogicalView setExpandView(boolean expandView) {
         this.expandView = expandView;
         return this;
-    }
-
-    public boolean isSegmented() {
-        return segmented;
     }
 
     public BaseQueryOperation fromTableOperation() {
@@ -2226,53 +2059,6 @@ public class LogicalView extends TableScan {
         }
     }
 
-    private class TableScanNodeFinder {
-        private boolean found;
-        private RelNode pushedRelNode;
-        private BaseTableScanFinder tsFinder;
-        private RelNode acceptTsFoundNode;
-        private SegmentedSharding segmentedSharding;
-
-        public TableScanNodeFinder() {
-            this.pushedRelNode = getPushedRelNode();
-            this.tsFinder = new LogicalView.LookupTableScanFinder();
-        }
-
-        boolean is() {
-            return found;
-        }
-
-        public RelNode getAcceptTsFoundNode() {
-            return acceptTsFoundNode;
-        }
-
-        public LogicalView.TableScanNodeFinder invoke() {
-            acceptTsFoundNode = pushedRelNode.accept(tsFinder);
-            if (logger.isDebugEnabled()) {
-                logger.debug("Rel tsFinder:" + getConverter().visitChild(0, acceptTsFoundNode).asStatement().toString()
-                    + "\n  is found:" + tsFinder.is());
-            }
-
-            if (!tsFinder.is()) {
-                found = false;
-                return this;
-            }
-
-            final String tableName = tsFinder.getTableName();
-
-            segmentedSharding = pushedSingleParallelShardings.get(tableName);
-
-            if (segmentedSharding == null) {
-                found = false;
-                return this;
-            }
-
-            segmented = true;
-            found = true;
-            return this;
-        }
-    }
-
     public boolean isNewPartDbTbl() {
         return newPartDbTbl;
     }
@@ -2409,5 +2195,15 @@ public class LogicalView extends TableScan {
     public Map<ImmutableBitSet, ImmutableBitSet> getFunctionalDependency(RelMetadataQuery mq,
                                                                          ImmutableBitSet iOutputColumns) {
         return mqCache.getFunctionalDependency(getPushedRelNode(), iOutputColumns);
+    }
+
+    public boolean useSelectPartitions() {
+        if (this.partitions != null) {
+            SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
+            if (partNamesAst.size()  > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -107,12 +107,7 @@ public class TruncateUtil {
     public static Map<String, Set<String>> getTmpTableTopology(String schemaName, String tmpTableName) {
         PartitionInfo partitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tmpTableName);
-        Map<String, Set<String>> newTopology =
-            partitionInfo.getPhysicalPartitionTopology(null).entrySet().stream().collect(
-                Collectors.toMap(Map.Entry::getKey,
-                    v -> v.getValue().stream().map(PhysicalPartitionInfo::getPhyTable)
-                        .collect(Collectors.toSet())));
-        return newTopology;
+        return partitionInfo.getTopology();
     }
 }
 

@@ -48,14 +48,15 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
         int partCol = partInfo.getPartitionBy().getPartitionColumnNameList().size();
         ComparisonKind cmpKind = exprInfo.getCmpKind();
         if (cmpKind == ComparisonKind.LESS_THAN || cmpKind == ComparisonKind.LESS_THAN_OR_EQUAL) {
-
             StepIntervalInfo range = new StepIntervalInfo();
             range.setRangeType(RangeIntervalType.SATISFIABLE_RANGE);
 
-            RangeInterval rangeInterval = new RangeInterval();
-            rangeInterval.setCmpKind(cmpKind);
-            rangeInterval.setIncludedBndValue(cmpKind.containEqual());
-            rangeInterval.setExprIndex(0);
+
+            /**
+             * Convert stepOp <(=):stepOp   to (minInf,stepOp) or  (minInf,stepOp]
+             */
+            RangeInterval rangeInterval = RangeInterval.buildRangeInterval(null,
+                cmpKind, cmpKind.containEqual(), 0, false, false);
 
             /**
              * col <  const | col <= const
@@ -64,9 +65,9 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             range.setMaxValStep(opStep);
             this.maxValStep = opStep;
 
-            RangeInterval minVal = new RangeInterval();
-            minVal.setMinInf(true);
-            minVal.setBndValue(SearchDatumInfo.createMinValDatumInfo(partCol));
+            RangeInterval minVal = RangeInterval.buildRangeInterval(SearchDatumInfo.createMinValDatumInfo(partCol),
+                ComparisonKind.GREATER_THAN, false, 0, false, true);
+
             range.setMinVal(minVal);
 
             this.opRawRange = range;
@@ -76,10 +77,13 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             StepIntervalInfo range = new StepIntervalInfo();
             range.setRangeType(RangeIntervalType.SATISFIABLE_RANGE);
 
-            RangeInterval rangeInterval = new RangeInterval();
-            rangeInterval.setCmpKind(cmpKind);
-            rangeInterval.setIncludedBndValue(cmpKind.containEqual());
-            rangeInterval.setExprIndex(0);
+            /**
+             * Convert >(=):stepOp to (step,maxInf) or  [stepOp,maxInf)
+             */
+
+            RangeInterval rangeInterval = RangeInterval.buildRangeInterval(null,
+                cmpKind, cmpKind.containEqual(), 0, false, false);
+
 
             /**
              * col <  const | col <= const
@@ -89,9 +93,10 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             range.setMinValStep(opStep);
             this.minValStep = opStep;
 
-            RangeInterval maxVal = new RangeInterval();
-            maxVal.setMaxInf(true);
-            maxVal.setBndValue(SearchDatumInfo.createMaxValDatumInfo(partCol));
+            RangeInterval maxVal = RangeInterval.buildRangeInterval(SearchDatumInfo.createMaxValDatumInfo(partCol),
+                ComparisonKind.LESS_THAN, false, 0, true, false);
+
+
             range.setMaxVal(maxVal);
 
             this.opRawRange = range;
@@ -101,17 +106,19 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             range.setRangeType(RangeIntervalType.SATISFIABLE_RANGE);
 
             /**
+             * Convert =:stepOp to [stepOp,stepOp]
+             */
+
+            /**
              * col = const ==>  
              *      col >= const  (minValStep)
              *  and col <= const  (maxValStep) 
              */
 
-            // col <= const  (maxValStep) 
-            RangeInterval maxValRng = new RangeInterval();
+            // col <= const  (maxValStep)
             ComparisonKind maxValCmpKind = ComparisonKind.LESS_THAN_OR_EQUAL;
-            maxValRng.setCmpKind(maxValCmpKind);
-            maxValRng.setIncludedBndValue(maxValCmpKind.containEqual());
-            maxValRng.setExprIndex(0);
+            RangeInterval maxValRng = RangeInterval.buildRangeInterval(null,
+                maxValCmpKind, maxValCmpKind.containEqual(), 0, false, false);
             range.setMaxVal(maxValRng);
 
             PartitionPruneStepOp newMaxValStep = opStep.copy();
@@ -121,11 +128,9 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
             range.setMaxValStep(newMaxValStep);
 
             // col >= const  (minValStep)
-            RangeInterval minValRng = new RangeInterval();
             ComparisonKind minValCmpKind = ComparisonKind.GREATER_THAN_OR_EQUAL;
-            minValRng.setCmpKind(minValCmpKind);
-            minValRng.setIncludedBndValue(minValCmpKind.containEqual());
-            minValRng.setExprIndex(0);
+            RangeInterval minValRng = RangeInterval.buildRangeInterval(null,
+                minValCmpKind, minValCmpKind.containEqual(), 0, false, false);
             range.setMinVal(minValRng);
 
             PartitionPruneStepOp newMinValStep = opStep.copy();

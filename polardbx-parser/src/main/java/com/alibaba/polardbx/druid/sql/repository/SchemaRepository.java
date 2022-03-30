@@ -574,7 +574,7 @@ public class SchemaRepository {
             return false;
         }
 
-        long nameHashCode64 = name.nameHashCode64();
+        long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalize(name.getSimpleName()));
         SchemaObject schemaObject = schema.findTable(nameHashCode64);
         if (schemaObject != null) {
             MySqlCreateTableStatement createTableStmt = (MySqlCreateTableStatement) schemaObject.getStatement();
@@ -841,7 +841,7 @@ public class SchemaRepository {
             if (schema == null) {
                 continue;
             }
-            long nameHashCode64 = table.getName().nameHashCode64();
+            long nameHashCode64 = FnvHash.hashCode64(table.getTableName(true));
             schema.objects.remove(nameHashCode64);
         }
         return true;
@@ -890,6 +890,8 @@ public class SchemaRepository {
             SQLCreateTableStatement stmt = (SQLCreateTableStatement) object.getStatement();
             if (stmt != null) {
                 stmt.apply(x);
+                Schema schema = findSchema(stmt.getSchema(), false);
+                schema.indexes.remove(FnvHash.hashCode64(SQLUtils.normalize(x.getIndexName().getSimpleName())));
                 return true;
             }
         }
@@ -902,9 +904,9 @@ public class SchemaRepository {
 
         Schema schema = findSchema(schemaName, true);
 
-        String name = x.getName().getSimpleName();
+        String name = SQLUtils.normalize(x.getName().getSimpleName());
         SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.Index, x.clone());
-        schema.objects.put(object.nameHashCode64(), object);
+        schema.indexes.put(object.nameHashCode64(), object);
 
         return true;
     }
@@ -924,7 +926,8 @@ public class SchemaRepository {
         String schemaName = x.getSchema();
         Schema schema = findSchema(schemaName, true);
 
-        SchemaObject object = schema.findTable(x.nameHashCode64());
+        long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalize(x.getTableName()));
+        SchemaObject object = schema.findTable(nameHashCode64);
         if (object != null) {
             SQLCreateTableStatement stmt = (SQLCreateTableStatement) object.getStatement();
             if (stmt != null) {
@@ -942,7 +945,7 @@ public class SchemaRepository {
 
         String name = x.getName().getSimpleName();
         SchemaObject object = new SchemaObject(schema, name, SchemaObjectType.Sequence);
-        schema.objects.put(object.nameHashCode64(), object);
+        schema.sequences.put(object.nameHashCode64(), object);
         return false;
     }
 
@@ -951,7 +954,7 @@ public class SchemaRepository {
         Schema schema = findSchema(schemaName, true);
 
         long nameHashCode64 = x.getName().nameHashCode64();
-        schema.objects.remove(nameHashCode64);
+        schema.sequences.remove(nameHashCode64);
         return false;
     }
 

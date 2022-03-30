@@ -77,6 +77,10 @@ public enum VirtualViewType {
 
     PARTITIONS,
 
+    LOCAL_PARTITIONS,
+
+    LOCAL_PARTITIONS_SCHEDULE,
+
     PLUGINS,
 
     PROCESSLIST,
@@ -131,6 +135,8 @@ public enum VirtualViewType {
 
     INNODB_BUFFER_PAGE,
 
+    INNODB_PURGE_FILES,
+
     INNODB_FT_DEFAULT_STOPWORD,
 
     INNODB_FT_INDEX_TABLE,
@@ -165,6 +171,8 @@ public enum VirtualViewType {
 
     TABLE_GROUP,
 
+    FULL_TABLE_GROUP,
+
     TABLE_DETAIL,
 
     LOCALITY_INFO,
@@ -188,5 +196,6 @@ public enum VirtualViewType {
     REACTOR_PERF,
     DN_PERF,
     TCP_PERF,
-    SESSION_PERF
+    SESSION_PERF,
+    DDL_PLAN
 }

@@ -113,11 +113,17 @@ public class PlannerUtils {
     private final static Logger logger = LoggerFactory.getLogger(PlannerUtils.class);
 
     public static Map<String, List<List<String>>> convertTargetDB(List<List<TargetDB>> targetDBs) {
-        return convertTargetDB(targetDBs, null, false);
+        return convertTargetDB(targetDBs, null, false, null);
     }
 
     public static Map<String, List<List<String>>> convertTargetDB(List<List<TargetDB>> targetDBs, String schemaName) {
-        return convertTargetDB(targetDBs, schemaName, false);
+        return convertTargetDB(targetDBs, schemaName, false, null);
+    }
+
+    public static Map<String, List<List<String>>> convertTargetDB(List<List<TargetDB>> targetDBs,
+                                                                  String schemaName,
+                                                                  boolean crossSingleTable) {
+        return convertTargetDB(targetDBs, schemaName, crossSingleTable, null);
     }
 
     /**
@@ -132,7 +138,8 @@ public class PlannerUtils {
      */
     public static Map<String, List<List<String>>> convertTargetDB(List<List<TargetDB>> targetDBs,
                                                                   String schemaName,
-                                                                  boolean crossSingleTable) {
+                                                                  boolean crossSingleTable,
+                                                                  ExecutionContext executionContext) {
         Map<String, List<List<String>>> result = new HashMap<>();
         List<TargetDB> broadcastTable = new ArrayList<>();
         List<List<TargetDB>> singleTable = new ArrayList<>();
@@ -151,7 +158,7 @@ public class PlannerUtils {
             /**
              * 暂存广播表,遇到第一个不是广播表时处理
              */
-            if (isBroadcast(t, schemaName)) {
+            if (isBroadcast(t, schemaName, executionContext)) {
                 broadcastTable.add(t.get(0));
                 continue;
             }
@@ -335,6 +342,11 @@ public class PlannerUtils {
     }
 
     private static boolean isBroadcast(List<TargetDB> targetDBs, String schemaName) {
+        return isBroadcast(targetDBs, schemaName, null);
+    }
+
+    private static boolean isBroadcast(List<TargetDB> targetDBs, String schemaName,
+                                       ExecutionContext executionContext) {
         if (targetDBs.size() != 1) {
             return false;
         }
@@ -345,7 +357,12 @@ public class PlannerUtils {
         }
 
         String tableName = db.getTableNames().iterator().next();
-        TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
+        TddlRuleManager or;
+        if (executionContext != null) {
+            or = executionContext.getSchemaManager(schemaName).getTddlRuleManager();
+        } else {
+            or = OptimizerContext.getContext(schemaName).getRuleManager();
+        }
         //use the physical name to get the tableRule, then use tableRule to see whether it's a broadcast table
         try {
             String logicalTableName = null;
@@ -460,8 +477,6 @@ public class PlannerUtils {
 
     public static ParameterContext buildParameterContextForTableName(String tableName, int index) {
         ParameterContext pc = new ParameterContext();
-        //pc.setParameterMethod(ParameterMethod.setObject1);
-        //pc.setArgs(new Object[] { index, buildTableNameForXDriver(tableName) });
         pc.setParameterMethod(ParameterMethod.setTableName);
         pc.setArgs(new Object[] {index, buildTableNameParamForXDriver(tableName)});
         return pc;
@@ -652,7 +667,18 @@ public class PlannerUtils {
         return upperBound;
     }
 
-    private static boolean comparativeIsAEqual(Comparative c, boolean allowFalseCondition) {
+    /**
+     * 判断 Comparative 是一个简单的等值比较
+     */
+    public static boolean comparativeIsASimpleEqual(Comparative c) {
+        if (c.getValue() instanceof Comparative) {
+            return false;
+        }
+
+        return c.getComparison() == Comparative.Equivalent;
+    }
+
+    public static boolean comparativeIsAEqual(Comparative c, boolean allowFalseCondition) {
         if (c == null) {
             return false;
         }
@@ -1086,6 +1112,31 @@ public class PlannerUtils {
             }
             index++;
         }
+        return newParam;
+    }
+
+    public static Map<Integer, ParameterContext> buildParam(List<String> tableNames,
+                                                            List<String> referencedTableNames) {
+        Map<Integer, ParameterContext> newParam = new HashMap<>();
+
+        int tableCount = tableNames.size();
+        int refTableCount = referencedTableNames.size();
+
+        for (int index = 0; index < tableCount; index++) {
+            if (ConfigDataMode.isFastMock()) {
+                continue;
+            }
+            newParam.put(index + 1, buildParameterContextForTableName(tableNames.get(index), index + 1));
+        }
+
+        for (int index = 0; index < refTableCount; index++) {
+            if (ConfigDataMode.isFastMock()) {
+                continue;
+            }
+            newParam.put(index + tableCount + 1,
+                buildParameterContextForTableName(referencedTableNames.get(index), index + tableCount + 1));
+        }
+
         return newParam;
     }
 

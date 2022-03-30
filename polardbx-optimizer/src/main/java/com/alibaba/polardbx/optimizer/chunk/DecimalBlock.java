@@ -19,9 +19,10 @@ package com.alibaba.polardbx.optimizer.chunk;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.RawBytesDecimalUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.openjdk.jol.info.ClassLayout;
@@ -33,7 +34,7 @@ import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMOR
  *
  */
 public class DecimalBlock extends AbstractBlock {
-
+    private static final long NULL_VALUE = 0L;
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(DecimalBlock.class).instanceSize();
 
     protected Slice memorySegments;
@@ -145,11 +146,11 @@ public class DecimalBlock extends AbstractBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putInt(0);
+            sink.putLong(NULL_VALUE);
         } else {
-            sink.putInt(hashCode(position));
+            sink.putLong(hashCode(position));
         }
     }
 

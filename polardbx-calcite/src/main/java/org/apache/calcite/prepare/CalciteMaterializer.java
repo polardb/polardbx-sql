@@ -167,9 +167,9 @@ class CalciteMaterializer extends CalcitePrepareImpl.CalcitePreparingStmt {
     public RelNode visit(LogicalJoin join) {
       return join;
     }
-//    public RelNode visit(LogicalSemiJoin join) {
-//      return join;
-//    }
+    public RelNode visit(LogicalSemiJoin join) {
+      return join;
+    }
     public RelNode visit(LogicalCorrelate correlate) {
       return correlate;
     }

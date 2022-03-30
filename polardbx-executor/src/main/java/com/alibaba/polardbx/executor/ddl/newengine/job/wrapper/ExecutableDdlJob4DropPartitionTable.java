@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job.wrapper;
 
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemoveMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableRemoveMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.StoreTableLocalityTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -32,7 +32,8 @@ import lombok.Data;
 @Data
 public class ExecutableDdlJob4DropPartitionTable extends ExecutableDdlJob {
 
-    private DropTableValidateTask validateTask;
+    private DropPartitionTableValidateTask validateTask;
+    private StoreTableLocalityTask storeTableLocalityTask;
     private DropTableHideTableMetaTask dropTableHideTableMetaTask;
     private DropTablePhyDdlTask phyDdlTask;
     private CdcDdlMarkTask cdcDdlMarkTask;

@@ -32,6 +32,7 @@ import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
@@ -102,19 +103,27 @@ public class LogicalShowDatasourcesHandler extends HandlerCommon {
 
         result.addColumn("STORAGE_INST_ID", DataTypes.StringType);
         result.initMeta();
-        Integer index = 0;
-        Matrix matrix = ExecutorContext.getContext(executionContext.getSchemaName()).getTopologyHandler().getMatrix();
+        int index = 0;
         TopologyHandler topology = ExecutorContext.getContext(executionContext.getSchemaName()).getTopologyHandler();
+        Matrix matrix = topology.getMatrix();
         List<Group> groups = matrix.getGroups();
-        fillDataSourceInfos(result, topology, index, groups);
+        index = fillDataSourceInfos(result, topology, index, groups);
         List<Group> scaleGroups = matrix.getScaleOutGroups();
-        fillDataSourceInfos(result, topology, index, scaleGroups);
-        fillMetaDbDataSourceInfo(result, index);
-
+        index = fillDataSourceInfos(result, topology, index, scaleGroups);
+        index = fillMetaDbDataSourceInfo(result, index);
+        if(executionContext.getSchemaName().equalsIgnoreCase(SystemDbHelper.INFO_SCHEMA_DB_NAME)) {
+            index = fillInformationSchemaInfo(result, index);
+        }
         return result;
     }
 
-    private void fillMetaDbDataSourceInfo(ArrayResultCursor result, Integer index) {
+    private int fillInformationSchemaInfo(ArrayResultCursor result, int index) {
+        TopologyHandler topology = ExecutorContext.getContext(SystemDbHelper.INFO_SCHEMA_DB_NAME).getTopologyHandler();
+        index = fillDataSourceInfos(result, topology, index, topology.getMatrix().getGroups());
+        return index;
+    }
+
+    private int fillMetaDbDataSourceInfo(ArrayResultCursor result, int index) {
         DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
         if (dataSource instanceof MetaDbDataSource.MetaDbDataSourceHaWrapper) {
             MetaDbDataSource.MetaDbDataSourceHaWrapper dsHaWrapper =
@@ -142,77 +151,86 @@ public class LogicalShowDatasourcesHandler extends HandlerCommon {
                 throw new NotSupportException("jdbc not support");
             }
         }
+        return index;
     }
 
-    private void fillDataSourceInfos(ArrayResultCursor result, TopologyHandler topology,
-                                     Integer index, List<Group> groups) {
+    private int fillDataSourceInfos(ArrayResultCursor result, TopologyHandler topology,
+                                    int index, List<Group> groups) {
 
         for (Group group : groups) {
-            IGroupExecutor groupExecutor = topology.get(group.getName());
-            if (groupExecutor == null) {
-                continue;
+            index = fillGroupDataSourceInfo(result, topology, index, group);
+        }
+        return index;
+    }
+
+    private int fillGroupDataSourceInfo(ArrayResultCursor result, TopologyHandler topology,
+                                        int index, Group group) {
+        IGroupExecutor groupExecutor = topology.get(group.getName());
+        if (groupExecutor == null) {
+            return index;
+        }
+
+        Object o = groupExecutor.getDataSource();
+
+        if (o instanceof TGroupDataSource) {
+            TGroupDataSource ds = (TGroupDataSource) o;
+
+            // 整理atom的权重信息
+            Map<TAtomDataSource, Weight> atomDsWeights = ds.getAtomDataSourceWeights();
+            Map<String, Weight> atomKeyWeightMaps = new HashMap<String, Weight>();
+            for (Map.Entry<TAtomDataSource, Weight> atomWeight : atomDsWeights.entrySet()) {
+                TAtomDataSource atomDs = atomWeight.getKey();
+                Weight weight = atomWeight.getValue();
+                atomKeyWeightMaps.put(atomDs.getDbKey(), weight);
             }
 
-            Object o = groupExecutor.getDataSource();
-
-            if (o instanceof TGroupDataSource) {
-                TGroupDataSource ds = (TGroupDataSource) o;
-
-                // 整理atom的权重信息
-                Map<TAtomDataSource, Weight> atomDsWeights = ds.getAtomDataSourceWeights();
-                Map<String, Weight> atomKeyWeightMaps = new HashMap<String, Weight>();
-                for (Map.Entry<TAtomDataSource, Weight> atomWeight : atomDsWeights.entrySet()) {
-                    TAtomDataSource atomDs = atomWeight.getKey();
-                    Weight weight = atomWeight.getValue();
-                    atomKeyWeightMaps.put(atomDs.getDbKey(), weight);
+            for (DataSource atom : ds.getAtomDataSources()) {
+                TAtomDataSource atomDs = this.getAtomDatasource(atom);
+                String dbKey = atomDs.getDbKey();
+                Weight weightVal = atomKeyWeightMaps.get(dbKey);
+                int w = -1;
+                int r = -1;
+                if (weightVal != null) {
+                    w = weightVal.w;
+                    r = weightVal.r;
                 }
 
-                for (DataSource atom : ds.getAtomDataSources()) {
-                    TAtomDataSource atomDs = this.getAtomDatasource(atom);
-                    String dbKey = atomDs.getDbKey();
-                    Weight weightVal = atomKeyWeightMaps.get(dbKey);
-                    int w = -1;
-                    int r = -1;
-                    if (weightVal != null) {
-                        w = weightVal.w;
-                        r = weightVal.r;
-                    }
+                final DataSource rawDataSource = atomDs.getDataSource();
+                if (rawDataSource instanceof XDataSource) {
+                    final XConnectionManager m = XConnectionManager.getInstance();
+                    final XDataSource x = (XDataSource) rawDataSource;
+                    final XClientPool.XStatus s = x.getStatus();
 
-                    final DataSource rawDataSource = atomDs.getDataSource();
-                    if (rawDataSource instanceof XDataSource) {
-                        final XConnectionManager m = XConnectionManager.getInstance();
-                        final XDataSource x = (XDataSource) rawDataSource;
-                        final XClientPool.XStatus s = x.getStatus();
+                    String storageInstId = GroupInfoUtil.parseStorageId(dbKey);
+                    result.addRow(new Object[] {
+                        index++, topology.getAppName(), x.getName(), group.getName(),
+                        x.getUrl(),
+                        XConnectionManager.getInstance().isEnableAuth() ? x.getUsername() : XConfig.X_USER,
+                        XConfig.X_TYPE, 0,
+                        m.getMinPooledSessionPerInstance(),
+                        m.getMaxClientPerInstance() * m.getMaxSessionPerClient(),
+                        atomDs.getDsConfHandle().getRunTimeConf().getIdleTimeout(), x.getGetConnTimeoutMillis(),
+                        DynamicConfig.getInstance().getXprotoMaxDnWaitConnection(),
+                        DynamicConfig.getInstance().getXprotoMaxDnConcurrent(), s.workingSession, s.idleSession,
+                        dbKey, r, w, storageInstId});
+                } else if (rawDataSource instanceof DruidDataSource) {
+                    DruidDataSource d = (DruidDataSource) rawDataSource;
 
-                        String storageInstId = GroupInfoUtil.parseStorageId(dbKey);
-                        result.addRow(new Object[] {
-                            index++, topology.getAppName(), x.getName(), group.getName(),
-                            x.getUrl(),
-                            XConnectionManager.getInstance().isEnableAuth() ? x.getUsername() : XConfig.X_USER,
-                            XConfig.X_TYPE, 0,
-                            m.getMinPooledSessionPerInstance(),
-                            m.getMaxClientPerInstance() * m.getMaxSessionPerClient(),
-                            atomDs.getDsConfHandle().getRunTimeConf().getIdleTimeout(), x.getGetConnTimeoutMillis(),
-                            DynamicConfig.getInstance().getXprotoMaxDnWaitConnection(),
-                            DynamicConfig.getInstance().getXprotoMaxDnConcurrent(), s.workingSession, s.idleSession,
-                            dbKey, r, w, storageInstId});
-                    } else if (rawDataSource instanceof DruidDataSource) {
-                        DruidDataSource d = (DruidDataSource) rawDataSource;
-
-                        String storageInstId = GroupInfoUtil.parseStorageId(dbKey);
-                        result.addRow(new Object[] {
-                            index++, topology.getAppName(), d.getName(), group.getName(),
-                            d.getUrl(), d.getUsername(), d.getDbType(), d.getInitialSize(), d.getMinIdle(),
-                            d.getMaxActive(), atomDs.getDsConfHandle().getRunTimeConf().getIdleTimeout(),
-                            d.getMaxWait(),
-                            d.getOnFatalErrorMaxActive(), d.getMaxWaitThreadCount(), d.getActiveCount(),
-                            d.getPoolingCount(), dbKey, r, w,
-                            storageInstId});
-                    } else {
-                        throw new NotSupportException("jdbc not support");
-                    }
-                } // end of for
-            } // end of if
-        } // end of for
+                    String storageInstId = GroupInfoUtil.parseStorageId(dbKey);
+                    result.addRow(new Object[] {
+                        index++, topology.getAppName(), d.getName(), group.getName(),
+                        d.getUrl(), d.getUsername(), d.getDbType(), d.getInitialSize(), d.getMinIdle(),
+                        d.getMaxActive(), atomDs.getDsConfHandle().getRunTimeConf().getIdleTimeout(),
+                        d.getMaxWait(),
+                        d.getOnFatalErrorMaxActive(), d.getMaxWaitThreadCount(), d.getActiveCount(),
+                        d.getPoolingCount(), dbKey, r, w,
+                        storageInstId});
+                } else {
+                    logger.warn("atom datasource is not x or druid?" + rawDataSource.getClass());
+                }
+            }
+        }
+        // ignore non-TGroupDataSource
+        return index;
     }
 }

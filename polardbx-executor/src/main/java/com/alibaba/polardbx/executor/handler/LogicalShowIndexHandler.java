@@ -37,6 +37,7 @@ import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.MysqlSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.PolarDbXSystemTableView;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
+import com.alibaba.polardbx.optimizer.view.PerformanceSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlShow;
@@ -74,6 +75,8 @@ public class LogicalShowIndexHandler extends BaseDalHandler {
                 viewManager = InformationSchemaViewManager.getInstance();
             } else if (RelUtils.mysqlSchema(desc.getTableName())) {
                 viewManager = MysqlSchemaViewManager.getInstance();
+            } else if (RelUtils.performanceSchema(desc.getTableName())) {
+                viewManager = PerformanceSchemaViewManager.getInstance();
             } else {
                 viewManager = OptimizerContext.getContext(schemaName).getViewManager();
             }

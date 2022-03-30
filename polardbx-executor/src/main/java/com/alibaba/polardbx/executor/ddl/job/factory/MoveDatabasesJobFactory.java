@@ -16,19 +16,15 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
-import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabasesPreparedData;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.commons.lang.StringUtils;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
 import java.util.Map;
@@ -68,17 +64,6 @@ public class MoveDatabasesJobFactory extends DdlJobFactory {
         EmptyTask tailTask = new EmptyTask(defaultSchemaName);
         executableDdlJob.labelAsTail(tailTask);
 
-        boolean stayAtPublic = true;
-        final String finalStatus =
-            executionContext.getParamManager().getString(ConnectionParams.SCALE_OUT_FINAL_TABLE_STATUS_DEBUG);
-        DdlTask pauseCurrentJobTask = new PauseCurrentJobTask(defaultSchemaName);
-        if (StringUtils.isNotEmpty(finalStatus)) {
-            stayAtPublic =
-                StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC.name(), finalStatus);
-        }
-        if (!stayAtPublic) {
-            executableDdlJob.addTask(pauseCurrentJobTask);
-        }
         for (Map.Entry<String, Map<String, List<String>>> entry : preparedData.getLogicalDbStorageGroups()
             .entrySet()) {
             MoveDatabasePreparedData moveDatabasePreparedData =
@@ -87,9 +72,6 @@ public class MoveDatabasesJobFactory extends DdlJobFactory {
                 MoveDatabaseJobFactory.create(ddl, moveDatabasePreparedData, executionContext);
             executableDdlJob.combineTasks(dbExecDdlJob);
             executableDdlJob.addTaskRelationship(emptyTask, dbExecDdlJob.getHead());
-            if (!stayAtPublic) {
-                executableDdlJob.addTaskRelationship(dbExecDdlJob.getTail(), pauseCurrentJobTask);
-            }
             executableDdlJob.getExcludeResources().addAll(dbExecDdlJob.getExcludeResources());
             executableDdlJob.addTaskRelationship(dbExecDdlJob.getTail(), tailTask);
         }

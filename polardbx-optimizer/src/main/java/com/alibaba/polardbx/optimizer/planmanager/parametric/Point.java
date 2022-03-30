@@ -37,6 +37,7 @@ public class Point {
     private int recentlyChooseTime = 0;
     private double lastRecentlyChooseRate = -1;
     private int unuseTermTime;
+    private boolean isSteady = false;
 
     public Point(String parameterSql, Map<String, Double> selectivityMap, List<Object> params) {
         this.parameterSql = parameterSql;
@@ -182,5 +183,13 @@ public class Point {
 
     public PhyFeedBack getPhyFeedBack() {
         return phyFeedBack;
+    }
+
+    public boolean isSteady() {
+        return isSteady;
+    }
+
+    public void setSteady(boolean steady) {
+        isSteady = steady;
     }
 }

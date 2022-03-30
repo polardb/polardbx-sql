@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -33,6 +34,8 @@ public class DdlEngineRecord implements SystemTableRecord {
 
     public static final long FLAG_SUPPORT_CONTINUE = 0x1;
     public static final long FLAG_SUPPORT_CANCEL = 0x2;
+
+    public static final String SubJobPrefix = "subjob_";
 
     public long jobId;
     public String ddlType;
@@ -104,6 +107,13 @@ public class DdlEngineRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.pausedPolicy);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.rollbackPausedPolicy);
         return params;
+    }
+
+    /**
+     * SubJob means the job submitted by a task.
+     */
+    public boolean isSubJob() {
+        return StringUtils.startsWith(responseNode, SubJobPrefix);
     }
 
     public boolean isSupportContinue() {

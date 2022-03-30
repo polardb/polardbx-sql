@@ -53,6 +53,8 @@ public class StorageHaChecker {
     protected static final String SELECT_STORAGE_NODE_ROLE_INFO_FROM_ALISQL_CLUSTER_GLOBAL =
         "select role, ip_port from information_schema.alisql_cluster_global";
 
+    protected static final String SELECT_XPORT =
+        "select @@polarx_port";
     // =======HA_SQL_FOR_OTHERS=======
 
     protected static final String SELECT_GALAXY_XPORT = "select @@galaxyx_port";
@@ -218,7 +220,8 @@ public class StorageHaChecker {
         Map<String, StorageNodeHaInfo> addrHaInfoMap = new HashMap<>();
 
         if (storageType != StorageInfoRecord.STORAGE_TYPE_XCLUSTER &&
-            storageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+            storageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER &&
+            storageType != StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
             // the storage node is mysql or polardb,
             // e.g in test env, storage node is just mysql or polardb
 
@@ -550,7 +553,8 @@ public class StorageHaChecker {
 
     protected static String buildQueryRoleSqlFromClusterLocal(int storageType) {
         if (storageType == StorageInfoRecord.STORAGE_TYPE_XCLUSTER ||
-            storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+            storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER ||
+            storageType == StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
             return SELECT_STORAGE_NODE_ROLE_INFO_FROM_ALISQL_CLUSTER_LOCAL;
         }
         // TODO: other cluster.
@@ -559,7 +563,8 @@ public class StorageHaChecker {
 
     protected static String buildQueryRoleSqlFromClusterGlobal(int storageType) {
         if (storageType == StorageInfoRecord.STORAGE_TYPE_XCLUSTER ||
-            storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+            storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER ||
+            storageType == StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
             return SELECT_STORAGE_NODE_ROLE_INFO_FROM_ALISQL_CLUSTER_GLOBAL;
         }
         // TODO: other cluster.

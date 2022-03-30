@@ -385,7 +385,7 @@ public class FastDecimalUtils {
                 idx++;
 
                 if (idx == end) {
-                    to.setBuff(new int[9]);
+                    to.toZero();
                     break;
                 }
             }

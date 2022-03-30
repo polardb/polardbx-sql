@@ -30,6 +30,8 @@ import org.apache.calcite.sql.SqlCancelDdlJob;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
@@ -45,6 +47,8 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
     }
 
     public Cursor doCancel(boolean isAll, List<Long> jobIds, ExecutionContext executionContext) {
+        boolean enableOperateSubJob =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_OPERATE_SUBJOB);
         List<DdlEngineRecord> records =
             fetchRecords(executionContext.getSchemaName(), isAll, jobIds);
         records.stream().forEach(e -> {
@@ -65,6 +69,9 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
 
         int countDone = 0;
         for (DdlEngineRecord record : records) {
+            if (record.isSubJob() && !enableOperateSubJob) {
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
+            }
             if (DdlState.RUNNING == DdlState.valueOf(record.state)) {
                 if (schedulerManager.tryUpdateDdlState(
                     record.schemaName,
@@ -72,7 +79,7 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
                     DdlState.RUNNING,
                     DdlState.ROLLBACK_RUNNING)) {
                     countDone++;
-                    interruptJob(record.schemaName, record.jobId);
+                    interruptJob(record.schemaName, Arrays.asList(record.jobId));
                 }
             } else if (DdlState.PAUSED == DdlState.valueOf(record.state)) {
                 if (schedulerManager.tryUpdateDdlState(
@@ -81,7 +88,7 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
                     DdlState.PAUSED,
                     DdlState.ROLLBACK_RUNNING)) {
                     countDone++;
-                    interruptJob(record.schemaName, record.jobId);
+                    interruptJob(record.schemaName, Arrays.asList(record.jobId));
                 }
             }
         }

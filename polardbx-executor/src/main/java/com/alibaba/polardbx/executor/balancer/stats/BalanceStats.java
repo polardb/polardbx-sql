@@ -37,12 +37,12 @@ public class BalanceStats {
     private String schema;
 
     /**
-     * For database='partitioning'
+     * For database='auto'
      */
     private List<TableGroupStat> tableGroupStats;
 
     /**
-     * For database='sharding'
+     * For database='drds'
      */
     private List<GroupStats.GroupsOfStorage> groups;
 

@@ -124,6 +124,9 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String UPDATE_INDEXES_RENAME = UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE;
 
+    private static final String UPDATE_LOCAL_INDEXES_RENAME =
+        UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE + " and `index_location` = 0";
+
     private static final String UPDATE_INDEXES_COLUMN_NAME =
         UPDATE_INDEXES + "`column_name` = ?" + WHERE_SCHEMA_TABLE_COLUMN;
 
@@ -359,6 +362,10 @@ public class IndexesAccessor extends AbstractAccessor {
 
     public int rename(String tableSchema, String tableName, String newTableName) {
         return update(UPDATE_INDEXES_RENAME, INDEXES_TABLE, tableSchema, tableName, newTableName);
+    }
+
+    public int renameLocalIndexes(String tableSchema, String tableName, String newTableName) {
+        return update(UPDATE_LOCAL_INDEXES_RENAME, INDEXES_TABLE, tableSchema, tableName, newTableName);
     }
 
     public int delete(String tableSchema) {

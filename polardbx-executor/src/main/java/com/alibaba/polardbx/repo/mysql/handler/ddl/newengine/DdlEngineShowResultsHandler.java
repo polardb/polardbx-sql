@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
+import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponseCollectSyncAction;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.node.NodeInfo;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
@@ -33,6 +37,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Implements `show ddl result [jobId]` command
+ */
 public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
 
     public DdlEngineShowResultsHandler(IRepository repo) {
@@ -61,7 +68,7 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
                     continue;
                 }
                 for (Map<String, Object> row : result.getValue()) {
-                    if(row==null){
+                    if (row == null) {
                         continue;
                     }
                     rowList.add(buildRow(row));
@@ -69,17 +76,50 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
             }
         });
 
+        // try to inspect running ddl jobs
+        List<DdlEngineRecord> engineRecords =
+            DdlEngineShowJobsHandler.inspectDdlJobs(
+                Pair.of(jobIds, executionContext.getSchemaName()),
+                new DdlEngineSchedulerManager());
+        for (DdlEngineRecord record : GeneralUtil.emptyIfNull(engineRecords)) {
+            if (!record.isSubJob()) {
+                rowList.add(convertEngineRecordToRow(record));
+            }
+        }
+
         Collections.sort(rowList, (o1, o2) -> {
-            String s1 = (String) o1[0];
-            String s2 = (String) o2[0];
+            String s1 = String.valueOf(o1[0]);
+            String s2 = String.valueOf(o2[0]);
             return s2.compareTo(s1);
         });
 
-        for(Object[] row: rowList){
+        for (Object[] row : rowList) {
             resultCursor.addRow(row);
         }
 
         return resultCursor;
+    }
+
+    private Object[] convertEngineRecordToRow(DdlEngineRecord record) {
+        return new Object[] {
+            String.valueOf(record.jobId),
+            record.schemaName,
+            record.objectName,
+            record.ddlType,
+            record.state,
+            null,
+        };
+    }
+
+    private Object[] convertJobToRow(Job job) {
+        return new Object[] {
+            String.valueOf(job.getId()),
+            job.getObjectSchema(),
+            job.getObjectName(),
+            job.getType(),
+            job.getState(),
+            null,
+        };
     }
 
     private Object[] buildRow(Map<String, Object> row) {

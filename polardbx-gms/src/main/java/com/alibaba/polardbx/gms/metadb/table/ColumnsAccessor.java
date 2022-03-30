@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.gms.metadb.table;
 
-import com.mysql.jdbc.Field;
-import com.alibaba.polardbx.rpc.compatible.XResultSetMetaData;
-import com.alibaba.polardbx.rpc.result.XMetaUtil;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -30,8 +27,12 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.metadb.record.CountRecord;
+import com.alibaba.polardbx.gms.metadb.record.MaxValueRecord;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.rpc.compatible.XResultSetMetaData;
+import com.alibaba.polardbx.rpc.result.XMetaUtil;
+import com.mysql.jdbc.Field;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -88,32 +89,36 @@ public class ColumnsAccessor extends AbstractAccessor {
             + "`collation_name`, `column_type`, `column_key`, `extra`, `privileges`, `column_comment`, "
             + "`generation_expression`";
 
+    private static final String SELECT_CLAUSE_EXT =
+        ", `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag`";
+
     private static final String SELECT_INFO_SCHEMA =
-        SELECT_CLAUSE + " from " + COLUMNS_INFO_SCHEMA + WHERE_SCHEMA_TABLE;
+        SELECT_CLAUSE + " from " + COLUMNS_INFO_SCHEMA + WHERE_SCHEMA_TABLE + ORDER_BY_ORDINAL_POSITION;
 
     private static final String SELECT_INFO_SCHEMA_SPECIFIED =
-        SELECT_CLAUSE + " from " + COLUMNS_INFO_SCHEMA + WHERE_SCHEMA_TABLE_COLUMNS;
+        SELECT_CLAUSE + " from " + COLUMNS_INFO_SCHEMA + WHERE_SCHEMA_TABLE_COLUMNS + ORDER_BY_ORDINAL_POSITION;
 
     private static final String SELECT_COLUMNS =
-        SELECT_CLAUSE + ", `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag` from "
-            + COLUMNS_TABLE + WHERE_SCHEMA_TABLE + ORDER_BY_ORDINAL_POSITION;
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + " from " + COLUMNS_TABLE + WHERE_SCHEMA_TABLE + ORDER_BY_ORDINAL_POSITION;
+
+    private static final String SELECT_COLUMNS_SPECIFIED =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + " from " + COLUMNS_TABLE + WHERE_SCHEMA_TABLE_COLUMNS
+            + ORDER_BY_ORDINAL_POSITION;
 
     private static final String SELECT_ALL_TABLE_COLUMNS =
-        SELECT_CLAUSE + ", `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag` from "
-            + COLUMNS_TABLE + WHERE_SCHEMA + ORDER_BY_ORDINAL_POSITION;
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + " from " + COLUMNS_TABLE + WHERE_SCHEMA + ORDER_BY_ORDINAL_POSITION;
 
     private static final String SELECT_ONE_COLUMN =
-        SELECT_CLAUSE + ", `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag` from "
-            + COLUMNS_TABLE + WHERE_SCHEMA_TABLE_ONE_COLUMN;
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + " from " + COLUMNS_TABLE + WHERE_SCHEMA_TABLE_ONE_COLUMN;
 
     private static final String SELECT_JDBC_TYPES = "select * from %s.%s limit 1";
 
-    private static final String SELECT_COLUNN_COUNT = "select count(*) from " + COLUMNS_TABLE + WHERE_SCHEMA_TABLE;
+    private static final String SELECT_COLUMN_COUNT = "select count(*) from " + COLUMNS_TABLE + WHERE_SCHEMA_TABLE;
 
     private static final String UPDATE_COLUMNS = "update " + COLUMNS_TABLE + " set ";
 
     private static final String UPDATE_COLUMNS_ALL = UPDATE_COLUMNS
-        + "`column_name` = ?, `ordinal_position` = ?, `column_default` = ?, `is_nullable` = ?, `data_type` = ?, "
+        + "`column_name` = ?, `column_default` = ?, `is_nullable` = ?, `data_type` = ?, "
         + "`character_maximum_length` = ?, `character_octet_length` = ?, `numeric_precision` = ?, `numeric_scale` = ?, "
         + "`datetime_precision` = ?, `character_set_name` = ?, `collation_name` = ?, `column_type` = ?, "
         + "`column_key` = ?, `extra` = ?, `privileges` = ?, `column_comment` = ?, `generation_expression` = ?, "
@@ -143,6 +148,15 @@ public class ColumnsAccessor extends AbstractAccessor {
     private static final String DELETE_COLUMNS_ALL_TABLES = DELETE_COLUMNS + WHERE_SCHEMA_TABLE;
 
     private static final String DELETE_COLUMNS_SPECIFIED = DELETE_COLUMNS + WHERE_SCHEMA_TABLE_COLUMNS;
+
+    private static final String SELECT_MAX_COLUMN_POSITION =
+        "select max(ordinal_position) from " + COLUMNS_TABLE + WHERE_SCHEMA_TABLE;
+
+    private static final String ADJUST_COLUMN_POSITION =
+        UPDATE_COLUMNS + "ordinal_position = ordinal_position + 1" + WHERE_SCHEMA_TABLE + " and ordinal_position >= ?";
+
+    private static final String UPDATE_LOGICAL_POSITION =
+        UPDATE_COLUMNS + "ordinal_position = ?" + WHERE_SCHEMA_TABLE_ONE_COLUMN;
 
     public int[] insert(List<ColumnsRecord> records, String tableSchema, String tableName) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -223,6 +237,17 @@ public class ColumnsAccessor extends AbstractAccessor {
             ColumnsInfoSchemaRecord.class, phyTableSchema, phyTableName, dataSource);
     }
 
+    public List<ColumnsInfoSchemaRecord> queryInfoSchema(String phyTableSchema, String phyTableName,
+                                                         List<String> columnNames, Connection phyDbConn) {
+        if (GeneralUtil.isNotEmpty(columnNames)) {
+            return query(String.format(SELECT_INFO_SCHEMA_SPECIFIED, concat(columnNames)), COLUMNS_INFO_SCHEMA,
+                ColumnsInfoSchemaRecord.class, phyTableSchema, phyTableName, null, phyDbConn);
+        } else {
+            return query(SELECT_INFO_SCHEMA, COLUMNS_INFO_SCHEMA, ColumnsInfoSchemaRecord.class, phyTableSchema,
+                phyTableName, null, phyDbConn);
+        }
+    }
+
     private static String surroundWithBacktick(String identifier) {
         if (identifier.contains("`")) {
             return "`" + identifier.replaceAll("`", "``") + "`";
@@ -298,9 +323,14 @@ public class ColumnsAccessor extends AbstractAccessor {
         return query(SELECT_ONE_COLUMN, COLUMNS_TABLE, ColumnsRecord.class, tableSchema, tableName, columnName);
     }
 
+    public List<ColumnsRecord> query(String tableSchema, String tableName, List<String> columnNames) {
+        return query(String.format(SELECT_COLUMNS_SPECIFIED, concat(columnNames)), COLUMNS_TABLE, ColumnsRecord.class,
+            tableSchema, tableName);
+    }
+
     public int count(String tableSchema, String tableName) {
         List<CountRecord> records =
-            query(SELECT_COLUNN_COUNT, COLUMNS_TABLE, CountRecord.class, tableSchema, tableName);
+            query(SELECT_COLUMN_COUNT, COLUMNS_TABLE, CountRecord.class, tableSchema, tableName);
         if (records != null && records.size() > 0) {
             return records.get(0).count;
         }
@@ -374,6 +404,23 @@ public class ColumnsAccessor extends AbstractAccessor {
         return update(UPDATE_COLUMN_FLAG, COLUMNS_TABLE, params);
     }
 
+    public int resetColumnFlag(String tableSchema, String tableName, String columnName, long flag) {
+        final List<ColumnsRecord> columns = query(tableSchema, tableName, columnName);
+        if (columns.size() != 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                "column '" + columnName + "' not found or multiple");
+        }
+        final ColumnsRecord column = columns.get(0);
+
+        final long oldFlag = column.flag;
+        column.flag &= ~flag;
+        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(new String[] {
+            String.valueOf(column.flag),
+            tableSchema, tableName, columnName,
+            String.valueOf(oldFlag)});
+        return update(UPDATE_COLUMN_FLAG, COLUMNS_TABLE, params);
+    }
+
     public int[] update(List<ColumnsRecord> records) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
         for (ColumnsRecord record : records) {
@@ -415,6 +462,56 @@ public class ColumnsAccessor extends AbstractAccessor {
     public int delete(String tableSchema, String tableName, List<String> columnNames) {
         return delete(String.format(DELETE_COLUMNS_SPECIFIED, concat(columnNames)), COLUMNS_TABLE, tableSchema,
             tableName);
+    }
+
+    public long queryMaxColumnPosition(String tableSchema, String tableName) {
+        List<MaxValueRecord> records =
+            query(SELECT_MAX_COLUMN_POSITION, COLUMNS_TABLE, MaxValueRecord.class, tableSchema, tableName);
+        if (records != null && records.size() > 0) {
+            return records.get(0).maxValue;
+        }
+        return 0L;
+    }
+
+    public void adjustColumnPosition(String tableSchema, String tableName, String newColumnName,
+                                     String afterColumnName) {
+        long afterColumnPosition = TStringUtil.isEmpty(afterColumnName) ? 0L :
+            queryAfterColumnPosition(tableSchema, tableName, afterColumnName);
+        afterColumnPosition++;
+        adjustExistingColumnPosition(tableSchema, tableName, afterColumnPosition);
+        updateNewColumnPosition(tableSchema, tableName, newColumnName, afterColumnPosition);
+    }
+
+    private long queryAfterColumnPosition(String tableSchema, String tableName, String afterColumnName) {
+        List<ColumnsRecord> records = query(tableSchema, tableName, afterColumnName);
+
+        if (records.isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "query after column position",
+                "Not found the column '" + afterColumnName + "' from '" + tableName + "' in '" + tableSchema + "'");
+        } else if (records.size() > 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "query after column position",
+                "Found multiple records for column '" + afterColumnName + "' from '" + tableName + "' in '"
+                    + tableSchema + "'");
+        }
+
+        return records.get(0).ordinalPosition;
+    }
+
+    private void adjustExistingColumnPosition(String tableSchema, String tableName, long position) {
+        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(new String[] {tableSchema, tableName});
+        int index = params.size();
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, position);
+        update(ADJUST_COLUMN_POSITION, COLUMNS_TABLE, params);
+    }
+
+    public void updateNewColumnPosition(String tableSchema, String tableName, String columnName, long position) {
+        int index = 0;
+        final Map<Integer, ParameterContext> params = new HashMap<>(4);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, position);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, tableSchema);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, tableName);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnName);
+        update(UPDATE_LOGICAL_POSITION, COLUMNS_TABLE, params);
     }
 
 }

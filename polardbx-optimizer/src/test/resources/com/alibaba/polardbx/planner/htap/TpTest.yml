@@ -68,8 +68,8 @@
     .l_orderkey = o_orderkey;
 
   plan: |
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].lineitem_[00-15],orders_[00-15]", shardCount=16, sql="SELECT `orders`.`o_orderkey`, `t`.`l_orderkey` FROM (SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_partkey` = 1)) AS `t` INNER JOIN `orders` AS `orders` ON (`t`.`l_orderkey` = `orders`.`o_orderkey`)")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].lineitem_[00-15],orders_[00-15]", shardcount=16, sql="select `orders`.`o_orderkey`, `lineitem`.`l_orderkey` from `lineitem` as `lineitem` inner join `orders` as `orders` on (`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) where (`lineitem`.`l_partkey` = 1)")
 
 - sql: |
     select * from lineitem join orders on l_orderkey = o_orderkey where o_custkey = 1;

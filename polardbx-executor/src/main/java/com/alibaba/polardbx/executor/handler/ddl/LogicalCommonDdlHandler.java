@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -27,6 +28,7 @@ import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.common.RecycleBinManager;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.validator.CommonValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineRequester;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
@@ -39,6 +41,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -76,25 +79,28 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         // Validate the plan first and then return immediately if needed.
         boolean returnImmediately = validatePlan(logicalDdlPlan, executionContext);
 
-        if (!returnImmediately) {
-            boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName());
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName());
 
-            if (isNewPartDb) {
-                setPartitionDbIndexAndPhyTable(logicalDdlPlan);
-            } else {
-                setDbIndexAndPhyTable(logicalDdlPlan);
-            }
-
-            // Build a specific DDL job by subclass.
-            DdlJob ddlJob = buildDdlJob(logicalDdlPlan, executionContext);
-
-            // Validate the DDL job before request.
-            validateJob(logicalDdlPlan, ddlJob, executionContext);
-
-            // Handle the client DDL request on the worker side.
-            handleDdlRequest(ddlJob, executionContext);
+        if (isNewPartDb) {
+            setPartitionDbIndexAndPhyTable(logicalDdlPlan);
+        } else {
+            setDbIndexAndPhyTable(logicalDdlPlan);
         }
 
+        // Build a specific DDL job by subclass.
+        DdlJob ddlJob = returnImmediately?
+            new TransientDdlJob():
+            buildDdlJob(logicalDdlPlan, executionContext);
+
+        // Validate the DDL job before request.
+        validateJob(logicalDdlPlan, ddlJob, executionContext);
+
+        // Handle the client DDL request on the worker side.
+        handleDdlRequest(ddlJob, executionContext);
+
+        if (executionContext.getDdlContext().isSubJob()){
+            return buildSubJobResultCursor(ddlJob, executionContext);
+        }
         return buildResultCursor(logicalDdlPlan, executionContext);
     }
 
@@ -111,6 +117,20 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         // Always return 0 rows affected or throw an exception to report error messages.
         // SHOW DDL RESULT can provide more result details for the DDL execution.
         return new AffectRowCursor(new int[] {0});
+    }
+
+    protected Cursor buildSubJobResultCursor(DdlJob ddlJob, ExecutionContext executionContext) {
+        long taskId = executionContext.getDdlContext().getParentTaskId();
+        long subJobId = executionContext.getDdlContext().getJobId();
+        if((ddlJob instanceof TransientDdlJob) && subJobId == 0L){
+            // -1 means no need to run
+            subJobId = -1L;
+        }
+        ArrayResultCursor result = new ArrayResultCursor("SubJob");
+        result.addColumn(DdlConstants.PARENT_TASK_ID, DataTypes.LongType);
+        result.addColumn(DdlConstants.JOB_ID, DataTypes.LongType);
+        result.addRow(new Object[] {taskId, subJobId});
+        return result;
     }
 
     /**
@@ -138,7 +158,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             schemaName = executionContext.getSchemaName();
         }
 
-        DdlType ddlType = checkDdlType(logicalDdlPlan);
+        DdlType ddlType = logicalDdlPlan.getDdlType();
         String objectName = getObjectName(logicalDdlPlan);
 
         DdlContext ddlContext =
@@ -151,36 +171,17 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         if (ddlJob instanceof TransientDdlJob) {
             return;
         }
-        DdlEngineRequester.create(ddlJob, executionContext).execute();
+        DdlContext ddlContext = executionContext.getDdlContext();
+        if (ddlContext.isSubJob()){
+            DdlEngineRequester.create(ddlJob, executionContext).executeSubJob(
+                ddlContext.getParentJobId(), ddlContext.getParentTaskId(), ddlContext.isForRollback());
+        } else {
+            DdlEngineRequester.create(ddlJob, executionContext).execute();
+        }
     }
 
     protected String getObjectName(BaseDdlOperation logicalDdlPlan) {
         return logicalDdlPlan.getTableName();
-    }
-
-    private static DdlType checkDdlType(BaseDdlOperation logicalDdlPlan) {
-        switch (logicalDdlPlan.getKind()) {
-        case CREATE_TABLE:
-            return DdlType.CREATE_TABLE;
-        case ALTER_TABLE:
-            return DdlType.ALTER_TABLE;
-        case RENAME_TABLE:
-            return DdlType.RENAME_TABLE;
-        case TRUNCATE_TABLE:
-            return DdlType.TRUNCATE_TABLE;
-        case DROP_TABLE:
-            return DdlType.DROP_TABLE;
-        case CREATE_INDEX:
-            return DdlType.CREATE_INDEX;
-        case DROP_INDEX:
-            return DdlType.DROP_INDEX;
-        case CHECK_GLOBAL_INDEX:
-            return DdlType.CHECK_GLOBAL_INDEX;
-        case MOVE_DATABASE:
-            return DdlType.MOVE_DATABASE;
-        default:
-            return DdlType.UNSUPPORTED;
-        }
     }
 
     private static void checkTaskName(List<DdlTask> taskList) {

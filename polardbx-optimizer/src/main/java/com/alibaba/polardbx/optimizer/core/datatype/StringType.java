@@ -161,4 +161,14 @@ public class StringType extends AbstractDataType<String> {
     public MySQLStandardFieldType fieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_VAR_STRING;
     }
+
+    @Override
+    public boolean equalDeeply(DataType that) {
+        if (that == null || that.getClass() != this.getClass()) {
+            return false;
+        }
+        StringType thatType = (StringType) that;
+        return thatType.charsetName == this.charsetName
+            && thatType.collationName == this.collationName;
+    }
 }

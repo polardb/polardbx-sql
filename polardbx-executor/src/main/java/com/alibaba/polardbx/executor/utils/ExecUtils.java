@@ -16,6 +16,18 @@
 
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.polardbx.executor.sync.ISyncAction;
+import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
+import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
+import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.mysql.jdbc.ConnectionImpl;
+import com.mysql.jdbc.exceptions.MySQLQueryInterruptedException;
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.atom.config.TAtomDsConfDO;
 import com.alibaba.polardbx.common.TddlNode;
@@ -33,6 +45,8 @@ import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -46,7 +60,14 @@ import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.StageInfo;
 import com.alibaba.polardbx.executor.mpp.execution.TaskInfo;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
+import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
+import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
+import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.gms.metadb.MetaDbConnectionProxy;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
@@ -90,7 +111,6 @@ import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
 import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.sequence.impl.BaseSequence;
-import com.alibaba.polardbx.util.IntBloomFilter;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -105,6 +125,8 @@ import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.logical.LogicalValues;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -114,8 +136,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -141,6 +165,114 @@ public class ExecUtils {
     private static final Logger logger = LoggerFactory.getLogger(ExecUtils.class);
 
     private static final int MAX_PARALLELISM = 16;
+
+    /**
+     * get a mapping from instance id (host:port) to a list of group data sources
+     */
+    public static Map<String, List<TGroupDataSource>> getInstId2GroupList(Collection<String> schemaNames) {
+
+        final Map<String, List<TGroupDataSource>> instId2GroupList = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        for (String schemaName : schemaNames) {
+            final List<String> groupNames =
+                ExecutorContext.getContext(schemaName).getTopologyHandler().getAllTransGroupList();
+            for (String groupName : groupNames) {
+
+                final TGroupDataSource groupDataSource =
+                    (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                        .getGroupExecutor(groupName).getDataSource();
+
+                String instanceId = groupDataSource.getMasterSourceAddress();
+
+                if (instanceId == null) {
+                    continue;
+                }
+
+                final List<TGroupDataSource> groupList =
+                    instId2GroupList.computeIfAbsent(instanceId, k -> new ArrayList<>());
+                groupList.add(groupDataSource);
+            }
+        }
+
+        return instId2GroupList;
+    }
+
+    public static Map<String, List<TGroupDataSource>> getInstId2GroupList(String schemaName) {
+        return getInstId2GroupList(ImmutableList.of(schemaName));
+    }
+
+    /**
+     * find full logical table name (`logical schema`.`logical table`) given physical DB and physical tables
+     *
+     * @param physicalTableMap (input) Map: physical DB -> physical table list
+     * @param physicalToLogical (output) Map: `physical DB`.`physical table` -> `logical schema`.`logical table`
+     */
+    public static void updatePhysicalToLogical(Map<String, Set<String>> physicalTableMap,
+                                               Map<String, String> physicalToLogical) {
+        if (MapUtils.isEmpty(physicalTableMap)) {
+            return;
+        }
+        final Set<String> allSchemaNames = OptimizerContext.getActiveSchemaNames();
+        int counter = 0;
+        for (final String schemaName : allSchemaNames) {
+            final OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+
+            if (null == optimizerContext) {
+                continue;
+            }
+
+            final TddlRuleManager ruleManager = optimizerContext.getRuleManager();
+
+            if (null == ruleManager) {
+                continue;
+            }
+
+            final List<String> groupNames =
+                ExecutorContext.getContext(schemaName).getTopologyHandler().getAllTransGroupList();
+
+            for (final String groupName : groupNames) {
+                final TGroupDataSource groupDataSource =
+                    (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                        .getGroupExecutor(groupName).getDataSource();
+
+                final Map<String, DataSourceWrapper> dataSourceWrapperMap =
+                    groupDataSource.getConfigManager().getDataSourceWrapperMap();
+
+                // get physical db name
+                for (final DataSourceWrapper dataSourceWrapper : dataSourceWrapperMap.values()) {
+                    final String physicalDbName = dataSourceWrapper
+                        .getWrappedDataSource()
+                        .getDsConfHandle()
+                        .getRunTimeConf()
+                        .getDbName();
+                    final Set<String> physicalTables = physicalTableMap.get(physicalDbName);
+
+                    if (null == physicalTables) {
+                        continue;
+                    }
+
+                    for (final String physicalTable : physicalTables) {
+                        final String fullyQualifiedPhysicalTableName =
+                            (groupName + "." + physicalTable).toLowerCase();
+                        final Set<String> logicalTableNames =
+                            ruleManager.getLogicalTableNames(fullyQualifiedPhysicalTableName, schemaName);
+                        if (CollectionUtils.isNotEmpty(logicalTableNames)) {
+                            final String physical = String.format("`%s`.`%s`", physicalDbName, physicalTable);
+                            final String logical =
+                                String.format("`%s`.`%s`", schemaName, logicalTableNames.iterator().next());
+                            physicalToLogical.put(physical, logical);
+                        }
+                    }
+
+                    counter++;
+                    if (counter == physicalTableMap.size()) {
+                        // already find all physical DB
+                        return;
+                    }
+                }
+            }
+        }
+    }
 
     public static long calcIo(LogicalView logicalView) {
         RelMetadataQuery mq = logicalView.getCluster().getMetadataQuery();
@@ -556,6 +688,8 @@ public class ExecUtils {
         if (relNode instanceof SingleTableOperation) {
             String schemaName = ((SingleTableOperation) relNode).getSchemaName();
             group = OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(null);
+        } else if (relNode instanceof DirectShardingKeyTableOperation) {
+            group = executionContext.getDbIndexAndTableName().getKey();
         } else if (relNode instanceof BaseTableOperation) {
             group = ((BaseTableOperation) relNode).getDbIndex();
         } else if (relNode instanceof LogicalInsert) {
@@ -773,7 +907,7 @@ public class ExecUtils {
 
     public static void buildOneChunk(Chunk keyChunk, int position, ConcurrentRawHashTable hashTable,
                                      int[] positionLinks,
-                                     IntBloomFilter bloomFilter) {
+                                     FastIntBloomFilter bloomFilter) {
         // Calculate hash codes of the whole chunk
         int[] hashes = keyChunk.hashCodeVector();
 
@@ -1061,10 +1195,10 @@ public class ExecUtils {
 
         List<String> tableNameList;
         String schemaName = tableOperation.getSchemaName();
-        if (tableOperation instanceof DirectTableOperation) {
-            tableNameList = ((DirectTableOperation) tableOperation).getTableNames();
-        } else if (tableOperation instanceof SingleTableOperation) {
-            tableNameList = ((SingleTableOperation) tableOperation).getTableNames();
+        if (tableOperation instanceof DirectTableOperation ||
+            tableOperation instanceof SingleTableOperation ||
+            tableOperation instanceof DirectShardingKeyTableOperation) {
+            tableNameList = tableOperation.getTableNames();
         } else if (tableOperation instanceof PhyTableOperation) {
             tableNameList = ((PhyTableOperation) tableOperation).getLogicalTableNames();
             if (tableNameList == null && tableOperation.getParent() instanceof DirectTableOperation) {
@@ -1288,5 +1422,21 @@ public class ExecUtils {
         Connection con, ResultSet rs, boolean killStreaming, boolean lessMy56Version) throws SQLException {
 
         throw new AssertionError("unreachable");
+    }
+
+    /**
+     * @return A set of DN's storage instance id
+     */
+    public static Set<String> getAllDnStorageId() {
+        final Set<String> allDnId = new LinkedHashSet<>();
+        final Map<String, StorageInstHaContext> storageInfo = StorageHaManager.getInstance().getStorageHaCtxCache();
+        for (Entry<String, StorageInstHaContext> idAndContext : storageInfo.entrySet()) {
+            final String storageInstanceId = idAndContext.getKey();
+            final StorageInstHaContext context = idAndContext.getValue();
+            if (context.isDNMaster()) {
+                allDnId.add(storageInstanceId);
+            }
+        }
+        return allDnId;
     }
 }

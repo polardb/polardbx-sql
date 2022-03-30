@@ -39,6 +39,11 @@ import java.util.Set;
  */
 public class SqlParameterized {
 
+    public static final int NULL_CODE = 0;
+    public static final int BIGINT_CODE = 1 << 1;
+    public static final int BIGINT_UNSIGNED_CODE = 1 << 2;
+    public static final int DECIMAL_CODE = 1 << 3;
+    public static final int VARCHAR_CODE = 1 << 4;
     /**
      * origin sql = parameterized sql + parameters
      */
@@ -139,19 +144,19 @@ public class SqlParameterized {
     private static int getTypeCode(Object param) {
         if (param == null) {
             // NULL
-            return 0;
+            return NULL_CODE;
         } else if (param instanceof Integer || param instanceof Long) {
             // BIGINT
-            return 1 << 1;
+            return BIGINT_CODE;
         } else if (param instanceof BigInteger) {
-            // BIGINT_INTEGER
-            return 1 << 2;
+            // BIGINT_UNSIGNED
+            return BIGINT_UNSIGNED_CODE;
         } else if (param instanceof BigDecimal) {
             // DECIMAL
-            return 1 << 3;
+            return DECIMAL_CODE;
         } else {
             // VARCHAR
-            return 1 << 4;
+            return VARCHAR_CODE;
         }
     }
 }

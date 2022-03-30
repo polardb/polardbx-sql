@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.balancer.splitpartition.SplitPoint;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import lombok.Getter;
 import lombok.Setter;
@@ -103,14 +104,16 @@ public class ActionSplitPartition implements BalanceAction {
                 .map(x -> genPartitionSpec(x.getKey(), x.getValue()))
                 .collect(Collectors.joining(", "));
             String res =
-                String.format(SPLIT_RANGE_PARTITION_SQL, this.getTableGroupName(), this.getPartitionName(), partStr);
+                String.format(SPLIT_RANGE_PARTITION_SQL,
+                    TStringUtil.backQuote(this.getTableGroupName()),
+                    TStringUtil.backQuote(this.getPartitionName()), partStr);
             genSql = res;
         }
         return genSql;
     }
 
     private String genPartitionSpec(String name, SearchDatumInfo bound) {
-        return String.format("partition %s values less than (%s)", name, bound.getDesc(false));
+        return String.format("partition %s values less than (%s)", name, bound.getDesc(false, PartitionInfoUtil.FULL_PART_COL_COUNT));
     }
 
     private List<Pair<String, SearchDatumInfo>> buildSplits() {
@@ -130,7 +133,7 @@ public class ActionSplitPartition implements BalanceAction {
     @Override
     public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
         String sql = genSplitPartitionSql();
-        return ActionUtils.convertToDDLJob(ec, sql);
+        return ActionUtils.convertToDelegatorJob(ec, schema, sql);
     }
 
     @Override

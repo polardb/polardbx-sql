@@ -574,6 +574,8 @@ public enum ErrorCode {
 
     ERR_CDC_GENERIC(ErrorType.CDC, 9201),
 
+    ERR_REPLICATION_RESULT(ErrorType.CDC, 9204),
+
     ERR_PARTITION_MANAGEMENT(ErrorType.Executor, 9300),
     ERR_DUPLICATED_PARTITION_NAME(ErrorType.Executor, 9301),
     ERR_ADD_PARTITION(ErrorType.Executor, 9302),
@@ -585,6 +587,7 @@ public enum ErrorCode {
     ERR_PARTITION_INVALID_DATA_TYPE_CONVERSION(ErrorType.Executor, 9308),
     ERR_PARTITION_NO_FOUND(ErrorType.Executor, 9309),
     ERR_PARTITION_KEY_DATA_TRUNCATED(ErrorType.Executor, 9310),
+    ERR_TABLEGROUP_META_TOO_OLD(ErrorType.Executor, 9313),
 
     ERR_X_PROTOCOL_BAD_PACKET(ErrorType.Xprotocol, 10000),
 

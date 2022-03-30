@@ -16,10 +16,13 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.RefreshTopologyfinalTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshDbTopologyPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshTopologyPreparedData;
@@ -52,12 +55,21 @@ public class RefreshTopologyFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
 
+        Map<String, RefreshDbTopologyPreparedData> preparedDataMap = preparedData.getAllRefreshTopologyPreparedData();
+        if (GeneralUtil.isEmpty(preparedDataMap)) {
+            return new TransientDdlJob();
+        }
+
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
-        String defaultSchemaName = preparedData.getAllRefreshTopologyPreparedData().keySet().iterator().next();
+        String defaultSchemaName = preparedDataMap.keySet().iterator().next();
         EmptyTask emptyTask = new EmptyTask(defaultSchemaName);
         executableDdlJob.addTask(emptyTask);
         RefreshTopologyfinalTask refreshTopologyfinalTask =
             new RefreshTopologyfinalTask(defaultSchemaName, preparedData.getDbTableGroupAndInstGroupInfo());
+        executableDdlJob.addTask(refreshTopologyfinalTask);
+        TopologySyncTask topologySyncTask = new TopologySyncTask(defaultSchemaName);
+        executableDdlJob.addTask(topologySyncTask);
+        executableDdlJob.addTaskRelationship(refreshTopologyfinalTask, topologySyncTask);
         for (Map.Entry<String, RefreshDbTopologyPreparedData> entry : preparedData.getAllRefreshTopologyPreparedData()
             .entrySet()) {
             ExecutableDdlJob dbExecDdlJob = RefreshDbTopologyFactory.create(ddl, entry.getValue(), executionContext);

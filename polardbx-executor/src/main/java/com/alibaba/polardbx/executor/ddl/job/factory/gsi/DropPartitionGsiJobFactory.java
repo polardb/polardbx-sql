@@ -25,15 +25,21 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableHideTableMetaT
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropPartitionGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateGsiExistenceTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.Lists;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * 1. drop index xxx on yyy
@@ -52,6 +58,7 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
      * 4. clean up metadata
      */
     final private PhysicalPlanData physicalPlanData;
+    private List<Long> tableGroupIds = new ArrayList<>();
 
     public DropPartitionGsiJobFactory(String schemaName,
                                       String primaryTableName,
@@ -63,9 +70,35 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
     }
 
     @Override
+    protected void excludeResources(Set<String> resources) {
+        resources.add(concatWithDot(schemaName, indexTableName));
+
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+
+        PartitionInfo partitionInfo = oc.getPartitionInfoManager().getPartitionInfo(indexTableName);
+        if (partitionInfo != null && partitionInfo.getTableGroupId() != -1) {
+            tableGroupIds.add(partitionInfo.getTableGroupId());
+            TableGroupConfig tableGroupConfig =
+                oc.getTableGroupInfoManager().getTableGroupConfigById(partitionInfo.getTableGroupId());
+            String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
+            resources.add(concatWithDot(schemaName, tgName));
+        }
+    }
+
+    @Override
     protected ExecutableDdlJob doCreate() {
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(indexTableName);
+        Long tableGroupId = -1L;
+        TableGroupConfig tableGroupConfig = null;
+        if (partitionInfo != null) {
+            tableGroupId = partitionInfo.getTableGroupId();
+            tableGroupConfig = physicalPlanData.getTableGroupConfig();
+        }
+
         ValidateGsiExistenceTask validateTask =
-            new ValidateGsiExistenceTask(schemaName, primaryTableName, indexTableName);
+            new ValidateGsiExistenceTask(schemaName, primaryTableName, indexTableName, tableGroupIds, tableGroupConfig);
 
         List<DdlTask> taskList = new ArrayList<>();
         //1. validate
@@ -101,6 +134,15 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
         //4. remove table meta for gsi table
         DropTableRemoveMetaTask dropGsiTableRemoveMetaTask = new DropTableRemoveMetaTask(schemaName, indexTableName);
         taskList.add(dropGsiTableRemoveMetaTask);
+
+        if (tableGroupId != -1) {
+            //tableGroupConfig from physicalPlanData is not set tableGroup record
+            tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+                .getTableGroupConfigById(tableGroupId);
+            DdlTask syncTableGroup =
+                new TableGroupSyncTask(schemaName, tableGroupConfig.getTableGroupRecord().getTg_name());
+            taskList.add(syncTableGroup);
+        }
 
         //5. sync after drop table
         //TableSyncTask dropTableSyncTask = new TableSyncTask(schemaName, primaryTableName);

@@ -946,6 +946,18 @@ public class RelUtils {
         return result;
     }
 
+    public static boolean performanceSchema(SqlNode tableName) {
+        boolean result = false;
+        if (tableName instanceof SqlIdentifier) {
+            ImmutableList<String> names = ((SqlIdentifier) tableName).names;
+            if (names.size() > 1 && TStringUtil.equalsIgnoreCase("performance_schema", names.get(names.size() - 2))) {
+                result = true;
+            }
+        }
+
+        return result;
+    }
+
     public static boolean mysqlSchema(SqlNode tableName) {
         boolean result = false;
         if (tableName instanceof SqlIdentifier) {

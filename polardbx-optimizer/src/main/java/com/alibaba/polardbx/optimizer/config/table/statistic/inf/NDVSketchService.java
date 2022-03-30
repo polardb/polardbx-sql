@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 
 import java.sql.SQLException;
+import java.util.Map;
 
 /**
  * ndv sketch inf
@@ -45,12 +46,19 @@ public interface NDVSketchService {
     void parse(SystemTableNDVSketchStatistic.SketchRow[] sketchRows);
 
     /**
-     * cal the ndv value
+     * remove by table
      */
     void remove(String tableName);
+
+    /**
+     * remove by table, column
+     */
+    void remove(String tableName, String column);
 
     /**
      * cal the ndv value
      */
     StatisticResult getCardinality(String tableName, String columnName);
+
+    Map<? extends String, ? extends Long> getCardinalityMap();
 }

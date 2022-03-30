@@ -34,6 +34,7 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.group.config.Weight;
@@ -331,6 +332,7 @@ public class TopologyHandler extends AbstractLifecycle {
         public void onHandleConfig(String dataId, long newOpVersion) {
             LoggerInit.TDDL_DYNAMIC_CONFIG.info("[Data Recieved] [MATRIX TOPOLOGY] update topology for " + dataId);
             refresh();
+            DbGroupInfoManager.getInstance().onDbTopologyListener(dataId);
         }
     }
 
@@ -464,7 +466,8 @@ public class TopologyHandler extends AbstractLifecycle {
                 group.setSchemaName(dbGroupInfoRecord.dbName);
                 group.setAppName(appName);
                 String grpNameUpperCase = group.getName().toUpperCase();
-                if (groupType == DbGroupInfoRecord.GROUP_TYPE_NORMAL) {
+                if (groupType == DbGroupInfoRecord.GROUP_TYPE_NORMAL ||
+                    groupType == DbGroupInfoRecord.GROUP_TYPE_BEFORE_REMOVE) {
                     normalGroupNameList.add(grpNameUpperCase);
                 } else if (groupType == DbGroupInfoRecord.GROUP_TYPE_ADDED
                     || groupType == DbGroupInfoRecord.GROUP_TYPE_SCALEOUT_FINISHED) {

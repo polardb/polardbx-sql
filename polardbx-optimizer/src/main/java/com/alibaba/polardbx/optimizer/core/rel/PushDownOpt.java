@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -27,7 +28,9 @@ import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterConditionSimplifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.JoinSemiJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
+import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinCorrToSubQueryRule;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
@@ -39,6 +42,7 @@ import org.apache.calcite.plan.Contexts;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.hep.HepMatchOrder;
 import org.apache.calcite.plan.hep.HepPlanner;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.rel.RelNode;
@@ -63,6 +67,8 @@ import org.apache.calcite.rel.rules.FilterSortTransposeRule;
 import org.apache.calcite.rel.rules.JoinProjectTransposeRule;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.rules.ProjectRemoveRule;
+import org.apache.calcite.rel.rules.SemiJoinFilterTransposeRule;
+import org.apache.calcite.rel.rules.SemiJoinProjectTransposeRule;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -296,10 +302,101 @@ public class PushDownOpt {
     }
 
     /**
+     * transform semiJoin and correlate to subquery, used for visitors who don't support semi join
+     *
+     * @return the root of a tree without semiJoin and correlate
+     */
+    public RelNode removeSemiJoin() {
+        // semi join could not exist when ENABLE_LV_SUBQUERY_UNWRAP is disabled
+        // thus there is no need to transform
+        if (!PlannerContext.getPlannerContext(getPushedRelNode()).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP)) {
+            return getPushedRelNode();
+        }
+
+        HepProgramBuilder builder = new HepProgramBuilder();
+        //transform semi join
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(SemiJoinCorrToSubQueryRule.SEMI_JOIN);
+        builder.addGroupEnd();
+
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.stopOptimizerTrace();
+        planner.setRoot(getPushedRelNode());
+        RelNode optimizedNode = planner.findBestExp();
+
+        return optimizedNode.accept(new RelCastRemover());
+    }
+
+    /**
+     * transform semiJoin and correlate to subquery, optimize the tree for native sql
+     *
+     * @param relNode root of the tree to be transformed
+     * @return the root of a tree without semiJoin and correlate
+     */
+    private RelNode semiJoinCorrToSubQuery(RelNode relNode) {
+
+        // semi join could not exist when ENABLE_LV_SUBQUERY_UNWRAP is disabled
+        // thus there is no need to transform
+        if (!PlannerContext.getPlannerContext(relNode).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP)) {
+            return relNode;
+        }
+
+        HepProgramBuilder builder = new HepProgramBuilder();
+
+        //pull project
+        builder.addGroupBegin();
+        builder.addRuleInstance(JoinProjectTransposeRule.LEFT_PROJECT);
+        builder.addRuleInstance(JoinProjectTransposeRule.RIGHT_PROJECT);
+        builder.addRuleInstance(JoinProjectTransposeRule.BOTH_PROJECT);
+        builder.addRuleInstance(FilterProjectTransposeRule.INSTANCE);
+        builder.addRuleInstance(SemiJoinProjectTransposeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addGroupEnd();
+
+        //pull filter
+        builder.addGroupBegin();
+        builder.addRuleCollection(RuleToUse.PULL_FILTER_OVER_JOIN);
+        builder.addRuleInstance(SemiJoinFilterTransposeRule.INSTANCE);
+        builder.addGroupEnd();
+
+        //pull join
+        builder.addGroupBegin();
+        builder.addRuleInstance(JoinSemiJoinTransposeRule.LEFT_SEMI);
+        builder.addRuleInstance(JoinSemiJoinTransposeRule.RIGHT_SEMI);
+        builder.addGroupEnd();
+
+        //transform semi join
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(SemiJoinCorrToSubQueryRule.SEMI_JOIN);
+        builder.addGroupEnd();
+
+        builder.addGroupBegin();
+        builder.addRuleInstance(FilterMergeRule.INSTANCE);
+        builder.addRuleInstance(FilterConditionSimplifyRule.INSTANCE);
+        builder.addRuleInstance(ProjectRemoveRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addGroupEnd();
+
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.stopOptimizerTrace();
+        planner.setRoot(relNode);
+        RelNode optimizedNode = planner.findBestExp();
+
+        optimizedNode = optimizedNode.accept(new RelCastRemover());
+
+        return optimizedNode;
+    }
+
+    /**
      * return current native sql, may be a middle state
      */
     public SqlNode buildNativeSql(RelToSqlConverter sqlConverter, ReplaceCallWithLiteralVisitor visitor) {
         RelNode relNode = getPushedRelNode();
+        relNode = semiJoinCorrToSubQuery(relNode);
         if (visitor != null) {
             // only in gsi currently
             relNode = replaceCallWithLiteral(relNode, visitor);
@@ -386,6 +483,22 @@ public class PushDownOpt {
         builder.join(join.getJoinType(), join.getCondition());
     }
 
+    public void pushSemiJoinDirect(LogicalSemiJoin join, LogicalView rightView, List<RexNode> leftFilters,
+                                   List<RexNode> rightFilters, RelOptCluster cluster) {
+        pushSemiJoin(join, rightView, leftFilters, rightFilters, cluster);
+
+        //pass the logicalView of left and right
+        LogicalSemiJoin semiJoin = join.copy(
+            join.getTraitSet(),
+            join.getCondition(),
+            builder.build(),
+            rightView.getPushedRelNode(),
+            join.getJoinType(),
+            join.isSemiJoinDone());
+
+        builder.push(semiJoin);
+    }
+
     public void pushSemiJoin(LogicalSemiJoin join, LogicalView rightView, List<RexNode> leftFilters,
                              List<RexNode> rightFilters, RelOptCluster cluster) {
         RelDataType leftType = tableScan.buildCurRowType();
@@ -429,7 +542,7 @@ public class PushDownOpt {
                 // just add full table scan. for sql like column subquery
                 ExecutionContext ec = PlannerContext.getPlannerContext(tableScan).getExecutionContext();
                 partStep =
-                    PartitionPruneStepBuilder.generateFullScanPrueStepInfo(tableScan.getSchemaName(),
+                    PartitionPruneStepBuilder.generateFullScanPruneStepInfo(tableScan.getSchemaName(),
                         tbName, ec);
             }
             allPartPruneSteps.add(partStep);
@@ -461,7 +574,7 @@ public class PushDownOpt {
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(dbName);
         if (isNewPartDb) {
             relShardInfo
-                .setPartPruneStepInfo(PartitionPruneStepBuilder.generateFullScanPrueStepInfo(dbName, logTbName, ec));
+                .setPartPruneStepInfo(PartitionPruneStepBuilder.generateFullScanPruneStepInfo(dbName, logTbName, ec));
         }
         if (comparatives.size() > tableIndex) {
             relShardInfo.setUsePartTable(false);
@@ -705,7 +818,7 @@ public class PushDownOpt {
 
     public void rebuildPartRoutingPlanInfo() {
         PartRoutingPlanInfo partRoutingPlanInfo =
-            buildPartRoutingPlanInfo(getPushedRelNode(), tableScan.isNewPartDbTbl());
+            buildPartRoutingPlanInfo(removeSemiJoin(), tableScan.isNewPartDbTbl());
         updatePartRoutingPlanInfo(partRoutingPlanInfo);
     }
 

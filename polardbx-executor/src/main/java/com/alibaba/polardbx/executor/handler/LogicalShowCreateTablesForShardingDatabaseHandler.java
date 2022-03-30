@@ -29,6 +29,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
@@ -39,6 +40,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlCreateTableParser;
@@ -76,6 +78,7 @@ import com.alibaba.polardbx.optimizer.utils.newrule.IRuleGen;
 import com.alibaba.polardbx.optimizer.utils.newrule.RuleUtils;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.MysqlSchemaViewManager;
+import com.alibaba.polardbx.optimizer.view.PerformanceSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.rule.MappingRule;
@@ -97,6 +100,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -258,68 +262,22 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
             ArrayResultCursor result = new ArrayResultCursor("Create Table");
 
             try {
+                boolean isSystemDb = InformationSchema.NAME.equalsIgnoreCase(schemaName) || RelUtils
+                    .informationSchema(showCreateTable.getTableName())
+                    || RelUtils.mysqlSchema(showCreateTable.getTableName()) || RelUtils
+                    .performanceSchema(showCreateTable.getTableName());
+                if (isSystemDb) {
+                    cursor = showViews(logicalPlan, schemaName, tableName, executionContext);
+                    if (cursor != null) {
+                        return cursor;
+                    }
+                }
                 tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager()
                     .getTable(tableName);
             } catch (Throwable t) {
-                // can not find tableMeta, so try view
-                try {
-                    ViewManager viewManager;
-                    if (InformationSchema.NAME.equalsIgnoreCase(schemaName)) {
-                        viewManager = InformationSchemaViewManager.getInstance();
-                    } else if (RelUtils.informationSchema(showCreateTable.getTableName())) {
-                        viewManager = InformationSchemaViewManager.getInstance();
-                    } else if (RelUtils.mysqlSchema(showCreateTable.getTableName())) {
-                        viewManager = MysqlSchemaViewManager.getInstance();
-                    } else {
-                        viewManager = OptimizerContext.getContext(schemaName).getViewManager();
-                    }
-
-                    SystemTableView.Row row = viewManager.select(tableName);
-                    if (row != null) {
-                        ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
-                        // | View | Create View | character_set_client | collation_connection |
-                        resultCursor.addColumn("View", DataTypes.StringType);
-                        resultCursor.addColumn("Create View", DataTypes.StringType);
-                        resultCursor.addColumn("character_set_client", DataTypes.StringType);
-                        resultCursor.addColumn("collation_connection", DataTypes.StringType);
-                        boolean printPlan = row.getPlan() != null && row.getPlanType() != null;
-                        if (printPlan) {
-                            // | PLAN | PLAN_TYPE |
-                            resultCursor.addColumn("PLAN", DataTypes.StringType);
-                            resultCursor.addColumn("PLAN_TYPE", DataTypes.StringType);
-                        }
-
-                        String createView = row.isVirtual() ? "[VIRTUAL_VIEW] " + row.getViewDefinition() :
-                            "CREATE VIEW `" + tableName + "` AS " + row.getViewDefinition();
-
-                        if (printPlan) {
-                            String explainString;
-                            RelOptSchema relOptSchema =
-                                SqlConverter.getInstance(schemaName, executionContext).getCatalog();
-                            try {
-                                explainString = RelUtils.toString(PlanManagerUtil
-                                    .jsonToRelNode(row.getPlan(), logicalPlan.getCluster(), relOptSchema));
-                            } catch (Throwable throwable) {
-                                throwable.printStackTrace();
-                                explainString = throwable.getMessage();
-                            }
-
-                            resultCursor.addRow(new Object[] {
-                                tableName,
-                                createView,
-                                "utf8",
-                                "utf8_general_ci", "\n" + explainString, row.getPlanType()});
-                        } else {
-                            resultCursor.addRow(new Object[] {
-                                tableName,
-                                createView,
-                                "utf8",
-                                "utf8_general_ci"});
-                        }
-                        return resultCursor;
-                    }
-                } catch (Throwable t2) {
-                    // pass
+                cursor = showViews(logicalPlan, schemaName, tableName, executionContext);
+                if (cursor != null) {
+                    return cursor;
                 }
             }
 
@@ -658,6 +616,8 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                 String table = row.getString(0);
                 String sql = row.getString(1);
 
+                sql = LogicalShowCreateTableHandler.reorgLogicalColumnOrder(schemaName, tableName, sql);
+
                 final GsiMetaBean gsiMeta = ExecutorContext.getContext(schemaName)
                     .getGsiManager()
                     .getGsiTableAndIndexMeta(schemaName, tableName, IndexStatus.ALL);
@@ -665,11 +625,22 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                 // handle implicit pk
                 final MySqlCreateTableStatement createTable =
                     (MySqlCreateTableStatement) SQLUtils.parseStatements(sql,
-                        JdbcConstants.MYSQL)
+                            JdbcConstants.MYSQL)
                         .get(0)
                         .clone();
                 List<SQLTableElement> toRemove = Lists.newArrayList();
                 for (SQLTableElement sqlTableElement : createTable.getTableElementList()) {
+                    // handle binary default value
+                    if (tableMeta != null && sqlTableElement instanceof SQLColumnDefinition) {
+                        String columnName =
+                            SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getColumnName());
+                        ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
+                        if (columnMeta.isBinaryDefault()) {
+                            SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
+                            ((SQLColumnDefinition) sqlTableElement).setDefaultExpr(newDefaultVal);
+                        }
+                    }
+
                     if (sqlTableElement instanceof SQLColumnDefinition
                         && SqlValidatorImpl.isImplicitKey(((SQLColumnDefinition) sqlTableElement).getNameAsString())
                         && !needShowImplicitId(executionContext)) {
@@ -680,6 +651,21 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                         .isImplicitKey(((MySqlPrimaryKey) sqlTableElement).getColumns().get(0).toString())
                         && !needShowImplicitId(executionContext)) {
                         toRemove.add(sqlTableElement);
+                    }
+                    if (sqlTableElement instanceof MysqlForeignKey) {
+                        MysqlForeignKey foreignKey = (MysqlForeignKey) sqlTableElement;
+
+                        // Only single to single table was allowed to create foreign keys.
+                        String defaultGroupName = tddlRuleManager.getDefaultDbIndex().toLowerCase();
+                        String phyReferencedTableName =
+                            SQLUtils.normalize(foreignKey.getReferencedTableName().getSimpleName());
+                        String fullQualifiedPhyRefTableName = defaultGroupName + "." + phyReferencedTableName;
+
+                        Set<String> logicalTableNames =
+                            tddlRuleManager.getLogicalTableNames(fullQualifiedPhyRefTableName, schemaName);
+                        if (CollectionUtils.isNotEmpty(logicalTableNames)) {
+                            foreignKey.getReferencedTable().setSimpleName(logicalTableNames.iterator().next());
+                        }
                     }
                 }
                 createTable.getTableElementList().removeAll(toRemove);
@@ -942,5 +928,73 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
     private boolean needShowImplicitId(ExecutionContext executionContext) {
         Object value = executionContext.getExtraCmds().get(ConnectionProperties.SHOW_IMPLICIT_ID);
         return value != null && Boolean.parseBoolean(value.toString());
+    }
+
+    private Cursor showViews(RelNode logicalPlan, String schemaName, String tableName,
+                             ExecutionContext executionContext) {
+        final LogicalShow show = (LogicalShow) logicalPlan;
+        final SqlShowCreateTable showCreateTable = (SqlShowCreateTable) show.getNativeSqlNode();
+        try {
+            ViewManager viewManager;
+            if (InformationSchema.NAME.equalsIgnoreCase(schemaName)) {
+                viewManager = InformationSchemaViewManager.getInstance();
+            } else if (RelUtils.informationSchema(showCreateTable.getTableName())) {
+                viewManager = InformationSchemaViewManager.getInstance();
+            } else if (RelUtils.mysqlSchema(showCreateTable.getTableName())) {
+                viewManager = MysqlSchemaViewManager.getInstance();
+            } else if (RelUtils.performanceSchema(showCreateTable.getTableName())) {
+                viewManager = PerformanceSchemaViewManager.getInstance();
+            } else {
+                viewManager = OptimizerContext.getContext(schemaName).getViewManager();
+            }
+
+            SystemTableView.Row row = viewManager.select(tableName);
+            if (row != null) {
+                ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
+                // | View | Create View | character_set_client | collation_connection |
+                resultCursor.addColumn("View", DataTypes.StringType);
+                resultCursor.addColumn("Create View", DataTypes.StringType);
+                resultCursor.addColumn("character_set_client", DataTypes.StringType);
+                resultCursor.addColumn("collation_connection", DataTypes.StringType);
+                boolean printPlan = row.getPlan() != null && row.getPlanType() != null;
+                if (printPlan) {
+                    // | PLAN | PLAN_TYPE |
+                    resultCursor.addColumn("PLAN", DataTypes.StringType);
+                    resultCursor.addColumn("PLAN_TYPE", DataTypes.StringType);
+                }
+
+                String createView = row.isVirtual() ? "[VIRTUAL_VIEW] " + row.getViewDefinition() :
+                    "CREATE VIEW `" + tableName + "` AS " + row.getViewDefinition();
+
+                if (printPlan) {
+                    String explainString;
+                    RelOptSchema relOptSchema =
+                        SqlConverter.getInstance(schemaName, executionContext).getCatalog();
+                    try {
+                        explainString = RelUtils.toString(PlanManagerUtil
+                            .jsonToRelNode(row.getPlan(), logicalPlan.getCluster(), relOptSchema));
+                    } catch (Throwable throwable) {
+                        throwable.printStackTrace();
+                        explainString = throwable.getMessage();
+                    }
+
+                    resultCursor.addRow(new Object[] {
+                        tableName,
+                        createView,
+                        "utf8",
+                        "utf8_general_ci", "\n" + explainString, row.getPlanType()});
+                } else {
+                    resultCursor.addRow(new Object[] {
+                        tableName,
+                        createView,
+                        "utf8",
+                        "utf8_general_ci"});
+                }
+                return resultCursor;
+            }
+        } catch (Throwable t2) {
+            // pass
+        }
+        return null;
     }
 }

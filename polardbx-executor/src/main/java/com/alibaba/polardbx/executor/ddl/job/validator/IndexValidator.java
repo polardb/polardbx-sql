@@ -34,6 +34,8 @@ import java.util.List;
 
 public class IndexValidator {
 
+    static final String PRIMARY_KEY = "primary";
+
     public static void validateIndexNameLengths(SqlCreateTable createTable) {
         List<Pair<SqlIdentifier, SqlIndexDefinition>> keys = new ArrayList<>();
         if (null != createTable.getKeys()) {
@@ -92,6 +94,12 @@ public class IndexValidator {
         if (checkIfIndexExists(schemaName, logicalTableName, indexName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 "Index '" + indexName + "' on table '" + logicalTableName + "' already exists");
+        }
+    }
+
+    public static void validateDropPrimaryKey(String indexName) {
+        if (PRIMARY_KEY.equalsIgnoreCase(indexName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DROP_PRIMARY_KEY);
         }
     }
 

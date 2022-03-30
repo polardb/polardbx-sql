@@ -168,12 +168,12 @@ public class GsiBackfillManager {
         insertBackfillMeta(ec, initBackfillObjects, true);
     }
 
-    public void initBackfillMeta(ExecutionContext ec, long ddlJobId, String schemaName, String tableName,
+    public void initBackfillMeta(ExecutionContext ec, long backfillId, String schemaName, String tableName,
                                  String indexName, List<BackfillObjectRecord> positionMarks) {
 
         final List<BackfillObjectRecord> backfillObjectRecords = positionMarks.stream()
             .map(bfo -> new BackfillObjectRecord(-1,
-                ddlJobId,
+                backfillId,
                 schemaName,
                 tableName,
                 schemaName,
@@ -201,8 +201,8 @@ public class GsiBackfillManager {
         insertBackfillMeta(ec, backfillObjectRecords, true);
     }
 
-    public BackfillBean loadBackfillMeta(long ddlJobId) {
-        List<BackfillObjectRecord> bfoList = queryBackfillObject(ddlJobId);
+    public BackfillBean loadBackfillMeta(long backfillId) {
+        List<BackfillObjectRecord> bfoList = queryBackfillObject(backfillId);
         if (CollectionUtils.isEmpty(bfoList)) {
             return BackfillBean.EMPTY;
         }
@@ -240,9 +240,9 @@ public class GsiBackfillManager {
                 progress = Integer.valueOf(logicalBfo.getLastValue());
             } catch (NumberFormatException e) {
                 SQLRecorderLogger.ddlLogger.warn(
-                    MessageFormat.format("parse backfill progress error. progress:{0}, jobId:{1}",
+                    MessageFormat.format("parse backfill progress error. progress:{0}, backfillId:{1}",
                         progress,
-                        ddlJobId));
+                        backfillId));
             }
         }
         return BackfillBean.create(br, physicalBfoList, progress);
@@ -322,11 +322,11 @@ public class GsiBackfillManager {
         );
     }
 
-    public void updateLogicalBackfillProcess(String progress, Long jobId) {
+    public void updateLogicalBackfillProcess(String progress, Long backfillId) {
 
         Map<Integer, ParameterContext> params = new HashMap<>();
         params.put(1, new ParameterContext(ParameterMethod.setString, new Object[] {1, progress}));
-        params.put(2, new ParameterContext(ParameterMethod.setLong, new Object[] {2, jobId}));
+        params.put(2, new ParameterContext(ParameterMethod.setLong, new Object[] {2, backfillId}));
 
         wrapWithTransaction(dataSource, (conn) -> {
             try {
@@ -339,10 +339,10 @@ public class GsiBackfillManager {
         });
     }
 
-    public void deleteByJobId(Long jobId) {
+    public void deleteByBackfillId(Long backfillId) {
 
         Map<Integer, ParameterContext> params = new HashMap<>();
-        params.put(1, new ParameterContext(ParameterMethod.setLong, new Object[] {1, jobId}));
+        params.put(1, new ParameterContext(ParameterMethod.setLong, new Object[] {1, backfillId}));
 
         wrapWithTransaction(dataSource, (conn) -> {
             try {
@@ -377,16 +377,16 @@ public class GsiBackfillManager {
         wrapWithTransaction(dataSource,
             (conn) -> {
                 try {
-                    Long jobId = ec.getBackfillId();
-                    if (jobId != null) {
-                        BackfillBean backfillBean = loadBackfillMeta(jobId);
+                    Long backfillId = ec.getBackfillId();
+                    if (backfillId != null) {
+                        BackfillBean backfillBean = loadBackfillMeta(backfillId);
                         if (backfillBean == BackfillBean.EMPTY) {
                             //do nothing
                         } else if (backfillBean.status == BackfillStatus.SUCCESS) {
                             if (isSameTask(backfillObjectRecords, backfillBean)) {
                                 return;
                             } else {
-                                deleteByJobId(jobId);
+                                deleteByBackfillId(backfillId);
                             }
                         } else {
                             if (isSameTask(backfillObjectRecords, backfillBean)) {
@@ -417,8 +417,12 @@ public class GsiBackfillManager {
             && StringUtils.equalsIgnoreCase(backfillBean.indexName, record.indexName);
     }
 
-    private List<BackfillObjectRecord> queryBackfillObject(long jobId) {
-        return queryByJobId(SQL_SELECT_BACKFILL_OBJECT, jobId, BackfillObjectRecord.ORM);
+    private List<BackfillObjectRecord> queryBackfillObject(long backfillId) {
+        return queryByJobId(SQL_SELECT_BACKFILL_OBJECT, backfillId, BackfillObjectRecord.ORM);
+    }
+
+    public List<BackfillObjectRecord> queryBackfillProgress(long backfillId) {
+        return queryByJobId(SQL_SELECT_BACKFILL_PROGRESS, backfillId, BackfillObjectRecord.ORM);
     }
 
     private void updateBackfillObject(List<BackfillObjectRecord> backfillObjectRecords) {
@@ -455,7 +459,7 @@ public class GsiBackfillManager {
         String message,
         String endTime,
         String extra,
-        Long jobId) {
+        Long backfillId) {
 
         Map<Integer, ParameterContext> params = new HashMap<>();
         params.put(1, new ParameterContext(ParameterMethod.setString, new Object[] {1, progress}));
@@ -463,7 +467,7 @@ public class GsiBackfillManager {
         params.put(3, new ParameterContext(ParameterMethod.setString, new Object[] {3, message}));
         params.put(4, new ParameterContext(ParameterMethod.setString, new Object[] {4, endTime}));
         params.put(5, new ParameterContext(ParameterMethod.setString, new Object[] {5, extra}));
-        params.put(6, new ParameterContext(ParameterMethod.setLong, new Object[] {6, jobId}));
+        params.put(6, new ParameterContext(ParameterMethod.setLong, new Object[] {6, backfillId}));
 
         wrapWithTransaction(dataSource, (conn) -> {
             try {
@@ -476,10 +480,10 @@ public class GsiBackfillManager {
         });
     }
 
-    private <R extends Orm<R>> List<R> queryByJobId(String sql, long jobId, R orm) {
+    private <R extends Orm<R>> List<R> queryByJobId(String sql, long backfillId, R orm) {
         try (Connection connection = dataSource.getConnection()) {
             return query(sql,
-                ImmutableMap.of(1, new ParameterContext(ParameterMethod.setLong, new Object[] {1, jobId})),
+                ImmutableMap.of(1, new ParameterContext(ParameterMethod.setLong, new Object[] {1, backfillId})),
                 connection,
                 orm);
         } catch (SQLException e) {
@@ -510,6 +514,10 @@ public class GsiBackfillManager {
     private static final String SQL_SELECT_BACKFILL_OBJECT =
         "SELECT ID,JOB_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA FROM "
             + SYSTABLE_BACKFILL_OBJECTS + " WHERE JOB_ID = ? ";
+
+    private static final String SQL_SELECT_BACKFILL_PROGRESS =
+        "SELECT ID,JOB_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA FROM "
+            + SYSTABLE_BACKFILL_OBJECTS + " WHERE JOB_ID = ? AND PHYSICAL_DB IS NULL AND PHYSICAL_TABLE IS NULL";
 
     private static final String SQL_UPDATE_BACKFILL_PROGRESS = "UPDATE "
         + SYSTABLE_BACKFILL_OBJECTS

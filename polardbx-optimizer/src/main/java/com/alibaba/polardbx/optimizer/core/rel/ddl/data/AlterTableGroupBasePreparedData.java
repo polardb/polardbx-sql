@@ -16,16 +16,18 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static com.alibaba.polardbx.common.DefaultSchema.getSchemaName;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class AlterTableGroupBasePreparedData extends DdlPreparedData {
 
@@ -133,5 +135,21 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
 
     public void setTaskType(ComplexTaskMetaManager.ComplexTaskType taskType) {
         this.taskType = taskType;
+    }
+
+    public List<String> getRelatedPartitions() {
+        List<String> relatedParts = new ArrayList<>();
+        if (GeneralUtil.isNotEmpty(newPartitionNames)) {
+            relatedParts.addAll(newPartitionNames);
+        }
+        if (GeneralUtil.isNotEmpty(oldPartitionNames)) {
+            relatedParts.addAll(oldPartitionNames);
+        }
+        return relatedParts;
+    }
+
+    public Set<String> getTargetPhysicalGroups() {
+        return GeneralUtil.emptyIfNull(targetGroupDetailInfoExRecords).stream().map(GroupDetailInfoRecord::getGroupName)
+            .collect(Collectors.toSet());
     }
 }

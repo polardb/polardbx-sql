@@ -18,6 +18,7 @@ package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -184,20 +185,18 @@ public class LogicalShowTableInfoHandler extends HandlerCommon {
             logger.error("Partition table " + tableName + " does not have partition info");
             return result;
         }
-        Map<String, List<PhysicalPartitionInfo>> physicalPartitionInfos =
-            partitionInfo.getPhysicalPartitionTopology(new ArrayList<>());
 
         MyDataSourceGetter dsGetter = new MyDataSourceGetter(executionContext.getSchemaName());
         int rowCnt = 0;
 
-        for (Map.Entry<String, List<PhysicalPartitionInfo>> phyPartItem : physicalPartitionInfos.entrySet()) {
+        for (Map.Entry<String, Set<String>> phyPartItem : partitionInfo.getTopology().entrySet()) {
             String groupName = phyPartItem.getKey();
 
             TGroupDataSource groupDataSource = dsGetter.getDataSource(groupName);
             StringBuilder sql = new StringBuilder(
                 "SELECT TABLE_SCHEMA, TABLE_NAME, (DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN (");
-            for (PhysicalPartitionInfo info : phyPartItem.getValue()) {
-                sql.append("'" + info.getPhyTable() + "',");
+            for (String phyTable : phyPartItem.getValue()) {
+                sql.append(TStringUtil.quoteString(phyTable)).append(",");
             }
             sql.deleteCharAt(sql.length() - 1);
             sql.append(");");

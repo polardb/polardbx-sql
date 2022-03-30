@@ -34,8 +34,13 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -47,10 +52,12 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -59,6 +66,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -71,12 +79,14 @@ import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import static com.alibaba.polardbx.common.ddl.Attribute.MEDIAN_JOB_IDLE_WAITING_TIME;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.BACKTICK;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.COLON;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_NUM_OF_DDL_SCHEDULERS;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.EMPTY_CONTENT;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.HYPHEN;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MIN_NUM_OF_THREAD_NAME_PARTS;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.NONE;
-import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SEMICOLON;
 
 public class DdlHelper {
 
@@ -152,6 +162,14 @@ public class DdlHelper {
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    public static String buildSubJobKey(long taskId) {
+        return DdlEngineRecord.SubJobPrefix + taskId;
+    }
+
+    public static boolean isSubJob(String key) {
+        return StringUtils.startsWith(key, DdlEngineRecord.SubJobPrefix);
     }
 
     public static String getLocalServerKey() {
@@ -249,100 +267,32 @@ public class DdlHelper {
     }
 
     /**
-     * Replace existing physical table info with new one (usually for ALTER TABLE).
-     *
-     * @param newPhyTableInfo New physical table info
-     * @param phyTablesDone Physical tables already done
-     * @return New physical tables done info
+     * {Group Name}:{Physical Table Name}
      */
-    public static String overwritePhyTablesDone(String newPhyTableInfo, Set<String> phyTablesDone,
-                                                ExecutionContext executionContext) {
-        if (TStringUtil.isEmpty(newPhyTableInfo) || phyTablesDone == null || phyTablesDone.isEmpty()) {
-            return null;
-        }
-
-        boolean phyTableReallyDone = false;
-        StringBuilder buf = new StringBuilder();
-
-        String[] objectNew = newPhyTableInfo.split(COLON);
-
-        for (String phyTableDone : phyTablesDone) {
-            String[] objectExisting = phyTableDone.split(COLON);
-            boolean isSameObject = isSameObject(objectNew, objectExisting);
-            boolean hashCodeChanged = hasDiffHashCode(objectNew, objectExisting);
-            boolean errorOccurred = hasErrorMessage(objectExisting, executionContext);
-            if (isSameObject) {
-                if (hashCodeChanged || !errorOccurred) {
-                    buf.append(SEMICOLON).append(newPhyTableInfo);
-                    phyTableReallyDone = true;
-                } else {
-                    buf.append(SEMICOLON).append(phyTableDone);
-                }
-            } else {
-                buf.append(SEMICOLON).append(phyTableDone);
-            }
-        }
-
-        return phyTableReallyDone ? buf.deleteCharAt(0).toString() : null;
+    public static String genPhyTableInfo(String groupName, String phyTableName) {
+        return groupName + COLON + phyTableName;
     }
 
-    private static boolean isSameObject(String[] objectNew, String[] objectExisting) {
-        // 4 parts in order: groupName, physicalTableName, hashCode, afterPhyDdl.
-        return TStringUtil.equalsIgnoreCase(objectNew[0], objectExisting[0])
-            && TStringUtil.equalsIgnoreCase(objectNew[1], objectExisting[1]);
-    }
-
-    private static boolean hasDiffHashCode(String[] objectNew, String[] objectExisting) {
-        // 4 parts in order: groupName, physicalTableName, hashCode, afterPhyDdl.
-        return !TStringUtil.equalsIgnoreCase(objectNew[2], objectExisting[2]);
-    }
-
-    private static boolean hasErrorMessage(String[] objectExisting, ExecutionContext executionContext) {
-        List<ExecutionContext.ErrorMessage> failedMessages =
-            (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
-        if (failedMessages != null) {
-            for (ExecutionContext.ErrorMessage failedMessage : failedMessages) {
-                if (TStringUtil.equalsIgnoreCase(failedMessage.getGroupName(), objectExisting[0]) &&
-                    TStringUtil.containsIgnoreCase(failedMessage.getMessage(), objectExisting[1])) {
-                    return true;
-                }
-            }
+    public static String genPhyTableInfo(RelNode relNode, DdlContext ddlContext) {
+        if (relNode != null && relNode instanceof PhyDdlTableOperation) {
+            Pair<String, String> phyTablePair = genPhyTablePair((PhyDdlTableOperation) relNode, ddlContext);
+            return genPhyTableInfo(phyTablePair.getKey(), phyTablePair.getValue());
         }
-        return false;
+        return null;
     }
 
     /**
-     * Generate a string that contains 2 or 4 parts separated by colons:
-     * - If the hash code of "show create table" is needed (e.g. ALTER TABLE), then there are 4 parts:
-     * {Group Name}:{Physical Table Name}:{Hash Code of Physical DDL}:{Boolean (If Executed or Not)}
-     * - Otherwise (e.g. CREATE OR DROP TABLE), there are 2 parts needed only
-     * {Group Name}:{Physical Table Name}
-     *
-     * @param schemaName The schema name that the table belongs to
-     * @param physicalPlan A physical table plan
-     * @param needHash Indicate if a hash code is needed
-     * @param afterPhyDdl Indicate if the physical DDL has been executed
-     * @param ddlContext ddl context
-     * @return A string contains the physical table related info
+     * {Group Name}:{Physical Table Name}:{Before or After Physical DDL Execution}:{Hash Code of Physical DDL}
      */
-    public static String genPhyTableInfo(String schemaName, PhyDdlTableOperation physicalPlan, boolean needHash,
-                                         boolean afterPhyDdl, DdlContext ddlContext) {
-        // A pair of group name and physical table name
-        Pair<String, String> phyTableInfoPair = genPhyTableInfo(physicalPlan, ddlContext);
-
-        String phyTableInfo = phyTableInfoPair.getKey() + COLON + phyTableInfoPair.getValue();
-
-        if (needHash) {
-            // Hash code of the result of SHOW CREATE TABLE.
-            String phyTableDDLHashCode =
-                genHashCodeForPhyTableDDL(schemaName, phyTableInfoPair.getKey(), phyTableInfoPair.getValue());
-            return phyTableInfo + COLON + phyTableDDLHashCode + COLON + afterPhyDdl;
-        } else {
-            return phyTableInfo;
-        }
+    public static String genPhyTableInfoWithHashcode(String schemaName, String groupName, String phyTableName,
+                                                     boolean afterPhyDdl) {
+        String phyTableInfo = genPhyTableInfo(groupName, phyTableName);
+        // Hash code of the result of SHOW CREATE TABLE.
+        String phyTableDDLHashCode = genHashCodeForPhyTableDDL(schemaName, groupName, phyTableName);
+        return phyTableInfo + COLON + afterPhyDdl + COLON + phyTableDDLHashCode;
     }
 
-    public static Pair<String, String> genPhyTableInfo(PhyDdlTableOperation physicalPlan, DdlContext ddlContext) {
+    public static Pair<String, String> genPhyTablePair(PhyDdlTableOperation physicalPlan, DdlContext ddlContext) {
         String groupName = physicalPlan.getDbIndex();
 
         String phyTableName;
@@ -367,7 +317,7 @@ public class DdlHelper {
         return new Pair<>(groupName, phyTableName);
     }
 
-    private static String genHashCodeForPhyTableDDL(String schemaName, String groupName, String phyTableName) {
+    public static String genHashCodeForPhyTableDDL(String schemaName, String groupName, String phyTableName) {
         String phyTableDDL = null;
         try (Connection conn = getPhyConnection(schemaName, groupName);
             PreparedStatement ps = conn.prepareStatement("SHOW CREATE TABLE " + phyTableName);
@@ -382,25 +332,27 @@ public class DdlHelper {
         return TStringUtil.isEmpty(phyTableDDL) ? NONE : MD5Utils.getInstance().getMD5String(phyTableDDL);
     }
 
-    public static void waitUntilPhyDdlDone(String schemaName, String groupName, String traceId) {
+    public static void waitUntilPhyDdlDone(String schemaName, String groupName, String phyTableName, String traceId) {
         try (Connection conn = getPhyConnection(schemaName, groupName)) {
-            waitUntilPhyDdlDone(conn, traceId);
+            waitUntilPhyDdlDone(conn, phyTableName, traceId);
         } catch (Throwable ignored) {
         }
     }
 
-    public static void waitUntilPhyDdlDone(Connection conn, String traceId) {
-        while (isPhyDdlStillRunning(conn, traceId)) {
-            waitForMoment(DdlConstants.MEDIAN_WAITING_TIME);
+    public static void waitUntilPhyDdlDone(Connection conn, String phyTableName, String traceId) {
+        while (isPhyDdlStillRunning(conn, phyTableName, traceId)) {
+            waitForMoment(MEDIAN_JOB_IDLE_WAITING_TIME);
         }
     }
 
-    private static boolean isPhyDdlStillRunning(Connection conn, String traceId) {
+    private static boolean isPhyDdlStillRunning(Connection conn, String phyTableName, String traceId) {
+        phyTableName = phyTableName.replaceAll(BACKTICK, EMPTY_CONTENT);
         try (Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("show full processlist")) {
             while (rs.next()) {
                 String info = rs.getString("Info");
-                if (TStringUtil.containsIgnoreCase(info, traceId)) {
+                if (TStringUtil.containsIgnoreCase(info, traceId) &&
+                    TStringUtil.containsIgnoreCase(info, phyTableName)) {
                     return true;
                 }
             }
@@ -409,8 +361,17 @@ public class DdlHelper {
         return false;
     }
 
-    private static Connection getPhyConnection(String schemaName, String groupName) throws SQLException {
-        return new MyDataSourceGetter(schemaName).getDataSource(groupName).getConnection();
+    private static Connection getPhyConnection(String schemaName, String groupName)
+        throws SQLException {
+        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        if (executorContext != null) {
+            IGroupExecutor groupExecutor = executorContext.getTopologyHandler().get(groupName);
+            if (groupExecutor != null && groupExecutor.getDataSource() instanceof TGroupDataSource) {
+                TGroupDataSource dataSource = (TGroupDataSource) groupExecutor.getDataSource();
+                return dataSource.getConnection();
+            }
+        }
+        return null;
     }
 
     private static void waitForMoment(long duration) {
@@ -420,7 +381,7 @@ public class DdlHelper {
         }
     }
 
-    public static String generateCreateTableSql(SqlNode tableNameNode, ExecutionContext executionContext) {
+    public static String genCreateTableSql(SqlNode tableNameNode, ExecutionContext executionContext) {
         SqlShowCreateTable sqlShowCreateTable = SqlShowCreateTable.create(SqlParserPos.ZERO, tableNameNode);
 
         PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
@@ -429,25 +390,26 @@ public class DdlHelper {
         String schemaName =
             TStringUtil.isEmpty(showRel.getSchemaName()) ? executionContext.getSchemaName() : showRel.getSchemaName();
 
-        Cursor showCreateResultCursor =
-            ExecutorContext.getContext(schemaName).getTopologyExecutor().execByExecPlanNode(showRel, executionContext);
+        Cursor showCreateResultCursor = null;
+        try {
+            showCreateResultCursor =
+                ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                    .execByExecPlanNode(showRel, executionContext);
 
-        String createTableSql = null;
-        Row showCreateResult = showCreateResultCursor.next();
-        if (showCreateResult != null && showCreateResult.getString(1) != null) {
-            createTableSql = showCreateResult.getString(1);
-        } else {
-            GeneralUtil.nestedException("Failed to get reference table architecture");
+            String createTableSql = null;
+            Row showCreateResult = showCreateResultCursor.next();
+            if (showCreateResult != null && showCreateResult.getString(1) != null) {
+                createTableSql = showCreateResult.getString(1);
+            } else {
+                GeneralUtil.nestedException("Failed to get reference table structure");
+            }
+
+            return createTableSql;
+        } finally {
+            if (showCreateResultCursor != null) {
+                showCreateResultCursor.close(Collections.emptyList());
+            }
         }
-
-        return createTableSql;
-    }
-
-    public static void addTaskIntoListIfNotNull(List<DdlTask> list, DdlTask task) {
-        if (list == null || task == null) {
-            return;
-        }
-        list.add(task);
     }
 
 }

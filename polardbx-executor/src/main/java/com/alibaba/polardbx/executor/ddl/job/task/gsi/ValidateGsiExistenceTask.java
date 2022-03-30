@@ -20,8 +20,12 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+
+import java.util.List;
 
 /**
  * Validate whether a GSI exists
@@ -34,12 +38,17 @@ public class ValidateGsiExistenceTask extends BaseValidateTask {
 
     final private String primaryTableName;
     final private String indexName;
+    private List<Long> tableGroupIds;
+    private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public ValidateGsiExistenceTask(String schemaName, String primaryTableName, String indexName) {
+    public ValidateGsiExistenceTask(String schemaName, String primaryTableName, String indexName,
+                                    List<Long> tableGroupIds, TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.primaryTableName = primaryTableName;
         this.indexName = indexName;
+        this.tableGroupIds = tableGroupIds;
+        this.tableGroupConfig = tableGroupConfig;
     }
 
     @Override
@@ -52,6 +61,8 @@ public class ValidateGsiExistenceTask extends BaseValidateTask {
                            String indexName,
                            ExecutionContext executionContext) {
         GsiValidator.validateGsiExistence(schemaName, primaryTableName, indexName, executionContext);
+        TableValidator.validateTableInTableGroup(schemaName, indexName, tableGroupIds, executionContext);
+        TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
     }
 
     @Override

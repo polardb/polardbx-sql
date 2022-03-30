@@ -23,7 +23,7 @@ import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.TaskSource;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 
 import java.net.URI;
 import java.util.List;

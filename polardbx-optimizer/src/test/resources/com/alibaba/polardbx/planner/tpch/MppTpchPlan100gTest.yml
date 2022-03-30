@@ -147,12 +147,12 @@
     ) group by o_orderpriority order by o_orderpriority;
 
   plan: |
-    Exchange(distribution=single, collation=[0 ASC-nulls-first])
-      MemSort(sort="o_orderpriority ASC")
-        HashAgg(group="o_orderpriority", order_count="SUM(order_count)")
-          Exchange(distribution=hash[0], collation=[])
-            HashAgg(group="o_orderpriority", order_count="COUNT()")
-              LogicalView(tables="[0000-0003].orders_[00-15],lineitem_[00-15]", shardCount=16, sql="SELECT `o_orderpriority` FROM `orders` AS `orders` WHERE (((`o_orderdate` >= '1993-07-01') AND (`o_orderdate` < DATE_ADD('1993-07-01', INTERVAL 3 MONTH))) AND (EXISTS (SELECT `l_orderkey` FROM `lineitem` AS `lineitem` WHERE ((`l_orderkey` = `orders`.`o_orderkey`) AND (`l_commitdate` < `l_receiptdate`)))))")
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="o_orderpriority asc")
+        hashagg(group="o_orderpriority", order_count="sum(order_count)")
+          exchange(distribution=hash[0], collation=[])
+            hashagg(group="o_orderpriority", order_count="count()")
+              logicalview(tables="[0000-0003].orders_[00-15],lineitem_[00-15]", shardcount=16, sql="select `o_orderpriority` from `orders` as `orders` where (((exists (select `l_orderkey` from `lineitem` as `lineitem` where ((`l_orderkey` = `orders`.`o_orderkey`) and (`l_commitdate` < `l_receiptdate`)))) and (`o_orderdate` >= '1993-07-01')) and (`o_orderdate` < date_add('1993-07-01', interval 3 month)))")
 
 - sql: |
     select
@@ -659,8 +659,9 @@
             hashjoin(condition="o_custkey = c_custkey", type="inner")
               exchange(distribution=hash[0], collation=[])
                 logicalview(tables="[0000-0003].customer_[00-15]", shardcount=16, sql="select `c_custkey`, `c_name` from `customer` as `customer`")
-              exchange(distribution=hash[1], collation=[])
-                logicalview(tables="[0000-0003].orders_[00-15],lineitem_[00-15]", shardcount=16, sql="select `orders`.`o_orderkey`, `orders`.`o_custkey`, (`orders`.`o_orderdate`) as `o_orderdate`, (`orders`.`o_totalprice`) as `o_totalprice`, sum(`lineitem`.`l_quantity`) as `sum(l_quantity)` from `orders` as `orders` inner join `lineitem` as `lineitem` on (`orders`.`o_orderkey` = `lineitem`.`l_orderkey`) where (`orders`.`o_orderkey` in (select `l_orderkey` from (select `l_orderkey`, sum(`l_quantity`) as `$f1` from `lineitem` as `lineitem0` group by `l_orderkey` having (sum(`l_quantity`) > 300)) as `t1`)) group by `orders`.`o_orderkey`, `orders`.`o_custkey`")
+              hashagg(group="o_orderkey,o_custkey", o_orderdate="__first_value(o_orderdate)", o_totalprice="__first_value(o_totalprice)", sum(l_quantity)="sum(l_quantity)")
+                exchange(distribution=hash[1], collation=[])
+                  logicalview(tables="[0000-0003].orders_[00-15],lineitem_[00-15]", shardcount=16, sql="select `orders`.`o_orderkey`, `orders`.`o_custkey`, `orders`.`o_totalprice`, `orders`.`o_orderdate`, `lineitem`.`l_quantity` from `orders` as `orders` inner join `lineitem` as `lineitem` on (`orders`.`o_orderkey` = `lineitem`.`l_orderkey`) where (`orders`.`o_orderkey` in (select `l_orderkey` from (select `l_orderkey`, sum(`l_quantity`) as `$f1` from `lineitem` as `lineitem0` group by `l_orderkey` having (sum(`l_quantity`) > 300)) as `t0`))")
 
 - sql: |
     select
@@ -760,7 +761,7 @@
                         logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_quantity`, `l_partkey`, `l_suppkey` from `lineitem` as `lineitem` where ((`l_shipdate` >= '1994-01-01') and (`l_shipdate` < date_add(cast('1994-01-01' as date), interval 1 year)))")
                   exchange(distribution=hash[0, 1], collation=[])
                     runtimefilterbuilder(condition="runtime_filter_builder_[0](ps_partkey) and runtime_filter_builder_[1](ps_suppkey)")
-                      logicalview(tables="[0000-0003].partsupp_[00-15],part_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty` from `partsupp` as `partsupp` where (`ps_partkey` in (select * from (select `p_partkey` from `part` as `part` where (`p_name` like 'forest%')) as `t0` where (`partsupp`.`ps_partkey` = `p_partkey`)))")
+                      logicalview(tables="[0000-0003].partsupp_[00-15],part_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty` from `partsupp` as `partsupp` where (`ps_partkey` in (select `p_partkey` from `part` as `part` where ((`partsupp`.`ps_partkey` = `p_partkey`) and (`p_name` like 'forest%'))))")
 
 - sql: |
     /*+TDDL:ENABLE_RUNTIME_FILTER=true */
@@ -809,13 +810,15 @@
       memsort(sort="numwait desc,s_name asc")
         hashagg(group="s_name", numwait="count()")
           exchange(distribution=hash[1], collation=[])
-            project(s_suppkey="s_suppkey", s_name="s_name", l_orderkey="l_orderkey", l_suppkey="l_suppkey")
-              hashjoin(condition="l_suppkey = s_suppkey", type="inner")
-                filter(condition="bloomfilter(l_suppkey)")
-                  logicalview(tables="[0000-0003].lineitem_[00-15],orders_[00-15]", shardcount=16, sql="select * from (select `lineitem`.`l_orderkey`, `lineitem`.`l_suppkey` from `lineitem` as `lineitem` inner join `orders` as `orders` on (((`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) and (`orders`.`o_orderstatus` = 'f')) and (`lineitem`.`l_receiptdate` > `lineitem`.`l_commitdate`))) as `t` where ((not exists (select `l_orderkey` from (select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem0` where (`l_receiptdate` > `l_commitdate`)) as `t1` where ((`l_orderkey` = `t`.`l_orderkey`) and (`l_suppkey` <> `t`.`l_suppkey`)))) and (exists (select `l_orderkey` from (select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem1`) as `t4` where ((`l_orderkey` = `t`.`l_orderkey`) and (`l_suppkey` <> `t`.`l_suppkey`)))))")
-                exchange(distribution=broadcast, collation=[])
-                  runtimefilterbuilder(condition="runtime_filter_builder_[0](s_suppkey)")
-                    logicalview(tables="[0000-0003].supplier_[00-15],nation", shardcount=16, sql="select `supplier`.`s_suppkey`, `supplier`.`s_name` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'saudi arabia'))")
+            semibkajoin(condition="l_orderkey = l_orderkey and l_suppkey <> l_suppkey", type="semi")
+              project(s_suppkey="s_suppkey", s_name="s_name", l_orderkey="l_orderkey", l_suppkey="l_suppkey")
+                hashjoin(condition="l_suppkey = s_suppkey", type="inner")
+                  filter(condition="bloomfilter(l_suppkey)")
+                    logicalview(tables="[0000-0003].lineitem_[00-15],orders_[00-15]", shardcount=16, sql="select `lineitem`.`l_orderkey`, `lineitem`.`l_suppkey` from `lineitem` as `lineitem` inner join `orders` as `orders` on (((`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) and (`orders`.`o_orderstatus` = 'f')) and (`lineitem`.`l_receiptdate` > `lineitem`.`l_commitdate`)) where (not exists (select `l_orderkey` from `lineitem` as `lineitem0` where (((`l_orderkey` = `lineitem`.`l_orderkey`) and (`l_suppkey` <> `lineitem`.`l_suppkey`)) and (`l_receiptdate` > `l_commitdate`))))")
+                  exchange(distribution=broadcast, collation=[])
+                    runtimefilterbuilder(condition="runtime_filter_builder_[0](s_suppkey)")
+                      logicalview(tables="[0000-0003].supplier_[00-15],nation", shardcount=16, sql="select `supplier`.`s_suppkey`, `supplier`.`s_name` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'saudi arabia'))")
+              logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem` where (`l_orderkey` in (...))")
 #-
 #  sql: |
 #    select

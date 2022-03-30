@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.TaskScheduler;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.TopologicalSorter;
+import com.google.common.base.Preconditions;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public abstract class AbstractDdlJob implements DdlJob {
 
     @Override
     public DdlJob addTask(DdlTask task) {
+        Preconditions.checkNotNull(task, "DdlTask is null");
         synchronized (taskGraph) {
             taskGraph.addVertex(task);
         }
@@ -98,6 +100,7 @@ public abstract class AbstractDdlJob implements DdlJob {
         synchronized (taskGraph) {
             DdlTask pre = predecessor;
             for (DdlTask curTask : taskList) {
+                Preconditions.checkNotNull(curTask, "DdlTask is null");
                 taskGraph.addEdge(pre, curTask);
                 pre = curTask;
             }

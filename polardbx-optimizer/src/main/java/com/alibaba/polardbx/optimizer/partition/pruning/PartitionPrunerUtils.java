@@ -29,7 +29,7 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.field.FieldCheckLevel;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
-import com.alibaba.polardbx.optimizer.partition.HashBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.PartitionBoundSpec;
 import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -626,7 +626,7 @@ public class PartitionPrunerUtils {
         PartitionField field = PartitionFieldBuilder.createField(partFldDataType);
         SessionProperties sessionProperties;
         if (context == null) {
-            if (endpoints == null ) {
+            if (endpoints == null) {
                 // store value from query.
                 field.store(predExprVal, predExprDataType);
             } else {
@@ -636,7 +636,7 @@ public class PartitionPrunerUtils {
         } else {
             // so we abstract a session properties:
             sessionProperties = SessionProperties.fromExecutionContext(context);
-            if (accessType == PartFieldAccessType.DML_PRUNING) {
+            if (accessType == PartFieldAccessType.DML_PRUNING || accessType == PartFieldAccessType.DDL_EXECUTION) {
                 sessionProperties.setCheckLevel(FieldCheckLevel.CHECK_FIELD_WARN);
             }
 
@@ -659,7 +659,8 @@ public class PartitionPrunerUtils {
     }
 
     protected static void processTypeConversionStatus(PartFieldAccessType accessType,
-                                                      DataType srcDataType, PartitionField storedField, boolean[] endpoints) {
+                                                      DataType srcDataType, PartitionField storedField,
+                                                      boolean[] endpoints) {
         PartFieldTypeConversionProcessor.processTypeConversionStatus(accessType, srcDataType, storedField, endpoints);
     }
 
@@ -746,26 +747,70 @@ public class PartitionPrunerUtils {
      * if atVal=8, flag = 1, [1,8),[8,9)
      * if p=[1,2) atVal=1, flag=-2 not need to split any more
      */
-    public static int getExtractPosition(PartitionSpec curSpec, PartitionSpec prevSpec, long atVal) {
-        HashBoundSpec hashBoundSpec = (HashBoundSpec) curSpec.getBoundSpec();
+    public static int getExtractPosition(PartitionSpec curSpec, PartitionSpec prevSpec, Long[] atVal) {
+        PartitionBoundSpec boundSpec = curSpec.getBoundSpec();
         int flag = 0;
         // TODO: simplify
-        PartitionField partFld = hashBoundSpec.getSingleDatum().getSingletonValue().getValue();
-        long boundVal = partFld.longValue();
-        long prevBoundVal = Long.MIN_VALUE;
+        // FIXME: support key partition
+        SearchDatumInfo curSpecUpperBound = boundSpec.getSingleDatum();
+        Long[] lowBoundHashCode = new Long[atVal.length];
+        for (int i = 0; i < atVal.length; i++) {
+            lowBoundHashCode[i] = Long.MIN_VALUE;
+        }
+        SearchDatumInfo prevSpecUpperBound = SearchDatumInfo.createFromHashCodes(lowBoundHashCode);
         if (prevSpec != null) {
-            HashBoundSpec precHashBoundSpec = (HashBoundSpec) prevSpec.getBoundSpec();
-            prevBoundVal = precHashBoundSpec.getRAWValue().longValue();
+            prevSpecUpperBound = prevSpec.getBoundSpec().getSingleDatum();
         }
-        if (atVal == boundVal) {
-            flag = -1;
-        } else if (atVal + 1 == boundVal) {
-            flag = 1;
-        }
-        if (atVal + 1 == boundVal && atVal == prevBoundVal) {
+        SearchDatumInfo searchDatumInfo = SearchDatumInfo.createFromHashCodes(atVal);
+        int distWithPrevPart = compareDistance(prevSpecUpperBound, searchDatumInfo);
+        int distWithCurPart = compareDistance(searchDatumInfo, curSpecUpperBound);
+        if (distWithCurPart == 0 && distWithPrevPart == -1) {
             flag = -2;
+        } else if (distWithPrevPart == -1) {
+            flag = -1;
+        } else if (distWithCurPart == 0) {
+            flag = 1;
+        } else {
+            flag = 0;
         }
         return flag;
+    }
+
+    // 1: distance greater than 1
+    // 0: distance equal to 1
+    // -1: one == two
+    private static int compareDistance(SearchDatumInfo one, SearchDatumInfo two) {
+        assert one.getDatumInfo().length == two.getDatumInfo().length;
+        int i = 0;
+        SearchDatumInfo small = one;
+        SearchDatumInfo big = two;
+        boolean equal = true;
+        do {
+            long v1 = small.getDatumInfo()[i].getValue().longValue();
+            long v2 = big.getDatumInfo()[i].getValue().longValue();
+            if (v1 != v2) {
+                if (i + 1 < one.getDatumInfo().length) {
+                    return 1;
+                } else {
+                    boolean needSwitch = (v1 > v2);
+                    if (needSwitch) {
+                        long temp = v1;
+                        v1 = v2;
+                        v2 = temp;
+                    }
+                    if ((v1 + 1) == v2) {
+                        return 0;
+                    } else {
+                        return 1;
+                    }
+                }
+            } else if (i + 1 == one.getDatumInfo().length) {
+                return -1;
+            }
+            i++;
+        } while (i < one.getDatumInfo().length);
+        //can't reach here
+        throw new RuntimeException("compare SearchDatumInfo error");
     }
 
     public static boolean checkIfPointSelect(PartitionPruneStep step) {

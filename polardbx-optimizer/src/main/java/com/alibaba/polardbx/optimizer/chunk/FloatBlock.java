@@ -17,16 +17,17 @@
 package com.alibaba.polardbx.optimizer.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 public class FloatBlock extends AbstractBlock {
-
+    private static final double NULL_VALUE = 0;
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(FloatBlock.class).instanceSize();
 
     private float[] values;
@@ -109,9 +110,9 @@ public class FloatBlock extends AbstractBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putDouble(0);
+            sink.putDouble(NULL_VALUE);
         } else {
             sink.putDouble(getFloat(position));
         }

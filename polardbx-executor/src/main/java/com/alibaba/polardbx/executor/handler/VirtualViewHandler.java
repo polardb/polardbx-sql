@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCclRule
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCclTriggerHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsCharsetHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlPlanHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDnPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDrdsPhysicalProcessInTrxHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaGlobalIndexesHandler;
@@ -34,9 +35,12 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInforma
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbBufferHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbLockWaitsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbLocksHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbPurgeFileHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInnodbTrxHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaKeyColumnUsageHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaKeywordsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalPartitionsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalPartitionsScheduleHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalityInfoHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMetadataLockHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMoveDatabaseHandler;
@@ -110,6 +114,8 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaMetadataLockHandler(this));
         subHandler.add(new InformationSchemaUserPrivilegesHandler(this));
         subHandler.add(new InformationSchemaTableGroupHandler(this));
+        subHandler.add(new InformationSchemaLocalPartitionsHandler(this));
+        subHandler.add(new InformationSchemaLocalPartitionsScheduleHandler(this));
         subHandler.add(new InformationSchemaTableDetailHandler(this));
         subHandler.add(new InformationSchemaLocalityInfoHandler(this));
         subHandler.add(new InformationSchemaMoveDatabaseHandler(this));
@@ -119,6 +125,7 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaPhysicalProcesslistHandler(this));
         subHandler.add(new InformationSchemaPlanCacheHandler(this));
         subHandler.add(new InformationSchemaInnodbBufferHandler(this));
+        subHandler.add(new InformationSchemaInnodbPurgeFileHandler(this));
         subHandler.add(new InformationSchemaStatisticTaskHandler(this));
         subHandler.add(new InformationSchemaCclRuleHandler(this));
         subHandler.add(new InformationSchemaCclTriggerHandler(this));
@@ -130,6 +137,7 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaSessionPerfHandler(this));
         subHandler.add(new InformationSchemaCollationsCharsetHandler(this));
         subHandler.add(new InformationSchemaKeyColumnUsageHandler(this));
+        subHandler.add(new InformationSchemaDdlPlanHandler(this));
     }
 
     @Override
@@ -206,36 +214,5 @@ public class VirtualViewHandler extends HandlerCommon {
             collection.add(Pair.of(logicalTableName, physicalTableName));
         }
         return groupToPair;
-    }
-
-    public Map<String, List<TGroupDataSource>> getInstId2GroupList(Collection<String> schemaNames) {
-
-        Map<String, List<TGroupDataSource>> instId2GroupList = new HashMap<>();
-
-        for (String schemaName : schemaNames) {
-            List<String> groupNames =
-                ExecutorContext.getContext(schemaName).getTopologyHandler().getAllTransGroupList();
-            for (String groupName : groupNames) {
-
-                TGroupDataSource groupDataSource =
-                    (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
-                        .getGroupExecutor(groupName).getDataSource();
-
-                String instanceId = groupDataSource.getMasterSourceAddress();
-
-                if (instanceId == null) {
-                    continue;
-                }
-
-                List<TGroupDataSource> groupList = instId2GroupList.get(instanceId);
-                if (groupList == null) {
-                    groupList = new ArrayList<>();
-                    instId2GroupList.put(instanceId, groupList);
-                }
-                groupList.add(groupDataSource);
-            }
-        }
-
-        return instId2GroupList;
     }
 }

@@ -123,6 +123,10 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaParameters(cluster, traitSet);
         case PARTITIONS:
             return new InformationSchemaPartitions(cluster, traitSet);
+        case LOCAL_PARTITIONS:
+            return new InformationSchemaLocalPartitions(cluster, traitSet);
+        case LOCAL_PARTITIONS_SCHEDULE:
+            return new InformationSchemaLocalPartitionsSchedule(cluster, traitSet);
         case PLUGINS:
             return new InformationSchemaPlugins(cluster, traitSet);
         case PROCESSLIST:
@@ -177,6 +181,8 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaInnodbCmpPerIndexReset(cluster, traitSet);
         case INNODB_BUFFER_PAGE:
             return new InformationSchemaInnodbBufferPage(cluster, traitSet);
+        case INNODB_PURGE_FILES:
+            return new InformationSchemaInnodbPurgeFiles(cluster, traitSet);
         case INNODB_FT_DEFAULT_STOPWORD:
             return new InformationSchemaInnodbFtDefaultStopword(cluster, traitSet);
         case INNODB_FT_INDEX_TABLE:
@@ -211,6 +217,8 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaMetadataLock(cluster, traitSet);
         case TABLE_GROUP:
             return new InformationSchemaTableGroup(cluster, traitSet);
+        case FULL_TABLE_GROUP:
+            return new InformationSchemaFullTableGroup(cluster, traitSet);
         case TABLE_DETAIL:
             return new InformationSchemaTableDetail(cluster, traitSet);
         case LOCALITY_INFO:
@@ -239,6 +247,8 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaTcpPerf(cluster, traitSet);
         case SESSION_PERF:
             return new InformationSchemaSessionPerf(cluster, traitSet);
+        case DDL_PLAN:
+            return new InformationSchemaDdlPlan(cluster, traitSet);
         default:
             throw new AssertionError();
         }

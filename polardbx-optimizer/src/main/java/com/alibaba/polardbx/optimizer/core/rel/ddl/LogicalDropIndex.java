@@ -21,6 +21,9 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropIndexWithGsiPreparedData;
@@ -75,8 +78,13 @@ public class LogicalDropIndex extends LogicalTableOperation {
     }
 
     private void prepareLocalIndexWithGsiData() {
+        DropGlobalIndexPreparedData preparedData = prepareGsiData(tableName, indexName);
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableMeta tableMeta = sm.getTable(tableName);
+        preparedData.setTableVersion(tableMeta.getVersion());
+
         dropIndexWithGsiPreparedData = new DropIndexWithGsiPreparedData();
-        dropIndexWithGsiPreparedData.setGlobalIndexPreparedData(prepareGsiData(tableName, indexName));
+        dropIndexWithGsiPreparedData.setGlobalIndexPreparedData(preparedData);
 
         if (isAutoPartition()) {
             dropIndexWithGsiPreparedData.addLocalIndexPreparedData(
@@ -92,9 +100,13 @@ public class LogicalDropIndex extends LogicalTableOperation {
 
     private void prepareStandaloneLocalIndexData() {
         // Normal local index.
+        DropLocalIndexPreparedData preparedData = prepareDropLocalIndexData(tableName, indexName, false, false);
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableMeta tableMeta = sm.getTable(tableName);
+        preparedData.setTableVersion(tableMeta.getVersion());
+
         dropIndexWithGsiPreparedData = new DropIndexWithGsiPreparedData();
-        dropIndexWithGsiPreparedData.addLocalIndexPreparedData(
-            prepareDropLocalIndexData(tableName, indexName, false, false));
+        dropIndexWithGsiPreparedData.addLocalIndexPreparedData(preparedData);
 
         // Also drop local index on clustered index table.
         prepareIndexOnClusteredTable(false);

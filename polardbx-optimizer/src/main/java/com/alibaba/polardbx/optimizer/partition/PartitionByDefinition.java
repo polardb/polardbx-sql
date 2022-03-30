@@ -16,14 +16,16 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
-import com.alibaba.polardbx.common.charset.CharsetName;
-import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.Monotonicity;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
@@ -146,7 +148,7 @@ public class PartitionByDefinition {
     protected PartitionRouter router;
 
     /**
-     * Label if nedd enum range
+     * Label if need enum range
      */
     protected boolean needEnumRange;
 
@@ -202,6 +204,66 @@ public class PartitionByDefinition {
         return null;
     }
 
+    public List<String> getActualPartitionColumns() {
+        List<String> fullPartColList = this.partitionColumnNameList;
+        int fullPartColCnt = fullPartColList.size();
+        int actualPartColCnt = -1;
+        List<String> targetPartColList = new ArrayList<>();
+        if (strategy == PartitionStrategy.HASH) {
+            actualPartColCnt = fullPartColCnt;
+        } else if (strategy == PartitionStrategy.LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
+            actualPartColCnt = fullPartColCnt;
+        } else {
+            boolean findActualPartColCnt = false;
+            for (int i = fullPartColCnt - 1; i > -1; i--) {
+                for (int j = 0; j < this.partitions.size(); j++) {
+                    PartitionSpec spec = this.partitions.get(j);
+                    SingleValuePartitionBoundSpec bndSpec = (SingleValuePartitionBoundSpec) spec.getBoundSpec();
+                    PartitionBoundVal[] bndVal = bndSpec.getSingleDatum().getDatumInfo();
+                    PartitionBoundVal bndValOfOneCol = bndVal[i];
+                    PartitionBoundValueKind bndValKind = bndVal[i].getValueKind();
+
+                    if (strategy == PartitionStrategy.KEY || strategy == PartitionStrategy.HASH) {
+                        if (bndValKind != PartitionBoundValueKind.DATUM_NORMAL_VALUE) {
+                            actualPartColCnt = i+1;
+                            findActualPartColCnt = true;
+                            break;
+                        }
+                        PartitionField valFld = bndValOfOneCol.getValue();
+                        if (valFld.longValue() != Long.MAX_VALUE) {
+                            actualPartColCnt = i+1;
+                            findActualPartColCnt = true;
+                            break;
+                        }
+
+                    } else if (strategy == PartitionStrategy.RANGE || strategy == PartitionStrategy.RANGE_COLUMNS) {
+                        if (bndValKind != PartitionBoundValueKind.DATUM_MAX_VALUE) {
+                            actualPartColCnt = i+1;
+                            findActualPartColCnt = true;
+                            break;
+                        }
+                    } else {
+                        throw new NotSupportException("Not support for list/list columns partitions");
+                    }
+                    continue;
+                }
+                if (findActualPartColCnt) {
+                    break;
+                }
+            }
+        }
+        /**
+         * actualPartColCnt must be >= 1
+         */
+        if (actualPartColCnt == 0 && fullPartColCnt > 0) {
+            actualPartColCnt = 1;
+        }
+        for (int i = 0; i < actualPartColCnt; i++) {
+            targetPartColList.add(fullPartColList.get(i));
+        }
+        return targetPartColList;
+    }
+
     public void setPartitions(List<PartitionSpec> partitions) {
         this.partitions = partitions;
     }
@@ -233,24 +295,66 @@ public class PartitionByDefinition {
         this.partitionColumnNameList = partitionColumnNameList;
     }
 
-    public String normalizePartitionByInfo(TableGroupConfig tableGroupConfig, boolean showHashByRange) {
+    public String normalizePartitionByInfo(TableGroupConfig tableGroupConfig, boolean showHashByRange, int prefixPartColCnt) {
 
         Map<Long, String> partGrpNameInfo = new HashMap<>();
         tableGroupConfig.getPartitionGroupRecords().stream().forEach(o -> partGrpNameInfo.put(o.id, o.partition_name));
-        return normalizePartitionByInfoInner(true, partGrpNameInfo, true, showHashByRange);
+        return normalizePartitionByInfoInner(true, partGrpNameInfo, true, showHashByRange, prefixPartColCnt);
     }
+
+    public String normalizePartitionKeyIgnoreColName(int prefixPartCol) {
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(strategy.toString());
+        sb.append("(");
+        int i = 0;
+
+        int fullPartCount = getPartitionColumnNameList().size();
+        int partCount = fullPartCount;
+        if (prefixPartCol != PartitionInfoUtil.FULL_PART_COL_COUNT) {
+            if (prefixPartCol > fullPartCount) {
+                partCount = fullPartCount;
+            } else {
+                partCount = prefixPartCol;
+            }
+        }
+        for (int j = 0; j < partCount; j++) {
+            SqlNode sqlNode = partitionExprList.get(j);
+            if (i > 0) {
+                sb.append(",");
+            }
+            ColumnMeta columnMeta = partitionFieldList.get(i++);
+            if (sqlNode instanceof SqlCall) {
+                sb.append(((SqlCall) sqlNode).getOperator().getName());
+                sb.append("(");
+                sb.append(columnMeta.getField().getRelType().getSqlTypeName());
+                sb.append(")");
+            } else {
+                sb.append(columnMeta.getField().getRelType().getSqlTypeName());
+            }
+        }
+        sb.append(")");
+        return sb.toString();
+    }
+
 
     private String normalizePartitionByInfoInner(boolean usePartGroupNameAsPartName,
                                                  Map<Long, String> partGrpNameInfo,
                                                  boolean needSortPartitions,
-                                                 boolean showHashByRange) {
+                                                 boolean showHashByRange,
+                                                 int prefixPartColCnt) {
         StringBuilder sb = new StringBuilder();
         sb.append("PARTITION BY ");
         sb.append(strategy.toString());
         sb.append("(");
         int i = 0;
         assert partitionFieldList.size() == partitionExprList.size();
-        for (SqlNode sqlNode : partitionExprList) {
+        int targetPartColCnt = partitionFieldList.size();
+        if (prefixPartColCnt != PartitionInfoUtil.FULL_PART_COL_COUNT) {
+            targetPartColCnt = prefixPartColCnt;
+        }
+        for (int j = 0; j < targetPartColCnt; j++) {
+            SqlNode sqlNode  = partitionExprList.get(j);
             if (i > 0) {
                 sb.append(",");
             }
@@ -265,7 +369,7 @@ public class PartitionByDefinition {
             }
         }
         sb.append(")\n");
-        normalizePartitions(sb, usePartGroupNameAsPartName, partGrpNameInfo, needSortPartitions, showHashByRange);
+        normalizePartitions(sb, usePartGroupNameAsPartName, partGrpNameInfo, needSortPartitions, showHashByRange, prefixPartColCnt);
         return sb.toString();
     }
 
@@ -293,7 +397,7 @@ public class PartitionByDefinition {
 
         }
         sb.append(")\n");
-        normalizePartitions(sb, false, null, false, showHashByRange);
+        normalizePartitions(sb, false, null, false, showHashByRange, PartitionInfoUtil.FULL_PART_COL_COUNT);
         return sb.toString();
     }
 
@@ -307,7 +411,8 @@ public class PartitionByDefinition {
                                      boolean usePartGroupNameAsPartName,
                                      Map<Long, String> partGrpNameInfo,
                                      boolean needSortPartitions,
-                                     boolean showHashByRange) {
+                                     boolean showHashByRange,
+                                     int prefixPartColCnt) {
         int i;
         switch (strategy) {
         case KEY:
@@ -337,7 +442,7 @@ public class PartitionByDefinition {
                 if (usePartGroupNameAsPartName && partGrpNameInfo != null) {
                     partGrpName = partGrpNameInfo.get(pSpec.getLocation().getPartitionGroupId());
                 }
-                sb.append(pSpec.normalizePartSpec(usePartGroupNameAsPartName, partGrpName, false));
+                sb.append(pSpec.normalizePartSpec(usePartGroupNameAsPartName, partGrpName, false, prefixPartColCnt));
                 i++;
             }
             sb.append(")");
@@ -387,6 +492,7 @@ public class PartitionByDefinition {
         newPartDef.setPartIntFunc(this.getPartIntFunc());
         newPartDef.setPartIntFuncMonotonicity(this.getPartIntFuncMonotonicity());
         newPartDef.setQuerySpaceComparator(this.getQuerySpaceComparator());
+        newPartDef.setRouter(this.getRouter());
 
         return newPartDef;
     }
@@ -532,10 +638,21 @@ public class PartitionByDefinition {
         List<PartitionSpec> newPartSpecList = new ArrayList<>();
         SearchDatumComparator cmp = getBoundSpaceComparator();
         TreeMap<SearchDatumInfo, PartitionSpec> partFirstValMap = new TreeMap(cmp);
+        TreeMap<SearchDatumInfo, PartitionSpec> listValPartMap = new TreeMap(cmp);
         for (int i = 0; i < this.partitions.size(); i++) {
             PartitionSpec pSpec = this.partitions.get(i);
             PartitionSpec newSpec = pSpec.copy();
             PartitionBoundSpec newSortedValsBndSpec = sortListPartitionsAllValues(cmp, newSpec.getBoundSpec());
+
+            for (int j = 0; j < newSortedValsBndSpec.getMultiDatums().size(); j++) {
+                SearchDatumInfo oneListVal = newSortedValsBndSpec.getMultiDatums().get(j);
+                if (listValPartMap.containsKey(oneListVal)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                        "Multiple definition of same constant in list partitioning");
+                }
+                listValPartMap.put(oneListVal, newSpec);
+            }
+
             newSpec.setBoundSpec(newSortedValsBndSpec);
             SearchDatumInfo firstValOfOnePart = newSortedValsBndSpec.getMultiDatums().get(0);
             partFirstValMap.put(firstValOfOnePart, newSpec);
@@ -584,8 +701,97 @@ public class PartitionByDefinition {
         return hashCodeVal;
     }
 
+//    @Override
+//    public boolean equals(Object obj) {
+//        if (this == obj) {
+//            return true;
+//        }
+//        if (obj != null && obj.getClass() == this.getClass()) {
+//            if (strategy != ((PartitionByDefinition) (obj)).getStrategy()) {
+//                return false;
+//            }
+//            int partColCnt = partitionExprList.size();
+//            PartitionByDefinition other = (PartitionByDefinition) obj;
+//            if (other.getPartitionExprList().size() != partColCnt) {
+//                return false;
+//            }
+//            for (int i = 0; i < partColCnt; i++) {
+//
+//                ColumnMeta partColMeta = partitionFieldList.get(i);
+//                ColumnMeta otherPartColMeta = other.getPartitionFieldList().get(i);
+//                CharsetName charsetName = partColMeta.getField().getDataType().getCharsetName();
+//                CharsetName otherCharsetName = otherPartColMeta.getField().getDataType().getCharsetName();
+//
+//                boolean isCharsetDiff = (charsetName == null && otherCharsetName != null)
+//                    || (charsetName != null && otherCharsetName == null)
+//                    || (charsetName != null && otherCharsetName != null && !charsetName.equals(otherCharsetName));
+//                if (isCharsetDiff) {
+//                    return false;
+//                }
+//
+//                CollationName collationName = partColMeta.getField().getDataType().getCollationName();
+//                CollationName otherCollationName = otherPartColMeta.getField().getDataType().getCollationName();
+//
+//                boolean isCollationDiff = (collationName == null && otherCollationName != null)
+//                    || (collationName != null && otherCollationName == null)
+//                    || (collationName != null && otherCollationName != null && !collationName
+//                    .equals(otherCollationName));
+//                if (isCollationDiff) {
+//                    return false;
+//                }
+//
+//                if (partColMeta.getDataType() == null) {
+//                    if (otherPartColMeta.getDataType() != null) {
+//                        return false;
+//                    }
+//                } else if (!DataTypeUtil
+//                    .equals(partColMeta.getDataType(), otherPartColMeta.getDataType(), true)) {
+//                    return false;
+//                }
+//
+//                if (partIntFunc == null && other.getPartIntFunc() != null ||
+//                    partIntFunc != null && other.getPartIntFunc() == null) {
+//                    return false;
+//                } else if (partIntFunc != null) {
+//                    if (partIntFunc.getFunctionNames().length != other.getPartIntFunc().getFunctionNames().length) {
+//                        return false;
+//                    } else {
+//                        for (int j = 0; j < partIntFunc.getFunctionNames().length; j++) {
+//                            if (partIntFunc.getFunctionNames()[j] == null
+//                                && other.getPartIntFunc().getFunctionNames()[j] != null ||
+//                                partIntFunc.getFunctionNames()[j] != null
+//                                    && other.getPartIntFunc().getFunctionNames()[j] == null) {
+//                                return false;
+//                            }
+//                            if (!partIntFunc.getFunctionNames()[j]
+//                                .equalsIgnoreCase(other.getPartIntFunc().getFunctionNames()[j])) {
+//                                return false;
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//            List<PartitionSpec> partitionSpecs1 = getOrderedPartitionSpec();
+//            List<PartitionSpec> partitionSpecs2 = ((PartitionByDefinition) (obj)).getOrderedPartitionSpec();
+//            if (GeneralUtil.isNotEmpty(partitionSpecs1) && GeneralUtil.isNotEmpty(partitionSpecs2)
+//                && partitionSpecs1.size() == partitionSpecs2.size()) {
+//                for (int i = 0; i < partitionSpecs1.size(); i++) {
+//                    if (partitionSpecs1.get(i) == null || !partitionSpecs1.get(i).equals(partitionSpecs2.get(i))) {
+//                        return false;
+//                    }
+//                }
+//                return true;
+//            }
+//        }
+//        return false;
+//    }
+
     @Override
     public boolean equals(Object obj) {
+        return equals(obj, -1);
+    }
+
+    public boolean equals(Object obj, int prefixPartColCnt) {
         if (this == obj) {
             return true;
         }
@@ -593,42 +799,42 @@ public class PartitionByDefinition {
             if (strategy != ((PartitionByDefinition) (obj)).getStrategy()) {
                 return false;
             }
-            int partColCnt = partitionExprList.size();
             PartitionByDefinition other = (PartitionByDefinition) obj;
-            if (other.getPartitionExprList().size() != partColCnt) {
-                return false;
+            int partColCnt = partitionExprList.size();
+            int partColCntOther = other.getPartitionColumnNameList().size();
+
+            int actualPartColCnt = partColCnt;
+            int actualPartColCntOther = partColCntOther;
+            if (prefixPartColCnt > 0) {
+                actualPartColCnt = getActualPartitionColumns().size();
+                actualPartColCntOther = other.getActualPartitionColumns().size();
             }
-            for (int i = 0; i < partColCnt; i++) {
 
-                ColumnMeta partColMeta = partitionFieldList.get(i);
-                ColumnMeta otherPartColMeta = other.getPartitionFieldList().get(i);
-                CharsetName charsetName = partColMeta.getField().getDataType().getCharsetName();
-                CharsetName otherCharsetName = otherPartColMeta.getField().getDataType().getCharsetName();
+            int comparePartColCnt = partColCnt;
+            if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
+                if (other.getPartitionExprList().size() != partColCnt) {
+                    return false;
+                }
+            } else {
 
-                boolean isCharsetDiff = (charsetName == null && otherCharsetName != null)
-                    || (charsetName != null && otherCharsetName == null)
-                    || (charsetName != null && otherCharsetName != null && !charsetName.equals(otherCharsetName));
-                if (isCharsetDiff) {
+                if (actualPartColCnt != actualPartColCntOther) {
                     return false;
                 }
 
-                CollationName collationName = partColMeta.getField().getDataType().getCollationName();
-                CollationName otherCollationName = otherPartColMeta.getField().getDataType().getCollationName();
-
-                boolean isCollationDiff = (collationName == null && otherCollationName != null)
-                    || (collationName != null && otherCollationName == null)
-                    || (collationName != null && otherCollationName != null && !collationName
-                    .equals(otherCollationName));
-                if (isCollationDiff) {
-                    return false;
-                }
-
-                if (partColMeta.getDataType() == null) {
-                    if (otherPartColMeta.getDataType() != null) {
-                        return false;
+                int minPartColCnt = partColCnt > partColCntOther ? partColCntOther : partColCnt;
+                if (minPartColCnt <= prefixPartColCnt) {
+                    comparePartColCnt = minPartColCnt;
+                } else {
+                    if (prefixPartColCnt < actualPartColCnt) {
+                        comparePartColCnt = actualPartColCnt;
+                    } else {
+                        comparePartColCnt = prefixPartColCnt;
                     }
-                } else if (!DataTypeUtil
-                    .equalsSemantically(partColMeta.getDataType(), otherPartColMeta.getDataType())) {
+                }
+            }
+
+            for (int i = 0; i < comparePartColCnt; i++) {
+                if (!PartitionInfoUtil.partitionDataTypeEquals(partitionFieldList.get(i), other.getPartitionFieldList().get(i))) {
                     return false;
                 }
 
@@ -656,14 +862,22 @@ public class PartitionByDefinition {
             }
             List<PartitionSpec> partitionSpecs1 = getOrderedPartitionSpec();
             List<PartitionSpec> partitionSpecs2 = ((PartitionByDefinition) (obj)).getOrderedPartitionSpec();
-            if (GeneralUtil.isNotEmpty(partitionSpecs1) && GeneralUtil.isNotEmpty(partitionSpecs2)
-                && partitionSpecs1.size() == partitionSpecs2.size()) {
-                for (int i = 0; i < partitionSpecs1.size(); i++) {
-                    if (partitionSpecs1.get(i) == null || !partitionSpecs1.get(i).equals(partitionSpecs2.get(i))) {
-                        return false;
+            if (GeneralUtil.isNotEmpty(partitionSpecs1) && GeneralUtil.isNotEmpty(partitionSpecs2) && partitionSpecs1.size() == partitionSpecs2.size()) {
+                if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT ) {
+                    for (int i = 0; i < partitionSpecs1.size(); i++) {
+                        if (partitionSpecs1.get(i) == null || !partitionSpecs1.get(i).equals(partitionSpecs2.get(i))) {
+                            return false;
+                        }
                     }
+                    return true;
+                } else {
+                    for (int i = 0; i < partitionSpecs1.size(); i++) {
+                        if (partitionSpecs1.get(i) == null || !partitionSpecs1.get(i).equals(partitionSpecs2.get(i), comparePartColCnt)) {
+                            return false;
+                        }
+                    }
+                    return true;
                 }
-                return true;
             }
         }
         return false;

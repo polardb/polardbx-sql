@@ -16,14 +16,18 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.handler.LogicalChangeMasterHandler;
+import com.alibaba.polardbx.executor.handler.LogicalChangeReplicationFilterHandler;
 import com.alibaba.polardbx.executor.handler.LogicalClearCclRulesHandler;
 import com.alibaba.polardbx.executor.handler.LogicalClearCclTriggersHandler;
 import com.alibaba.polardbx.executor.handler.LogicalCreateCclRuleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalCreateCclTriggerHandler;
+import com.alibaba.polardbx.executor.handler.LogicalCreateScheduleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalDropCclRuleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalDropCclTriggerHandler;
+import com.alibaba.polardbx.executor.handler.LogicalDropScheduleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalRebalanceHandler;
+import com.alibaba.polardbx.executor.handler.LogicalResetSlaveHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowBinaryLogsHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowBinlogEventsHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowBroadcastsHandler;
@@ -40,13 +44,18 @@ import com.alibaba.polardbx.executor.handler.LogicalShowProfileHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowRuleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowRuleStatusHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowSequencesHandler;
+import com.alibaba.polardbx.executor.handler.LogicalShowSlaveStatusHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowSlowHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowStatsHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowStcHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowTopologyHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowTraceHandler;
 import com.alibaba.polardbx.executor.handler.LogicalSlowSqlCclHandler;
+import com.alibaba.polardbx.executor.handler.LogicalStartSlaveHandler;
+import com.alibaba.polardbx.executor.handler.LogicalStopSlaveHandler;
 import com.alibaba.polardbx.executor.handler.PolarShowGrantsHandler;
+import com.alibaba.polardbx.executor.handler.LogicalShowGlobalDeadlocksHandler;
+import com.alibaba.polardbx.executor.handler.LogicalShowLocalDeadlocksHandler;
 import com.alibaba.polardbx.executor.handler.ShowTransHandler;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterRuleHandler;
@@ -57,9 +66,12 @@ import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableGroupMergePart
 import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableGroupModifyPartitionHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableGroupMovePartitionHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableGroupRenamePartitionHandler;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableGroupSplitPartitionByHotValueHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableGroupSplitPartitionHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableHandler;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableRepartitionHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableSetTableGroupHandler;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableSplitPartitionByHotValueHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCheckGsiHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCommonDdlHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateDatabaseHandler;
@@ -113,7 +125,10 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupModifyP
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMovePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartitionByHotValue;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSetTableGroup;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalChangeConsensusLeader;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
@@ -140,6 +155,7 @@ import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEngineInspectCac
 import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEnginePauseJobsHandler;
 import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEngineRecoverJobsHandler;
 import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEngineRollbackJobsHandler;
+import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEngineShowDdlStatsHandler;
 import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEngineShowJobsHandler;
 import com.alibaba.polardbx.repo.mysql.handler.ddl.newengine.DdlEngineShowResultsHandler;
 import org.apache.calcite.rel.RelNode;
@@ -237,6 +253,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         PAUSE_DDL_JOBS_HANDLER = new DdlEnginePauseJobsHandler(repo);
         CONTINUE_DDL_JOBS_HANDLER = new DdlEngineContinueJobsHandler(repo);
         SHOW_DDL_RESULTS_HANDLER = new DdlEngineShowResultsHandler(repo);
+        SHOW_DDL_STATS_HANDLER = new DdlEngineShowDdlStatsHandler(repo);
+        SHOW_SCHEDULE_RESULTS_HANDLER = new LogicalShowScheduleResultHandler(repo);
 
         LOGICAL_REBALANCE_HANDLER = new LogicalRebalanceHandler(repo);
 
@@ -264,6 +282,12 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_SHOW_BINARY_LOGS_HANDLER = new LogicalShowBinaryLogsHandler(repo);
         LOGICAL_SHOW_MASTER_STATUS_HANDLER = new LogicalShowMasterStatusHandler(repo);
         LOGICAL_SHOW_BINLOG_EVENTS_HANDLER = new LogicalShowBinlogEventsHandler(repo);
+        LOGICAL_CHANGE_MASTER_HANDLER = new LogicalChangeMasterHandler(repo);
+        LOGICAL_CHANGE_REPLICATION_FILTER_HANDLER = new LogicalChangeReplicationFilterHandler(repo);
+        LOGICAL_SHOW_SLAVE_STATUS_HANDLER = new LogicalShowSlaveStatusHandler(repo);
+        LOGICAL_START_SLAVE_HANDLER = new LogicalStartSlaveHandler(repo);
+        LOGICAL_STOP_SLAVE_HANDLER = new LogicalStopSlaveHandler(repo);
+        LOGICAL_RESET_SLAVE_HANDLER = new LogicalResetSlaveHandler(repo);
 
         CREATE_CCL_RULE_HANDLER = new LogicalCreateCclRuleHandler(repo);
         DROP_CCL_RULE_HANDLER = new LogicalDropCclRuleHandler(repo);
@@ -276,6 +300,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         SHOW_CCL_TRIGGER_HANDLER = new LogicalShowCclTriggerHandler(repo);
         CLEAR_CCL_TRIGGERS_HANDLER = new LogicalClearCclTriggersHandler(repo);
         SLOW_SQL_CCL_HANDLER = new LogicalSlowSqlCclHandler(repo);
+        CREATE_SCHEDULE_HANDLER = new LogicalCreateScheduleHandler(repo);
+        DROP_SCHEDULE_HANDLER = new LogicalDropScheduleHandler(repo);
 
         LOGICAL_SET_DEFAULT_ROLE_HANDLER = new LogicalSetDefaultRoleHandler(repo);
         ALTER_TABLEGROUP_BACKFILL_HANDLER = new AlterTableGroupBackfillHandler(repo);
@@ -293,12 +319,23 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_ALTER_TABLEGROUP_DROP_PARTITION_HANDLER = new LogicalAlterTableGroupDropPartitionHandler(repo);
         LOGICAL_ALTER_TABLEGROUP_MODIFY_PARTITION_HANDLER = new LogicalAlterTableGroupModifyPartitionHandler(repo);
         MOVE_TABLE_BACKFILL_HANDLER = new MoveTableBackfillHandler(repo);
+        LOGICAL_ALTER_TABLEGROUP_SPLIT_PARTITION_BY_HOT_AVLUE_HANDLER =
+            new LogicalAlterTableGroupSplitPartitionByHotValueHandler(repo);
+        LOGICAL_ALTER_TABLE_SPLIT_PARTITION_BY_HOT_AVLUE_HANDLER =
+            new LogicalAlterTableSplitPartitionByHotValueHandler(repo);
+
+
+        LOGICAL_SHOW_GLOBAL_DEADLOCKS_HANDLER = new LogicalShowGlobalDeadlocksHandler(repo);
+        LOGICAL_SHOW_LOCAL_DEADLOCKS_HANDLER = new LogicalShowLocalDeadlocksHandler(repo);
+        LOGICAL_ALTER_TABLE_REPARTITION_HANDLER = new LogicalAlterTableRepartitionHandler(repo);
+
     }
 
     private final LogicalRecyclebinHandler LOGICAL_RECYCLEBIN_HANDLER;
 
     private final LogicalCommonDdlHandler LOGICAL_CREATE_TABLE_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_ALTER_TABLE_HANDLER;
+    private final LogicalCommonDdlHandler LOGICAL_ALTER_TABLE_REPARTITION_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_RENAME_TABLE_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_TRUNCATE_TABLE_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_DROP_TABLE_HANDLER;
@@ -377,6 +414,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler PAUSE_DDL_JOBS_HANDLER;
     private final PlanHandler CONTINUE_DDL_JOBS_HANDLER;
     private final PlanHandler SHOW_DDL_RESULTS_HANDLER;
+    private final PlanHandler SHOW_DDL_STATS_HANDLER;
+    private final PlanHandler SHOW_SCHEDULE_RESULTS_HANDLER;
 
     private final PlanHandler RECOVER_DDL_JOBS_HANDLER;
 
@@ -404,6 +443,12 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler LOGICAL_SHOW_BINARY_LOGS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_MASTER_STATUS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_BINLOG_EVENTS_HANDLER;
+    private final PlanHandler LOGICAL_CHANGE_MASTER_HANDLER;
+    private final PlanHandler LOGICAL_CHANGE_REPLICATION_FILTER_HANDLER;
+    private final PlanHandler LOGICAL_SHOW_SLAVE_STATUS_HANDLER;
+    private final PlanHandler LOGICAL_START_SLAVE_HANDLER;
+    private final PlanHandler LOGICAL_STOP_SLAVE_HANDLER;
+    private final PlanHandler LOGICAL_RESET_SLAVE_HANDLER;
 
     private final PlanHandler CREATE_CCL_RULE_HANDLER;
     private final PlanHandler DROP_CCL_RULE_HANDLER;
@@ -420,6 +465,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler SHOW_CCL_TRIGGER_HANDLER;
     private final PlanHandler CLEAR_CCL_TRIGGERS_HANDLER;
     private final PlanHandler SLOW_SQL_CCL_HANDLER;
+    private final PlanHandler CREATE_SCHEDULE_HANDLER;
+    private final PlanHandler DROP_SCHEDULE_HANDLER;
 
     private final PlanHandler LOGICAL_SET_DEFAULT_ROLE_HANDLER;
 
@@ -433,10 +480,15 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler LOGICAL_ALTER_TABLEGROUP_ADD_PARTITION_HANDLER;
     private final PlanHandler LOGICAL_ALTER_TABLEGROUP_DROP_PARTITION_HANDLER;
     private final PlanHandler LOGICAL_ALTER_TABLEGROUP_MODIFY_PARTITION_HANDLER;
+    private final PlanHandler LOGICAL_ALTER_TABLEGROUP_SPLIT_PARTITION_BY_HOT_AVLUE_HANDLER;
 
     private final PlanHandler LOGICAL_OUT_FILE_HANDLER;
     private final PlanHandler LOGICAL_MOVE_DATABASES_HANDLER;
     private final PlanHandler MOVE_TABLE_BACKFILL_HANDLER;
+    private final PlanHandler LOGICAL_ALTER_TABLE_SPLIT_PARTITION_BY_HOT_AVLUE_HANDLER;
+
+    private final PlanHandler LOGICAL_SHOW_GLOBAL_DEADLOCKS_HANDLER;
+    private final PlanHandler LOGICAL_SHOW_LOCAL_DEADLOCKS_HANDLER;
 
     @Override
     public PlanHandler getCommandHandler(RelNode logicalPlan, ExecutionContext executionContext) {
@@ -527,6 +579,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
             return LOGICAL_CREATE_TABLE_HANDLER;
         } else if (logicalPlan instanceof LogicalAlterTable) {
             return LOGICAL_ALTER_TABLE_HANDLER;
+        } else if (logicalPlan instanceof LogicalAlterTableRepartition) {
+            return LOGICAL_ALTER_TABLE_REPARTITION_HANDLER;
         } else if (logicalPlan instanceof LogicalRenameTable) {
             return LOGICAL_RENAME_TABLE_HANDLER;
         } else if (logicalPlan instanceof LogicalTruncateTable) {
@@ -569,6 +623,11 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
             return LOGICAL_ALTER_TABLEGROUP_DROP_PARTITION_HANDLER;
         } else if (logicalPlan instanceof LogicalAlterTableGroupModifyPartition) {
             return LOGICAL_ALTER_TABLEGROUP_MODIFY_PARTITION_HANDLER;
+        } else if (logicalPlan instanceof LogicalAlterTableSplitPartitionByHotValue) {
+            return LOGICAL_ALTER_TABLE_SPLIT_PARTITION_BY_HOT_AVLUE_HANDLER;
+        } else if (logicalPlan instanceof LogicalAlterTableGroupSplitPartitionByHotValue
+            && !(logicalPlan instanceof LogicalAlterTableSplitPartitionByHotValue)) {
+            return LOGICAL_ALTER_TABLEGROUP_SPLIT_PARTITION_BY_HOT_AVLUE_HANDLER;
         } else if (logicalPlan instanceof BaseDalOperation) {
 
             if (logicalPlan instanceof PhyShow) {
@@ -640,8 +699,12 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
                 return LOGICAL_SHOW_INDEX_HANDLER;
             case SHOW_DDL_JOBS:
                 return SHOW_DDL_JOBS_HANDLER;
+            case SHOW_DDL_STATUS:
+                return SHOW_DDL_STATS_HANDLER;
             case SHOW_DDL_RESULTS:
                 return SHOW_DDL_RESULTS_HANDLER;
+            case SHOW_SCHEDULE_RESULTS:
+                return SHOW_SCHEDULE_RESULTS_HANDLER;
             case CANCEL_DDL_JOB:
                 return CANCEL_DDL_JOBS_HANDLER;
             case RECOVER_DDL_JOB:
@@ -678,6 +741,18 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
                 return LOGICAL_SHOW_MASTER_STATUS_HANDLER;
             case SHOW_BINLOG_EVENTS:
                 return LOGICAL_SHOW_BINLOG_EVENTS_HANDLER;
+            case CHANGE_MASTER:
+                return LOGICAL_CHANGE_MASTER_HANDLER;
+            case CHANGE_REPLICATION_FILTER:
+                return LOGICAL_CHANGE_REPLICATION_FILTER_HANDLER;
+            case SHOW_SLAVE_STATUS:
+                return LOGICAL_SHOW_SLAVE_STATUS_HANDLER;
+            case START_SLAVE:
+                return LOGICAL_START_SLAVE_HANDLER;
+            case STOP_SLAVE:
+                return LOGICAL_STOP_SLAVE_HANDLER;
+            case RESET_SLAVE:
+                return LOGICAL_RESET_SLAVE_HANDLER;
             case SQL_SET_DEFAULT_ROLE:
                 return LOGICAL_SET_DEFAULT_ROLE_HANDLER;
             case CREATE_CCL_RULE:
@@ -700,6 +775,14 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
                 return SHOW_CCL_TRIGGER_HANDLER;
             case SLOW_SQL_CCL:
                 return SLOW_SQL_CCL_HANDLER;
+            case CREATE_SCHEDULE:
+                return CREATE_SCHEDULE_HANDLER;
+            case DROP_SCHEDULE:
+                return DROP_SCHEDULE_HANDLER;
+            case SHOW_GLOBAL_DEADLOCKS:
+                return LOGICAL_SHOW_GLOBAL_DEADLOCKS_HANDLER;
+            case SHOW_LOCAL_DEADLOCKS:
+                return LOGICAL_SHOW_LOCAL_DEADLOCKS_HANDLER;
             default:
                 return BASE_DAL_HANDLER;
             }

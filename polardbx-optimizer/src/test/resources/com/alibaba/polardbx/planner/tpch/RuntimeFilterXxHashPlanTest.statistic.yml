@@ -1,0 +1,23 @@
+customer:
+  75000000
+
+lineitem:
+  3000058110
+
+nation:
+  25
+
+orders:
+  10000000
+
+part:
+  750000000
+
+partsupp:
+  400000000
+
+region:
+  5
+
+supplier:
+  5000000

@@ -3083,6 +3083,23 @@ public class RexUtil {
     }
   }
 
+  static public class RexSubqueryListFinder extends RexVisitorImpl<Void> {
+    List<RexSubQuery> subQueries;
+    public RexSubqueryListFinder() {
+      super(true);
+      subQueries = new ArrayList<>();
+    }
+
+    @Override
+    public Void visitSubQuery(RexSubQuery subQuery) {
+      subQueries.add(subQuery);
+      return null;
+    }
+
+    public List<RexSubQuery> getSubQueries() {
+      return subQueries;
+    }
+  }
 
   static public class AllIndexInFinder extends RexVisitorImpl<Void> {
     private List<RexInputRef> indexList = Lists.newArrayList();

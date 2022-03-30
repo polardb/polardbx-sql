@@ -17,12 +17,15 @@
 package com.alibaba.polardbx.executor.ddl.newengine.meta;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.serializable.DdlSerializer;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponse.Response;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 
@@ -54,6 +57,15 @@ public class DdlEngineSchedulerManager {
         }.execute();
     }
 
+    public List<DdlEngineTaskRecord> fetchTaskRecord(long jobId, String name) {
+        return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
+            @Override
+            protected List<DdlEngineTaskRecord> invoke() {
+                return engineTaskAccessor.query(jobId, name);
+            }
+        }.execute();
+    }
+
     public List<DdlEngineTaskRecord> fetchTaskRecord(long jobId) {
         return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
             @Override
@@ -68,6 +80,24 @@ public class DdlEngineSchedulerManager {
             @Override
             protected List<DdlEngineRecord> invoke() {
                 return engineAccessor.query(jobIds);
+            }
+        }.execute();
+    }
+
+    public DdlEngineRecord fetchRecordByJobId(long jobId) {
+        return new DdlEngineAccessorDelegate<DdlEngineRecord>() {
+            @Override
+            protected DdlEngineRecord invoke() {
+                return engineAccessor.query(jobId);
+            }
+        }.execute();
+    }
+
+    public DdlEngineRecord fetchArchiveRecordByJobId(long jobId) {
+        return new DdlEngineAccessorDelegate<DdlEngineRecord>() {
+            @Override
+            protected DdlEngineRecord invoke() {
+                return engineAccessor.queryArchive(jobId);
             }
         }.execute();
     }
@@ -97,6 +127,48 @@ public class DdlEngineSchedulerManager {
                 return engineAccessor.query(schemaName);
             }
         }.execute();
+    }
+
+    /**
+     * Fetch subjobs of a job, which should be the task type `TaskDelegator`
+     *
+     * @param jobId
+     * @return subtasks
+     */
+    public List<DdlEngineTaskRecord> fetchSubJobs(long jobId) {
+        return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
+            @Override
+            protected List<DdlEngineTaskRecord> invoke() {
+                return engineTaskAccessor.query(jobId, SubJobTask.getTaskName());
+            }
+        }.execute();
+    }
+
+    public List<SubJobTask> fetchSubJobsRecursive(long jobId) {
+        return new DdlEngineAccessorDelegate<List<SubJobTask>>() {
+            @Override
+            protected List<SubJobTask> invoke() {
+                return fetchSubJobsRecursive(jobId, engineTaskAccessor);
+            }
+        }.execute();
+    }
+
+    /**
+     * todo guxu refactor this
+     */
+    protected List<SubJobTask> fetchSubJobsRecursive(long jobId, DdlEngineTaskAccessor accessor) {
+        List<DdlEngineTaskRecord> records = accessor.query(jobId, SubJobTask.getTaskName());
+        List<SubJobTask> subjobs = new ArrayList<>();
+
+        for (DdlEngineTaskRecord task : GeneralUtil.emptyIfNull(records)) {
+            SubJobTask subjob = (SubJobTask) TaskHelper.fromDdlEngineTaskRecord(task);
+            subjobs.add(subjob);
+            for (long subJobId : subjob.fetchAllSubJobs()) {
+                subjobs.addAll(fetchSubJobsRecursive(subJobId, accessor));
+            }
+        }
+
+        return subjobs;
     }
 
     public int countAll(String schemaName) {
@@ -223,46 +295,6 @@ public class DdlEngineSchedulerManager {
                 return engineAccessor.update(jobId, result, false);
             }
         }.execute();
-    }
-
-    public boolean removeJob(String schemaName, long jobId) {
-        // Execute the following operations within a transaction.
-        return new DdlEngineAccessorDelegate<Boolean>() {
-
-            @Override
-            protected Boolean invoke() {
-                int count = engineAccessor.delete(jobId);
-                engineTaskAccessor.deleteByJobId(jobId);
-                getResourceManager().releaseResource(jobId);
-                if (count > 0) {
-                    return true;
-                }
-                return false;
-            }
-        }.execute();
-    }
-
-    public boolean removeJobs(String schemaName, List<Long> jobIds) {
-        boolean successful = false;
-        if (jobIds != null && !jobIds.isEmpty()) {
-            for (Long jobId : jobIds) {
-                successful &= removeJob(schemaName, jobId);
-            }
-        }
-        return successful;
-    }
-
-    public boolean removeJobs(String schemaName, boolean allPending, boolean allComplete) {
-        List<Long> jobIds = new ArrayList<>();
-        List<DdlEngineRecord> records = fetchRecords(schemaName);
-        for (DdlEngineRecord record : records) {
-            if (allPending && DdlState.TERMINATED.contains(DdlState.valueOf(record.state))) {
-                jobIds.add(record.jobId);
-            } else if (allComplete && DdlState.FINISHED.contains(DdlState.valueOf(record.state))) {
-                jobIds.add(record.jobId);
-            }
-        }
-        return removeJobs(schemaName, jobIds);
     }
 
     public DdlEngineResourceManager getResourceManager() {

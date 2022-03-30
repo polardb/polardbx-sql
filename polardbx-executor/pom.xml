@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.12-SNAPSHOT</version>
+        <version>5.4.13-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -247,6 +247,10 @@
         <dependency>
             <artifactId>commons-codec</artifactId>
             <groupId>commons-codec</groupId>
+        </dependency>
+        <dependency>
+            <groupId>com.cronutils</groupId>
+            <artifactId>cron-utils</artifactId>
         </dependency>
     </dependencies>
 

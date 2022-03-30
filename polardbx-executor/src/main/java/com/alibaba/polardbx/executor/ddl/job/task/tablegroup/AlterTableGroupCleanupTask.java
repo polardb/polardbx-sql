@@ -38,7 +38,7 @@ public class AlterTableGroupCleanupTask extends BaseDdlTask {
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         ComplexTaskOutlineAccessor complexTaskOutlineAccessor = new ComplexTaskOutlineAccessor();
         complexTaskOutlineAccessor.setConnection(metaDbConnection);
-        complexTaskOutlineAccessor.deleteComplexTaskByJobId(getJobId());
+        complexTaskOutlineAccessor.deleteComplexTaskByJobId(schemaName, getJobId());
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         updateSupportedCommands(true, false, metaDbConnection);

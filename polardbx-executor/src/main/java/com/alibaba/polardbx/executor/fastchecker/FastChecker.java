@@ -24,6 +24,8 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
@@ -52,6 +54,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
@@ -62,6 +65,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -77,6 +81,8 @@ import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_WAIT;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DEADLOCK;
 
 public class FastChecker {
+    private static final Logger logger = LoggerFactory.getLogger(FastChecker.class);
+
     private final String schemaName;
     private final String srcLogicalTableName;
     private final String dstLogicalTableName;
@@ -254,8 +260,8 @@ public class FastChecker {
                 .warn(MessageFormat.format("[{0}] FastChecker with TsoCheck failed, begin XaCheck",
                     baseEc.getTraceId()));
         }
-        boolean xaCheckResult = xaCheckForIsomorphicTable(baseEc);
-        return xaCheckResult;
+        //boolean xaCheckResult = xaCheckForIsomorphicTable(baseEc);
+        return tsoCheckResult;
     }
 
     protected boolean tsoCheck(ExecutionContext baseEc) {
@@ -312,9 +318,8 @@ public class FastChecker {
                         dstPhyDb, ImmutableSet.of(dstPhyTables.get(i)));
 
                 TablesLocker locker = new TablesLocker(this.schemaName, needLockTables);
-                locker.lock(lockTimeOut);
-
                 try {
+                    locker.lock(lockTimeOut);
                     xaSingleResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.XA, baseEc,
                         (ec) -> {
                             try {
@@ -587,19 +592,17 @@ public class FastChecker {
         }
 
         List<Long> srcResult = result.stream()
-            .filter(item -> item != null && item.getKey() != null && item.getValue() == true)
-            .map(item -> item.getKey())
+            .filter(item -> item != null && item.getKey() != null && item.getValue())
+            .map(Pair::getKey)
             .collect(Collectors.toList());
         List<Long> dstResult = result.stream()
-            .filter(item -> item != null && item.getKey() != null && item.getValue() == false)
-            .map(item -> item.getKey())
+            .filter(item -> item != null && item.getKey() != null && !item.getValue())
+            .map(Pair::getKey)
             .collect(Collectors.toList());
 
-        boolean checkResult = (srcResult.size() == srcTableTaskCount
-            && dstResult.size() == dstTableTaskCount
-            && compare(srcResult, dstResult));
-
-        return checkResult;
+        return srcTableTaskCount == result.stream().filter(Objects::nonNull).filter(Pair::getValue).count() &&
+            dstTableTaskCount == result.stream().filter(Objects::nonNull).filter(x -> !x.getValue()).count() &&
+            compare(srcResult, dstResult);
     }
 
     private boolean compare(List<Long> src, List<Long> dst) {
@@ -744,17 +747,30 @@ public class FastChecker {
                 }
 
                 boolean lockFailed = false;
+                long connOrignalLockWaitTimeout = -1;
+                Connection conn = null;
                 try {
-                    Connection conn = dataSource.getConnection(MasterSlave.MASTER_ONLY);
+                    conn = dataSource.getConnection(MasterSlave.MASTER_ONLY);
                     lockConnections.put(phyDb, conn);
 
-                    String timeOutStatement = TABLE_LOCK_TIMEOUT + timeOutSeconds;
-                    PreparedStatement ps = conn.prepareStatement(timeOutStatement);
-                    ps.executeQuery();
+                    String showLockWaitTimeoutStmt = "show variables like 'lock_wait_timeout'";
+                    try (PreparedStatement ps = conn.prepareStatement(showLockWaitTimeoutStmt);
+                        ResultSet rs = ps.executeQuery()) {
+                        boolean hasNext = rs.next();
+                        if (hasNext) {
+                            connOrignalLockWaitTimeout = Long.valueOf(rs.getString("Value"));
+                        }
+                    }
 
-                    String statement = LOCK_TABLES + String.join(READ_MODE + ", ", phyTables) + READ_MODE;
-                    ps = conn.prepareStatement(statement);
-                    ps.executeQuery();
+                    String setLockWaitTimeOutStmt = TABLE_LOCK_TIMEOUT + timeOutSeconds;
+                    try (PreparedStatement ps = conn.prepareStatement(setLockWaitTimeOutStmt)) {
+                        ps.execute();
+                    }
+
+                    String lockTblStmt = LOCK_TABLES + String.join(READ_MODE + ", ", phyTables) + READ_MODE;
+                    try (PreparedStatement ps = conn.prepareStatement(lockTblStmt)) {
+                        ps.execute();
+                    }
 
                 } catch (SQLException e) {
                     /**
@@ -781,9 +797,22 @@ public class FastChecker {
                             e);
                     }
                 } finally {
-                    if (lockFailed == true) {
+
+                    try {
+                        if (connOrignalLockWaitTimeout > -1 && conn != null) {
+                            String recoverConnLockWaitTimeOutStmt = TABLE_LOCK_TIMEOUT + connOrignalLockWaitTimeout;
+                            try (PreparedStatement ps = conn.prepareStatement(recoverConnLockWaitTimeOutStmt)) {
+                                ps.execute();
+                            }
+                        }
+                    } catch (Throwable ex) {
+                        logger.warn("Failed to recover connection lock wait timeout", ex);
+                    }
+
+                    if (lockFailed) {
                         this.unlock();
                     }
+
                 }
             });
         }
@@ -793,18 +822,17 @@ public class FastChecker {
                 try {
                     String statement = UNLOCK_TABLES;
                     PreparedStatement ps = conn.prepareStatement(statement);
-                    ps.executeQuery();
-                } catch (SQLException e) {
-                    // don't throw because it will let other conn cannot be unlock.
-                } catch (TddlRuntimeException e) {
+                    ps.execute();
+                } catch (Throwable e) {
+                    logger.warn("Failed to exec unlock tables", e);
                 }
             });
 
             lockConnections.forEach((phyDb, conn) -> {
                 try {
                     conn.close();
-                } catch (SQLException e) {
-                } catch (TddlRuntimeException e) {
+                } catch (Throwable e) {
+                    logger.warn("Failed to close locked connections", e);
                 }
             });
 

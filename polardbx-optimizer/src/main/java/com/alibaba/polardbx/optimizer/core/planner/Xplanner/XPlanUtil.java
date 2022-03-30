@@ -16,17 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.Xplanner;
 
-import com.mysql.cj.x.protobuf.PolarxDatatypes;
-import com.mysql.cj.x.protobuf.PolarxExecPlan;
-import com.mysql.cj.x.protobuf.PolarxExpr;
-import com.alibaba.polardbx.rpc.XUtil;
-import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.Xplan.XPlanEqualTuple;
 import com.alibaba.polardbx.optimizer.core.rel.Xplan.XPlanTableScan;
+import com.alibaba.polardbx.rpc.XUtil;
+import com.alibaba.polardbx.rpc.pool.XConnectionManager;
+import com.mysql.cj.x.protobuf.PolarxDatatypes;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
+import com.mysql.cj.x.protobuf.PolarxExpr;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.type.RelDataType;
@@ -174,7 +174,6 @@ public class XPlanUtil {
             return XUtil.genNullScalar();
         case SYMBOL: // Enum
             return XUtil.genUtf8StringScalar("FLAG(" + value + ")");
-        case DECIMAL: // BigDecimal
         case DATE: // DateString
         case TIME: // TimeString
         case TIME_WITH_LOCAL_TIME_ZONE: // TimeString
@@ -199,6 +198,7 @@ public class XPlanUtil {
             } else {
                 return XUtil.genNullScalar();
             }
+        case DECIMAL: // BigDecimal FIXME
         case MULTISET:
         case ROW:
         default:
@@ -306,6 +306,11 @@ public class XPlanUtil {
             final int pos = paramInfos.size();
             if (dynamicParam.getIndex() < 0) {
                 throw GeneralUtil.nestedException("TODO: support sub-query rex.");
+            }
+            // FIXME
+            if ((null == context ? dynamicParam.getType() : context.getPreferType()).getSqlTypeName()
+                == SqlTypeName.DECIMAL) {
+                throw GeneralUtil.nestedException("TODO: support decimal param in plan.");
             }
             paramInfos.add(new ScalarParamInfo(ScalarParamInfo.Type.DynamicParam, dynamicParam.getIndex(),
                 null == context ? dynamicParam.getType() : context.getPreferType(),

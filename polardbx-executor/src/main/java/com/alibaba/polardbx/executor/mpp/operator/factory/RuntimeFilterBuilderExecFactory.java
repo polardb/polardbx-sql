@@ -17,13 +17,15 @@
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.hash.HashMethodInfo;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.RuntimeFilterBuilderExec;
 import com.alibaba.polardbx.executor.operator.util.BloomFilterProduce;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RuntimeFilterUtil;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import io.airlift.http.client.HttpClient;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.logical.RuntimeFilterBuilder;
@@ -55,6 +57,8 @@ public class RuntimeFilterBuilderExecFactory extends ExecutorFactory {
     @Override
     public Executor createExecutor(ExecutionContext context, int idx) {
         if (bloomFilterProduce == null) {
+            boolean useXxHash = context.getParamManager().getBoolean(ConnectionParams.ENABLE_RUNTIME_FILTER_XXHASH);
+            HashMethodInfo hashMethodInfo = useXxHash ? HashMethodInfo.XXHASH_METHOD : HashMethodInfo.MURMUR3_METHOD;
 
             List<RexNode> conditions = RelOptUtil.conjunctions(filterBuilder.getCondition());
             List<List<Integer>> keyHash = new ArrayList<>();
@@ -85,15 +89,15 @@ public class RuntimeFilterBuilderExecFactory extends ExecutorFactory {
                 }
                 bloomfilterId.add(buildFunction.getRuntimeFilterIds());
                 keyHash.add(keys);
-                BloomFilter intBloomFilter = BloomFilter.createEmpty(bloomFilterSize, fpp);
-                bloomFilters.add(intBloomFilter);
+                BloomFilter bloomFilter = BloomFilter.createEmpty(hashMethodInfo, bloomFilterSize, fpp);
+                bloomFilters.add(bloomFilter);
             }
             bloomFilterProduce = BloomFilterProduce.create(
                 bloomfilterId, keyHash, bloomFilters, client, uri, context.getTraceId());
         }
         bloomFilterProduce.addCounter();
         Executor input = getInputs().get(0).createExecutor(context, idx);
-        Executor exec = new RuntimeFilterBuilderExec(input, bloomFilterProduce, context);
+        Executor exec = new RuntimeFilterBuilderExec(input, bloomFilterProduce, context, idx);
 
         exec.setId(filterBuilder.getRelatedId());
         if (context.getRuntimeStatistics() != null) {

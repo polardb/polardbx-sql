@@ -1,0 +1,35 @@
+- sql: |
+      /*+TDDL:cmd_extra(INDEX_ADVISOR_BROADCAST_THRESHOLD=500000)*/SELECT pld.f_station_id, u.audit_time
+      from tp_parcel_info pld
+        join tp_user u on pld.f_parcel_id = u.free_sms_count;
+
+  plan: |
+    tp_user
+
+- sql: |
+    SELECT pld.f_station_id, luaur.f_big_level_user_id
+    from tp_parcel_info pld
+      join zt_level_user_and_user_relation luaur on pld.f_parcel_id = luaur.f_user_id;
+
+  plan: |
+    zt_level_user_and_user_relation
+
+- sql: |
+    SELECT pld.f_station_id, u.audit_time, lulr.f_yys_level_user_id
+    from tp_parcel_info pld
+      join tp_user u on pld.f_parcel_id = u.free_sms_count
+      join zt_level_user_level_relation lulr on pld.f_arrive_time = lulr.addtime
+    where lulr.f_level_parent_user_id = 2 and lulr.f_yys_level_user_id=1;
+
+  plan: |
+    zt_level_user_level_relation
+
+- sql: |
+    SELECT pld.f_station_id, u.audit_time, lulr.f_yys_level_user_id
+    from tp_parcel_info pld
+      join tp_user u on pld.f_parcel_id = u.free_sms_count
+      join zt_level_user_level_relation lulr on pld.f_recipient_mobile = lulr.addtime
+    where lulr.f_level_parent_user_id = 2 and lulr.f_yys_level_user_id=1;
+
+  plan: |
+    zt_level_user_level_relation

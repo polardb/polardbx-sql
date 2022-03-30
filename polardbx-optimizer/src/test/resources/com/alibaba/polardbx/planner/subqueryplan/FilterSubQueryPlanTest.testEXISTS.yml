@@ -122,8 +122,8 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT * FROM (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col4` > 1024)) AS `t0` WHERE (`test_hash_tb`.`id` = `id`)))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`test_hash_tb`.`id` = `id`) and (`int_col4` > 1024))))")
 
 - #// @desc
   #// IN,?????????????, ?????? where ?????? order by ?? agg ?? limit?? ??? ???
@@ -479,8 +479,8 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT * FROM (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col5` < 30)) AS `t0` WHERE (`test_hash_tb`.`id` = `id`)))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`test_hash_tb`.`id` = `id`) and (`int_col5` < 30))))")
 
 - #// @desc
   #// IN,????????????, where , agg?? ????

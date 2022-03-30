@@ -35,7 +35,7 @@ import com.alibaba.polardbx.executor.mpp.operator.PipelineDepTree;
 import com.alibaba.polardbx.executor.mpp.operator.factory.PipelineFactory;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.concurrent.SetThreadName;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -330,26 +330,26 @@ public class SqlTaskExecution {
             }
         }
 
+        List<Driver> matchDrivers = new ArrayList<>();
+        List<TaskSource> updateTaskSources = new ArrayList<>();
+        for (WeakReference<Driver> driverReference : partitionDrivers) {
+            Driver driver = driverReference.get();
+            // the driver can be GCed due to a failure or a limit
+            if (driver != null) {
+                if (driver.matchSource(source.getIntegerId())) {
+                    matchDrivers.add(driver);
+                    updateTaskSources
+                        .add(new TaskSource(source.getIntegerId(), new LinkedHashSet<>(), source.isNoMoreSplits(),
+                            source.isExpand()));
+                }
+            } else {
+                // remove the weak reference from the list to avoid a memory leak
+                // NOTE: this is a concurrent safe operation on a CopyOnWriteArrayList
+                partitionDrivers.remove(driverReference);
+            }
+        }
         if (newSplits.size() > 0) {
 
-            List<Driver> matchDrivers = new ArrayList<>();
-            List<TaskSource> updateTaskSources = new ArrayList<>();
-            for (WeakReference<Driver> driverReference : partitionDrivers) {
-                Driver driver = driverReference.get();
-                // the driver can be GCed due to a failure or a limit
-                if (driver != null) {
-                    if (driver.matchSource(source.getIntegerId())) {
-                        matchDrivers.add(driver);
-                        updateTaskSources
-                            .add(new TaskSource(source.getIntegerId(), new LinkedHashSet<>(), source.isNoMoreSplits(),
-                                source.isExpand()));
-                    }
-                } else {
-                    // remove the weak reference from the list to avoid a memory leak
-                    // NOTE: this is a concurrent safe operation on a CopyOnWriteArrayList
-                    partitionDrivers.remove(driverReference);
-                }
-            }
             if (source.isExpand()) {
                 int start = ThreadLocalRandom.current().nextInt(updateTaskSources.size());
                 List<ScheduledSplit> shuffleLists = zigzagSplitsByMysqlInst(new ArrayList<>(newSplits));
@@ -373,10 +373,10 @@ public class SqlTaskExecution {
                     }
                 }
             }
+        }
 
-            for (int i = 0; i < updateTaskSources.size(); i++) {
-                matchDrivers.get(i).updateSource(updateTaskSources.get(i));
-            }
+        for (int i = 0; i < updateTaskSources.size(); i++) {
+            matchDrivers.get(i).updateSource(updateTaskSources.get(i));
         }
     }
 

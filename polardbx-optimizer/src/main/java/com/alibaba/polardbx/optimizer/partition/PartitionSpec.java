@@ -296,7 +296,8 @@ public class PartitionSpec {
 
     public String normalizePartSpec(boolean usePartGroupNameAsPartName,
                                     String partGrpName,
-                                    boolean needSortBoundValues) {
+                                    boolean needSortBoundValues,
+                                    int prefixPartColCnt) {
         StringBuilder sb = new StringBuilder();
         sb.append("PARTITION ");
         if (!usePartGroupNameAsPartName) {
@@ -322,7 +323,7 @@ public class PartitionSpec {
         if (needSortBoundValues) {
             tmpBoundSpec = sortPartitionsAllValues();
         }
-        sb.append(tmpBoundSpec.toString());
+        sb.append(tmpBoundSpec.getPartitionBoundDescription(prefixPartColCnt));
         sb.append(")");
         sb.append(" ENGINE = ");
         sb.append(this.engine);
@@ -363,23 +364,57 @@ public class PartitionSpec {
 
     }
 
+//    @Override
+//    public boolean equals(Object obj) {
+//        if (this == obj) {
+//            return true;
+//        }
+//        if (obj != null && boundSpec != null && obj.getClass() == this.getClass()) {
+//            return strategy == ((PartitionSpec) obj).getStrategy() &&
+//                boundSpec.equals(((PartitionSpec) obj).getBoundSpec()) &&
+//                Objects.equals(this.locality, ((PartitionSpec) obj).locality) &&
+//                name.equalsIgnoreCase(((PartitionSpec) obj).name);
+//        }
+//        return false;
+//    }
+
     @Override
     public boolean equals(Object obj) {
+        return equals(obj, -1);
+    }
+
+    public boolean equals(Object obj, int prefixPartColCnt ) {
         if (this == obj) {
             return true;
         }
+
         if (obj != null && boundSpec != null && obj.getClass() == this.getClass()) {
-            return strategy == ((PartitionSpec) obj).getStrategy() &&
-                boundSpec.equals(((PartitionSpec) obj).getBoundSpec()) &&
-                Objects.equals(this.locality, ((PartitionSpec) obj).locality) &&
-                name.equalsIgnoreCase(((PartitionSpec) obj).name);
+            if (strategy == ((PartitionSpec) obj).getStrategy()
+                && Objects.equals(this.locality, ((PartitionSpec) obj).locality)
+                && name.equalsIgnoreCase(((PartitionSpec) obj).name) ) {
+                if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT ) {
+                    return boundSpec.equals(((PartitionSpec) obj).getBoundSpec());
+                } else {
+                    if (strategy == PartitionStrategy.HASH) {
+                        /**
+                         * Both single-part-columns hash or mulit-part-columns hash, their bound value col has only one,
+                         * and not support prefix partition column comparing, so must use full-part-col equal method
+                         */
+                        return boundSpec.equals(((PartitionSpec) obj).getBoundSpec());
+                    } else {
+                        return boundSpec.equals(((PartitionSpec) obj).getBoundSpec(), prefixPartColCnt);
+                    }
+
+                }
+            }
         }
         return false;
+
     }
 
     @Override
     public String toString() {
-        return normalizePartSpec(false, null, false);
+        return normalizePartSpec(false, null, false, PartitionInfoUtil.FULL_PART_COL_COUNT);
     }
 
     public SearchDatumComparator getBoundSpaceComparator() {
@@ -388,5 +423,15 @@ public class PartitionSpec {
 
     public void setBoundSpaceComparator(SearchDatumComparator boundSpaceComparator) {
         this.boundSpaceComparator = boundSpaceComparator;
+    }
+
+    public String getDigest() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(" partitionSpec:[");
+        sb.append(this.normalizePartSpec(false, "", false, -1));
+        sb.append(",");
+        sb.append(this.getLocation().getDigest());
+        sb.append("]");
+        return sb.toString();
     }
 }

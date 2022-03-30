@@ -1,0 +1,102 @@
+tp_parcel_info:
+  CREATE TABLE `tp_parcel_info` (
+  `f_parcel_id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `f_exp_id` int(11) DEFAULT '0',
+  `f_branch_id` int(11) DEFAULT '0',
+  `f_station_id` int(11) NOT NULL DEFAULT '0',
+  `f_mail_no` varchar(100) DEFAULT '',
+  `f_company_id` int(11) DEFAULT '0',
+  `f_company_name` varchar(20) DEFAULT '',
+  `f_recipient_name` varchar(20) DEFAULT '',
+  `f_recipient_mobile` varchar(20) DEFAULT '',
+  `f_recipient_type` tinyint(1) DEFAULT '0',
+  `f_frame_code` varchar(16) DEFAULT '',
+  `f_take_code` int(11) DEFAULT '0',
+  `f_num` varchar(65) DEFAULT '0',
+  `f_input_way` tinyint(1) DEFAULT '9',
+  `f_input_source` tinyint(1) DEFAULT '9',
+  `f_arrive_time` bigint(14) DEFAULT '0',
+  `f_arrive_timestamp` int(11) DEFAULT '0',
+  `f_parcel_status` tinyint(1) DEFAULT '2',
+  `f_is_detention` tinyint(1) DEFAULT '9',
+  `f_out_way` tinyint(1) DEFAULT '0',
+  `f_out_source` tinyint(1) DEFAULT '1',
+  `f_out_time` bigint(14) DEFAULT '0',
+  `f_out_timestamp` int(11) DEFAULT '0',
+  `f_last_time` bigint(14) DEFAULT '0',
+  `f_last_timestamp` int(11) DEFAULT '0',
+  `f_type` tinyint(1) DEFAULT '9',
+  `f_comment` varchar(200) DEFAULT '',
+  `source` enum('pc', 'android', 'pda', 'ios') DEFAULT 'pc',
+  `version` varchar(15) DEFAULT '0',
+  `station_name` varchar(100) DEFAULT NULL,
+  `send_type` tinyint(1) DEFAULT '1',
+  `notice_status` tinyint(1) DEFAULT '2',
+  `delay_notice_status` tinyint(4) DEFAULT '1',
+  PRIMARY KEY (`f_parcel_id`),
+  KEY `f_mail_no` (`f_mail_no`),
+  KEY `f_take_code` (`f_take_code`),
+  KEY `f_recipient_mobile` (`f_recipient_mobile`),
+  KEY `f_parcel_status` (`f_parcel_status`),
+  KEY `f_station_id` (`f_station_id`),  KEY `f_exp_id` (`f_exp_id`),
+  KEY `exp_id_and_parcel_status` (`f_exp_id`, `f_parcel_status`),
+  KEY `f_arrive_time` (`f_arrive_time`),
+  KEY `f_station_id_and_f_parcel_status_and_f_num` (`f_station_id`, `f_parcel_status`, `f_num`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 1704439173 DEFAULT CHARSET = utf8  dbpartition by hash(`f_station_id`) tbpartition by hash(`f_station_id`) tbpartitions 32;
+
+zt_level_user_and_user_relation:
+  CREATE TABLE `zt_level_user_and_user_relation` (
+  `f_user_id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `f_level_user_id` bigint(20) DEFAULT NULL,
+  `f_big_level_user_id` bigint(20) DEFAULT NULL,
+  `f_yys_level_user_id` bigint(20) DEFAULT NULL,
+  `f_province_level_user_id` bigint(20) DEFAULT NULL,
+  `f_city_level_user_id` bigint(20) DEFAULT NULL,
+  `f_area_level_user_id` bigint(20) DEFAULT NULL,
+  `from_invition_code` varchar(100) DEFAULT NULL,
+  `pay_enter_price` bigint(20) DEFAULT NULL,
+  `commision_status` int(2) UNSIGNED DEFAULT '0',
+  `commision_time` bigint(20) UNSIGNED DEFAULT '0',
+  `auditor_type` varchar(100) DEFAULT NULL,
+  `auditor_role` varchar(100) DEFAULT NULL,
+  `auditor_status` tinyint(2) DEFAULT '0',
+  `auditor_reject` varchar(255) DEFAULT NULL,
+  `auditor_timestamp` bigint(20) DEFAULT NULL,
+  `addtime` bigint(20) DEFAULT NULL,
+  `curr_progress` varchar(128) DEFAULT NULL,
+  `recent_progress` varchar(64) DEFAULT NULL,
+  `recent_progress_auditor_id` bigint(20) DEFAULT NULL,
+  `recent_progress_time` datetime DEFAULT NULL,
+  `version` bigint(20) DEFAULT NULL,
+  PRIMARY KEY (`f_user_id`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 7702156 DEFAULT CHARSET = utf8;
+
+tp_user:
+  CREATE TABLE `tp_user` (
+  `f_user_id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `f_station_name` varchar(100) CHARACTER SET utf8 DEFAULT NULL,
+  `f_invit_code` varchar(20) DEFAULT '',
+  `send_real_name` tinyint(4) DEFAULT '1',
+  `free_sms_count` int(11) DEFAULT '0',
+  `consume_money` decimal(11, 2) DEFAULT '0.00',
+  `app_first_logged` tinyint(2) NOT NULL DEFAULT '0',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  `audit_time` datetime DEFAULT NULL,
+  PRIMARY KEY USING BTREE (`f_user_id`),
+  KEY `f_user_id` (`f_user_id`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 7702176 DEFAULT CHARSET = gbk;
+
+zt_level_user_level_relation:
+  CREATE TABLE `zt_level_user_level_relation` (
+  `f_level_user_id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT BY GROUP,
+  `f_level_parent_user_id` bigint(20) UNSIGNED DEFAULT '0',
+  `f_big_level_user_id` bigint(20) DEFAULT NULL,
+  `f_yys_level_user_id` bigint(20) DEFAULT NULL,
+  `f_province_level_user_id` bigint(20) DEFAULT NULL,
+  `f_city_level_user_id` bigint(20) DEFAULT NULL,
+  `f_area_level_user_id` bigint(20) DEFAULT NULL,
+  `addtime` bigint(20) DEFAULT NULL,
+  PRIMARY KEY USING BTREE (`f_level_user_id`),
+  KEY `f_level_parent_user_id` USING BTREE (`f_level_parent_user_id`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 1000011 DEFAULT CHARSET = utf8;
+

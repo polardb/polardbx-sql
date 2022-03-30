@@ -22,10 +22,12 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateIndexWithGsiPreparedData;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -122,6 +124,12 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             isBroadcast = primaryTableRule.isBroadcast();
         }
 
+        final LocalPartitionDefinitionInfo localPartitionDefinitionInfo = primaryTableMeta.getLocalPartitionDefinitionInfo();
+        if(localPartitionDefinitionInfo != null){
+            localPartitionDefinitionInfo.setId(null);
+            localPartitionDefinitionInfo.setTableName(indexName);
+        }
+
         boolean unique =
             sqlCreateIndex.getConstraintType() == SqlCreateIndex.SqlIndexConstraintType.UNIQUE;
         CreateGlobalIndexPreparedData preparedData = prepareCreateGlobalIndexData(
@@ -137,6 +145,7 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             sqlCreateIndex.getTbPartitionBy(),
             sqlCreateIndex.getTbPartitions(),
             sqlCreateIndex.getPartitioning(),
+            localPartitionDefinitionInfo,
             unique,
             sqlCreateIndex.createClusteredIndex(),
             null,
@@ -146,6 +155,7 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         preparedData.setPrimaryPartitionInfo(partitionInfo);
         preparedData.setPrimaryTableRule(primaryTableRule);
         preparedData.setSqlCreateIndex(sqlCreateIndex);
+        preparedData.setTableVersion(primaryTableMeta.getVersion());
 
         if (sqlCreateIndex.getOptions() != null) {
             String indexComment = "";
@@ -169,22 +179,29 @@ public class LogicalCreateIndex extends LogicalTableOperation {
 
     private void prepareStandaloneLocalIndexData(boolean clustered) {
         // Normal local index.
-        createLocalIndexPreparedDataList.add(prepareCreateLocalIndexData(tableName, indexName, clustered, false));
+        CreateLocalIndexPreparedData preparedData = prepareCreateLocalIndexData(tableName, indexName, clustered, false);
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableMeta tableMeta = sm.getTable(tableName);
+        preparedData.setTableVersion(tableMeta.getVersion());
+        createLocalIndexPreparedDataList.add(preparedData);
 
         prepareIndexOnClusteredTable(false);
     }
 
     private void prepareIndexOnClusteredTable(boolean onGsi) {
-        final GsiMetaBean gsiMetaBean =
-            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getGsi(tableName, IndexStatus.ALL);
+        final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        final GsiMetaBean gsiMetaBean = sm.getGsi(tableName, IndexStatus.ALL);
         if (gsiMetaBean.withGsi(tableName)) {
             // Local indexes on clustered GSIs.
             final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
                 if (gsiEntry.getValue().clusteredIndex) {
                     final String clusteredTableName = gsiEntry.getKey();
-                    createLocalIndexPreparedDataList
-                        .add(prepareCreateLocalIndexData(clusteredTableName, indexName, true, onGsi));
+                    CreateLocalIndexPreparedData preparedData = prepareCreateLocalIndexData(clusteredTableName, indexName, true, onGsi);
+                    if (onGsi) {
+                        preparedData.setTableVersion(sm.getTable(clusteredTableName).getVersion());
+                    }
+                    createLocalIndexPreparedDataList.add(preparedData);
                 }
             }
         }
@@ -194,7 +211,8 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         final String logicalTableName = sqlCreateIndex.getOriginTableName().getLastName();
         final TableMeta tableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
-        if (tableMeta.isAutoPartition()) {
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName) && tableMeta.isAutoPartition()) {
+            // Legacy code. (auto partition on sharding table do rewrite here)
             if (null == sqlCreateIndex.getIndexResiding()) {
                 // Need rewrite.
                 if (rewrite) {

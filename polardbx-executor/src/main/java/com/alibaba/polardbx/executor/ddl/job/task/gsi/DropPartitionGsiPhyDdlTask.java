@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropPartitionGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;

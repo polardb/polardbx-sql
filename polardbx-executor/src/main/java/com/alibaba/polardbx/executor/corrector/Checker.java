@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.corrector;
 
-import com.alibaba.polardbx.executor.backfill.Extractor;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.RateLimiter;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
@@ -30,9 +27,11 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ExecutorHelper;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.backfill.Throttle;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
@@ -369,7 +368,8 @@ public class Checker {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, checkerEc);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
-            .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(), true);
+            .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(),
+                indexTableMeta.hasGsiImplicitPrimaryKey() ? null : "PRIMARY");
 
         final List<DataType> columnTypes = indexTableMeta.getAllColumns()
             .stream()
@@ -397,13 +397,17 @@ public class Checker {
             parallelism,
             primaryLock,
             gsiLock,
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 false, true, primaryLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 false, true, gsiLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 true, true, primaryLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 true, true, gsiLock),
             selectWithIn.getKey(),
             selectWithIn.getValue(),
@@ -832,6 +836,7 @@ public class Checker {
             return; // Empty table.
         }
 
+        long startTs = System.currentTimeMillis();
         List<ParameterContext> lowerBound = null;
         do {
             // Dynamic adjust lower bound of rate.
@@ -912,6 +917,7 @@ public class Checker {
 
                         (primaryToGsi ? cb.getPrimaryCounter() : cb.getGsiCounter()).getAndAdd(baseRows.size());
                         baseEc.getStats().checkedRows.addAndGet(baseRows.size());
+                        DdlEngineStats.METRIC_CHECKER_ROWS_FINISHED.update(baseRows.size());
 
                         // Check DDL is ongoing.
                         if (CrossEngineValidator.isJobInterrupted(baseEc)) {
@@ -1002,12 +1008,16 @@ public class Checker {
             }
         } while (lowerBound != null);
 
-        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Checker finish phy for {1}[{2}][{3}][{4}]",
+        long elapsedMillis = System.currentTimeMillis() - startTs;
+        DdlEngineStats.METRIC_CHECKER_TIME_MILLIS.update(elapsedMillis);
+        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Checker finish phy for {1}[{2}][{3}][{4}], " +
+                "cost %dms",
             baseEc.getTraceId(),
             dbIndex,
             phyTable,
             primaryToGsi ? "P->G" : "G->P",
-            totalRowsDealing));
+            totalRowsDealing,
+            elapsedMillis));
     }
 
     public Exception runTasks(List<FutureTask<Void>> futures, BlockingQueue<Object> blockingQueue) {

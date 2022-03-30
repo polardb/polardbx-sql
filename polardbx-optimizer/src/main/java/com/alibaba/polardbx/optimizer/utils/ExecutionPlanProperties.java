@@ -29,7 +29,7 @@ public final class ExecutionPlanProperties {
 
     public static final int MODIFY_GSI_TABLE = 1;
 
-    public static final int WITH_FORCE_INDEX = 2;
+    public static final int WITH_INDEX_HINT = 2;
 
     public static final int MODIFY_TABLE = 3;
 

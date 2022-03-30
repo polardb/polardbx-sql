@@ -302,4 +302,16 @@ public class SliceType extends AbstractDataType<Slice> {
     public MySQLStandardFieldType fieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_VAR_STRING;
     }
+
+    @Override
+    public boolean equalDeeply(DataType that) {
+        if (that == null || that.getClass() != this.getClass()) {
+            return false;
+        }
+
+        SliceType thatType = (SliceType) that;
+        return thatType.collationName == this.collationName
+            && thatType.charsetName == this.charsetName
+            && thatType.length == this.length;
+    }
 }

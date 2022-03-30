@@ -55,7 +55,7 @@ import java.util.concurrent.Executor;
 public class TAtomConnectionProxy extends ConnectionProxyImpl {
 
     private static final Logger logger = LoggerFactory.getLogger(TAtomConnectionProxy.class);
-    final private Map<String, Object> currentGlobalServerVariables;
+    private Map<String, Object> currentGlobalServerVariables;
     final private Map<String, Object> sessionVariables;
     final private Map<String, Object> sessionVariablesChanged = new HashMap<String, Object>();
     private String encoding;
@@ -68,7 +68,7 @@ public class TAtomConnectionProxy extends ConnectionProxyImpl {
                                 long mysqlConnectionId) throws SQLException {
         super(dataSource, connection, properties, id);
         this.sessionVariables = serverVariables;
-        this.currentGlobalServerVariables = Collections.unmodifiableMap(globalServerVariables);
+        this.currentGlobalServerVariables = globalServerVariables;
         this.encoding = EncodingUtils.getEncoding(connection);
         this.connection = connection;
         this.mysqlConnectionId = mysqlConnectionId;
@@ -95,6 +95,8 @@ public class TAtomConnectionProxy extends ConnectionProxyImpl {
                     serverVariablesNeedToRemove.add(key);
                 }
             }
+        } else {
+            this.currentGlobalServerVariables = new HashMap<>(currentGlobalServerVariables);
         }
         if (serverVariables == null) {
             serverVariables = newVariables; // 已经全部小写

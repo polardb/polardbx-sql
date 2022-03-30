@@ -50,6 +50,7 @@ import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import javax.sql.DataSource;
 import java.io.PrintWriter;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
@@ -126,6 +127,23 @@ public class MetaDbDataSource extends AbstractLifecycle {
             if (conn.unwrap(XConnection.class).getSession().getClient().getBaseVersion()
                 == XClient.DnBaseVersion.DN_RDS_80_X_CLUSTER || XConfig.GALAXY_X_PROTOCOL) {
                 try (Statement stmt = conn.createStatement()) {
+                    stmt.executeUpdate("create sequence mysql.gts_base cache 2 TIMESTAMP");
+                }
+            }
+        } catch (SQLException exception) {
+            if (!exception.getMessage().contains("already exists")) {
+                logger.error(exception);
+                throw new TddlNestableRuntimeException(exception);
+            }
+        }
+    }
+
+    private void initTsoServicesJDBC(DataSource dataSource) {
+        try (Connection conn = dataSource.getConnection()) {
+            try (Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("select version()")) {
+                if (rs.next() && rs.getString(1).startsWith("8.0")) {
+                    rs.close();
                     stmt.executeUpdate("create sequence mysql.gts_base cache 2 TIMESTAMP");
                 }
             }
@@ -300,7 +318,8 @@ public class MetaDbDataSource extends AbstractLifecycle {
                     if (storageInfo.isVip == StorageInfoRecord.IS_VIP_TRUE) {
                         this.metaDbVipAddrStr = AddressUtils.getAddrStrByIpPort(storageInfo.ip, storageInfo.port);
                         if (storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_XCLUSTER ||
-                            storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                            storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER ||
+                            storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
                             // if current storage inst is a xcluster inst,
                             // then its vip info should be ignored in getStorageRole info
                             continue;
@@ -317,7 +336,8 @@ public class MetaDbDataSource extends AbstractLifecycle {
                      * just use the vip as metaDbAvailableAddr
                      */
                     if (this.metaDbStorageType != StorageInfoRecord.STORAGE_TYPE_XCLUSTER &&
-                        this.metaDbStorageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                        this.metaDbStorageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER &&
+                        this.metaDbStorageType != StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
                         if (this.metaDbVipAddrStr == null) {
                             // No find any vip, use the only one storage info
                             if (storageInfoSize == 1) {

@@ -16,15 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
-
-import java.util.ArrayList;
-import java.util.List;
-
 public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
 
     public AlterTableSetTableGroupPreparedData() {
@@ -32,6 +23,9 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
 
     private String tableGroupName;
     private String sourceSql;
+    private String originalTableGroup;
+    private Long tableVersion;
+    private String primaryTableName;
 
     public String getTableGroupName() {
         return tableGroupName;
@@ -41,11 +35,35 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
         this.tableGroupName = tableGroupName;
     }
 
+    public String getOriginalTableGroup() {
+        return originalTableGroup;
+    }
+
+    public void setOriginalTableGroup(String originalTableGroup) {
+        this.originalTableGroup = originalTableGroup;
+    }
+
     public String getSourceSql() {
         return sourceSql;
     }
 
     public void setSourceSql(String sourceSql) {
         this.sourceSql = sourceSql;
+    }
+
+    public Long getTableVersion() {
+        return tableVersion;
+    }
+
+    public void setTableVersion(Long tableVersion) {
+        this.tableVersion = tableVersion;
+    }
+
+    public String getPrimaryTableName() {
+        return primaryTableName;
+    }
+
+    public void setPrimaryTableName(String primaryTableName) {
+        this.primaryTableName = primaryTableName;
     }
 }

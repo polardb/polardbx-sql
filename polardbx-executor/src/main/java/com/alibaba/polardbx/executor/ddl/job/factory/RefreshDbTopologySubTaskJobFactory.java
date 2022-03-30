@@ -59,8 +59,10 @@ public class RefreshDbTopologySubTaskJobFactory extends AlterTableGroupSubTaskJo
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
         List<PartitionGroupRecord> inVisiblePartitionGroupRecords = preparedData.getInvisiblePartitionGroups();
 
-        return AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForCopyPartition(curPartitionInfo, inVisiblePartitionGroupRecords);
+        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+            .getNewPartitionInfoForCopyPartition(curPartitionInfo, inVisiblePartitionGroupRecords, this.executionContext);
+        //checkPartitionCount(newPartInfo);
+        return newPartInfo;
     }
 
 }

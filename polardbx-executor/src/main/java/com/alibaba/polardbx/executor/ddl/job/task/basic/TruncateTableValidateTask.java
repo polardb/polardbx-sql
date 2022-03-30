@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -31,17 +32,22 @@ import java.sql.Connection;
 public class TruncateTableValidateTask extends BaseValidateTask {
 
     private String logicalTableName;
+    private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public TruncateTableValidateTask(String schemaName, String logicalTableName) {
+    public TruncateTableValidateTask(String schemaName, String logicalTableName, TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
+        this.tableGroupConfig = tableGroupConfig;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
         GsiValidator.validateAllowTruncateOnTable(schemaName, logicalTableName, executionContext);
+        if (tableGroupConfig != null) {
+            TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
+        }
     }
 
     @Override

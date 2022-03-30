@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
@@ -47,17 +50,37 @@ public class LogicalAlterTableGroupMovePartition extends BaseDdlOperation {
 
         assert sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupMovePartition;
 
-        List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
+        List<GroupDetailInfoExRecord> candidateGroupDetailInfoExRecords =
             TableGroupLocation.getOrderedGroupList(schemaName);
 
         //todo support move multi-groups in one shot
         String storageInstId = alterTableGroupMovePartition.getTargetPartitions().entrySet().iterator().next().getKey();
         preparedData = new AlterTableGroupMovePartitionPreparedData();
 
-        preparedData.setTargetGroupDetailInfoExRecords(
-            targetGroupDetailInfoExRecords.stream().filter(o -> o.storageInstId.equalsIgnoreCase(storageInstId))
+        List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
+            candidateGroupDetailInfoExRecords.stream().filter(o -> o.storageInstId.equalsIgnoreCase(storageInstId))
                 .collect(
-                    Collectors.toList()));
+                    Collectors.toList());
+
+        if (GeneralUtil.isEmpty(targetGroupDetailInfoExRecords)) {
+            candidateGroupDetailInfoExRecords =
+                TableGroupLocation.getOrderedGroupList(schemaName, true);
+            targetGroupDetailInfoExRecords =
+                candidateGroupDetailInfoExRecords.stream().filter(o -> o.storageInstId.equalsIgnoreCase(storageInstId))
+                    .collect(
+                        Collectors.toList());
+            if (GeneralUtil.isEmpty(targetGroupDetailInfoExRecords)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_DN_IS_NOT_READY,
+                    String.format("the dn[%s] is not ready, please retry this command later",
+                        storageInstId));
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_PHYSICAL_TOPOLOGY_CHANGING,
+                    String.format("the physical group[%s] is changing, please retry this command later",
+                        targetGroupDetailInfoExRecords.get(0)));
+            }
+        }
+
+        preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
         preparedData.setSchemaName(schemaName);
         preparedData.setWithHint(targetTablesHintCache != null);
 

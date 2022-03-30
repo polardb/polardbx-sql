@@ -16,9 +16,6 @@
               unique key (`schema_name`)
             ) charset=utf8
         ]]></Create>
-        <Change><![CDATA[
-            alter table `schemata` add column `version` int default 0
-        ]]></Change>
     </SystemTable>
     <SystemTable name="tables">
         <Create><![CDATA[
@@ -106,7 +103,7 @@
               `meta_version` bigint unsigned not null default '1',
               `auto_flag` int default 0 comment '0:auto rebalancing is not open, 1: auto rebalancing is open',
               `tbl_type` int default 0 comment '0:primary table, 1:gsi table',
-              `part_name` varchar(64) null comment 'the name of part',
+              `part_name` varchar(64) not null default '' comment 'the name of part',
               `part_temp_name` varchar(64) null comment 'part name in template',
               `part_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
               `next_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
@@ -121,10 +118,10 @@
               `part_flags` bigint unsigned default '0',
               `phy_table` varchar(64) default null,
                primary key (`id`),
-               unique key `uidx_pname`(`table_schema`,`table_name`,`part_name`),
+               unique key `uk_pname`(`table_schema`,`table_name`,`part_name`),
                key `tb_level`(`table_schema`,`table_name`,`part_level`),
-               key `obj_id`(`id`,`parent_id`),
-               key `db_tb`(`table_schema`, `table_name`)
+               key `grp_id`(`group_id`),
+               key `par_id`(`parent_id`)
         ) charset=utf8
         ]]></Create>
     </SystemTable>
@@ -132,7 +129,7 @@
     <SystemTable name="table_partitions_delta">
         <Create><![CDATA[
         create table if not exists `table_partitions_delta` (
-              `id` bigint not null auto_increment,
+              `id` bigint(20) NOT NULL DEFAULT '0',
               `parent_id` bigint not null comment '>0:has parent; <=0:has no parent',
               `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
               `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -143,7 +140,7 @@
               `meta_version` bigint unsigned not null default '1',
               `auto_flag` int default 0 comment '0:auto rebalancing is not open, 1: auto rebalancing is open',
               `tbl_type` int default 0 comment '0:primary table, 1:gsi table',
-              `part_name` varchar(64) null comment 'the name of part',
+              `part_name` varchar(64) not null default '' comment 'the name of part',
               `part_temp_name` varchar(64) null comment 'part name in template',
               `part_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
               `next_level` int not null comment '-1:no_next_level,0:logical,1:1st_level_part,2:2nd_level_part,3:3rd_level_part',
@@ -157,11 +154,7 @@
               `part_extras` longtext default null,
               `part_flags` bigint unsigned default '0',
               `phy_table` varchar(64) default null,
-               primary key (`id`),
-               unique key `uidx_pname`(`table_schema`,`table_name`,`part_name`),
-               key `tb_level`(`table_schema`,`table_name`,`part_level`),
-               key `obj_id`(`id`,`parent_id`),
-               key `db_tb`(`table_schema`, `table_name`)
+               PRIMARY KEY (`table_schema`,`table_name`,`part_name`)
         ) charset=utf8
         ]]></Create>
     </SystemTable>
@@ -294,6 +287,78 @@
               UNIQUE KEY(`object_type`, `object_id`)
         ) CHARSET=utf8;
         ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="table_local_partitions">
+        <Create><![CDATA[
+        create table if not exists `table_local_partitions` (
+              `id` bigint not null primary key auto_increment,
+              `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `column_name` varchar(256) not null,
+              `start_with_date` varchar(256),
+              `interval_count` int not null,
+              `interval_unit` CHAR(36) not null,
+              `expire_after_count` int not null comment '-1:wont expire',
+              `pre_allocate_count` int not null,
+              `pivot_date_expr` varchar(512) not null,
+               unique key `uk_scheme_table`(`table_schema`,`table_name`)
+        ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="scheduled_jobs">
+        <Create><![CDATA[
+            create table if not exists `scheduled_jobs` (
+                  `schedule_id` bigint not null primary key auto_increment,
+                  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  `table_schema` varchar(64) not null,
+                  `table_name` varchar(64),
+                  `schedule_name` varchar(255) not null,
+                  `schedule_comment` varchar(512),
+                  `executor_type` varchar(64) not null,
+                  `schedule_context` longtext,
+                  `executor_contents` longtext,
+                  `status` varchar(64) not null comment 'ENABLED/DISABLED',
+                  `schedule_type` varchar(64) not null comment 'INTERVAL/CRON',
+                  `schedule_expr` varchar(256),
+                  `time_zone` varchar(64) not null,
+                  `last_fire_time` bigint not null default 0,
+                  `next_fire_time` bigint not null default 0,
+                  `starts` bigint not null default 0,
+                  `ends` bigint not null default 0,
+                  `schedule_policy` varchar(256) comment 'fire/wait/skip',
+                  UNIQUE KEY(`table_schema`, `schedule_name`),
+                  KEY (`table_schema`, `table_name`),
+                  KEY(`next_fire_time`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="fired_scheduled_jobs">
+        <Create><![CDATA[
+            create table if not exists `fired_scheduled_jobs` (
+                  `schedule_id` bigint not null,
+                  `table_schema` varchar(64) not null,
+                  `table_name` varchar(64),
+                  `fire_time` bigint not null default 0,
+                  `start_time` bigint not null default 0,
+                  `finish_time` bigint not null default 0,
+                  `state` varchar(64) not null comment 'QUEUED/RUNNING/SUCCESS/FAILED',
+                  `remark` text,
+                  `result` longtext,
+                  `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+                  primary key(`schedule_id`, `fire_time`),
+                  KEY (`table_schema`, `table_name`),
+                  KEY (`fire_time`)
+            ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `fired_scheduled_jobs` add column `gmt_modified` timestamp not null default current_timestamp on update current_timestamp
+        ]]> </Change>
     </SystemTable>
 
 </SystemTables>

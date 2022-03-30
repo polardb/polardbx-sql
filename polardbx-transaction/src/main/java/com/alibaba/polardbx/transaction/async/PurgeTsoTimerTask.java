@@ -14,6 +14,7 @@ import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -86,6 +87,9 @@ public class PurgeTsoTimerTask implements Runnable {
                 TopologyHandler topologyHandler =
                     ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME).getTopologyHandler();
                 for (Group group : topologyHandler.getMatrix().getGroups()) {
+                    if (!DbGroupInfoManager.isVisibleGroup(group)) {
+                        continue;
+                    }
                     String groupName = group.getName();
                     IGroupExecutor groupExecutor = topologyHandler.get(groupName);
                     DataSource dataSource = groupExecutor.getDataSource();

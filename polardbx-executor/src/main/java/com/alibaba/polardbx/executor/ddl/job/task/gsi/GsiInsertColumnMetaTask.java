@@ -17,6 +17,13 @@
 package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.spec.AlterTableRollbacker;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -56,6 +63,7 @@ public class GsiInsertColumnMetaTask extends BaseGmsTask {
         super(schemaName, logicalTableName);
         this.indexName = indexName;
         this.columns = ImmutableList.copyOf(columns);
+        onExceptionTryRecoveryThenRollback();
     }
 
     /**
@@ -84,7 +92,7 @@ public class GsiInsertColumnMetaTask extends BaseGmsTask {
                 logicalTableName,
                 indexName,
                 seqInIndex,
-                IndexStatus.ABSENT
+                IndexStatus.PUBLIC
             );
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
@@ -94,6 +102,27 @@ public class GsiInsertColumnMetaTask extends BaseGmsTask {
 
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        //todo implement me
+        for (String column : this.getColumns()) {
+            ExecutorContext
+                .getContext(executionContext.getSchemaName())
+                .getGsiManager()
+                .getGsiMetaManager()
+                .removeColumnMeta(metaDbConnection, schemaName, logicalTableName, indexName, column);
+            LOGGER.info(String.format("Drop GSI column cleanup task. schema:%s, table:%s, index:%s, column:%s",
+                schemaName,
+                logicalTableName,
+                indexName,
+                column));
+        }
+
+        //sync have to be successful to continue
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        executionContext.refreshTableMeta();
+
+        LOGGER.info(String.format("Rollback Change GSI meta. schema:%s, table:%s, index:%s",
+            schemaName,
+            logicalTableName,
+            indexName
+        ));
     }
 }

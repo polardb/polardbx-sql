@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.newengine.job;
 
 import com.alibaba.polardbx.executor.ddl.job.MockDdlJob;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Set;
@@ -38,7 +39,7 @@ public abstract class DdlJobFactory {
             validate();
         }
         ExecutableDdlJob executableDdlJob = doCreate();
-        excludeResources(executableDdlJob.excludeResources);
+        excludeResources(executableDdlJob.getExcludeResources());
 
         //this is a quite interesting injection
         FailPoint.inject(FP_HIJACK_DDL_JOB, (k, v) -> {
@@ -47,8 +48,9 @@ public abstract class DdlJobFactory {
                 int expectNodeCount = Integer.valueOf(pair[0]);
                 int maxOutEdgeCount = Integer.valueOf(pair[1]);
                 int edgeRate = Integer.valueOf(pair[2]);
+                boolean mockSubJob = FailPoint.isKeyEnable(FailPointKey.FP_INJECT_SUBJOB);
                 ExecutableDdlJob hiJackJob =
-                    new MockDdlJob(expectNodeCount, maxOutEdgeCount, edgeRate).create();
+                    new MockDdlJob(expectNodeCount, maxOutEdgeCount, edgeRate, mockSubJob).create();
                 executableDdlJob.overrideTasks(hiJackJob);
             }
         });

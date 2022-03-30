@@ -221,7 +221,8 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
             }
 
             handlerParams.optimizedWithReturning = true;
-
+            // Insert batch may be split in TConnection, so we need to set executionContext's PhySqlId for next part
+            executionContext.setPhySqlId(insertEc.getPhySqlId() + 1);
             if (returnIgnored) {
                 return ignoredRows;
             } else {
@@ -269,6 +270,8 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         } finally {
             selectValuesPool.destroy();
         }
+        // Insert batch may be split in TConnection, so we need to set executionContext's PhySqlId for next part
+        executionContext.setPhySqlId(insertEc.getPhySqlId() + 1);
         return affectRows;
     }
 

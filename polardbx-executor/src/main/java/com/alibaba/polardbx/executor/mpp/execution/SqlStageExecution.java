@@ -39,7 +39,7 @@ import com.alibaba.polardbx.executor.mpp.server.remotetask.HttpRemoteTask;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.executor.mpp.split.RemoteSplit;
 import com.alibaba.polardbx.executor.mpp.util.ImmutableCollectors;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.units.Duration;
 
 import javax.annotation.concurrent.GuardedBy;

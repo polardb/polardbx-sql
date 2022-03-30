@@ -42,9 +42,11 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
     private boolean                 invalidateGlobalIndexes = false;
 
     private boolean                 removePatiting          = false;
+    private boolean                 removeLocalPatiting          = false;
     private boolean                 upgradePatiting         = false;
     private List<SQLAssignItem>     tableOptions = new ArrayList<SQLAssignItem>();
     private SQLPartitionBy          partition               = null;
+    private SQLPartitionBy          localPartition               = null;
 
     // odps
     private boolean                 mergeSmallFiles         = false;
@@ -91,6 +93,14 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
 
     public void setRemovePatiting(boolean removePatiting) {
         this.removePatiting = removePatiting;
+    }
+
+    public boolean isRemoveLocalPatiting() {
+        return this.removeLocalPatiting;
+    }
+
+    public void setRemoveLocalPatiting(final boolean removeLocalPatiting) {
+        this.removeLocalPatiting = removeLocalPatiting;
     }
 
     public boolean isUpgradePatiting() {
@@ -176,6 +186,14 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
 
     public void setPartition(SQLPartitionBy partition) {
         this.partition = partition;
+    }
+
+    public SQLPartitionBy getLocalPartition() {
+        return this.localPartition;
+    }
+
+    public void setLocalPartition(final SQLPartitionBy localPartition) {
+        this.localPartition = localPartition;
     }
 
     @Override

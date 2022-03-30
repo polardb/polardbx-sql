@@ -361,12 +361,24 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             DbTopologyManager.maxLogicalDbCount = maxLogicalDbCount;
         }
 
-        if (p.containsKey(ConnectionProperties.ENABLE_PARTITION_MANAGEMENT)) {
-            boolean enablePartMgr =
-                Boolean.valueOf(p.getProperty(ConnectionProperties.ENABLE_PARTITION_MANAGEMENT));
+        if (p.containsKey(ConnectionProperties.DEFAULT_PARTITION_MODE)) {
+            String defaultPartMode =
+                String.valueOf(p.getProperty(ConnectionProperties.DEFAULT_PARTITION_MODE));
             CobarServer.getInstance().getConfig().getSystem()
-                .setEnablePartitionManagement(enablePartMgr);
-            DbTopologyManager.setEnablePartitionManagement(enablePartMgr);
+                .setDefaultPartitionMode(defaultPartMode);
+            DbTopologyManager.setDefaultPartitionMode(defaultPartMode);
+        }
+
+        if (p.containsKey(ConnectionProperties.ENABLE_LOGICAL_DB_WARMMING_UP)) {
+            boolean enableLogicalDbWarmmingUp =
+                Boolean.valueOf(p.getProperty(ConnectionProperties.ENABLE_LOGICAL_DB_WARMMING_UP));
+            CobarServer.getInstance().getConfig().getSystem().setEnableLogicalDbWarmmingUp(enableLogicalDbWarmmingUp);
+        }
+
+        if (p.containsKey(ConnectionProperties.LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE)) {
+            int logicalDbWarmmingUpPoolSize =
+                Integer.valueOf(p.getProperty(ConnectionProperties.LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE));
+            CobarServer.getInstance().getConfig().getSystem().setLogicalDbWarmmingUpExecutorPoolSize(logicalDbWarmmingUpPoolSize);
         }
 
         if (CobarServer.getInstance().isInited()) {

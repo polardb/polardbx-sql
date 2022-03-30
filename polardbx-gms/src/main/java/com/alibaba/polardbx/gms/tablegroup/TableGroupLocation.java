@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
@@ -69,7 +70,13 @@ public class TableGroupLocation {
     /**
      * Get list of storage-group order by physical-table count on the group
      */
+
     public static List<GroupDetailInfoExRecord> getOrderedGroupList(String logicalDbName) {
+        return getOrderedGroupList(logicalDbName, false);
+    }
+
+    public static List<GroupDetailInfoExRecord> getOrderedGroupList(String logicalDbName,
+                                                                    boolean includeToBeRemoveGroup) {
         if (ConfigDataMode.isMock() || ConfigDataMode.isFastMock()) {
             return TableGroupUtils.mockTheOrderedLocation(logicalDbName);
         }
@@ -101,6 +108,8 @@ public class TableGroupLocation {
         // sort physical-groups according to physical-table count
         return storageGroupList.stream()
             .filter(r -> r.dbName.equalsIgnoreCase(logicalDbName))
+            .filter(r -> (includeToBeRemoveGroup || DbGroupInfoManager.isNormalGroup(r.dbName,
+                r.groupName))) //exclude GROUP_TYPE_BEFORE_REMOVE if includeToBeRemoveGroup=false
             .sorted(Comparator.comparingInt(x -> instanceTableCount.get(x.storageInstId)))
             .collect(Collectors.toList());
     }

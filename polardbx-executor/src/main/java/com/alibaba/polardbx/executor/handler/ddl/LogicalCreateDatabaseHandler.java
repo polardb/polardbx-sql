@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.MySQLCharsetDDLValidator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -37,6 +38,7 @@ import com.alibaba.polardbx.gms.util.DbNameUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.utils.KeyWordsUtil;
 import com.google.common.base.Predicate;
 import com.google.common.base.Strings;
 import org.apache.calcite.rel.RelNode;
@@ -61,16 +63,15 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
         final LocalityManager lm = LocalityManager.getInstance();
 
         String dbName = sqlCreateDatabase.getDbName().getSimple();
-
-        if (!DbNameUtil.validateDbName(dbName)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+        if (!DbNameUtil.validateDbName(dbName, KeyWordsUtil.isKeyWord(dbName))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 String.format("Failed to create database because the dbName[%s] is invalid", dbName));
         }
 
         int normalDbCnt = DbTopologyManager.getNormalDbCountFromMetaDb();
         int maxDbCnt = DbTopologyManager.maxLogicalDbCount;
         if (normalDbCnt >= maxDbCnt) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 String.format(
                     "Failed to create database because there are too many databases, the max count of database is %s",
                     maxDbCnt));
@@ -80,7 +81,42 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
             .orElse(DbTopologyManager.defaultCharacterSetForCreatingDb);
         String collate = Optional.ofNullable(sqlCreateDatabase.getCollate())
             .orElse(CharsetName.getDefaultCollationName(charset));
+
+        if (!MySQLCharsetDDLValidator.checkCharsetSupported(charset, collate)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                String.format(
+                    "Failed to create database because the charset[%s] or collate[%s] is not supported",
+                    charset, collate));
+        }
+
         String locality = Strings.nullToEmpty(sqlCreateDatabase.getLocality());
+
+
+        if (!MySQLCharsetDDLValidator.checkCharset(charset)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format(
+                    "Unknown character set: %s",
+                    charset));
+        }
+
+        if (!StringUtils.isEmpty(collate)) {
+
+            if (!MySQLCharsetDDLValidator.checkCollation(collate)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    String.format(
+                        "Unknown collation: %s",
+                        collate));
+            }
+
+            if (!MySQLCharsetDDLValidator.checkCharsetCollation(charset, collate)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    String.format(
+                        "Unknown character set and collation: %s %s",
+                        charset, collate));
+            }
+
+        }
+
         String partitionMode = Strings.nullToEmpty(sqlCreateDatabase.getPartitionMode());
         boolean isCreateIfNotExists = sqlCreateDatabase.isIfNotExists();
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
@@ -115,21 +151,20 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
 
     protected int decideDbType(String partitionMode, ExecutionContext executionContext) {
 
-        boolean enablePartMgr = DbTopologyManager.isEnablePartitionManagement();
+        String defaultPartMode = DbTopologyManager.getDefaultPartitionMode();
         int dbType = -1;
         if (StringUtils.isEmpty(partitionMode)) {
-            if (enablePartMgr) {
-                dbType = DbInfoRecord.DB_TYPE_NEW_PART_DB;
-            } else {
-                dbType = DbInfoRecord.DB_TYPE_PART_DB;
-            }
-        } else if (partitionMode.equalsIgnoreCase(DbInfoManager.PARTITION_MODE_PARTITIONING)) {
+            partitionMode = defaultPartMode;
+        }
+        if (partitionMode.equalsIgnoreCase(DbInfoManager.MODE_AUTO) || partitionMode.equalsIgnoreCase(
+            DbInfoManager.MODE_PARTITIONING)) {
             dbType = DbInfoRecord.DB_TYPE_NEW_PART_DB;
-        } else if (partitionMode.equalsIgnoreCase(DbInfoManager.PARTITION_MODE_SHARDING)) {
+        } else if (partitionMode.equalsIgnoreCase(DbInfoManager.MODE_DRDS) || partitionMode.equalsIgnoreCase(
+            DbInfoManager.MODE_SHARDING)) {
             dbType = DbInfoRecord.DB_TYPE_PART_DB;
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                "Failed to create database with invalid partition_mode=" + partitionMode);
+                "Failed to create database with invalid mode=" + partitionMode);
         }
         return dbType;
     }

@@ -65,6 +65,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
@@ -146,6 +147,10 @@ public abstract class AccessPathRule extends RelOptRule {
                 return;
             }
 
+            if (logicalView.useSelectPartitions()) {
+                return;
+            }
+
             SqlSelect.LockMode lockMode = logicalView.getLockMode();
             PlannerContext plannerContext = PlannerContext.getPlannerContext(logicalView);
 
@@ -155,7 +160,7 @@ public abstract class AccessPathRule extends RelOptRule {
                 final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsiName));
                 if (isCoveringIndex(mq, logicalView, primaryTable, gsiName)
                     && (lockMode == null || lockMode == SqlSelect.LockMode.UNDEF)) {
-                    final IndexScanVisitor indexScanVisitor = new IndexScanVisitor(primaryTable, indexTable);
+                    final IndexScanVisitor indexScanVisitor = new IndexScanVisitor(primaryTable, indexTable, call.builder());
                     final LogicalIndexScan logicalIndexScan =
                         new LogicalIndexScan(plan.accept(indexScanVisitor), indexTable,
                             logicalView.getHints(), lockMode);
@@ -567,8 +572,8 @@ public abstract class AccessPathRule extends RelOptRule {
         private final RelOptTable primary;
         private final RelOptTable index;
         private final Map<String, Integer> indexColumnRefMap;
-
-        private IndexScanVisitor(RelOptTable primary, RelOptTable index) {
+        private final RelBuilder relBuilder;
+        private IndexScanVisitor(RelOptTable primary, RelOptTable index, RelBuilder relBuilder) {
             this.primary = primary;
             this.index = index;
             this.indexColumnRefMap = index.getRowType().getFieldList()
@@ -577,8 +582,29 @@ public abstract class AccessPathRule extends RelOptRule {
                     RelDataTypeField::getIndex,
                     (x, y) -> y,
                     TreeMaps::caseInsensitiveMap));
+            this.relBuilder = relBuilder;
         }
 
+        @Override
+        protected RelNode visitChild(RelNode parent, int i, RelNode child) {
+            stack.push(parent);
+            try {
+                RelNode child2 = child.accept(this);
+                if (child2 != child) {
+                    final List<RelNode> newInputs = new ArrayList<>(parent.getInputs());
+                    newInputs.set(i, child2);
+
+                    RelNode selfNode = parent.copy(parent.getTraitSet(), newInputs).setHints(parent.getHints());
+                    if (!(selfNode instanceof LogicalProject)) {
+                        RelUtils.changeRowType(selfNode, null);
+                    }
+                    return selfNode;
+                }
+                return parent;
+            } finally {
+                stack.pop();
+            }
+        }
         @Override
         public RelNode visit(TableScan scan) {
             if (!scan.getTable().equals(primary)) {
@@ -626,7 +652,9 @@ public abstract class AccessPathRule extends RelOptRule {
                 }
             }).collect(Collectors.toList());
 
-            return LogicalProject.create(indexTableScan, projects, primary.getRowType());
+            relBuilder.push(indexTableScan);
+            relBuilder.project(projects, primary.getRowType().getFieldNames());
+            return relBuilder.build();
         }
     }
 }

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Action that move multiple groups concurrently
@@ -30,7 +31,7 @@ import java.util.List;
  * @author moyi
  * @since 2021/10
  */
-public class ActionMoveGroups implements BalanceAction {
+public class ActionMoveGroups implements BalanceAction, Comparable<ActionMoveGroups> {
 
     private final String schema;
     private final List<ActionMoveGroup> actions;
@@ -71,7 +72,7 @@ public class ActionMoveGroups implements BalanceAction {
     public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
         ExecutableDdlJob job = new ExecutableDdlJob();
         job.setMaxParallelism(ScaleOutUtils.getScaleoutTaskParallelism(ec));
-
+        //todo guxu refactor this
         EmptyTask head = new EmptyTask(schema);
         job.addTask(head);
         job.labelAsHead(head);
@@ -86,5 +87,45 @@ public class ActionMoveGroups implements BalanceAction {
         }
 
         return job;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ActionMoveGroups)) {
+            return false;
+        }
+        ActionMoveGroups that = (ActionMoveGroups) o;
+        return Objects.equals(schema, that.schema) && Objects.equals(actions, that.actions);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(schema, actions);
+    }
+
+    @Override
+    public String toString() {
+        return "ActionMoveGroups{" +
+            "schema='" + schema + '\'' +
+            ", actions=" + actions +
+            '}';
+    }
+
+    public List<ActionMoveGroup> getActions() {
+        return actions;
+    }
+
+    @Override
+    public int compareTo(ActionMoveGroups o) {
+        for (int i = 0; i < Math.min(actions.size(), o.actions.size()); i++) {
+            int res = actions.get(i).compareTo(o.actions.get(i));
+            if (res != 0) {
+                return res;
+            }
+        }
+        return Integer.compare(actions.size(), o.actions.size());
     }
 }

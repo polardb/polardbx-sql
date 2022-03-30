@@ -19,8 +19,8 @@ package com.alibaba.polardbx.gms.metadb.table;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -93,7 +93,9 @@ public class ColumnsInfoSchemaRecord implements SystemTableRecord {
 
     private void setCommonParams(Map<Integer, ParameterContext> params, int index, boolean forInsert) {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.columnName);
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.ordinalPosition);
+        if (forInsert) {
+            MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.ordinalPosition);
+        }
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.columnDefault);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.isNullable);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.dataType);

@@ -16,7 +16,22 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.factory;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLCurrentTimeExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
+import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
+import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableColumnBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
@@ -24,15 +39,32 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropColumnCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertColumnMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexColumnStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexStatusTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4BringUpGsiTable;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import org.apache.calcite.rel.ddl.AlterTable;
+import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 /**
  * an interesting gsi-relevant task generator
@@ -40,7 +72,6 @@ import java.util.List;
 public class GsiTaskFactory {
 
     /**
-     * todo guxu refactor me
      * for
      * create table with gsi
      */
@@ -217,12 +248,13 @@ public class GsiTaskFactory {
      * for
      * cluster index add column
      * add index column
+     * do not change gsi phy table
      */
-    public static List<DdlTask> alterGlobalIndexAddColumnTasks(String schemaName,
-                                                               String primaryTableName,
-                                                               String indexName,
-                                                               List<String> columns,
-                                                               List<String> backfillColumns) {
+    public static List<DdlTask> alterGlobalIndexAddColumnsStatusTasks(String schemaName,
+                                                                      String primaryTableName,
+                                                                      String indexName,
+                                                                      List<String> columns,
+                                                                      List<String> backfillColumns) {
         List<DdlTask> taskList = new ArrayList<>();
 
         // Insert meta
@@ -249,6 +281,115 @@ public class GsiTaskFactory {
         }
 
         return taskList;
+    }
+
+    private static String genAlterGlobalIndexAddColumnsSql(String primaryTableDefinition,
+                                                           String indexName,
+                                                           List<String> columns,
+                                                           ExecutionContext executionContext) {
+        List<String> columnsDef = new ArrayList<>();
+
+        final MySqlCreateTableStatement astCreateIndexTable = (MySqlCreateTableStatement) SQLUtils
+            .parseStatements(primaryTableDefinition, JdbcConstants.MYSQL).get(0).clone();
+
+        String onUpdate = null;
+        String defaultCurrentTime = null;
+        String timestampWithoutDefault = null;
+
+        final Iterator<SQLTableElement> it = astCreateIndexTable.getTableElementList().iterator();
+        while (it.hasNext()) {
+            final SQLTableElement tableElement = it.next();
+            if (tableElement instanceof SQLColumnDefinition) {
+                final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
+                final String columnName = SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName());
+
+                if (columns.stream().anyMatch(columnName::equalsIgnoreCase)) {
+                    if (columnDefinition.isAutoIncrement()) {
+                        columnDefinition.setAutoIncrement(false);
+                    }
+
+                    final SQLExpr defaultExpr = columnDefinition.getDefaultExpr();
+                    defaultCurrentTime = extractCurrentTimestamp(defaultCurrentTime, defaultExpr);
+
+                    onUpdate = extractCurrentTimestamp(onUpdate, columnDefinition.getOnUpdate());
+
+                    if ("timestamp".equalsIgnoreCase(columnDefinition.getDataType().getName()) && null == defaultExpr) {
+                        timestampWithoutDefault = columnName;
+                    }
+
+                    columnsDef.add(SQLUtils.toSQLString(columnDefinition, com.alibaba.polardbx.druid.DbType.mysql));
+                }
+            }
+        }
+
+        final boolean defaultCurrentTimestamp =
+            executionContext.getParamManager().getBoolean(ConnectionParams.GSI_DEFAULT_CURRENT_TIMESTAMP);
+        final boolean onUpdateCurrentTimestamp =
+            executionContext.getParamManager().getBoolean(ConnectionParams.GSI_ON_UPDATE_CURRENT_TIMESTAMP);
+
+        if (null != defaultCurrentTime && !defaultCurrentTimestamp) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "cannot use DEFAULT " + defaultCurrentTime + " on partition key when gsi table exists");
+        }
+
+        if (null != onUpdate && !onUpdateCurrentTimestamp) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "cannot use ON UPDATE " + onUpdate + " on partition key when has gsi table exists");
+        }
+
+        if (null != timestampWithoutDefault && (!defaultCurrentTimestamp || !onUpdateCurrentTimestamp)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_KEY,
+                "need default value other than CURRENT_TIMESTAMP for column `" + timestampWithoutDefault + "`");
+        }
+
+        if (columnsDef.isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DUPLICATE_COLUMN, columns.toString());
+        }
+
+        StringBuilder alterGsiTableSql = new StringBuilder("alter table " + indexName + " add column ");
+        alterGsiTableSql.append(StringUtils.join(columnsDef.toArray(), ", add column "));
+
+        return alterGsiTableSql.toString();
+    }
+
+    private static String extractCurrentTimestamp(String onUpdate, SQLExpr onUpdateExpr) {
+        if (onUpdateExpr instanceof SQLCurrentTimeExpr || onUpdateExpr instanceof SQLMethodInvokeExpr) {
+            try {
+                if (onUpdateExpr instanceof SQLMethodInvokeExpr) {
+                    SQLCurrentTimeExpr.Type.valueOf(((SQLMethodInvokeExpr) onUpdateExpr).getMethodName().toUpperCase());
+                    onUpdate = SQLUtils.toMySqlString(onUpdateExpr);
+                } else {
+                    onUpdate = ((SQLCurrentTimeExpr) onUpdateExpr).getType().name;
+                }
+            } catch (Exception e) {
+                // ignore error for ON UPDATE CURRENT_TIMESTAMP(3);
+            }
+        }
+        return onUpdate;
+    }
+
+    /**
+     * add global index column and change gsi phy table
+     */
+    public static AlterTableJobFactory alterGlobalIndexAddColumnFactory(String schemaName,
+                                                                        String primaryTableName,
+                                                                        String primaryTableDefinition,
+                                                                        String indexName,
+                                                                        List<String> columns,
+                                                                        ExecutionContext executionContext) {
+        String sql = genAlterGlobalIndexAddColumnsSql(primaryTableDefinition, indexName, columns, executionContext);
+        AlterTableBuilder alterTableBuilder =
+            AlterTableBuilder.createGsiAddColumnsBuilder(schemaName, indexName, sql, columns, executionContext);
+        DdlPhyPlanBuilder builder = alterTableBuilder.build();
+        PhysicalPlanData clusterIndexPlan = builder.genPhysicalPlanData();
+        AlterTableJobFactory jobFactory = new AlterTableJobFactory(
+            clusterIndexPlan,
+            alterTableBuilder.getPreparedData(),
+            alterTableBuilder.getLogicalAlterTable(),
+            executionContext);
+        jobFactory.validateExistence(false);
+        jobFactory.withAlterGsi4Repartition(true, true, primaryTableName);
+        return jobFactory;
     }
 
     /**

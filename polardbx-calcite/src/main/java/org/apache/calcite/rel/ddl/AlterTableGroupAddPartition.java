@@ -71,4 +71,5 @@ public class AlterTableGroupAddPartition extends DDL {
     public String getTableGroupName() {
         return tableGroupName;
     }
+
 }

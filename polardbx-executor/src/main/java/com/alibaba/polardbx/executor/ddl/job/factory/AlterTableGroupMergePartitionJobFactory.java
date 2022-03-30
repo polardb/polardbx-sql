@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupMergePartitionBuilder;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -30,14 +33,17 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -72,8 +78,11 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 
+        Map<String, Long> tablesVersion = getTablesVersion();
+
         DdlTask validateTask =
-            new AlterTableGroupValidateTask(schemaName, alterTableGroupMergePartitionPreparedData.getTableGroupName());
+            new AlterTableGroupValidateTask(schemaName, alterTableGroupMergePartitionPreparedData.getTableGroupName(),
+                tablesVersion, true, alterTableGroupMergePartitionPreparedData.getTargetPhysicalGroups());
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableGroupMergePartitionPreparedData.getTableGroupName());
 
@@ -112,10 +121,24 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
             ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null,
                 taskType, executionContext);
 
-        executableDdlJob.addSequentialTasks(bringUpAlterTableGroupTasks);
-        //only support merge to one partition, not to multiple
-        constructSubTasks(schemaName, executableDdlJob, addMetaTask, bringUpAlterTableGroupTasks,
-            alterTableGroupMergePartitionPreparedData.getMergePartitions().keySet().iterator().next());
+        final String finalStatus =
+            executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
+        boolean stayAtPublic = true;
+        if (StringUtils.isNotEmpty(finalStatus)) {
+            stayAtPublic =
+                StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC.name(), finalStatus);
+        }
+
+        if (stayAtPublic) {
+            executableDdlJob.addSequentialTasks(bringUpAlterTableGroupTasks);
+            constructSubTasks(schemaName, executableDdlJob, addMetaTask, bringUpAlterTableGroupTasks,
+                alterTableGroupMergePartitionPreparedData.getMergePartitions().keySet().iterator().next());
+        } else {
+            PauseCurrentJobTask pauseCurrentJobTask = new PauseCurrentJobTask(schemaName);
+            constructSubTasks(schemaName, executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask),
+                alterTableGroupMergePartitionPreparedData.getMergePartitions().keySet().iterator().next());
+        }
+        executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
         return executableDdlJob;
     }
 
@@ -144,10 +167,7 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
 
     @Override
     protected void excludeResources(Set<String> resources) {
-        for (String partName : preparedData.getOldPartitionNames()) {
-            resources.add(concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()),
-                partName));
-        }
+        super.excludeResources(resources);
     }
 
 }

@@ -93,6 +93,8 @@ public class PartitionInfo {
      * tableType=1: gsi table
      * tableType=2: single table
      * tableType=3: broadcast table
+     * tableType=4: gsi single table
+     * tableType=5: gsi broadcast table
      */
     protected PartitionTableType tableType;
 
@@ -110,12 +112,12 @@ public class PartitionInfo {
      * The hashCode of partInfo
      */
     protected volatile Integer partInfoHashCode = null;
-    
+
     /**
      * The session variables during creating partitioned table
      */
     protected PartInfoSessionVars sessionVars;
-    
+
     public PartitionInfo() {
     }
 
@@ -148,6 +150,20 @@ public class PartitionInfo {
 
     public boolean isPartitionedTable() {
         return this.tableType == PartitionTableType.PARTITION_TABLE;
+    }
+
+    public boolean isGsiSingleOrSingleTable() {
+        return this.tableType == PartitionTableType.SINGLE_TABLE
+            || this.tableType == PartitionTableType.GSI_SINGLE_TABLE;
+    }
+
+    public boolean isGsiBroadcastOrBroadcast() {
+        return this.tableType == PartitionTableType.BROADCAST_TABLE
+            || this.tableType == PartitionTableType.GSI_BROADCAST_TABLE;
+    }
+
+    public boolean isPartitionedGsiTable() {
+        return this.tableType == PartitionTableType.GSI_TABLE;
     }
 
     public String defaultDbIndex() {
@@ -255,6 +271,14 @@ public class PartitionInfo {
         this.tableType = tableType;
     }
 
+//    public PartitionTableType getGsiTableType() {
+//        return gsiTableType;
+//    }
+//
+//    public void setGsiTableType(PartitionTableType gsiTableType) {
+//        this.gsiTableType = gsiTableType;
+//    }
+
     public boolean enableAutoSplit() {
         return autoFlag.equals(TablePartitionRecord.PARTITION_AUTO_BALANCE_ENABLE_ALL);
     }
@@ -331,7 +355,7 @@ public class PartitionInfo {
         Map<String, Set<String>> topology = new HashMap<>();
         for (Map.Entry<String, List<PhysicalPartitionInfo>> entry : physicalPartitionTopology.entrySet()) {
             topology.put(entry.getKey(),
-                entry.getValue().stream().map(x -> x.getPhyTable()).collect(Collectors.toSet()));
+                entry.getValue().stream().map(PhysicalPartitionInfo::getPhyTable).collect(Collectors.toSet()));
         }
         return topology;
     }
@@ -376,6 +400,28 @@ public class PartitionInfo {
             shardCols.addAll(subPartitionBy.getSubPartitionColumnNameList());
         }
         return shardCols.stream().collect(Collectors.toList());
+    }
+
+    public List<String> getPartitionColumnsNotReorder() {
+        final Set<String> shardSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        final List<String> shardCols = new ArrayList<>();
+        if (partitionBy != null) {
+            for (String colName : partitionBy.getPartitionColumnNameList()) {
+                if (!shardSet.contains(colName)) {
+                    shardSet.add(colName);
+                    shardCols.add(colName);
+                }
+            }
+        }
+        if (subPartitionBy != null) {
+            for (String colName : subPartitionBy.getSubPartitionColumnNameList()) {
+                if (!shardSet.contains(colName)) {
+                    shardSet.add(colName);
+                    shardCols.add(colName);
+                }
+            }
+        }
+        return shardCols;
     }
 
     public String getPartitionNameByPhyLocation(String phyGrp, String phyTable) {
@@ -455,6 +501,15 @@ public class PartitionInfo {
         return allPhyPartCnt;
     }
 
+    public List<String> getActualPartitionColumns() {
+        PartitionTableType tableType = this.tableType;
+        List<String> actualPartCols = new ArrayList<>();
+        if (tableType == PartitionTableType.BROADCAST_TABLE || tableType == PartitionTableType.SINGLE_TABLE) {
+            return actualPartCols;
+        }
+        return this.getPartitionBy().getActualPartitionColumns();
+    }
+
     @Override
     public int hashCode() {
         if (partInfoHashCode == null) {
@@ -482,8 +537,55 @@ public class PartitionInfo {
         return hashCodeVal;
     }
 
+//    @Override
+//    public boolean equals(Object obj) {
+//        if (this == obj) {
+//            return true;
+//        }
+//
+//        if (obj == null) {
+//            return false;
+//        }
+//
+//        if (obj.getClass() != this.getClass()) {
+//            return false;
+//        }
+//
+//        PartitionInfo objPartInfo = (PartitionInfo) obj;
+//        if (objPartInfo.getTableType() != this.tableType) {
+//            if (objPartInfo.isGsiBroadcastOrBroadcast() && this.isGsiBroadcastOrBroadcast()) {
+//                return true;
+//            }
+//            if (objPartInfo.isGsiSingleOrSingleTable() && this.isGsiSingleOrSingleTable()) {
+//                return true;
+//            }
+//            if (!(objPartInfo.isGsiOrPartitionedTable() && this.isGsiOrPartitionedTable())) {
+//                return false;
+//            }
+//        } else {
+//            if (this.tableType == PartitionTableType.SINGLE_TABLE
+//                || this.tableType == PartitionTableType.BROADCAST_TABLE) {
+//                return true;
+//            }
+//        }
+//
+//        return getPartitionBy().equals(objPartInfo.getPartitionBy());
+//    }
+
     @Override
     public boolean equals(Object obj) {
+        return equals(obj, -1);
+    }
+
+    /**
+     * check equals by specifying prefix partition column prefixPartColCnt，
+     * if prefixPartColCnt <= 0, then use all partition columns
+     *
+     * @param obj
+     * @param prefixPartColCnt
+     * @return
+     */
+    public boolean equals(Object obj, int prefixPartColCnt) {
         if (this == obj) {
             return true;
         }
@@ -498,6 +600,12 @@ public class PartitionInfo {
 
         PartitionInfo objPartInfo = (PartitionInfo) obj;
         if (objPartInfo.getTableType() != this.tableType) {
+            if (objPartInfo.isGsiBroadcastOrBroadcast() && this.isGsiBroadcastOrBroadcast()) {
+                return true;
+            }
+            if (objPartInfo.isGsiSingleOrSingleTable() && this.isGsiSingleOrSingleTable()) {
+                return true;
+            }
             if (!(objPartInfo.isGsiOrPartitionedTable() && this.isGsiOrPartitionedTable())) {
                 return false;
             }
@@ -507,8 +615,11 @@ public class PartitionInfo {
                 return true;
             }
         }
-
-        return getPartitionBy().equals(objPartInfo.getPartitionBy());
+        if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT ) {
+            return getPartitionBy().equals(objPartInfo.getPartitionBy());
+        } else {
+            return getPartitionBy().equals(objPartInfo.getPartitionBy(), prefixPartColCnt);
+        }
     }
 
     public PartInfoSessionVars getSessionVars() {
@@ -517,5 +628,20 @@ public class PartitionInfo {
 
     public void setSessionVars(PartInfoSessionVars sessionVars) {
         this.sessionVars = sessionVars;
+    }
+
+    public String getDigest(Long tableVersion) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("partitionInfo digest:[");
+        sb.append("tableVersion:");
+        sb.append(tableVersion);
+        sb.append(",");
+        sb.append(this.toString());
+        for (PartitionSpec partitionSpec : partitionBy.getPartitions()) {
+            sb.append(partitionSpec.getDigest());
+            sb.append("\n");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 }

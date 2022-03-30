@@ -187,7 +187,7 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
             return searchDatumInfo;
         } else {
             PartClauseExprExec exprExec = predExprExecArr[0];
-            boolean isNull = exprExec.isAlwaysNullValue();
+            boolean isAlwaysNull = exprExec.isAlwaysNullValue();
             boolean[] epInfo = PartFuncMonotonicityUtil.buildIntervalEndPointInfo(cmpKind);
             PartitionBoundValueKind valKind = exprExec.getValueKind();
 
@@ -199,7 +199,7 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
             PartitionField newPartField = doIntervalMapping(exprExec, context, exprValPartField, cmdKindOutput, epInfo);
 
             // Build the PartitionBoundVal
-            PartitionBoundVal searchVal = PartitionBoundVal.createPartitionBoundVal(newPartField, valKind, isNull);
+            PartitionBoundVal searchVal = PartitionBoundVal.createPartitionBoundVal(newPartField, valKind, isAlwaysNull);
             searchValArr[0] = searchVal;
             SearchDatumInfo searchDatumInfo = new SearchDatumInfo(searchValArr);
             return searchDatumInfo;
@@ -269,7 +269,9 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
                      * if it is a range query, then do full scan directly
                      */
                     // Use ComparisonKind.NOT_EQUAL to do full scan
-                    finalCmpKind = ComparisonKind.NOT_EQUAL;
+                    if (finalCmpKind != ComparisonKind.EQUAL) {
+                        finalCmpKind = ComparisonKind.NOT_EQUAL;
+                    }
                 }
             }
         } else {

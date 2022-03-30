@@ -26,14 +26,18 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBe
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.Collections2;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -501,49 +505,99 @@ public class MetaUtils {
         }
 
         public Set<String> getGsiNameByColumn(String columnName) {
-            final Set<String> result = new HashSet<>(gsiIndexColumns.entrySet()
-                .stream()
-                .filter(s -> s.getValue().contains(columnName))
-                .map(Entry::getKey)
-                .collect(Collectors.toSet()));
+            final Set<String> result = new HashSet<>();
+            for(Entry<String, Set<String>> entry: gsiIndexColumns.entrySet()){
+                for(String c: entry.getValue()){
+                    if(StringUtils.equalsIgnoreCase(c, columnName)){
+                        result.add(entry.getKey());
+                    }
+                }
+            }
 
-            result.addAll(gsiCoveringColumns.entrySet()
-                .stream()
-                .filter(s -> s.getValue().contains(columnName))
-                .map(Entry::getKey)
-                .collect(Collectors.toSet()));
+            for(Entry<String, Set<String>> entry: gsiCoveringColumns.entrySet()){
+                for(String c: entry.getValue()){
+                    if(StringUtils.equalsIgnoreCase(c, columnName)){
+                        result.add(entry.getKey());
+                    }
+                }
+            }
 
             return result;
         }
 
         public boolean existsInGsi(String columnName) {
-            return gsiIndexColumns.entrySet().stream().anyMatch(s -> s.getValue().contains(columnName))
-                || gsiCoveringColumns.entrySet().stream().anyMatch(s -> s.getValue().contains(columnName));
+            Set<String> allGsiColumns = new HashSet<>();
+            if(CollectionUtils.isNotEmpty(gsiIndexColumns.values())){
+                for(Set<String> cset: gsiIndexColumns.values()){
+                    for(String c: cset){
+                        allGsiColumns.add(c.toLowerCase());
+                    }
+                }
+            }
+
+            if(CollectionUtils.isNotEmpty(gsiCoveringColumns.values())){
+                for(Set<String> cset: gsiCoveringColumns.values()){
+                    for(String c: cset){
+                        allGsiColumns.add(c.toLowerCase());
+                    }
+                }
+            }
+            return allGsiColumns.contains(columnName.toLowerCase());
         }
 
         public boolean isPrimaryKey(String columnName) {
-            return primaryKeys.contains(columnName);
+            for(String pkColumn: primaryKeys){
+                if(StringUtils.equalsIgnoreCase(pkColumn, columnName)){
+                    return true;
+                }
+            }
+            return false;
         }
 
         public boolean isShardingKey(String columnName) {
-            return shardingKeys.contains(columnName);
+            for(String pkColumn: shardingKeys){
+                if(StringUtils.equalsIgnoreCase(pkColumn, columnName)){
+                    return true;
+                }
+            }
+            return false;
         }
 
         public boolean isGsiShardingKey(String columnName) {
-            return gsiShardingKeys.entrySet().stream().anyMatch(s -> s.getValue().contains(columnName));
+            Set<String> allGsiShardingKey = new HashSet<>();
+            if(CollectionUtils.isNotEmpty(gsiShardingKeys.values())){
+                for(Set<String> cset: gsiShardingKeys.values()){
+                    for(String c: cset){
+                        allGsiShardingKey.add(c.toLowerCase());
+                    }
+                }
+            }
+            return allGsiShardingKey.contains(columnName.toLowerCase());
         }
 
         public boolean existsInGsiUniqueKey(String columnName, boolean acceptSingleColumnUk) {
-            return gsiUniqueKeys.entrySet()
-                .stream()
-                .anyMatch(s -> s.getValue()
-                    .stream()
-                    .anyMatch(t -> t.contains(columnName) && (acceptSingleColumnUk || t.size() > 1)));
+            for(Entry<String, List<Set<String>>> entry: gsiUniqueKeys.entrySet()){
+                for(Set<String> cset: entry.getValue()){
+                    for(String c: cset){
+                        if(StringUtils.equalsIgnoreCase(c, columnName) && (acceptSingleColumnUk || cset.size() > 1)){
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         public boolean existsInLocalUniqueKey(String columnName, boolean acceptSingleColumnUk) {
-            return localUniqueKeys.stream().anyMatch(s -> s.contains(columnName)
-                && (acceptSingleColumnUk || s.size() > 1));
+            for(Set<String> ukColumns: localUniqueKeys){
+                for(String c: ukColumns){
+                    if(StringUtils.equalsIgnoreCase(c, columnName) && (acceptSingleColumnUk || ukColumns.size() > 1)){
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
     }
 }

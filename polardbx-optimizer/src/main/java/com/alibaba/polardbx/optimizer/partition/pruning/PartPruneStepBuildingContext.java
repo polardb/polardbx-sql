@@ -253,7 +253,7 @@ public class PartPruneStepBuildingContext {
                      * No found any predicates that contains the first partition column( keyIndex = 0),
                      * So in this situations should return a full-scan-step instead
                      */
-                    PartitionPruneStep step = PartitionPruneStepBuilder.generateFullScanPrueStepInfo(partInfo);
+                    PartitionPruneStep step = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(partInfo);
                     outputSteps.add(step);
                     return outputSteps;
                 }

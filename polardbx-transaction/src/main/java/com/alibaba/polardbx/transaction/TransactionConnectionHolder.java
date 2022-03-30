@@ -232,6 +232,7 @@ public class TransactionConnectionHolder implements IConnectionHolder {
             boolean shouldParticipate = shouldParticipateTransaction(rw);
 
             if (freeConn != null) {
+                // 复用空闲连接
                 if (!freeConn.participated && shouldParticipate) {
                     // allow holding multiple read conns before write
                     freeConn.participated = true;
@@ -244,22 +245,10 @@ public class TransactionConnectionHolder implements IConnectionHolder {
                 return freeConn.connection;
             }
 
-            if (canUseExtraReadConn(rw)) {
+            if (canUseReadConn(rw)) {
                 // Using extra connection
-                IConnection conn = getConnectionWithLsn(schema, group, ds, rw);
-                connections.add(conn);
-                HeldConnection heldConn =
-                    new HeldConnection(conn, schema, group, conn.getId(), true, shouldParticipate);
-                groupHeldConns.add(heldConn);
-
-                if (executionContext.getTxIsolation() >= 0 && conn.isWrapperFor(XConnection.class)) {
-                    // Reset isolation level first before start transaction.
-                    conn.unwrap(XConnection.class).setTransactionIsolation(executionContext.getTxIsolation());
-                }
-
-                // share read view
-                beginTrx(shouldParticipate, hasParticipant, schema, group, conn);
-                return conn;
+                return beginTrxInNewConn(schema, group, ds, rw, groupHeldConns,
+                    hasParticipant, shouldParticipate);
             }
 
             if (hasParticipant) {
@@ -277,23 +266,28 @@ public class TransactionConnectionHolder implements IConnectionHolder {
                         "multiple read connections are not allowed");
                 }
             }
-            IConnection conn = new DeferredConnection(getConnectionWithLsn(schema, group, ds, rw),
-                executionContext.getParamManager().getBoolean(ConnectionParams.USING_RDS_RESULT_SKIP));
-            connections.add(conn);
-
-            HeldConnection heldConn = new HeldConnection(conn, schema, group, conn.getId(), true, shouldParticipate);
-            groupHeldConns.add(heldConn);
-
-            if (executionContext.getTxIsolation() >= 0 && conn.isWrapperFor(XConnection.class)) {
-                // Reset isolation level first before start transaction.
-                conn.unwrap(XConnection.class).setTransactionIsolation(executionContext.getTxIsolation());
-            }
-
-            beginTrx(shouldParticipate, false, schema, group, conn);
-            return conn;
+            return beginTrxInNewConn(schema, group, ds, rw, groupHeldConns, false, shouldParticipate);
         } finally {
             lock.unlock();
         }
+    }
+
+    private IConnection beginTrxInNewConn(String schema, String group, IDataSource ds, RW rw,
+                                          List<HeldConnection> groupHeldConns,
+                                          boolean hasParticipate, boolean shouldParticipate) throws SQLException {
+        IConnection conn = new DeferredConnection(getConnectionWithLsn(schema, group, ds, rw),
+            executionContext.getParamManager().getBoolean(ConnectionParams.USING_RDS_RESULT_SKIP));
+        connections.add(conn);
+        HeldConnection heldConn =
+            new HeldConnection(conn, schema, group, conn.getId(), true, shouldParticipate);
+        groupHeldConns.add(heldConn);
+        if (executionContext.getTxIsolation() >= 0 && conn.isWrapperFor(XConnection.class)) {
+            // Reset isolation level first before start transaction.
+            conn.unwrap(XConnection.class).setTransactionIsolation(executionContext.getTxIsolation());
+        }
+
+        beginTrx(shouldParticipate, hasParticipate, schema, group, conn);
+        return conn;
     }
 
     /**
@@ -318,7 +312,7 @@ public class TransactionConnectionHolder implements IConnectionHolder {
         }
     }
 
-    private boolean canUseExtraReadConn(RW rw) {
+    private boolean canUseReadConn(RW rw) {
         boolean allowExtraReadConn = (rw == RW.READ &&
             executionContext.isShareReadView());
         return allowExtraReadConn || !shouldHoldConnection(rw);
@@ -343,11 +337,14 @@ public class TransactionConnectionHolder implements IConnectionHolder {
 
         try {
             boolean found = false;
-            for (HeldConnection heldConn : Optional.ofNullable(heldConns.get(group)).orElseGet(ArrayList::new)) {
-                if (heldConn.connection == conn) {
-                    found = true;
-                    heldConn.inuse = false;
-                    break;
+            List<HeldConnection> heldConnections = heldConns.get(group);
+            if (heldConnections != null) {
+                for (HeldConnection heldConn : heldConnections) {
+                    if (heldConn.connection == conn) {
+                        found = true;
+                        heldConn.inuse = false;
+                        break;
+                    }
                 }
             }
             if (!found) {

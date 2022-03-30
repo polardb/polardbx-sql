@@ -19,6 +19,9 @@ package com.alibaba.polardbx.executor.handler.subhandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
+import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaDrdsPhysicalProcessInTrx;
@@ -44,11 +47,9 @@ public class InformationSchemaDrdsPhysicalProcessInTrxHandler extends BaseVirtua
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
-        InformationSchemaInnodbTrxHandler.TransInfo transInfo =
-            new InformationSchemaInnodbTrxHandler.TransInfo(schemaNames);
+        TrxLookupSet lookupSet = TransactionUtils.getTrxLookupSet(schemaNames);
 
-        for (Map.Entry<InformationSchemaInnodbTrxHandler.GroupConnPair, Long> entry :
-            transInfo.lookupSet.connGroup2Tran.entrySet()) {
+        for (Map.Entry<GroupConnPair, Long> entry : lookupSet.getGroupConn2Tran().entrySet()) {
             cursor.addRow(new Object[] {
                 entry.getKey().getConnId(), entry.getKey().getGroup(),
                 Long.toHexString(entry.getValue())});

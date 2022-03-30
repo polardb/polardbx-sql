@@ -22,6 +22,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -215,12 +216,7 @@ public class BindingTestBase {
             String.valueOf(parserConfig.caseSensitive()));
         CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
 
-        StatisticManager statisticManager = new StatisticManager(SCHEMA_NAME,
-            null,
-            null,
-            null,
-            null,
-            new HashMap<>());
+        StatisticManager statisticManager = new StatisticManager(SCHEMA_NAME, new MockStatisticDatasource());
 
         // prepare optimizer context
         OptimizerContext context = new OptimizerContext(SCHEMA_NAME);

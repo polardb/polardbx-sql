@@ -146,14 +146,16 @@ public class DdlJobManagerUtils {
     public static void reloadPhyTablesDone(PhyDdlExecutionRecord phyDdlExecutionRecord) {
         DdlEngineTaskRecord record =
             SCHEDULER_MANAGER.fetchTaskRecord(phyDdlExecutionRecord.getJobId(), phyDdlExecutionRecord.getTaskId());
+
         clearPhyTablesDone(phyDdlExecutionRecord);
+
         if (record != null && TStringUtil.isNotEmpty(record.extra)) {
             String[] phyTablesDone = record.extra.split(DdlConstants.SEMICOLON);
             int countReallyDone = 0;
             for (String phyTableDone : phyTablesDone) {
                 phyDdlExecutionRecord.addPhyObjectDone(phyTableDone);
                 String[] phyTableInfo = phyTableDone.split(DdlConstants.COLON);
-                if (phyTableInfo.length != 4 || !TStringUtil.equalsIgnoreCase(phyTableInfo[3], "false")) {
+                if (phyTableInfo.length != 4 || !TStringUtil.equalsIgnoreCase(phyTableInfo[2], "false")) {
                     countReallyDone++;
                 }
             }
@@ -163,12 +165,9 @@ public class DdlJobManagerUtils {
 
     /**
      * Clear physical tables done from cache.
-     *
-     * @param phyDdlExecutionRecord Current DDL context
      */
     public static void clearPhyTablesDone(PhyDdlExecutionRecord phyDdlExecutionRecord) {
-        phyDdlExecutionRecord.getPhyObjectsDone().clear();
-        phyDdlExecutionRecord.setNumPhyObjectsDone(0);
+        phyDdlExecutionRecord.clearPhyObjectsDone();
     }
 
     /**
@@ -205,8 +204,7 @@ public class DdlJobManagerUtils {
     /**
      * Reset the whole list of physical objects done for a DDL job and also update the progress.
      */
-    public static int resetPhyTablesDone(PhyDdlExecutionRecord phyDdlExecutionRecord, String resetPhyTablesInfo,
-                                         boolean withProgress) {
+    public static int resetPhyTablesDone(PhyDdlExecutionRecord phyDdlExecutionRecord, String resetPhyTablesInfo) {
         final int numPhyTablesDone = phyDdlExecutionRecord.getNumPhyObjectsDone();
         final int numPhyTablesTotal = phyDdlExecutionRecord.getNumPhyObjectsTotal();
 
@@ -219,7 +217,7 @@ public class DdlJobManagerUtils {
                     .updatePhyDone(phyDdlExecutionRecord.getJobId(), phyDdlExecutionRecord.getTaskId(),
                         resetPhyTablesInfo, true);
 
-                if (withProgress && numPhyTablesTotal > 0) {
+                if (numPhyTablesTotal > 0) {
                     int progress = numPhyTablesDone * 100 / numPhyTablesTotal;
                     rowsAffected += engineAccessor.updateProgress(phyDdlExecutionRecord.getJobId(), progress);
                 }

@@ -24,10 +24,11 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -53,7 +54,10 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupModifyP
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMovePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartitionByHotValue;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSetTableGroup;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartitionByHotValue;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalChangeConsensusLeader;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
@@ -72,19 +76,19 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRefreshTopology;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalSequenceDdl;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
-import com.alibaba.polardbx.optimizer.core.rel.segmented.SegmentedSharding;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdIndex;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
+import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils.TableProperties;
-import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -108,6 +112,8 @@ import org.apache.calcite.rel.ddl.AlterTableGroupModifyPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartition;
+import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartitionByHotValue;
+import org.apache.calcite.rel.ddl.AlterTableRepartition;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
 import org.apache.calcite.rel.ddl.CreateDatabase;
@@ -136,6 +142,16 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexSubQuery;
+import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTablePartitionKey;
+import org.apache.calcite.sql.SqlAlterTableAddPartition;
+import org.apache.calcite.sql.SqlAlterTableDropPartition;
+import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
+import org.apache.calcite.sql.SqlAlterTablePartitionKey;
+import org.apache.calcite.sql.SqlAlterTableRemoveLocalPartition;
+import org.apache.calcite.sql.SqlAlterTableRepartition;
+import org.apache.calcite.sql.SqlAlterTableRepartitionLocalPartition;
+import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlCheckGlobalIndex;
 import org.apache.calcite.sql.SqlCreateView;
 import org.apache.calcite.sql.SqlDal;
@@ -155,8 +171,8 @@ import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -210,7 +226,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private List<String> schemaNames = Lists.newArrayList();
     private PlannerContext plannerContext = null;
     private List<TableProperties> modifiedTables = new ArrayList<>();
-    private boolean withForceIndex = false;
+    private boolean withIndexHint = false;
     private boolean modifyShardingColumn = false;
     private boolean containUncertainValue = false;
     private boolean containComplexExpression = false;
@@ -280,6 +296,24 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         final RelOptSchema catalog = RelUtils.buildCatalogReader(Optional.ofNullable(schemaName)
             .orElse(OptimizerContext.getContext(schemaName).getSchemaName()), plannerContext.getExecutionContext());
 
+        if (scan.getIndexNode() instanceof SqlNodeList) {
+            final Iterator<SqlNode> iterator = ((SqlNodeList) scan.getIndexNode()).iterator();
+            while (iterator.hasNext()) {
+                final SqlNode next = iterator.next();
+                if (next instanceof SqlIndexHint) {
+                    SqlIndexHint hint = (SqlIndexHint) next;
+                    final String indexName =
+                        GlobalIndexMeta.getIndexName(RelUtils.lastStringValue(hint.getIndexList()));
+                    final String unwrapped = GlobalIndexMeta
+                        .getGsiWrappedName(tableName, indexName, schemaName, plannerContext.getExecutionContext());
+                    if (unwrapped != null) {
+                        // Record the properties.
+                        this.withIndexHint = true;
+                    }
+                }
+            }
+        }
+
         return Optional.ofNullable(scan.getIndexNode())
             // FORCE INDEX
             .filter(indexNode -> indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0)
@@ -317,7 +351,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, indexName));
                 final LogicalIndexScan index = new LogicalIndexScan(indexTable,
                     LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints()), this.lockMode);
-                this.withForceIndex = true;
+                this.withIndexHint = true;
 
                 return Optional.of((RelNode) RelUtils.createTableLookup(primary, index, index.getTable()));
             })
@@ -351,58 +385,11 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                         final RelOptTable indexTable = catalog.getTableForMember(indexTableNames);
                         final LogicalIndexScan index = new LogicalIndexScan(indexTable,
                             LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints()), this.lockMode);
-                        this.withForceIndex = true;
+                        this.withIndexHint = true;
 
                         return (RelNode) RelUtils.createTableLookup(primary, index, index.getTable());
                     }))
-                .orElse(Optional.ofNullable(getParallelLogicalView(scan))
-                    .orElse(RelUtils.createLogicalView(scan, lockMode))));
-    }
-
-    private LogicalView getParallelLogicalView(TableScan scan) {
-        if (logger.isDebugEnabled()) {
-            logger.debug("segmented logical view replacing start");
-        }
-        if (!Optional.ofNullable(plannerContext)
-            .map(PlannerContext::getExtraCmds)
-            .map(e -> e.get(ConnectionParams.SEGMENTED.getName()))
-            .filter(key -> Boolean.TRUE.toString().equalsIgnoreCase(String.valueOf(key)))
-            .isPresent()) {
-            return null;
-        }
-        int segmentedCount = 0;
-        final String segmentedCountStr = String.valueOf(plannerContext.getExtraCmds()
-            .get(ConnectionParams.SEGMENTED_COUNT.getName()));
-        final String parallelismString = String.valueOf(plannerContext.getExtraCmds()
-            .get(ConnectionParams.PARALLELISM.getName()));
-        if (StringUtils.isNumber(segmentedCountStr)) {
-            segmentedCount = Integer.valueOf(segmentedCountStr);
-        }
-        if (segmentedCount <= 0) {
-            if (StringUtils.isNumber(parallelismString)) {
-                segmentedCount = Integer.valueOf(parallelismString);
-            }
-
-        }
-        if (segmentedCount <= 1) {
-            return null;
-        }
-        final String schemaName = scan.getSchemaName();
-        final String tableName = Util.last(scan.getTable().getQualifiedName());
-        final TableMeta table = plannerContext.getExecutionContext().getSchemaManager(scan.getSchemaName())
-            .getTable(tableName);
-        final Collection<ColumnMeta> primaryKeys = table.getPrimaryKey();
-        SegmentedSharding historgramInfo = null;
-        if (primaryKeys != null && primaryKeys.size() > 0) {
-            final ColumnMeta next = primaryKeys.iterator().next();
-            List<String> primaryKeyList = new ArrayList<>();
-            final String originColumnName = next.getField().getOriginColumnName();
-            primaryKeyList.add(originColumnName);
-            historgramInfo = new SegmentedSharding(schemaName, tableName, primaryKeyList, segmentedCount);
-        }
-        final LogicalView parallelLogicalView = new LogicalView(scan, lockMode);
-        parallelLogicalView.addPushedSingleParallelShardings(historgramInfo);
-        return parallelLogicalView;
+                .orElse(RelUtils.createLogicalView(scan, lockMode)));
     }
 
     @Override
@@ -741,7 +728,43 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 return LogicalCreateTable.create((CreateTable) ddl);
 
             } else if (ddl instanceof AlterTable) {
-                return LogicalAlterTable.create((AlterTable) ddl);
+                boolean isAlterLocalPartition = ddl.sqlNode instanceof SqlAlterTableRepartitionLocalPartition;
+                boolean isRemoveLocalPartition = ddl.sqlNode instanceof SqlAlterTableRemoveLocalPartition;
+                if(isAlterLocalPartition || isRemoveLocalPartition){
+                    return LogicalAlterTable.create((AlterTable) ddl);
+                }
+                SqlAlterTable sqlAlterTable = (SqlAlterTable) ddl.getSqlNode();
+                SqlIdentifier tbNameId = (SqlIdentifier) sqlAlterTable.getName();
+                Pair<String, String> dbAndTb = CalciteUtils.getDbNameAndTableNameByTableIdentifier(tbNameId);
+                String dbName = dbAndTb.getKey();
+                String tbName = dbAndTb.getValue();
+                final TableMeta tableMeta = this.plannerContext.getExecutionContext().getSchemaManager(dbName)
+                    .getTable(tbName);
+
+                assert tableMeta != null;
+                if (sqlAlterTable instanceof SqlAlterTablePartitionKey && DbInfoManager.getInstance()
+                    .isNewPartitionDb(dbName)) {
+                    // alter table singe or broadcast for new partitionDb
+                    if (((SqlAlterTablePartitionKey) sqlAlterTable).isSingle()
+                        || ((SqlAlterTablePartitionKey) sqlAlterTable).isBroadcast()) {
+                        // create SqlAlterTableNewPartition
+                        SqlAlterTableRepartition sqlAlterPartitionTableRepartition =
+                            SqlAlterTableRepartition.create((SqlAlterTablePartitionKey) sqlAlterTable);
+                        // create AlterTableNewPartition(DDL)
+                        AlterTableRepartition alterTableNewPartition =
+                            AlterTableRepartition.create(ddl.getCluster(),
+                                sqlAlterPartitionTableRepartition,
+                                sqlAlterPartitionTableRepartition.getOperandList().get(0),
+                                null);
+
+                        return LogicalAlterTableRepartition.create(alterTableNewPartition);
+                    }
+                } else if (sqlAlterTable.getAlters().size() == 1 && sqlAlterTable.getAlters()
+                    .get(0) instanceof SqlAlterTableSplitPartitionByHotValue) {
+                    return LogicalAlterTableSplitPartitionByHotValue.create(ddl);
+                } else {
+                    return LogicalAlterTable.create((AlterTable) ddl);
+                }
 
             } else if (ddl instanceof RenameTable) {
                 return LogicalRenameTable.create((RenameTable) ddl);
@@ -796,9 +819,12 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
             } else if (ddl instanceof AlterTableGroupModifyPartition) {
                 return LogicalAlterTableGroupModifyPartition.create(ddl);
-
             } else if (ddl instanceof MoveDatabase) {
                 return LogicalMoveDatabases.create(ddl);
+            } else if (ddl instanceof AlterTableRepartition) {
+                return LogicalAlterTableRepartition.create((AlterTableRepartition) ddl);
+            } else if (ddl instanceof AlterTableGroupSplitPartitionByHotValue) {
+                return LogicalAlterTableGroupSplitPartitionByHotValue.create(ddl);
             } else {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNSUPPORTED,
                     "operation " + ddl.getSqlNode().getKind());
@@ -837,6 +863,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNSUPPORTED,
                 "operation " + ddl.getSqlNode().getKind());
         }
+
+        throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNSUPPORTED,
+            "operation " + ddl.getSqlNode().getKind());
     }
 
     private boolean isSupportedByNewDdlEngine(DDL ddl) {
@@ -911,64 +940,22 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private RelNode handleOptimizeTable(Dal dalNode) {
         final SqlOptimizeTable optimizeTable = (SqlOptimizeTable) dalNode.getAst();
         final String defaultSchemaName = PlannerContext.getPlannerContext(dalNode).getSchemaName();
-        final String defaultDb =
-            OptimizerContext.getContext(defaultSchemaName).getRuleManager().getDefaultDbIndex(null);
 
         final Map<String, List<List<String>>> targetTable = new LinkedHashMap<>();
         final List<String> tableNames = new LinkedList<>();
 
         /* 获得所有逻辑表 */
         for (SqlNode tableNameNode : optimizeTable.getTableNames()) {
-            final String tableName = RelUtils.lastStringValue(tableNameNode);
-            tableNames.add(tableName);
-            TableRule tableRule =
-                OptimizerContext.getContext(defaultSchemaName).getRuleManager().getTableRule(tableName);
-            if (tableRule == null) {
-                // 完全没有规则的, 还是走单库
-                /* 逻辑表即物理表 */
-                if (!targetTable.containsKey(defaultDb)) {
-                    targetTable.put(defaultDb, new LinkedList<List<String>>());
-                }
-                targetTable.get(defaultDb).add(ImmutableList.of(tableName));
-            } else if (tableRule.getActualTopology().size() == 1
-                && tableRule.getActualTopology().containsKey(defaultDb)
-                && tableRule.getActualTopology().get(defaultDb).size() == 1 && !tableRule.isBroadcast()
-                && (tableRule.getPartitionType() == null || !tableRule.getPartitionType()
-                .isNoloopTime())) { // noloop时间分片会有0库单表的情况,故忽略
-                /**
-                 * 找到了单库单表的规则
-                 */
-                /* 逻辑表即物理表 */
-                Map<String, Set<String>> topology = RelUtils.getCommonTopology(defaultSchemaName, tableName);
-
-                for (String dbName : topology.keySet()) {
-                    for (String actualTable : topology.get(dbName)) {
-                        if (!targetTable.containsKey(dbName)) {
-                            targetTable.put(dbName, new LinkedList<List<String>>());
-                        }
-                        targetTable.get(dbName).add(ImmutableList.of(actualTable));
-                    }
-                }
-            } else {
-                /**
-                 * 这里与alter一样，也需要考虑广播表的情况，如果是广播表，就需要 到所有库上执行。
-                 */
-                Map<String, Set<String>> topology;
-                if (tableRule.isBroadcast()) {
-                    topology = RelUtils.getCommonTopology(defaultSchemaName, tableName);
-                } else {
-                    topology = tableRule.getActualTopology();
-                }
-                // boolean containsDefaultDb = false;
-                for (String dbName : topology.keySet()) {
-                    for (String actualTable : topology.get(dbName)) {
-                        if (!targetTable.containsKey(dbName)) {
-                            targetTable.put(dbName, new LinkedList<List<String>>());
-                        }
-                        targetTable.get(dbName).add(ImmutableList.of(actualTable));
-                    }
-                }
+            String tableName = RelUtils.lastStringValue(tableNameNode);
+            if (tableNames.contains(tableName)) {
+                continue;
             }
+            tableNames.add(tableName);
+
+            PartitionInfoUtil.getTableTopology(defaultSchemaName, tableName).forEach((db, tables) -> {
+                targetTable.computeIfAbsent(db, (x) -> new ArrayList<>())
+                    .addAll(tables);
+            });
         }
 
         int tableCount = PlannerUtils.tableCount(targetTable);
@@ -1023,8 +1010,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return tableNames;
     }
 
-    public boolean isWithForceIndex() {
-        return withForceIndex;
+    public boolean isWithIndexHint() {
+        return withIndexHint;
     }
 
     /**

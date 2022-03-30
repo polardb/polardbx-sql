@@ -42,8 +42,11 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.DELETE_ONLY;
@@ -69,6 +72,8 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     protected final String indexType;
     protected PhysicalPlanData physicalPlanData;
     protected final boolean clusteredIndex;
+    protected final boolean hasTimestampColumnDefault;
+    protected final Map<String, String> binaryColumnDefaultValues;
     protected ExecutionContext executionContext;
     public boolean needOnlineSchemaChange = true;
     public boolean stayAtBackFill = false;
@@ -86,6 +91,11 @@ public class CreateGsiJobFactory extends DdlJobFactory {
             globalIndexPreparedData.getComment(),
             globalIndexPreparedData.getIndexType(),
             globalIndexPreparedData.isClusteredIndex(),
+            globalIndexPreparedData.getIndexTablePreparedData() != null
+                && globalIndexPreparedData.getIndexTablePreparedData().isTimestampColumnDefault(),
+            globalIndexPreparedData.getIndexTablePreparedData() != null ?
+                globalIndexPreparedData.getIndexTablePreparedData().getBinaryColumnDefaultValues() :
+                new TreeMap<>(String.CASE_INSENSITIVE_ORDER),
             physicalPlanData,
             executionContext
         );
@@ -109,6 +119,8 @@ public class CreateGsiJobFactory extends DdlJobFactory {
                                   String indexComment,
                                   String indexType,
                                   boolean clusteredIndex,
+                                  boolean hasTimestampColumnDefault,
+                                  Map<String, String> binaryColumnDefaultValues,
                                   PhysicalPlanData physicalPlanData,
                                   ExecutionContext executionContext) {
         this.schemaName = schemaName;
@@ -121,6 +133,8 @@ public class CreateGsiJobFactory extends DdlJobFactory {
         this.indexType = indexType;
         this.physicalPlanData = physicalPlanData;
         this.clusteredIndex = clusteredIndex;
+        this.hasTimestampColumnDefault = hasTimestampColumnDefault;
+        this.binaryColumnDefaultValues = binaryColumnDefaultValues;
         this.executionContext = executionContext;
     }
 
@@ -133,7 +147,7 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         CreateGsiValidateTask validateTask =
-            new CreateGsiValidateTask(schemaName, primaryTableName, indexTableName);
+            new CreateGsiValidateTask(schemaName, primaryTableName, indexTableName, null, null);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.GSI_FINAL_STATUS_DEBUG);
@@ -177,7 +191,9 @@ public class CreateGsiJobFactory extends DdlJobFactory {
                 physicalPlanData.getTablesExtRecord(),
                 physicalPlanData.isPartitioned(),
                 physicalPlanData.isIfNotExists(),
-                physicalPlanData.getKind()
+                physicalPlanData.getKind(),
+                hasTimestampColumnDefault,
+                binaryColumnDefaultValues
             );
         CreateTableShowTableMetaTask showTableMetaTask = new CreateTableShowTableMetaTask(schemaName, indexTableName);
         GsiInsertIndexMetaTask addIndexMetaTask =
@@ -251,7 +267,7 @@ public class CreateGsiJobFactory extends DdlJobFactory {
             return new ArrayList<>();
         }
         return columnDefList.stream()
-            .map(e -> StringUtils.lowerCase(e.getColumnNameStr()))
+            .map(e -> e.getColumnNameStr())
             .collect(Collectors.toList());
     }
 

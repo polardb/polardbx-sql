@@ -30,7 +30,7 @@ import com.alibaba.polardbx.optimizer.core.row.JoinRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
-import com.alibaba.polardbx.util.IntBloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.Arrays;
@@ -365,7 +365,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
 
         private ConcurrentRawHashTable hashTable;
         private int[] positionLinks;
-        private IntBloomFilter bloomFilter;
+        private FastIntBloomFilter bloomFilter;
         private boolean alreadyUseRuntimeFilter;
 
         private BitSet joinNullRowBitSet;
@@ -391,7 +391,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
                 ctx.allocateReservedMemory(SizeOf.sizeOf(positionLinks));
 
                 if (!alreadyUseRuntimeFilter && size <= BLOOM_FILTER_ROWS_LIMIT_FOR_PARALLEL && size > 0) {
-                    bloomFilter = IntBloomFilter.create(size);
+                    bloomFilter = FastIntBloomFilter.create(size);
                     ctx.allocateReservedMemory(bloomFilter.sizeInBytes());
                 }
             }

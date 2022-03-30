@@ -80,7 +80,7 @@ public class StatisticBuilder {
     private boolean enableInnodbBtreeSampling;
     private int topNSize;
     private int topNMinNum;
-    private boolean useHll;
+    private boolean analyzeHll;
     private boolean isFromAnalyze;
 
     private int sampleSize;
@@ -122,7 +122,7 @@ public class StatisticBuilder {
 
     public StatisticBuilder(StatisticManager statisticManager, DataSource tDataSource, ParamManager paramManager,
                             String logicalTableName,
-                            List<ColumnMeta> columnMetaList, boolean isFromAnalyze) {
+                            List<ColumnMeta> columnMetaList, boolean analyzeHll, boolean isFromAnalyze) {
 
         this.statisticManager = statisticManager;
         this.tDataSource = tDataSource;
@@ -135,8 +135,9 @@ public class StatisticBuilder {
         this.enableInnodbBtreeSampling = paramManager.getBoolean(ConnectionParams.ENABLE_INNODB_BTREE_SAMPLING);
         this.topNSize = paramManager.getInt(ConnectionParams.TOPN_SIZE);
         this.topNMinNum = paramManager.getInt(ConnectionParams.TOPN_MIN_NUM);
-        this.useHll = paramManager.getBoolean(ConnectionParams.ENABLE_HLL);
+//        this.useHll = paramManager.getBoolean(ConnectionParams.ENABLE_HLL);
         this.isFromAnalyze = isFromAnalyze;
+        this.analyzeHll = analyzeHll;
     }
 
     public void prepare() {
@@ -230,14 +231,15 @@ public class StatisticBuilder {
 
     private void hllAnalyze() throws SQLException {
         // useHll come from exec context
-        if (isFromAnalyze && !SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName(), useHll)) {
-            return;
-        } else if (!isFromAnalyze && !SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName())) {
+        if (!analyzeHll) {
             return;
         }
         Map<String, Set<String>> colMap =
-            OptimizerContext.getContext(statisticManager.getSchemaName()).getPlanManager().columnsInvolvedByPlan();
+                OptimizerContext.getContext(statisticManager.getSchemaName()).getPlanManager().columnsInvolvedByPlan();
         Set<String> colSet = colMap.get(logicalTableName);
+        if (isFromAnalyze) {
+            statisticManager.getSds().removeLogicalTableList(Lists.newArrayList(logicalTableName));
+        }
         /**
          * handle columns needed by plan
          */
@@ -268,7 +270,7 @@ public class StatisticBuilder {
             Map<String, List<String>> indexColumnMap = indexColsMap.get(tblName);
             for (List<String> cols : indexColumnMap.values()) {
                 if (cols != null && cols.size() == 1 && colMap.get(tblName) != null && colMap.get(tblName)
-                    .contains(cols.iterator().next())) {
+                        .contains(cols.iterator().next())) {
                     continue;
                 }
                 for (int i = 0; i < cols.size() - 1; i++) {
@@ -332,7 +334,7 @@ public class StatisticBuilder {
                     sampleRows[i][columnSampleSize[i]] = columnValue;
                     columnSampleSize[i]++;
                 } else if (rand.nextDouble() < (double) (histogramMaxSampleSize) / (rowCount - nullCountList
-                    .get(i))) {
+                        .get(i))) {
                     sampleRows[i][rand.nextInt(histogramMaxSampleSize)] = columnValue;
                 }
             } else {
@@ -366,13 +368,13 @@ public class StatisticBuilder {
             }
             DataType dataType = columnMetaList.get(i).getField().getDataType();
             histogramList.add(new Histogram(histogramBucketSize, dataType,
-                histogramSampleRate));
+                    histogramSampleRate));
             TopN topN = new TopN(dataType);
             Arrays.stream(data).forEach(obj -> topN.offer(obj));
             topN.build(topNSize, topNMinNum);
             cacheLine.getTopNMap().put(columnName, topN);
             histogramList.get(i).buildFromData(Arrays.stream(data).filter(d -> topN.get(d) == 0).collect(
-                Collectors.toList()).toArray());
+                    Collectors.toList()).toArray());
         }
 
         for (int i = 0; i < columnMetaList.size(); i++) {
@@ -452,7 +454,7 @@ public class StatisticBuilder {
             cmdExtraSamplePercentage = ",sample_percentage=" + sampleRate * 100;
         }
         sql.append("/*+TDDL:cmd_extra(merge_union=false,ENABLE_DIRECT_PLAN=false" + cmdExtraSamplePercentage + ") */ "
-            + "select ");
+                + "select ");
         boolean first = true;
         for (ColumnMeta columnMeta : columnMetaList) {
             if (first) {

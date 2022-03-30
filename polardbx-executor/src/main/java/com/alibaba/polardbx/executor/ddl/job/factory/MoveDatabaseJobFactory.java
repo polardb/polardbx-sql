@@ -16,17 +16,24 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.MoveDatabaseBuilder;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InitNewStorageInstTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseAddMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabaseItemPreparedData;
@@ -41,6 +48,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Created by luoyanxin.
@@ -81,12 +89,17 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
 
     @Override
     protected void validate() {
-
+        String schemaName = preparedData.getSchemaName();
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (isNewPart) {
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                "it's not allow to execute move database command for partitioning databases");
+        }
     }
 
-    public void constructSubTasks(ExecutableDdlJob executableDdlJob, DdlTask tailTask,
-                                  List<DdlTask> bringUpMoveDatabase,
-                                  boolean stayAtPublic) {
+    public void constructSubTasks(ExecutableDdlJob executableDdlJob,
+                                  DdlTask tailTask,
+                                  List<DdlTask> bringUpMoveDatabase) {
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             MoveDatabaseSubTaskJobFactory subTaskJobFactory =
                 new MoveDatabaseSubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
@@ -94,11 +107,10 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                     targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
                     executionContext);
             ExecutableDdlJob subTask = subTaskJobFactory.create();
-            executableDdlJob.appendJob(subTask);
+            executableDdlJob.combineTasks(subTask);
+            executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
             executableDdlJob.getExcludeResources().addAll(subTask.getExcludeResources());
-            if (stayAtPublic) {
-                executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpMoveDatabase.get(0));
-            }
+            executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpMoveDatabase.get(0));
         }
     }
 
@@ -111,6 +123,9 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
         Map<String, List<Pair<String, String>>> instGroupDbInfos = new HashMap<>();
         final boolean shareStorageMode =
             executionContext.getParamManager().getBoolean(ConnectionParams.SHARE_STORAGE_MODE);
+
+        Map<String, Long> tableVersion = getPrimaryTableVersions();
+        BaseValidateTask moveDataBaseValidateTask = new MoveDatabaseValidateTask(schemaName, schemaName, tableVersion);
 
         for (Map.Entry<String, List<String>> entry : preparedData.getStorageGroups().entrySet()) {
             for (String sourceGroup : entry.getValue()) {
@@ -135,6 +150,8 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                 taskType.getValue(), 0);
 
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
+            /*the parent job of rebalance will acquire the Xlock of current schemaName before exec*/
+            moveDataBaseValidateTask,
             initNewStorageInstTask,
             addMetaTask
         ));
@@ -152,12 +169,16 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
 
         if (stayAtPublic) {
             executableDdlJob.addSequentialTasks(bringUpMoveDatabase);
-            constructSubTasks(executableDdlJob, addMetaTask, bringUpMoveDatabase, stayAtPublic);
+            executableDdlJob.removeTaskRelationship(addMetaTask, bringUpMoveDatabase.get(0));
+            constructSubTasks(executableDdlJob, addMetaTask, bringUpMoveDatabase);
             executableDdlJob.labelAsTail(bringUpMoveDatabase.get(bringUpMoveDatabase.size() - 1));
         } else {
             PauseCurrentJobTask pauseCurrentJobTask = new PauseCurrentJobTask(schemaName);
-            constructSubTasks(executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask), true);
+            constructSubTasks(executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask));
             executableDdlJob.labelAsTail(pauseCurrentJobTask);
+        }
+        if (GeneralUtil.isEmpty(tablesTopologyMap.entrySet())) {
+            executableDdlJob.addTaskRelationship(addMetaTask, bringUpMoveDatabase.get(0));
         }
         executableDdlJob.labelAsHead(initNewStorageInstTask);
         return executableDdlJob;
@@ -193,5 +214,24 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
 
     @Override
     protected void sharedResources(Set<String> resources) {
+    }
+
+    protected Map<String, Long> getPrimaryTableVersions() {
+        Map<String, Long> tablesVersion = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (MoveDatabaseItemPreparedData itemPreparedData : tablesPrepareData.values()) {
+
+            String primaryTblName = itemPreparedData.getTableName();
+            TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTblName);
+            if (tableMeta.isGsi()) {
+                //all the gsi table version change will be behavior by primary table
+                assert
+                    tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+                primaryTblName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+            }
+            TableMeta primaryTblMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTblName);
+            Long primaryTblVersion = primaryTblMeta.getVersion();
+            tablesVersion.putIfAbsent(primaryTblName,primaryTblVersion);
+        }
+        return tablesVersion;
     }
 }

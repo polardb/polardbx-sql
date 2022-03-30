@@ -17,28 +17,40 @@
 package com.alibaba.polardbx.executor.balancer.policy;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
+import com.alibaba.polardbx.executor.balancer.Balancer;
+import com.alibaba.polardbx.executor.balancer.action.ActionInitPartitionDb;
 import com.alibaba.polardbx.executor.balancer.action.ActionLockResource;
 import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroup;
 import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroups;
 import com.alibaba.polardbx.executor.balancer.action.ActionMovePartition;
+import com.alibaba.polardbx.executor.balancer.action.ActionTaskAdapter;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
+import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseReleaseXLockTask;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.DbInfoRecord;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+import lombok.Data;
 import org.apache.calcite.sql.SqlRebalance;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -72,6 +84,37 @@ public class PolicyDataBalance implements BalancePolicy {
     }
 
     @Override
+    public List<BalanceAction> applyToMultiDb(ExecutionContext ec,
+                                              Map<String, BalanceStats> stats,
+                                              BalanceOptions options,
+                                              List<String> schemaNameList) {
+        List<BalanceAction> result = new ArrayList<>();
+
+        // Initialize new storage instance if needed
+        List<DbInfoRecord> dbRecords = DbTopologyManager.getNewPartDbInfoFromMetaDb();
+        boolean refreshTopology = false;
+        if (CollectionUtils.isNotEmpty(dbRecords)) {
+            ActionInitPartitionDb actionInit = new ActionInitPartitionDb(ec.getSchemaName());
+            result.add(actionInit);
+            refreshTopology = true;
+        }
+
+        // Balance each database
+        for (String schema : schemaNameList) {
+            for (BalanceAction action : applyToDb(ec, stats.get(schema), options, schema)) {
+                if (!action.getName().equals(ActionInitPartitionDb.getActionName())) {
+                    result.add(action);
+                } else if (!refreshTopology) {
+                    result.add(action);
+                    refreshTopology = true;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    @Override
     public List<BalanceAction> applyToShardingDb(ExecutionContext ec,
                                                  BalanceOptions options,
                                                  BalanceStats stats,
@@ -87,84 +130,127 @@ public class PolicyDataBalance implements BalancePolicy {
         if (CollectionUtils.isEmpty(groupList)) {
             return Collections.emptyList();
         }
+        List<BucketOfGroups> buckets = groupList.stream().map(BucketOfGroups::new).collect(Collectors.toList());
 
-        long totalStorageCount = groupList.size();
+        long totalStorageCount = buckets.size();
         List<String> emptyStorage = groupList.stream()
             .filter(x -> x.groups.isEmpty())
             .filter(x -> isStorageReady(x.storageInst))
             .map(x -> x.storageInst)
             .collect(Collectors.toList());
-        long emptyCount = emptyStorage.size();
-        if (emptyCount == 0 || emptyCount == totalStorageCount) {
+        if ((long) emptyStorage.size() == totalStorageCount) {
             return Lists.newArrayList();
         }
         long totalGroups = groupList.stream().mapToInt(x -> x.groups.size()).sum();
         double newAverage = totalGroups * 1.0 / totalStorageCount;
 
-        List<String> sourceGroups = new ArrayList<>();
-        for (GroupStats.GroupsOfStorage storage : groupList) {
-            if (storage.groups.size() > newAverage) {
-                int toMove = (int) Math.ceil(storage.groups.size() - newAverage);
-                List<GroupDetailInfoExRecord> toMoveGroup = storage.groups.subList(0, toMove);
+        // sort by group count descending, move from left to right
+        Collections.sort(buckets);
+        int left = 0, right = buckets.size() - 1;
+        while (left < right) {
+            BucketOfGroups lb = buckets.get(left);
+            BucketOfGroups rb = buckets.get(right);
 
-                toMoveGroup.forEach(g -> sourceGroups.add(g.groupName));
+            if (lb.currentGroupCount() <= newAverage) {
+                left++;
+                continue;
             }
-        }
+            if (rb.currentGroupCount() >= newAverage) {
+                right--;
+                continue;
+            }
+            if (lb.currentGroupCount() - 1 < rb.currentGroupCount() + 1) {
+                left++;
+                continue;
+            }
+            String g = lb.moveOut();
+            if (g == null) {
+                left++;
+            }
+            rb.moveIn(g);
 
-        // move source groups in round-robin strategy
-        int targetStorageIndex = 0;
-        for (String group : sourceGroups) {
-            String targetStorage = emptyStorage.get(targetStorageIndex);
-            List<String> sourceGroup = Arrays.asList(group);
-            ActionMoveGroup moveGroup = new ActionMoveGroup(schema, sourceGroup, targetStorage, options.debug);
+            ActionMoveGroup moveGroup = new ActionMoveGroup(schema, Arrays.asList(g),
+                rb.originGroups.storageInst, options.debug);
             actions.add(moveGroup);
-
-            targetStorageIndex = (targetStorageIndex + 1) % (int) emptyCount;
         }
+        // shuffle actions to avoid make any storage node overload
+        Collections.shuffle(actions);
 
         if (CollectionUtils.isEmpty(actions)) {
             return Lists.newArrayList();
         }
-        String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schema);
-        ActionLockResource lock = new ActionLockResource(schema, name);
+//
+        final String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schema);
+        final String schemaXLock = schema;
+        ActionLockResource lock =
+            new ActionLockResource(schema, com.google.common.collect.Sets.newHashSet(name, schemaXLock));
 
-        return Arrays.asList(lock, new ActionMoveGroups(schema, actions));
+        MoveDatabaseReleaseXLockTask
+            moveDatabaseReleaseXLockTask = new MoveDatabaseReleaseXLockTask(schema, schemaXLock);
+        ActionTaskAdapter moveDatabaseXLockTaskAction = new ActionTaskAdapter(schema, moveDatabaseReleaseXLockTask);
+
+        return Arrays.asList(lock, new ActionMoveGroups(schema, actions), moveDatabaseXLockTaskAction);
     }
 
+    /**
+     * 1. Create group on empty storage-node
+     * 2. Move partition to balance data
+     * 3. Replicate broadcast-table
+     */
     @Override
     public List<BalanceAction> applyToPartitionDb(ExecutionContext ec,
                                                   BalanceOptions options,
                                                   BalanceStats stats,
                                                   String schemaName) {
+        DdlHelper.getServerConfigManager().executeBackgroundSql("refresh topology", schemaName, null);
+        stats = Balancer.collectBalanceStatsOfDatabase(schemaName);
+
+        List<BalanceAction> actions = new ArrayList<>();
+
+        String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schemaName);
+        ActionLockResource lock = new ActionLockResource(schemaName, Sets.newHashSet(name));
+        actions.add(lock);
+
+        actions.add(new ActionInitPartitionDb(schemaName));
+
         List<PartitionGroupStat> pgList = stats.getPartitionGroupStats();
         if (pgList.isEmpty()) {
-            return Collections.emptyList();
+            return actions;
         }
         Map<String, GroupDetailInfoRecord> groupDetail = getGroupDetails(schemaName);
         Map<String, StorageInstHaContext> storageMap = StorageHaManager.getInstance().getStorageHaCtxCache();
 
-        List<GroupOfPartitions> groupsOfPartitions = pgList.stream()
+        List<BucketOfPartitions> groupsOfPartitions = pgList.stream()
             .collect(Collectors.groupingBy(this::groupByGroup))
             .entrySet().stream()
-            .map(x -> new GroupOfPartitions(x.getKey(), x.getValue()))
+            .map(x -> new BucketOfPartitions(x.getKey(), x.getValue()))
             .collect(Collectors.toList());
         // consider empty groups
-        List<GroupOfPartitions> emptyGroups = new ArrayList<>();
+        List<BucketOfPartitions> emptyGroups = new ArrayList<>();
         for (String groupName : stats.getAllGroups()) {
             boolean existed = groupsOfPartitions.stream().anyMatch(x -> x.groupKey.equalsIgnoreCase(groupName));
             if (!existed) {
-                emptyGroups.add(GroupOfPartitions.createEmpty(groupName));
+                emptyGroups.add(BucketOfPartitions.createEmpty(groupName));
             }
         }
         groupsOfPartitions.addAll(emptyGroups);
 
-        List<BalanceAction> actions = new ArrayList<>();
-        // balance steps:
+        // balance data:
         // 1. sort groups by total disk size
         // 2. pick-up under-load and over-load group, which is defined by load-threshold
         // 3. try to move partitions from under-load group to over-load groups
-        groupsOfPartitions.sort((x, y) -> (int) (x.getTotalDiskSize() - y.getTotalDiskSize()));
-        long totalDiskSize = groupsOfPartitions.stream().mapToLong(GroupOfPartitions::getTotalDiskSize).sum();
+        Collections.sort(groupsOfPartitions, new Comparator<BucketOfPartitions>() {
+            @Override
+            public int compare(BucketOfPartitions o1, BucketOfPartitions o2) {
+                if (o1.getTotalDiskSize() > o2.getTotalDiskSize()) {
+                    return 1;
+                } else if (o1.getTotalDiskSize() < o2.getTotalDiskSize()) {
+                    return -1;
+                }
+                return 0;
+            }
+        });
+        long totalDiskSize = groupsOfPartitions.stream().mapToLong(BucketOfPartitions::getTotalDiskSize).sum();
         long avgDiskSize = totalDiskSize / groupsOfPartitions.size();
         if (totalDiskSize == 0 || avgDiskSize == 0) {
             return actions;
@@ -172,9 +258,10 @@ public class PolicyDataBalance implements BalancePolicy {
         long underLoadDiskSize = (long) (avgDiskSize * UNDER_LOAD_RATIO);
         long overLoadDiskSize = (long) (avgDiskSize * OVER_LOAD_RATIO);
         int start = 0, end = groupsOfPartitions.size() - 1;
+        List<Pair<PartitionStat, String>> moves = new ArrayList<>();
         while (start < end && actions.size() < options.maxActions) {
-            GroupOfPartitions underLoadGroup = groupsOfPartitions.get(start);
-            GroupOfPartitions overLoadGroup = groupsOfPartitions.get(end);
+            BucketOfPartitions underLoadGroup = groupsOfPartitions.get(start);
+            BucketOfPartitions overLoadGroup = groupsOfPartitions.get(end);
 
             // not under-load anymore
             if (underLoadGroup.getCurrentDiskSize() >= underLoadDiskSize) {
@@ -214,14 +301,25 @@ public class PolicyDataBalance implements BalancePolicy {
             overLoadGroup.moveOutPartition(moved);
             underLoadGroup.moveInPartition(moved);
 
-            ActionMovePartition action =
-                ActionMovePartition.createMoveToGroup(schemaName, moved.getFirstPartition(), underLoadGroup.groupKey);
-            actions.add(action);
+            moves.add(Pair.of(moved.getFirstPartition(), underLoadGroup.groupKey));
         }
+
+        GeneralUtil.emptyIfNull(moves).stream()
+            .collect(Collectors.groupingBy(Pair::getValue, Collectors.mapping(Pair::getKey, Collectors.toList())))
+            .forEach((toGroup, partitions) -> {
+                for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions,
+                    toGroup)) {
+                    if (actions.size() >= options.maxActions) {
+                        break;
+                    }
+                    actions.add(act);
+                }
+            });
 
         if (!actions.isEmpty()) {
             LOG.info("DataBalance move partition for data balance: " + actions);
         }
+
         return actions;
     }
 
@@ -249,10 +347,55 @@ public class PolicyDataBalance implements BalancePolicy {
         return p.getFirstPartition().getLocation().getGroupKey();
     }
 
+    @Data
+    static class BucketOfGroups implements Comparable<BucketOfGroups> {
+        GroupStats.GroupsOfStorage originGroups;
+        List<String> movedInGroups;
+        List<String> movedOutGroups;
+
+        public BucketOfGroups(GroupStats.GroupsOfStorage originGroups) {
+            this.originGroups = originGroups;
+            this.movedInGroups = new ArrayList<>();
+            this.movedOutGroups = new ArrayList<>();
+        }
+
+        public int currentGroupCount() {
+            return originGroups.groups.size() + movedInGroups.size() - movedOutGroups.size();
+        }
+
+        public String moveOut() {
+            for (GroupDetailInfoExRecord g : originGroups.groups) {
+                if (!movedOutGroups.contains(g.groupName)) {
+                    movedOutGroups.add(g.groupName);
+                    return g.groupName;
+                }
+            }
+            return null;
+        }
+
+        public void moveIn(String group) {
+            if (movedInGroups.contains(group)) {
+                throw new IllegalArgumentException("Group already exists: " + group);
+            }
+            movedInGroups.add(group);
+        }
+
+        /**
+         * Compare group count and instance name in descending order
+         */
+        @Override
+        public int compareTo(BucketOfGroups o) {
+            if (originGroups.groups.size() != o.getOriginGroups().groups.size()) {
+                return Integer.compare(o.getOriginGroups().groups.size(), originGroups.groups.size());
+            }
+            return o.originGroups.storageInst.compareTo(originGroups.storageInst);
+        }
+    }
+
     /**
      * All partitions in a physical group of a storage-node
      */
-    static class GroupOfPartitions {
+    static class BucketOfPartitions {
         public String groupKey;
         public List<PartitionGroupStat> partitions;
 
@@ -260,7 +403,7 @@ public class PolicyDataBalance implements BalancePolicy {
         public List<PartitionGroupStat> moveInPartitions;
         public List<PartitionGroupStat> moveOutPartitions;
 
-        public GroupOfPartitions(String groupKey, List<PartitionGroupStat> parts) {
+        public BucketOfPartitions(String groupKey, List<PartitionGroupStat> parts) {
             this.groupKey = groupKey;
             this.partitions = new ArrayList<>(parts);
             this.partitions.sort(Comparator.comparingLong(PartitionGroupStat::getTotalDiskSize));
@@ -269,8 +412,8 @@ public class PolicyDataBalance implements BalancePolicy {
             this.moveOutPartitions = new ArrayList<>();
         }
 
-        public static GroupOfPartitions createEmpty(String groupKey) {
-            return new GroupOfPartitions(groupKey, Collections.emptyList());
+        public static BucketOfPartitions createEmpty(String groupKey) {
+            return new BucketOfPartitions(groupKey, Collections.emptyList());
         }
 
         /**
@@ -279,6 +422,10 @@ public class PolicyDataBalance implements BalancePolicy {
          */
         public PartitionGroupStat pickupMoveOut() {
             for (PartitionGroupStat p : partitions) {
+                int tgType = p.getFirstPartition().getTableGroupRecord().getTg_type();
+                if (tgType != TableGroupRecord.TG_TYPE_PARTITION_TBL_TG) {
+                    continue;
+                }
                 if (!moveOutPartitions.contains(p)) {
                     return p;
                 }

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesPartitionInfoMetaTask;
@@ -29,13 +30,21 @@ import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionTable;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.Lists;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -46,10 +55,21 @@ public class CreatePartitionTableJobFactory extends CreateTableJobFactory {
 
     private CreateTablePreparedData preparedData;
 
-    public CreatePartitionTableJobFactory(boolean autoPartition, PhysicalPlanData physicalPlanData,
-                                          ExecutionContext executionContext, CreateTablePreparedData preparedData) {
-        super(autoPartition, physicalPlanData, executionContext);
+    private List<Long> tableGroupIds = new ArrayList<>();
+
+    private boolean checkSingleTgNotExists = false;
+
+    private boolean checkBroadcastTgNotExists = false;
+
+    private PartitionInfo partitionInfo;
+
+    public CreatePartitionTableJobFactory(boolean autoPartition, boolean hasTimestampColumnDefault,
+                                          Map<String, String> binaryColumnDefaultValues,
+                                          PhysicalPlanData physicalPlanData, ExecutionContext executionContext,
+                                          CreateTablePreparedData preparedData, PartitionInfo partitionInfo) {
+        super(autoPartition, hasTimestampColumnDefault, binaryColumnDefaultValues, physicalPlanData, executionContext);
         this.preparedData = preparedData;
+        this.partitionInfo = partitionInfo;
     }
 
     @Override
@@ -59,13 +79,35 @@ public class CreatePartitionTableJobFactory extends CreateTableJobFactory {
     @Override
     protected void excludeResources(Set<String> resources) {
         super.excludeResources(resources);
+        boolean isSigleTable = false;
+        boolean isBroadCastTable = false;
+        if (partitionInfo != null) {
+            isSigleTable = partitionInfo.isGsiSingleOrSingleTable();
+            isBroadCastTable = partitionInfo.isGsiBroadcastOrBroadcast();
+        }
 
         TableGroupConfig tgConfig = physicalPlanData.getTableGroupConfig();
-        TableGroupRecord record = tgConfig.getTableGroupRecord();
-        if (record != null) {
-            String tgName = record.getTg_name();
-            resources.add(concatWithDot(schemaName, tgName));
+        for (TablePartRecordInfoContext entry : tgConfig.getTables()) {
+            Long tableGroupId = entry.getLogTbRec().getGroupId();
+            if (tableGroupId != null && tableGroupId != -1) {
+                OptimizerContext oc =
+                    Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+                TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
+                TableGroupRecord record = tableGroupConfig.getTableGroupRecord();
+                String tgName = record.getTg_name();
+                resources.add(concatWithDot(schemaName, tgName));
+                tableGroupIds.add(tableGroupId);
+            }
         }
+
+        if (preparedData.getTableGroupName() == null) {
+            if (isSigleTable) {
+                resources.add(concatWithDot(schemaName, TableGroupNameUtil.SINGLE_DEFAULT_TG_NAME_TEMPLATE));
+            } else if (isBroadCastTable) {
+                resources.add(concatWithDot(schemaName, TableGroupNameUtil.BROADCAST_TG_NAME_TEMPLATE));
+            }
+        }
+
         if (preparedData != null && preparedData.getTableGroupName() != null) {
             String tgName = RelUtils.stringValue(preparedData.getTableGroupName());
             if (TStringUtil.isNotBlank(tgName)) {
@@ -77,14 +119,24 @@ public class CreatePartitionTableJobFactory extends CreateTableJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         String schemaName = physicalPlanData.getSchemaName();
+        FactoryUtils.checkDefaultTableGroup(
+            schemaName,
+            partitionInfo,
+            physicalPlanData,
+            preparedData.getTableGroupName() == null,
+            checkSingleTgNotExists,
+            checkBroadcastTgNotExists
+        );
 
         CreatePartitionTableValidateTask validateTask =
             new CreatePartitionTableValidateTask(schemaName, logicalTableName,
-                physicalPlanData.isIfNotExists());
+                physicalPlanData.isIfNotExists(), physicalPlanData.getTableGroupConfig(), tableGroupIds,
+                checkSingleTgNotExists, checkBroadcastTgNotExists);
 
+        LocalPartitionDefinitionInfo localPartitionDefinitionInfo = preparedData.getLocalPartitionDefinitionInfo();
         CreateTableAddTablesPartitionInfoMetaTask addPartitionInfoTask =
             new CreateTableAddTablesPartitionInfoMetaTask(schemaName, logicalTableName, physicalPlanData.isTemporary(),
-                physicalPlanData.getTableGroupConfig());
+                physicalPlanData.getTableGroupConfig(), localPartitionDefinitionInfo, false, null);
 
         CreateTablePhyDdlTask phyDdlTask = new CreateTablePhyDdlTask(schemaName, logicalTableName, physicalPlanData);
 
@@ -92,7 +144,8 @@ public class CreatePartitionTableJobFactory extends CreateTableJobFactory {
             new CreateTableAddTablesMetaTask(schemaName, logicalTableName, physicalPlanData.getDefaultDbIndex(),
                 physicalPlanData.getDefaultPhyTableName(), physicalPlanData.getSequence(),
                 physicalPlanData.getTablesExtRecord(), physicalPlanData.isPartitioned(),
-                physicalPlanData.isIfNotExists(), physicalPlanData.getKind());
+                physicalPlanData.isIfNotExists(), physicalPlanData.getKind(), hasTimestampColumnDefault,
+                binaryColumnDefaultValues);
 
         CreateTableShowTableMetaTask showTableMetaTask = new CreateTableShowTableMetaTask(schemaName, logicalTableName);
 

@@ -45,7 +45,7 @@ import static org.apache.calcite.sql.SqlKind.LESS_THAN;
 public class PartClauseInfoPreProcessor {
 
     public static PartClauseItem convertToPartClauseItem(PartitionInfo partInfo,
-                                                         RelNode relPlan,
+                                                         RelDataType relRowType,
                                                          RexNode partPred,
                                                          PartPruneStepBuildingContext stepContext) {
 
@@ -62,18 +62,18 @@ public class PartClauseInfoPreProcessor {
         PartClauseItem clauseItem;
         SqlKind kind = partPred.getKind();
         if (kind == SqlKind.OR) {
-            clauseItem = convertOrExprToPartClauseItem(partInfo, relPlan, partPredInfo, stepContext);
+            clauseItem = convertOrExprToPartClauseItem(partInfo, relRowType, partPredInfo, stepContext);
         } else if (kind == SqlKind.AND) {
-            clauseItem = convertAndExprToPartClauseItem(partInfo, relPlan, partPredInfo, stepContext);
+            clauseItem = convertAndExprToPartClauseItem(partInfo, relRowType, partPredInfo, stepContext);
         } else {
-            clauseItem = convertBoolExprToPartClauseItem(partInfo, relPlan, partPredInfo, stepContext);
+            clauseItem = convertBoolExprToPartClauseItem(partInfo, relRowType, partPredInfo, stepContext);
         }
 
         return clauseItem;
     }
 
     private static PartClauseItem convertOrExprToPartClauseItem(PartitionInfo partInfo,
-                                                                RelNode relPlan,
+                                                                RelDataType relRowType,
                                                                 RexCall partPred,
                                                                 PartPruneStepBuildingContext stepContext) {
         List<PartClauseItem> subOpItemList = new ArrayList<>();
@@ -101,7 +101,7 @@ public class PartClauseInfoPreProcessor {
              *       .
              * </pre>
              */
-            PartClauseItem item = convertToPartClauseItem(partInfo, relPlan, op, stepContext);
+            PartClauseItem item = convertToPartClauseItem(partInfo, relRowType, op, stepContext);
             if (item == null) {
                 /**
                  * In OR-Expr, 
@@ -194,7 +194,7 @@ public class PartClauseInfoPreProcessor {
     }
 
     private static PartClauseItem convertAndExprToPartClauseItem(PartitionInfo partInfo,
-                                                                 RelNode relPlan,
+                                                                 RelDataType relRowType,
                                                                  RexCall partPred,
                                                                  PartPruneStepBuildingContext stepContext) {
         List<PartClauseItem> subOpItemList = new ArrayList<>();
@@ -221,7 +221,7 @@ public class PartClauseInfoPreProcessor {
              *       .
              * </pre>
              */
-            PartClauseItem item = convertToPartClauseItem(partInfo, relPlan, op, stepContext);
+            PartClauseItem item = convertToPartClauseItem(partInfo, relRowType, op, stepContext);
             if (item == null) {
                 /**
                  * if item is null, then it is the predicate without any partition column
@@ -321,7 +321,7 @@ public class PartClauseInfoPreProcessor {
     }
 
     private static PartClauseItem convertBoolExprToPartClauseItem(PartitionInfo partInfo,
-                                                                  RelNode relPlan,
+                                                                  RelDataType relRowType,
                                                                   RexCall partPred,
                                                                   PartPruneStepBuildingContext stepContext) {
 
@@ -336,11 +336,11 @@ public class PartClauseInfoPreProcessor {
         case NOT_EQUALS:
         case GREATER_THAN_OR_EQUAL:
         case LESS_THAN_OR_EQUAL:
-            item = convertComparisonExprToPartClauseItem(partInfo, relPlan, partPred, stepContext);
+            item = convertComparisonExprToPartClauseItem(partInfo, relRowType, partPred, stepContext);
             break;
 
         case IS_NULL:
-            item = convertIsNullExprToPartClauseItem(partInfo, relPlan, partPred, false, stepContext);
+            item = convertIsNullExprToPartClauseItem(partInfo, relRowType, partPred, false, stepContext);
             break;
 
         case BETWEEN:
@@ -378,7 +378,7 @@ public class PartClauseInfoPreProcessor {
      *
      */
     private static PartClauseItem convertComparisonExprToPartClauseItem(PartitionInfo partInfo,
-                                                                        RelNode relPlan,
+                                                                        RelDataType relRowType,
                                                                         RexCall partPred,
                                                                         PartPruneStepBuildingContext stepContext) {
 
@@ -393,7 +393,7 @@ public class PartClauseInfoPreProcessor {
         boolean isMultiCols = partInfo.getPartitionBy().getPartitionFieldList().size() > 1;
         SqlOperator operator = partPred.getOperator();
         PartClauseInfo matchedPartClauseInfo =
-            matchPartPredToPartKey(partInfo, relPlan, partPred, left, right, false, operator, stepContext);
+            matchPartPredToPartKey(partInfo, relRowType, partPred, left, right, false, operator, stepContext);
         if (matchedPartClauseInfo != null) {
             switch (kind) {
             case LESS_THAN:
@@ -428,7 +428,7 @@ public class PartClauseInfoPreProcessor {
     }
 
     private static PartClauseItem convertIsNullExprToPartClauseItem(PartitionInfo partInfo,
-                                                                    RelNode relPlan,
+                                                                    RelDataType relRowType,
                                                                     RexCall partPred,
                                                                     boolean isNegative,
                                                                     PartPruneStepBuildingContext stepContext) {
@@ -441,7 +441,7 @@ public class PartClauseInfoPreProcessor {
         List<RexNode> operands = partPred.getOperands();
         RexNode input = operands.get(0);
         PartClauseInfo clauseInfo =
-            matchPartPredToPartKey(partInfo, relPlan, partPred, input, null, true, TddlOperatorTable.EQUALS,
+            matchPartPredToPartKey(partInfo, relRowType, partPred, input, null, true, TddlOperatorTable.EQUALS,
                 stepContext);
         if (clauseInfo == null) {
             return null;
@@ -455,7 +455,7 @@ public class PartClauseInfoPreProcessor {
      * Try to match part predicate to part key and check if the part predicate contains part key
      */
     protected static PartClauseInfo matchPartPredToPartKey(PartitionInfo partInfo,
-                                                           RelNode relPlan,
+                                                           RelDataType relRowType,
                                                            RexNode originalPred,
                                                            RexNode left,
                                                            RexNode right,
@@ -504,9 +504,27 @@ public class PartClauseInfoPreProcessor {
             return null;
         }
 
+        if (constExpr instanceof RexDynamicParam) {
+            /**
+             * When
+             *  index >= 0, it means the content of RexDynamicParam is the params value can be fetched from ExecutionContext
+             *  index = -1, it means the content of RexDynamicParam is phy table name;
+             *  index = -2, it means the content of RexDynamicParam is scalar subquery;
+             *  index = -3, it means the content of RexDynamicParam is apply subquery.
+             */
+            RexDynamicParam dynamicParam = (RexDynamicParam) constExpr;
+            if (dynamicParam.getIndex() == -2 || dynamicParam.getIndex() == -3) {
+                /**
+                 * Not support to do pruning with scalar subquery or apply subquery,
+                 * it will be optimized later
+                 */
+                return null;
+            }
+        }
+
         PartClauseInfo clauseInfo = new PartClauseInfo();
         RexInputRef columnRef = (RexInputRef) input;
-        RelDataType relDataType = relPlan.getRowType();
+        RelDataType relDataType = relRowType;
 
         RelDataTypeField predColRelFld = relDataType.getFieldList().get(columnRef.getIndex());
         predColName = predColRelFld.getName();

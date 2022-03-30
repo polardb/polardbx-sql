@@ -69,5 +69,4 @@ public class SensitiveStringType extends AbstractUTF8StringType implements DataT
         }
         return CASE_SENSITIVE_ORDER.compare(no1, no2);
     }
-
 }

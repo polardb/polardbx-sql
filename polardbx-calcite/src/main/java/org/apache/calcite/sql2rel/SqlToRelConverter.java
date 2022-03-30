@@ -80,6 +80,8 @@ import org.apache.calcite.rel.ddl.AlterTableGroupModifyPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartition;
+import org.apache.calcite.rel.ddl.AlterTableRepartition;
+import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartitionByHotValue;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
 import org.apache.calcite.rel.ddl.CreateDatabase;
@@ -162,9 +164,12 @@ import org.apache.calcite.sql.SqlAlterTableGroupMergePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
+import org.apache.calcite.sql.SqlAlterTableGroupSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
+import org.apache.calcite.sql.SqlAlterTableRepartition;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
+import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
@@ -3280,6 +3285,8 @@ public class SqlToRelConverter {
         case ALTER_TABLE:
             if (query instanceof SqlAlterTablePartitionKey) {
                 return RelRoot.of(convertAlterTable((SqlAlterTable) query), kind);
+            } else if (query instanceof SqlAlterTableRepartition) {
+                return RelRoot.of(convertAlterTable((SqlAlterTable) query), kind);
             }
             return RelRoot.of(convertAlterTable((SqlAlterTable) query), kind);
         case RENAME_TABLE:
@@ -3354,7 +3361,7 @@ public class SqlToRelConverter {
 
         query = checkAndRewriteGsiName(query);
         checkGsiColumnLen(query);
-        Map<SqlNode, RexNode> rexNodesForPartition = convertPartition(query.getPartitioning());
+        Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromPartition(query.getPartitioning());
 
         return CreateIndex.create(getCluster(), query, query.getOperandList().get(0), rexNodesForPartition);
     }
@@ -3376,7 +3383,21 @@ public class SqlToRelConverter {
             } else if (alterSpecItem instanceof SqlAlterTableModifyPartitionValues) {
                 throw new NotSupportException(
                     "alter table add/drop partition, please use alter tablegroup add/drop partition");
+            } else if (alterSpecItem instanceof SqlAlterTableSplitPartitionByHotValue) {
+                return convertAlterTableSplitHotValue(query);
             }
+        } else {
+            Optional<SqlAlterSpecification> splitPartitionByHotValue =
+                alterItems.stream().filter(o -> o instanceof SqlAlterTableSplitPartitionByHotValue).findFirst();
+            if (splitPartitionByHotValue.isPresent()) {
+                throw new RuntimeException("alter table split hot value is only allow to be executed separately");
+            }
+        }
+        if (query instanceof SqlAlterTableRepartition) {
+            SqlNode partitioning = ((SqlAlterTableRepartition) query).getSqlPartition();
+            Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromPartition(partitioning);
+            return AlterTableRepartition.create(getCluster(), query, query.getOperandList().get(0),
+                rexNodesForPartition);
         }
 
         return AlterTable.create(getCluster(), query, query.getOperandList().get(0), new HashMap<>());
@@ -3403,14 +3424,14 @@ public class SqlToRelConverter {
         return DropTable.create(getCluster(), query, query.getOperandList().get(0));
     }
 
-    private RelNode convertAlterTableGroup(SqlAlterTableGroup query) {
-        final RelDataType targetRowType = validator.getValidatedNodeType(query);
-        assert targetRowType != null;
-        Map<SqlNode, RexNode> partRexInfoCtx = getRexInfoFromSqlAlterTableGroup(query);
+    private RelNode convertAlterTableGroup(SqlAlterTableGroup query) {;
+        Map<SqlNode, RexNode> partRexInfoCtx = getRexInfoFromSqlAlterSpec(query.getAlters());
         query.setPartRexInfoCtx(partRexInfoCtx);
         assert query.getAlters().size() == 1;
         SqlAlterSpecification item = query.getAlters().get(0);
         String tableGroupName = query.getTableGroupName().toString();
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
         if (item instanceof SqlAlterTableGroupSplitPartition) {
             return AlterTableGroupSplitPartition
                 .create(getCluster(), getCluster().traitSetOf(Convention.NONE), query, targetRowType,
@@ -3451,6 +3472,10 @@ public class SqlToRelConverter {
         } else if (item instanceof SqlAlterTableTruncatePartition) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 "please use alter table truncate partition instead");
+        } else if (item instanceof SqlAlterTableGroupSplitPartitionByHotValue) {
+            return AlterTableGroupSplitPartitionByHotValue
+                .create(getCluster(), getCluster().traitSetOf(Convention.NONE), query, targetRowType, partRexInfoCtx,
+                    tableGroupName);
         } else {
             assert false;
             return null;
@@ -3496,11 +3521,24 @@ public class SqlToRelConverter {
         SqlAddIndex sqlAddIndex = (SqlAddIndex) alters.get(0);
         SqlNode partitioning = sqlAddIndex.getIndexDef().getPartitioning();
         if (partitioning != null) {
-            Map<SqlNode, RexNode> rexNodesForPartition = convertPartition(partitioning);
+            Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromPartition(partitioning);
             return AlterTable.create(getCluster(), query, query.getOperandList().get(0), rexNodesForPartition);
         } else {
             return AlterTable.create(getCluster(), query, query.getOperandList().get(0), new HashMap<>());
         }
+    }
+
+    private RelNode convertAlterTableSplitHotValue(SqlAlterTable query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+
+        List<SqlAlterSpecification> alters = query.getAlters();
+        assert alters.size() == 1;
+        if (alters.size() > 1) {
+            throw new RuntimeException("alter table split hot value is only allow to be executed separately");
+        }
+        Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromSqlAlterSpec(query.getAlters());
+        return AlterTable.create(getCluster(), query, query.getOperandList().get(0), rexNodesForPartition);
     }
 
     //
@@ -3742,6 +3780,33 @@ public class SqlToRelConverter {
             .create(getCluster(), query, query.getOperandList().get(0), query.getLikeTableName(), rexNodesForPartition);
     }
 
+    private Map<SqlNode, RexNode> getRexInfoFromPartition(SqlNode partitioning) {
+        SqlPartitionBy sqlPartitionBy = (SqlPartitionBy) partitioning;
+        Map<SqlNode, RexNode> partRexInfoCtx = new HashMap<>();
+        if (sqlPartitionBy == null) {
+            return partRexInfoCtx;
+        }
+
+        for (SqlNode sqlNode : sqlPartitionBy.getPartitions()) {
+            SqlPartition sqlPartition = (SqlPartition) sqlNode;
+            SqlPartitionValue sqlPartitionValue = sqlPartition.getValues();
+            for (SqlPartitionValueItem item : ((SqlPartition) sqlPartition).getValues().getItems()) {
+                SqlNode itemValue = item.getValue();
+                if (!item.isMaxValue()) {
+                    validator.validate(itemValue);
+                    RexNode rexExpr = convertExpression(itemValue);
+                    partRexInfoCtx.put(itemValue, rexExpr);
+                } else {
+                    // add null literal as placeholder, do not need to derive actual value and value type for maxvalue
+                    SqlLiteral sqlLiteral =
+                        SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO, SqlTypeName.INTEGER);
+                    partRexInfoCtx.put(itemValue, convertExpression(sqlLiteral));
+                }
+            }
+        }
+        return partRexInfoCtx;
+    }
+
     private Map<SqlNode, RexNode> convertPartition(SqlNode sqlPartitionBy) {
         Map<SqlNode, RexNode> partRexInfoCtx = new HashMap<>();
         if (sqlPartitionBy != null) {
@@ -3773,60 +3838,68 @@ public class SqlToRelConverter {
         return partRexInfoCtx;
     }
 
-    private Map<SqlNode, RexNode> getRexInfoFromSqlAlterTableGroup(SqlAlterTableGroup sqlAlterTableGroup) {
+    private Map<SqlNode, RexNode> getRexInfoFromSqlAlterSpec(List<SqlAlterSpecification> sqlAlterSpecifications) {
         //final SqlValidatorScope partitionScope = validator
         Map<SqlNode, RexNode> partRexInfoCtx = new HashMap<>();
-        if (GeneralUtil.isNotEmpty(sqlAlterTableGroup.getAlters())) {
-            assert sqlAlterTableGroup.getAlters().size() == 1;
+        if (GeneralUtil.isNotEmpty(sqlAlterSpecifications)) {
+            assert sqlAlterSpecifications.size() == 1;
             final Blackboard bb = createBlackboard(null, null, false);
-            if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupSplitPartition) {
+            if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableGroupSplitPartition) {
                 SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition =
-                    (SqlAlterTableGroupSplitPartition) sqlAlterTableGroup.getAlters().get(0);
+                    (SqlAlterTableGroupSplitPartition) sqlAlterSpecifications.get(0);
                 SqlNode atVal = sqlAlterTableGroupSplitPartition.getAtValue();
                 if (atVal != null) {
                     partRexInfoCtx.put(atVal, bb.convertExpression(atVal));
                 } else if (GeneralUtil.isNotEmpty(sqlAlterTableGroupSplitPartition.getNewPartitions())) {
-                    for (SqlPartition sqlPartition : sqlAlterTableGroupSplitPartition.getNewPartitions()) {
-                        for (SqlPartitionValueItem sqlNode : ((SqlPartition) sqlPartition).getValues().getItems()) {
-                            partRexInfoCtx.put(sqlNode.getValue(), bb.convertExpression(sqlNode.getValue()));
+                    List<SqlPartition> sqlPartitions = sqlAlterTableGroupSplitPartition.getNewPartitions();
+                    for (SqlPartition sqlPartition : sqlPartitions) {
+                        SqlPartitionValue partVal = sqlPartition.getValues();
+                        for (SqlPartitionValueItem valItem : partVal.getItems()) {
+                            if (valItem.isMaxValue() || valItem.isMinValue()) {
+                                continue;
+                            }
+                            RexNode rexExpr = convertExpression(valItem.getValue());
+                            partRexInfoCtx.put(valItem.getValue(), bb.convertExpression(valItem.getValue()));
                         }
                     }
                 }
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableGroupMovePartition) {
 
-            } else if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupMovePartition) {
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableGroupMergePartition) {
 
-            } else if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupMergePartition) {
-
-            } else if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupExtractPartition) {
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableGroupExtractPartition) {
                 SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition =
-                    (SqlAlterTableGroupExtractPartition) sqlAlterTableGroup.getAlters().get(0);
-                SqlNode hotKey = sqlAlterTableGroupExtractPartition.getHotKey();
-                if (hotKey != null) {
+                    (SqlAlterTableGroupExtractPartition) sqlAlterSpecifications.get(0);
+                for (SqlNode hotKey : sqlAlterTableGroupExtractPartition.getHotKeys()) {
                     partRexInfoCtx.put(hotKey, bb.convertExpression(hotKey));
+                    if (hotKey != null) {
+                        partRexInfoCtx.put(hotKey, bb.convertExpression(hotKey));
+                    }
                 }
-            } else if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableAddPartition) {
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableAddPartition) {
 
                 SqlAlterTableAddPartition addPartition =
-                    (SqlAlterTableAddPartition) sqlAlterTableGroup.getAlters().get(0);
+                    (SqlAlterTableAddPartition) sqlAlterSpecifications.get(0);
                 for (SqlNode sqlNode : addPartition.getPartitions()) {
                     SqlPartition sqlPartition = (SqlPartition) sqlNode;
                     SqlPartitionValue sqlPartitionValue = sqlPartition.getValues();
-                    List<SqlNode> items =
-                        sqlPartitionValue.getItems().stream().map(o -> o.getValue()).collect(Collectors.toList());
-                    for (int i = 0; i < items.size(); i++) {
-                        SqlNode item = items.get(i);
-                        validator.validate(item);
-                        RexNode rexExpr = convertExpression(item);
-                        partRexInfoCtx.put(item, rexExpr);
+                    for (SqlPartitionValueItem valItem : sqlPartitionValue.getItems()) {
+                        if (valItem.isMaxValue() || valItem.isMinValue()) {
+                            continue;
+                        }
+                        SqlNode exprAst = valItem.getValue();
+                        validator.validate(exprAst);
+                        RexNode rexExpr = convertExpression(exprAst);
+                        partRexInfoCtx.put(exprAst, rexExpr);
                     }
                 }
 
-            } else if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableDropPartition) {
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableDropPartition) {
 
-            } else if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableModifyPartitionValues) {
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableModifyPartitionValues) {
 
                 SqlAlterTableModifyPartitionValues modifyPartition =
-                    (SqlAlterTableModifyPartitionValues) sqlAlterTableGroup.getAlters().get(0);
+                    (SqlAlterTableModifyPartitionValues) sqlAlterSpecifications.get(0);
                 SqlPartition sqlPartition = modifyPartition.getPartition();
                 SqlPartitionValue sqlPartitionValue = sqlPartition.getValues();
                 List<SqlNode> items =
@@ -3838,8 +3911,18 @@ public class SqlToRelConverter {
                     partRexInfoCtx.put(item, rexExpr);
                 }
 
-            } else if (sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableTruncatePartition) {
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableTruncatePartition) {
                 //return RelRoot.of(convertAlterTableTruncatePartition((SqlAlterTable) query), kind);
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableSplitPartitionByHotValue) {
+                SqlAlterTableSplitPartitionByHotValue sqlAlterTableSplitPartitionByHotValue =
+                    (SqlAlterTableSplitPartitionByHotValue) sqlAlterSpecifications.get(0);
+                SqlNode partitions = sqlAlterTableSplitPartitionByHotValue.getPartitions();
+                if (partitions != null) {
+                    partRexInfoCtx.put(partitions, bb.convertExpression(partitions));
+                }
+                for (SqlNode hotKey : sqlAlterTableSplitPartitionByHotValue.getHotKeys()) {
+                    partRexInfoCtx.put(hotKey, bb.convertExpression(hotKey));
+                }
             }
 
         }

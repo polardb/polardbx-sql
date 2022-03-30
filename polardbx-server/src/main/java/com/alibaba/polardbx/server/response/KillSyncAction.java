@@ -17,6 +17,10 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineRequester;
+import com.alibaba.polardbx.net.FrontendConnection;
+import com.alibaba.polardbx.net.NIOProcessor;
+import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -112,6 +116,7 @@ public class KillSyncAction implements ISyncAction {
                 if (fc instanceof ServerConnection && hasAccess(fc)) {
                     TConnection tc = ((ServerConnection) fc).getTddlConnection();
                     if (tc != null) {
+                        pauseDdlJobIfNecessary(tc);
                         ExecutionContext executionContext = tc.getExecutionContext();
                         if (ServiceProvider.getInstance().getServer() != null
                             && executionContext.getTraceId() != null) {
@@ -144,6 +149,20 @@ public class KillSyncAction implements ISyncAction {
             return true;
         }
         return TStringUtil.equals(user, fc.getUser()) || ((ServerConnection) fc).isAdministrator(user);
+    }
+
+    private void pauseDdlJobIfNecessary(TConnection conn){
+        if(conn == null || conn.getExecutionContext() == null){
+            return;
+        }
+        if(!conn.isDdlStatement()){
+            return;
+        }
+        Long jobId = conn.getExecutionContext().getDdlJobId();
+        if(jobId == null){
+            return;
+        }
+        DdlEngineRequester.pauseJob(jobId);
     }
 
 }

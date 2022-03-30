@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.common.jdbc;
 
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 
 import java.io.InputStream;
 import java.io.Reader;

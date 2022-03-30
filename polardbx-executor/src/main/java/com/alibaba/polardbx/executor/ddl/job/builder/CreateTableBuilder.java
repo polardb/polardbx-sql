@@ -22,12 +22,24 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.index.TableRuleBuilder;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRule;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDdlNodes;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlPartitionByRange;
+import org.apache.calcite.util.Pair;
+import org.apache.commons.collections.CollectionUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class CreateTableBuilder extends DdlPhyPlanBuilder {
 
@@ -156,10 +168,13 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
             false,
             sqlTemplate.getAutoIncrement(),
             null,
-            null
+            sqlTemplate.getLocalPartition(),
+            null,
+            sqlTemplate.getLocalPartitionSuffix()
         );
 
         ((SqlCreateTable) this.sqlTemplate).setTemporary(sqlTemplate.isTemporary());
+        validatePartitionColumnInUkForLocalPartition(sqlTemplate);
 
         sequenceBean = sqlTemplate.getAutoIncrement();
     }
@@ -169,5 +184,50 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
         PhysicalPlanData data = super.genPhysicalPlanData(autoPartition);
         data.setLocalityDesc(preparedData.getLocality());
         return data;
+    }
+
+    private void validatePartitionColumnInUkForLocalPartition(SqlCreateTable sqlCreateTable){
+        List<SqlIndexDefinition> allUniqueKeys = new ArrayList<>();
+        SqlNode localPartition = sqlCreateTable.getLocalPartition();
+        if(localPartition==null){
+            return;
+        }
+
+        if(sqlCreateTable.getPrimaryKey()!=null){
+            allUniqueKeys.add(sqlCreateTable.getPrimaryKey());
+        }
+        if(CollectionUtils.isNotEmpty(sqlCreateTable.getUniqueKeys())){
+            for(Pair<SqlIdentifier, SqlIndexDefinition> pair: sqlCreateTable.getUniqueKeys()){
+                allUniqueKeys.add(pair.getValue());
+            }
+        }
+        if(CollectionUtils.isNotEmpty(sqlCreateTable.getGlobalUniqueKeys())){
+            for(Pair<SqlIdentifier, SqlIndexDefinition> pair: sqlCreateTable.getGlobalUniqueKeys()){
+                allUniqueKeys.add(pair.getValue());
+            }
+        }
+        if(CollectionUtils.isNotEmpty(sqlCreateTable.getClusteredUniqueKeys())){
+            for(Pair<SqlIdentifier, SqlIndexDefinition> pair: sqlCreateTable.getClusteredUniqueKeys()){
+                allUniqueKeys.add(pair.getValue());
+            }
+        }
+
+        if(CollectionUtils.isEmpty(allUniqueKeys)){
+            return;
+        }
+        SqlIdentifier column = (SqlIdentifier) ((SqlPartitionByRange) localPartition).getColumns().get(0);
+        String localPartitionColumn = column.getLastName().replace("`", "").toLowerCase();
+
+        for(SqlIndexDefinition sqlIndexDefinition: allUniqueKeys){
+            List<String> primaryColumnNameList = sqlIndexDefinition.getColumns()
+                .stream()
+                .map(e->e.getColumnNameStr().replace("`", "").toLowerCase())
+                .collect(Collectors.toList());
+
+            if(!primaryColumnNameList.contains(localPartitionColumn)){
+                throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_INDEX_TABLE_DEFINITION,
+                    String.format("Primary/Unique Key must contain local partition column: %s", localPartitionColumn));
+            }
+        }
     }
 }

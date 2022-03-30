@@ -105,12 +105,15 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLTinyIntExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuesExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterFunctionStatement;
@@ -491,9 +494,11 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public boolean visit(SQLSmallIntExpr x) {
         return true;
     }
+
     public boolean visit(SQLTinyIntExpr x) {
         return true;
     }
+
     public boolean visit(SQLBigIntExpr x) {
         return true;
     }
@@ -1048,11 +1053,11 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public boolean visit(SQLOver x) {
         return true;
     }
-    
+
     @Override
     public void endVisit(SQLKeep x) {
     }
-    
+
     @Override
     public boolean visit(SQLKeep x) {
         return true;
@@ -1479,36 +1484,30 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
         return true;
     }
 
-
     @Override
     public boolean visit(SQLTimeExpr x) {
         return true;
     }
-
 
     @Override
     public void endVisit(SQLTimeExpr x) {
 
     }
 
-
     @Override
     public boolean visit(SQLDateTimeExpr x) {
         return true;
     }
-
 
     @Override
     public void endVisit(SQLDateTimeExpr x) {
 
     }
 
-
     @Override
     public boolean visit(SQLDoubleExpr x) {
         return true;
     }
-
 
     @Override
     public void endVisit(SQLDoubleExpr x) {
@@ -1519,7 +1518,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public boolean visit(SQLFloatExpr x) {
         return true;
     }
-
 
     @Override
     public void endVisit(SQLFloatExpr x) {
@@ -1651,11 +1649,13 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     }
 
-    @Override public boolean visit(SQLPrivilegeItem x) {
+    @Override
+    public boolean visit(SQLPrivilegeItem x) {
         return false;
     }
 
-    @Override public void endVisit(SQLPrivilegeItem x) {
+    @Override
+    public void endVisit(SQLPrivilegeItem x) {
 
     }
 
@@ -1683,7 +1683,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public boolean visit(SQLAlterTableDisableLifecycle x) {
         return true;
     }
-
 
     @Override
     public void endVisit(SQLAlterTablePartition x) {
@@ -2083,15 +2082,15 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public void endVisit(SQLAlterTableRepairPartition x) {
 
     }
-    
+
     @Override
     public boolean visit(SQLSequenceExpr x) {
         return true;
     }
-    
+
     @Override
     public void endVisit(SQLSequenceExpr x) {
-        
+
     }
 
     @Override
@@ -2101,7 +2100,7 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(SQLMergeStatement x) {
-        
+
     }
 
     @Override
@@ -2111,7 +2110,7 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(MergeUpdateClause x) {
-        
+
     }
 
     @Override
@@ -2121,7 +2120,7 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(MergeInsertClause x) {
-        
+
     }
 
     @Override
@@ -2136,7 +2135,7 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public boolean visit(SQLNullConstraint x) {
-	return true;
+        return true;
     }
 
     @Override
@@ -2251,7 +2250,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public void endVisit(SQLWhileStatement x) {
 
     }
-
 
     @Override
     public boolean visit(SQLDeclareStatement x) {
@@ -2644,7 +2642,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     }
 
-
     @Override
     public boolean visit(SQLDropTableGroupStatement x) {
         return true;
@@ -2713,7 +2710,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public boolean visit(SQLShowCreateDatabaseStatement x) {
         return true;
     }
-
 
     @Override
     public void endVisit(SQLShowProcessListStatement x) {
@@ -3510,7 +3506,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
         return false;
     }
 
-
     @Override
     public void endVisit(MySqlKillStatement x) {
     }
@@ -3523,7 +3518,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     @Override
     public void endVisit(SQLDropResourceGroupStatement x) {
     }
-
 
     @Override
     public boolean visit(SQLCreateResourceGroupStatement x) {
@@ -3593,6 +3587,26 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
+    public void endVisit(DrdsAlterTableAllocateLocalPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableAllocateLocalPartition x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableExpireLocalPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableExpireLocalPartition x) {
+        return false;
+    }
+
+    @Override
     public boolean visit(DrdsAlterTableGroupMergePartition x) {
         return false;
     }
@@ -3619,6 +3633,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(DrdsAlterTableGroupExtractHotKey x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsSplitHotKey x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsSplitHotKey x) {
 
     }
 

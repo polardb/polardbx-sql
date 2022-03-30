@@ -20,13 +20,19 @@ import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.RenameTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.RenameTableJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablePreparedData;
 import org.apache.calcite.sql.SqlRenameTable;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class LogicalRenameTableHandler extends LogicalCommonDdlHandler {
 
@@ -62,13 +68,25 @@ public class LogicalRenameTableHandler extends LogicalCommonDdlHandler {
     }
 
     private DdlJob buildRenameTableJob(LogicalRenameTable logicalRenameTable, ExecutionContext executionContext) {
+        RenameTablePreparedData renameTablePreparedData = logicalRenameTable.getRenameTablePreparedData();
         DdlPhyPlanBuilder renameTableBuilder =
             RenameTableBuilder.create(logicalRenameTable.relDdl,
-                logicalRenameTable.getRenameTablePreparedData(),
+                renameTablePreparedData,
                 executionContext).build();
         PhysicalPlanData physicalPlanData = renameTableBuilder.genPhysicalPlanData();
 
-        return new RenameTableJobFactory(physicalPlanData, executionContext).create();
+        Map<String, Long> tableVersions = new HashMap<>();
+
+        tableVersions.put(renameTablePreparedData.getTableName(),
+            renameTablePreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(renameTablePreparedData.getSchemaName(), tableVersions);
+
+        ExecutableDdlJob result = new RenameTableJobFactory(physicalPlanData, executionContext).create();
+        result.addTask(validateTableVersionTask);
+        result.addTaskRelationship(validateTableVersionTask, result.getHead());
+
+        return result;
     }
 
 }

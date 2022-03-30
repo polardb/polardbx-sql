@@ -40,6 +40,7 @@ public class InformationSchemaKeyColumnUsageHandler extends BaseVirtualViewSubCl
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
+
         Map<TableKey, List<ColumnInfo>> tableKeyListMap = new HashMap<>();
 
         try (Connection connection = MetaDbUtil.getConnection()) {

@@ -44,24 +44,29 @@ public class RefreshTopologyAddMetaTask extends AlterTableGroupAddMetaTask {
 
     @Override
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        ComplexTaskOutlineRecord complexTaskOutlineRecord = new ComplexTaskOutlineRecord();
-        complexTaskOutlineRecord.setObjectName("-");
-        complexTaskOutlineRecord.setJob_id(getJobId());
-        complexTaskOutlineRecord.setTableSchema(getSchemaName());
-        complexTaskOutlineRecord.setTableGroupName(tableGroupName);
-        complexTaskOutlineRecord.setType(type);
-        complexTaskOutlineRecord.setStatus(status);
-        complexTaskOutlineRecord.setSubTask(0);
-        FailPoint.injectRandomExceptionFromHint(executionContext);
-        FailPoint.injectRandomSuspendFromHint(executionContext);
-        ComplexTaskMetaManager.insertComplexTask(complexTaskOutlineRecord, metaDbConnection);
+        for (String newPart : newPartitions) {
+            ComplexTaskOutlineRecord complexTaskOutlineRecord = new ComplexTaskOutlineRecord();
+            complexTaskOutlineRecord.setObjectName(newPart);
+            complexTaskOutlineRecord.setJob_id(getJobId());
+            complexTaskOutlineRecord.setTableSchema(getSchemaName());
+            complexTaskOutlineRecord.setTableGroupName(tableGroupName);
+            complexTaskOutlineRecord.setType(type);
+            complexTaskOutlineRecord.setStatus(status);
+            complexTaskOutlineRecord.setSubTask(0);
+            FailPoint.injectRandomExceptionFromHint(executionContext);
+            FailPoint.injectRandomSuspendFromHint(executionContext);
+            ComplexTaskMetaManager.insertComplexTask(complexTaskOutlineRecord, metaDbConnection);
+        }
 
         addNewPartitionGroup(metaDbConnection);
     }
 
     @Override
     public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        ComplexTaskMetaManager.deleteComplexTaskByJobIdAndObjName(getJobId(), schemaName, "-", metaDbConnection);
+        for (String newPart : newPartitions) {
+            ComplexTaskMetaManager
+                .deleteComplexTaskByJobIdAndObjName(getJobId(), schemaName, newPart, metaDbConnection);
+        }
         TableGroupUtils
             .deleteNewPartitionGroupFromDeltaTableByTgIDAndPartNames(tableGroupId, newPartitions, metaDbConnection);
         FailPoint.injectRandomExceptionFromHint(executionContext);

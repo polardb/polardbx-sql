@@ -357,13 +357,6 @@
   plan: |
     PhyQuery(node="optest_0000", sql="SHOW SLAVE HOSTS")
 
-# show slave status
--
-  sql: |
-    show slave status
-  plan: |
-    PhyQuery(node="optest_0000", sql="SHOW SLAVE STATUS")
-
 # show status
 -
   sql: |

@@ -35,6 +35,7 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexProgram;
 import org.apache.calcite.rex.RexProgramBuilder;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.tools.RelBuilder;
@@ -86,16 +87,24 @@ public class SemiJoinProjectTransposeRule extends RelOptRule {
     LogicalSemiJoin logicalSemiJoin = call.rel(0);
     LogicalProject project = call.rel(1);
 
+    if (project != null) {
+      for (RexNode rexNode : project.getProjects()) {
+        if (RexUtil.hasSubQuery(rexNode)) {
+          return;
+        }
+      }
+    }
+
     // Convert the LHS semi-join keys to reference the child projection
     // expression; all projection expressions must be RexInputRefs,
     // otherwise, we wouldn't have created this semi-join.
-    final List<Integer> newLeftKeys = new ArrayList<>();
-    final List<Integer> leftKeys = logicalSemiJoin.getLeftKeys();
+//    final List<Integer> newLeftKeys = new ArrayList<>();
+//    final List<Integer> leftKeys = logicalSemiJoin.getLeftKeys();
     final List<RexNode> projExprs = project.getProjects();
-    for (int leftKey : leftKeys) {
-      RexInputRef inputRef = (RexInputRef) projExprs.get(leftKey);
-      newLeftKeys.add(inputRef.getIndex());
-    }
+//    for (int leftKey : leftKeys) {
+//      RexInputRef inputRef = (RexInputRef) projExprs.get(leftKey);
+//      newLeftKeys.add(inputRef.getIndex());
+//    }
 
     // convert the semijoin condition to reflect the LHS with the project
     // pulled up

@@ -45,7 +45,21 @@ public class LocalSyncManager extends AbstractLifecycle implements ISyncManager 
     }
 
     @Override
+    public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, boolean throwExceptions) {
+        List<List<Map<String, Object>>> results = new ArrayList(1);
+        results.add(ExecUtils.resultSetToList((ResultCursor) action.sync()));
+        return results;
+    }
+
+    @Override
     public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schema, SyncScope scope) {
+        // Don't need sync scope and result handler locally.
+        return sync(action, schema);
+    }
+
+    @Override
+    public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schema, SyncScope scope,
+                                                boolean throwExceptions) {
         // Don't need sync scope and result handler locally.
         return sync(action, schema);
     }
@@ -57,7 +71,20 @@ public class LocalSyncManager extends AbstractLifecycle implements ISyncManager 
     }
 
     @Override
+    public void sync(IGmsSyncAction action, String schema, ISyncResultHandler handler, boolean throwExceptions) {
+        // Don't need sync scope and result handler locally.
+        sync(action, schema);
+    }
+
+    @Override
     public void sync(IGmsSyncAction action, String schema, SyncScope scope, ISyncResultHandler handler) {
+        // Don't need sync scope and result handler locally.
+        sync(action, schema);
+    }
+
+    @Override
+    public void sync(IGmsSyncAction action, String schema, SyncScope scope, ISyncResultHandler handler,
+                     boolean throwExceptions) {
         // Don't need sync scope and result handler locally.
         sync(action, schema);
     }

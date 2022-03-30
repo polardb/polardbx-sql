@@ -19,13 +19,19 @@ package com.alibaba.polardbx.executor.ddl.newengine.meta;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.alibaba.polardbx.common.IdGenerator;
-import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.executor.ddl.job.task.backfill.AlterTableGroupBackFillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.backfill.MoveTableBackFillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.TopologicalSorter;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -39,21 +45,25 @@ import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
+import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -66,43 +76,115 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
     private static final IdGenerator ID_GENERATOR = IdGenerator.getIdGenerator();
 
     /**
+     * Store a subJob for task
+     *
+     * @return the id of subJob
+     */
+    public long storeSubJob(SubJobTask task, DdlJob ddlJob, DdlContext ddlContext, boolean forRollback) {
+        long jobId = ID_GENERATOR.nextId();
+        ddlContext.setJobId(jobId);
+
+        try {
+            if (!forRollback) {
+                task.setSubJobId(jobId);
+                task.setState(DdlTaskState.DIRTY);
+            } else {
+                task.setRollbackSubJobId(jobId);
+            }
+
+            DdlEngineRecord jobRecord = buildJobRecord(jobId, ddlJob, ddlContext);
+            List<DdlEngineTaskRecord> taskRecords = buildTaskRecords(jobId, ddlJob);
+
+            jobRecord.taskGraph = ddlJob.serializeTasks();
+            jobRecord.responseNode = DdlHelper.buildSubJobKey(task.getTaskId());
+            DdlEngineTaskRecord parentTaskRecord = TaskHelper.toDdlEngineTaskRecord(task);
+
+            long parentJobId = task.getJobId();
+            long acquireResourceJobId = task.isParentAcquireResource() ? parentJobId : jobId;
+            storeJobImpl(ddlContext, ddlJob, jobRecord, taskRecords, parentTaskRecord, acquireResourceJobId);
+            return jobId;
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException("Failed to store subjob", e);
+        }
+    }
+
+    public long storeSubJob(long parentJobId, long parentTaskId, DdlJob ddlJob, DdlContext ddlContext, boolean forRollback){
+        DdlEngineTaskRecord taskRecord = fetchTaskRecord(parentJobId, parentTaskId);
+        return storeSubJob((SubJobTask) TaskHelper.fromDdlEngineTaskRecord(taskRecord), ddlJob, ddlContext, forRollback);
+    }
+
+    /**
      * Store DdlJob & DdlTask to metaDB
      */
     public boolean storeJob(DdlJob ddlJob, DdlContext ddlContext) {
         Long jobId = ID_GENERATOR.nextId();
+        ddlContext.setJobId(jobId);
 
         DdlEngineRecord jobRecord = buildJobRecord(jobId, ddlJob, ddlContext);
         List<DdlEngineTaskRecord> taskRecords = buildTaskRecords(jobId, ddlJob);
         jobRecord.taskGraph = ddlJob.serializeTasks();
 
-        // Execute the following operations within a transaction.
-        return new DdlEngineAccessorDelegate<Boolean>() {
+        FailPoint.inject(FailPointKey.FP_PAUSE_DDL_JOB_ONCE_CREATED, ()->{
+            jobRecord.state = DdlState.PAUSED.name();
+        });
 
-            @Override
-            protected Boolean invoke() {
-                Set<String> sharedResource = new HashSet<>(16);
-                sharedResource.add(ddlContext.getSchemaName());
-                getResourceManager().acquireResource(
-                    ddlContext.getSchemaName(),
-                    jobId,
-                    sharedResource,
-                    ddlJob.getExcludeResources());
+        return storeJobImpl(ddlContext, ddlJob, jobRecord, taskRecords, null, jobId);
+    }
 
-                int count = engineAccessor.insert(jobRecord);
-                if (CollectionUtils.size(taskRecords) > 500) {
-                    List<List<DdlEngineTaskRecord>> listList = split(taskRecords, 500);
-                    for (List<DdlEngineTaskRecord> list : listList) {
-                        engineTaskAccessor.insert(list);
-                    }
-                } else {
-                    engineTaskAccessor.insert(taskRecords);
+    // Execute the following operations within a transaction.
+    private boolean storeJobImpl(DdlContext ddlContext,
+                                 DdlJob ddlJob,
+                                 DdlEngineRecord jobRecord,
+                                 List<DdlEngineTaskRecord> taskRecords,
+                                 DdlEngineTaskRecord updateTaskRecord,
+                                 long jobId) {
+        Predicate<DdlEngineTaskRecord> isBackfill = x ->
+            x.getName().equalsIgnoreCase(MoveTableBackFillTask.getTaskName()) ||
+                x.getName().equalsIgnoreCase(AlterTableGroupBackFillTask.getTaskName());
+        long backfillCount = taskRecords.stream().filter(isBackfill).count();
+        DdlEngineStats.METRIC_DDL_JOBS_TOTAL.update(1);
+        DdlEngineStats.METRIC_DDL_TASK_TOTAL.update(taskRecords.size());
+        DdlEngineStats.METRIC_BACKFILL_TASK_TOTAL.update(backfillCount);
+
+        Function<Connection, Boolean> storeDdlRecord = (Connection connection) -> {
+            DdlEngineAccessor engineAccessor = new DdlEngineAccessor();
+            DdlEngineTaskAccessor engineTaskAccessor = new DdlEngineTaskAccessor();
+            engineAccessor.setConnection(connection);
+            engineTaskAccessor.setConnection(connection);
+
+            int count = engineAccessor.insert(jobRecord);
+            if (CollectionUtils.size(taskRecords) > 500) {
+                List<List<DdlEngineTaskRecord>> listList = split(taskRecords, 500);
+                for (List<DdlEngineTaskRecord> list : listList) {
+                    engineTaskAccessor.insert(list);
                 }
-                if (count > 0) {
-                    return true;
-                }
-                return false;
+            } else {
+                engineTaskAccessor.insert(taskRecords);
             }
-        }.execute();
+            if (updateTaskRecord != null) {
+                engineTaskAccessor.updateTask(updateTaskRecord);
+            }
+            return count > 0;
+        };
+
+        final String schemaName = ddlContext.getSchemaName();
+        Set<String> sharedResource = new HashSet<>(16);
+        addDefaultSharedResourceIfNecessary(sharedResource, ddlContext);
+
+        try {
+            DdlEngineResourceManager.startAcquiringLock(schemaName, ddlContext);
+            getResourceManager().acquireResource(
+                schemaName,
+                jobId,
+                __ -> ddlContext.isClientConnectionReset(),
+                sharedResource,
+                ddlJob.getExcludeResources(),
+                storeDdlRecord
+            );
+        }finally {
+            DdlEngineResourceManager.finishAcquiringLock(schemaName, ddlContext);
+        }
+        return true;
     }
 
     /**
@@ -124,20 +206,25 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
             ddlContext.setJobId(record.jobId);
             ddlContext.unSafeSetDdlState(DdlState.valueOf(record.state));
             ddlContext.setResponseNode(record.responseNode);
+            ddlContext.setIsSubJob(record.isSubJob());
             List<DdlEngineTaskRecord> taskRecordList = jobAndTasks.getValue();
             deSerializeTasks(ddlJob, record.taskGraph, TaskHelper.fromDdlEngineTaskRecord(taskRecordList));
             ddlJob.setMaxParallelism(record.maxParallelism);
 
-            if (StringUtils.isNotEmpty(record.resources)) {
-                Set<String> resources = new HashSet<>();
-                resources.addAll(Splitter.on(",").splitToList(record.resources));
-                ddlJob.addExcludeResources(resources);
-            }
             LOGGER.info(String.format("success restore DDL JOB: [%s]", jobId));
             return Pair.of(ddlJob, ddlContext);
         } catch (Throwable t) {
             //restoreJob error
             forceUpdateDdlState(jobId, DdlState.PAUSED);
+            throw t;
+        }
+    }
+
+    public List<DdlTask> getTasksFromMetaDB(long jobId, String name) {
+        try {
+            List<DdlEngineTaskRecord> tasks = fetchTaskRecord(jobId, name);
+            return TaskHelper.fromDdlEngineTaskRecord(tasks);
+        } catch (Throwable t) {
             throw t;
         }
     }
@@ -192,12 +279,10 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         return false;
     }
 
-    public DdlRequest buildRequest(DdlContext ddlContext) {
+    public static DdlRequest buildRequest(List<Long> jobIds, String schemaName) {
         DdlRequest ddlRequest = new DdlRequest();
 
-        List<Long> jobIds = new ArrayList<>(1);
-        jobIds.add(ddlContext.getJobId());
-        ddlRequest.setSchemaName(ddlContext.getSchemaName());
+        ddlRequest.setSchemaName(schemaName);
         ddlRequest.setJobIds(jobIds);
 
         return ddlRequest;
@@ -207,7 +292,6 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         DdlEngineRecord record = new DdlEngineRecord();
 
         record.jobId = jobId;
-        ddlContext.setJobId(record.jobId);
 
         record.ddlType = ddlContext.getDdlType().name();
         record.schemaName = ddlContext.getSchemaName();
@@ -216,7 +300,6 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         record.executionNode = ExecUtils.getLeaderKey(null);
         record.traceId = ddlContext.getTraceId();
         record.state = DdlState.QUEUED.name();
-        record.resources = Joiner.on(DdlConstants.COMMA).join(ddlJob.getExcludeResources());
         record.progress = 0;
         record.context = DdlSerializer.serializeToJSON(ddlContext);
         record.result = null;
@@ -299,4 +382,66 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
 
         return out;
     }
+
+    public boolean removeJob(long jobId) {
+        // Execute the following operations within a transaction.
+        return new DdlEngineAccessorDelegate<Boolean>() {
+
+            @Override
+            protected Boolean invoke() {
+                int subJobCount = 0;
+
+                // remove subjob cascade
+                List<SubJobTask> subjobs = fetchSubJobsRecursive(jobId, engineTaskAccessor);
+                for (SubJobTask subjob : GeneralUtil.emptyIfNull(subjobs)) {
+                    for (long subJobId : subjob.fetchAllSubJobs()) {
+                        DdlEngineRecord subJobRecord = engineAccessor.query(subJobId);
+                        validateDdlStateContains(DdlState.valueOf(subJobRecord.state), DdlState.FINISHED);
+                        subJobCount += engineAccessor.delete(subJobId);
+                        engineTaskAccessor.deleteByJobId(subJobId);
+                    }
+                }
+
+                DdlEngineRecord jobRecord = engineAccessor.query(jobId);
+                validateDdlStateContains(DdlState.valueOf(jobRecord.state), DdlState.FINISHED);
+                int count = engineAccessor.delete(jobId);
+                engineTaskAccessor.deleteByJobId(jobId);
+
+                getResourceManager().releaseResource(getConnection(), jobId);
+                DdlEngineStats.METRIC_DDL_JOBS_FINISHED.update(count + subJobCount);
+
+                return count > 0;
+            }
+        }.execute();
+    }
+
+    public int cleanUpArchive(long minutes){
+        return new DdlEngineAccessorDelegate<Integer>(){
+            @Override
+            protected Integer invoke() {
+                int count = engineAccessor.cleanUpArchive(minutes);
+                return count;
+            }
+        }.execute();
+    }
+
+    private void validateDdlStateContains(DdlState currentState, Set<DdlState> ddlStateSet){
+        Preconditions.checkNotNull(ddlStateSet);
+        Preconditions.checkNotNull(currentState);
+        if(ddlStateSet.contains(currentState)){
+            return;
+        }
+        throw new TddlNestableRuntimeException(String.format(
+            "current ddl state:[%s] is not finished", currentState.name()));
+    }
+
+    private void addDefaultSharedResourceIfNecessary(Set<String> sharedResource, DdlContext ddlContext){
+        if(ddlContext.isSubJob()){
+            return;
+        }
+        if(DdlType.needDefaultDdlShareLock(ddlContext.getDdlType())){
+            sharedResource.add(ddlContext.getSchemaName());
+        }
+    }
+
 }

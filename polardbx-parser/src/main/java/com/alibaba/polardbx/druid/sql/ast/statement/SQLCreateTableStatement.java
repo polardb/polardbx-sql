@@ -65,6 +65,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
     protected SQLName                          tablespace;
     protected SQLPartitionBy                   partitioning;
+    protected SQLPartitionBy                   localPartitioning;
     protected SQLExpr                          storedAs;
     protected SQLExpr                          location;
 
@@ -113,6 +114,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
         this.acceptChild(v, tablespace);
         this.acceptChild(v, partitioning);
+        this.acceptChild(v, localPartitioning);
         this.acceptChild(v, storedAs);
         this.acceptChild(v, location);
 
@@ -370,12 +372,24 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         return partitioning;
     }
 
+    public SQLPartitionBy getLocalPartitioning() {
+        return this.localPartitioning;
+    }
+
     public void setPartitioning(SQLPartitionBy partitioning) {
         if (partitioning != null) {
             partitioning.setParent(this);
         }
 
         this.partitioning = partitioning;
+    }
+
+    public void setLocalPartitioning(SQLPartitionBy localPartitioning) {
+        if (localPartitioning != null) {
+            localPartitioning.setParent(this);
+        }
+
+        this.localPartitioning = localPartitioning;
     }
 
     @Override
@@ -846,6 +860,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         for (int i = tableElementList.size() - 1; i >= 0; i--) {
             SQLTableElement e = tableElementList.get(i);
             if (e instanceof SQLUniqueConstraint) {
+                //ignore primary key
+                if (e instanceof SQLPrimaryKey) {
+                    continue;
+                }
                 SQLUniqueConstraint unique = (SQLUniqueConstraint) e;
                 if (unique.getName().nameHashCode64() == indexNameHashCode64) {
                     tableElementList.remove(i);
@@ -1234,6 +1252,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
         if (partitioning != null) {
             x.setPartitioning(partitioning.clone());
+        }
+
+        if (localPartitioning != null) {
+            x.setLocalPartitioning(localPartitioning.clone());
         }
 
         if (storedAs != null) {

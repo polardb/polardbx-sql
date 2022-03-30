@@ -53,6 +53,9 @@ public class DdlMetaLogUtil {
         ddlTables.add(GmsSystemTables.DDL_JOBS);
         ddlTables.add(GmsSystemTables.DDL_ENGINE);
         ddlTables.add(GmsSystemTables.DDL_ENGINE_TASK);
+        ddlTables.add(GmsSystemTables.DDL_ENGINE_ARCHIVE);
+        ddlTables.add(GmsSystemTables.DDL_ENGINE_TASK_ARCHIVE);
+        ddlTables.add(GmsSystemTables.TABLE_LOCAL_PARTITIONS);
         ddlTables.add(GmsSystemTables.READ_WRITE_LOCK);
         ddlTables.add(GmsSystemTables.RECYCLE_BIN);
         ddlTables.add(GmsSystemTables.SEQUENCE);

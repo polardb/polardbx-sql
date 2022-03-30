@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -33,6 +34,7 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -64,6 +66,11 @@ public class DropTableGroupHandler extends HandlerCommon {
         if (schemaName == null) {
             schemaName = executionContext.getSchemaName();
         }
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (!isNewPart) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                "can't execute the drop tablegroup command in non-partitioning database");
+        }
         String tableGroupName = logicalDropTableGroup.getTableGroupName();
         boolean isIfExists = logicalDropTableGroup.isIfExists();
         TableGroupInfoManager tableGroupInfoManager =
@@ -82,12 +89,15 @@ public class DropTableGroupHandler extends HandlerCommon {
                 partitionGroupAccessor.setConnection(connection);
                 tablePartitionAccessor.setConnection(connection);
                 List<TableGroupRecord>
-                    tableGroupRecordList = tableGroupAccessor.getTableGroupsBySchemaAndName(schemaName, tableGroupName);
+                    tableGroupRecordList =
+                    tableGroupAccessor.getTableGroupsBySchemaAndName(schemaName, tableGroupName, false);
                 if (GeneralUtil.isEmpty(tableGroupRecordList)) {
                     if (!isIfExists) {
                         throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                             String.format("drop tablegroup error, tablegroup[%s] is not exist", tableGroupName));
                     } else {
+                        SyncManagerHelper
+                            .sync(new TableGroupSyncAction(schemaName, tableGroupName));
                         return new AffectRowCursor(new int[] {1});
                     }
                 }

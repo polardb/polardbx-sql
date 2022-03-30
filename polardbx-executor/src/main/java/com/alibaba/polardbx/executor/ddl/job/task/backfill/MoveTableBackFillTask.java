@@ -69,4 +69,8 @@ public class MoveTableBackFillTask extends BaseBackfillTask {
         ExecutorHelper.execute(backFillPlan, executionContext);
     }
 
+    public static String getTaskName() {
+        return "MoveTableBackFillTask";
+    }
+
 }

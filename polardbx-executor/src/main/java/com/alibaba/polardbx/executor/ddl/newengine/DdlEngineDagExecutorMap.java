@@ -39,24 +39,19 @@ public class DdlEngineDagExecutorMap {
     private static final Map<String, Map<Long, Optional<DdlEngineDagExecutor>>> DDL_DAG_EXECUTOR_MAP =
         new ConcurrentHashMap<>();
 
-    @Deprecated
-    private static final Map<String, DdlJobResult> DDL_JOB_LAST_RESULT = new ConcurrentHashMap<>();
-
     public static void register(String schemaName) {
         DDL_DAG_EXECUTOR_MAP.put(schemaName.toLowerCase(), new ConcurrentHashMap<>());
-        DDL_JOB_LAST_RESULT.remove(schemaName.toLowerCase());
     }
 
     public static void deregister(String schemaName) {
         DDL_DAG_EXECUTOR_MAP.remove(schemaName.toLowerCase());
-        DDL_JOB_LAST_RESULT.remove(schemaName.toLowerCase());
     }
 
     /**
      * make sure:
      * never override ddl job in DDL_DAG_EXECUTOR_MAP
      */
-    public static boolean restore(String schemaName, long jobId, ExecutionContext executionContext) {
+    static boolean restore(String schemaName, long jobId, ExecutionContext executionContext) {
         if (contains(schemaName, jobId)) {
             return false;
         }
@@ -72,7 +67,7 @@ public class DdlEngineDagExecutorMap {
             map.put(jobId, Optional.empty());
         }
         try {
-            DdlEngineDagExecutor dagExecutor = new DdlEngineDagExecutor(jobId, executionContext);
+            DdlEngineDagExecutor dagExecutor = DdlEngineDagExecutor.create(jobId, executionContext);
             map.put(jobId, Optional.of(dagExecutor));
             return true;
         } catch (Throwable t) {
@@ -84,7 +79,7 @@ public class DdlEngineDagExecutorMap {
         }
     }
 
-    public static void remove(String schemaName, long jobId) {
+    static void remove(String schemaName, long jobId) {
         Map<Long, Optional<DdlEngineDagExecutor>> map = DDL_DAG_EXECUTOR_MAP.get(schemaName.toLowerCase());
         if (map == null) {
             return;
@@ -123,23 +118,13 @@ public class DdlEngineDagExecutorMap {
         return result;
     }
 
-    @Deprecated
-    public static DdlJobResult getLastDdlJobResult(String schemaName) {
-        return DDL_JOB_LAST_RESULT.get(schemaName.toLowerCase());
-    }
-
-    @Deprecated
-    public static void setLastDdlJobResult(String schemaName, DdlJobResult ddlJobResult) {
-        DDL_JOB_LAST_RESULT.put(schemaName.toLowerCase(), ddlJobResult);
-    }
-
     public static class DdlEngineDagExecutionInfo {
 
         public static DdlEngineDagExecutionInfo create(DdlEngineDagExecutor dagExecutor) {
             DdlEngineDagExecutionInfo info = new DdlEngineDagExecutionInfo();
             info.jobId = dagExecutor.getJobId();
             info.schemaName = dagExecutor.getSchemaName();
-            info.resources = dagExecutor.getResources();
+            info.ddlStmt = dagExecutor.getDdlStmt();
             info.state = dagExecutor.getDdlState();
             info.interrupted = Boolean.toString(dagExecutor.isInterrupted());
             return info;
@@ -147,7 +132,7 @@ public class DdlEngineDagExecutorMap {
 
         public long jobId;
         public String schemaName;
-        public String resources;
+        public String ddlStmt;
         public DdlState state = null;
         public String interrupted = Boolean.FALSE.toString();
 

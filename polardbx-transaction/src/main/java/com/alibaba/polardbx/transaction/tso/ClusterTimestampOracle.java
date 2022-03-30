@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
+import com.alibaba.polardbx.rpc.XLog;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import java.sql.Connection;
@@ -96,7 +97,8 @@ public class ClusterTimestampOracle extends AbstractLifecycle implements ITimest
             taskQueue.clear();
         }
 
-        final int fetchTimeout = 10000; // 10s
+        final int totalFetchTimeout = 10000; // 10s
+        final int fetchTimeout = 2000; // 2s
         long tsoBase = 0;
         Exception exception = null;
 
@@ -140,10 +142,18 @@ public class ClusterTimestampOracle extends AbstractLifecycle implements ITimest
                     }
                 }
             } catch (Exception e) {
+                XLog.XLogLogger.error(e);
                 // Retry if HA occurs and not timeout.
-                if (e instanceof SQLException || e.getMessage().contains("Failed to get TSO") || e.getMessage()
-                    .contains("channel inactive")) {
-                    if (System.currentTimeMillis() - startTime < fetchTimeout) {
+                if (e instanceof SQLException ||
+                    (e.getMessage() != null &&
+                        (e.getMessage().contains("Failed to get TSO") ||
+                            e.getMessage().contains("channel inactive") ||
+                            e.getMessage().contains("previous unfinished") ||
+                            e.getMessage().contains("timeout") ||
+                            e.getMessage().contains("Client removed") ||
+                            e.getMessage().contains("closed") ||
+                            e.getMessage().contains("EOF")))) {
+                    if (System.currentTimeMillis() - startTime < totalFetchTimeout) {
                         continue;
                     }
                 }

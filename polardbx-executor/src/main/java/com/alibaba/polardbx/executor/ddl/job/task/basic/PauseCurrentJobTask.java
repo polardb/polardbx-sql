@@ -63,6 +63,7 @@ public class PauseCurrentJobTask extends BaseDdlTask {
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         executeImpl(metaDbConnection, executionContext);
+        updateSupportedCommands(false, true, metaDbConnection);
     }
 
     @Override

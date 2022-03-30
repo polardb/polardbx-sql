@@ -21,9 +21,11 @@ import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
+import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.InstanceRole;
+import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.InstanceRoleManager;
@@ -40,6 +42,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -47,14 +50,20 @@ import com.alibaba.polardbx.gms.topology.InstLockAccessor;
 import com.alibaba.polardbx.gms.topology.InstLockRecord;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.matrix.jdbc.TDataSource;
+import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class GmsClusterLoader extends ClusterLoader {
 
@@ -300,8 +309,7 @@ public class GmsClusterLoader extends ClusterLoader {
         if (!appLoader.isInited()) {
             appLoader.init();
         }
-        // instance区启用,开启端口引入流量
-        CobarServer.getInstance().online();
+
 
         CobarServer.getInstance().getConfig().setInstanceId(this.instanceId);
         CobarServer.getInstance().getConfig().getSystem().setInstanceId(this.instanceId);
@@ -311,6 +319,42 @@ public class GmsClusterLoader extends ClusterLoader {
         // this so that we can get correct instance id in subsequent
         // MatrixConfigHolder.doInit().
         ((GmsAppLoader) appLoader).initDbUserPrivsInfo();
+
+        warmingLogicalDb();
+
+        // open the server port and accept query now!
+        CobarServer.getInstance().online();
+    }
+
+    protected void warmingLogicalDb() {
+        if (systemConfig.getEnableLogicalDbWarmmingUp()) {
+            // Auto load all schemas here
+            ThreadPoolExecutor threadPool = null;
+            try {
+                int poolSize = systemConfig.getLogicalDbWarmmingUpExecutorPoolSize();
+                threadPool = ExecutorUtil.createExecutor("LogicalDb-Warmming-Up-Executor", poolSize);
+                List<Future> futures = new ArrayList<>();
+
+                for (SchemaConfig schema : appLoader.getSchemas().values()) {
+                    final TDataSource ds = schema.getDataSource();
+                    futures.add(threadPool.submit(() -> {
+                        long startTime = System.nanoTime();
+                        Throwable ex = TDataSourceInitUtils.initDataSource(ds);
+                        if (ex == null) {
+                            logger.info("Init schema '{}' costs {} secs", schema.getName(),
+                                (System.nanoTime() - startTime) / 1e9);
+                        } else {
+                            logger.warn("Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(),
+                                ex);
+                        }
+                    }));
+                }
+                AsyncUtils.waitAll(futures);
+            } finally {
+                threadPool.shutdown();
+            }
+
+        }
     }
 
     public void loadProperties(String instId) {
@@ -338,6 +382,9 @@ public class GmsClusterLoader extends ClusterLoader {
         Map<String, DbInfoRecord> newAddedDbInfoMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         Map<String, DbInfoRecord> newRemovedDbInfoMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         DbInfoManager.getInstance().loadDbInfoFromMetaDb(newAddedDbInfoMap, newRemovedDbInfoMap);
+
+        // reload DbGroupManager
+        DbGroupInfoManager.getInstance().onDbInfoChange(newAddedDbInfoMap, newRemovedDbInfoMap);
 
         // Find all db that are added
         Map<String, DbInfoRecord> dbInfoToBeLoadMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);

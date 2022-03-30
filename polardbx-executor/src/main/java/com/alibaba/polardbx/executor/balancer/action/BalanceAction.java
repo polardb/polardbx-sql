@@ -45,8 +45,7 @@ public interface BalanceAction {
 
     /**
      * Convert to a ddl job
+     * Which means this action could not be executed directly, but execute as a ddl-job
      */
-    default ExecutableDdlJob toDdlJob(ExecutionContext ec) {
-        return null;
-    }
+    ExecutableDdlJob toDdlJob(ExecutionContext ec);
 }

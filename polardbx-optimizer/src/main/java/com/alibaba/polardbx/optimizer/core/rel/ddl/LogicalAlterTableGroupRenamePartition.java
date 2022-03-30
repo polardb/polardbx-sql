@@ -16,24 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.rel.ddl.AlterTableGroupMergePartition;
+import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
-import org.apache.calcite.sql.SqlAlterTableGroupMergePartition;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.util.Util;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import org.apache.calcite.sql.SqlAlterTableGroupRenamePartition;
 
 public class LogicalAlterTableGroupRenamePartition extends BaseDdlOperation {
+
+    private AlterTableGroupRenamePartitionPreparedData preparedData;
 
     public LogicalAlterTableGroupRenamePartition(DDL ddl) {
         super(ddl);
@@ -43,4 +34,20 @@ public class LogicalAlterTableGroupRenamePartition extends BaseDdlOperation {
         return new LogicalAlterTableGroupRenamePartition(ddl);
     }
 
+    public void prepareData() {
+        preparedData = new AlterTableGroupRenamePartitionPreparedData();
+        AlterTableGroupRenamePartition alterTableGroupRenamePartition = (AlterTableGroupRenamePartition) relDdl;
+        String tableGroupName = alterTableGroupRenamePartition.getTableGroupName();
+        SqlAlterTableGroup sqlAlterTableGroup = (SqlAlterTableGroup) alterTableGroupRenamePartition.getAst();
+        assert sqlAlterTableGroup.getAlters().size() == 1;
+        SqlAlterTableGroupRenamePartition sqlAlterTableGroupRenamePartition =
+            (SqlAlterTableGroupRenamePartition) sqlAlterTableGroup.getAlters().get(0);
+        preparedData.setSchemaName(schemaName);
+        preparedData.setChangePartitionsPair(sqlAlterTableGroupRenamePartition.getChangePartitionsPair());
+        preparedData.setTableGroupName(tableGroupName);
+    }
+
+    public AlterTableGroupRenamePartitionPreparedData getPreparedData() {
+        return preparedData;
+    }
 }

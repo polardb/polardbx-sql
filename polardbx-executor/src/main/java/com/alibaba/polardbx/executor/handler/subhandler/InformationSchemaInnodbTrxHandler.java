@@ -16,15 +16,14 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
-import com.alibaba.polardbx.executor.sync.ISyncAction;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaInnodbTrx;
@@ -34,12 +33,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -47,17 +43,6 @@ import java.util.stream.Collectors;
  * @author dylan
  */
 public class InformationSchemaInnodbTrxHandler extends BaseVirtualViewSubClassHandler {
-
-    private static Class fetchAllTransSyncActionClass;
-
-    static {
-        try {
-            fetchAllTransSyncActionClass =
-                Class.forName("com.alibaba.polardbx.transaction.sync.FetchAllTransSyncAction");
-        } catch (ClassNotFoundException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
-        }
-    }
 
     public InformationSchemaInnodbTrxHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
@@ -72,9 +57,9 @@ public class InformationSchemaInnodbTrxHandler extends BaseVirtualViewSubClassHa
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         Set<Long> processedTranId = new HashSet<>();
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
-        TransInfo transInfo = new TransInfo(schemaNames);
+        TrxLookupSet lookupSet = TransactionUtils.getTrxLookupSet(schemaNames);
 
-        Map<String, List<TGroupDataSource>> instId2GroupList = virtualViewHandler.getInstId2GroupList(schemaNames);
+        Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(schemaNames);
 
         for (List<TGroupDataSource> groupDataSourceList : instId2GroupList.values()) {
 
@@ -120,23 +105,23 @@ public class InformationSchemaInnodbTrxHandler extends BaseVirtualViewSubClassHa
                     Long trx_is_read_only = rs.getLong("trx_is_read_only");
                     Long trx_autocommit_non_locking = rs.getLong("trx_autocommit_non_locking");
 
-                    Long tranId = transInfo.mysqlConnId2PolarDbXTranId(groupNameList, trx_mysql_thread_id);
+                    Long tranId = lookupSet.getTransactionId(groupNameList, trx_mysql_thread_id);
                     if (tranId == null) {
                         continue;
                     }
 
-                    String sql = transInfo.tranId2PolarDbXSql(tranId);
+                    String sql = lookupSet.getSql(tranId);
 
                     if (processedTranId.add(tranId)) {
                         cursor.addRow(new Object[] {
                             Long.toHexString(tranId),
                             trx_state,
-                            transInfo.tranId2StartTime(tranId) != null ?
-                                new Timestamp(transInfo.tranId2StartTime(tranId)) : trx_started,
+                            lookupSet.getStartTime(tranId) != null ?
+                                new Timestamp(lookupSet.getStartTime(tranId)) : trx_started,
                             trx_requested_lock_id,
                             trx_wait_started,
                             trx_weight,
-                            transInfo.tranId2PolarDbXFrontendConnId(tranId),
+                            lookupSet.getFrontendConnId(tranId),
                             trx_query != null ? sql : null,
                             trx_operation_state,
                             trx_tables_in_use,
@@ -167,137 +152,6 @@ public class InformationSchemaInnodbTrxHandler extends BaseVirtualViewSubClassHa
         return cursor;
     }
 
-    public static class TransInfo {
-
-        LookupSet lookupSet;
-
-        HashMap<Long, String> tran2Sql = new HashMap<>();
-
-        HashMap<Long, Long> tran2StartTime = new HashMap<>();
-
-        public TransInfo(Collection<String> schemaNames) {
-            if (schemaNames == null || schemaNames.isEmpty()) {
-                return;
-            }
-
-            HashMap<GroupConnPair, Long> connGroup2Tran = new HashMap<>();
-            HashMap<Long, Long> tran2FrontendConnId = new HashMap<>();
-
-            for (String schemaName : schemaNames) {
-                ISyncAction fetchAllTransSyncAction;
-                try {
-                    fetchAllTransSyncAction =
-                        (ISyncAction) fetchAllTransSyncActionClass.getConstructor(String.class, boolean.class)
-                            .newInstance(schemaName, true);
-                } catch (Exception e) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
-                }
-
-                final List<List<Map<String, Object>>> results =
-                    SyncManagerHelper.sync(fetchAllTransSyncAction, schemaName);
-
-                for (List<Map<String, Object>> result : results) {
-                    if (result == null) {
-                        continue;
-                    }
-                    for (Map<String, Object> row : result) {
-                        final Long transId = (Long) row.get("TRANS_ID");
-                        final String group = (String) row.get("GROUP");
-                        final Long connId = (Long) row.get("CONN_ID");
-                        final Long frontendConnId = (Long) row.get("FRONTEND_CONN_ID");
-                        final Long startTime = (Long) row.get("START_TIME");
-                        final String sql = (String) row.get("SQL");
-
-                        GroupConnPair groupConnPair = new GroupConnPair(group, connId);
-                        connGroup2Tran.put(groupConnPair, transId);
-                        tran2FrontendConnId.put(transId, frontendConnId);
-                        tran2Sql.put(transId, sql);
-                        tran2StartTime.put(transId, startTime);
-                    }
-                }
-            }
-
-            lookupSet = new LookupSet(connGroup2Tran, tran2FrontendConnId);
-        }
-
-        public Long mysqlConnId2PolarDbXTranId(String group, Long connId) {
-            return lookupSet.connGroup2Tran.get(new GroupConnPair(group, connId));
-        }
-
-        public Long tranId2PolarDbXFrontendConnId(Long tranId) {
-            return lookupSet.tran2FrontendConnId.get(tranId);
-        }
-
-        public Long mysqlConnId2PolarDbXTranId(Collection<String> groupNameList, Long connId) {
-            Long tranId = null;
-            for (String groupName : groupNameList) {
-                tranId = this.mysqlConnId2PolarDbXTranId(groupName, connId);
-                if (tranId != null) {
-                    break;
-                }
-            }
-            return tranId;
-        }
-
-        public String tranId2PolarDbXSql(Long tranId) {
-            return tran2Sql.get(tranId);
-        }
-
-        public Long tranId2StartTime(Long tranId) {
-            return tran2StartTime.get(tranId);
-        }
-
-        public Set<Long> allTranId() {
-            return lookupSet.tran2FrontendConnId.keySet();
-        }
-    }
-
-    public static class GroupConnPair {
-        final private String group;
-        final private long connId;
-
-        public GroupConnPair(String group, long connId) {
-            this.group = group;
-            this.connId = connId;
-        }
-
-        public String getGroup() {
-            return group;
-        }
-
-        public long getConnId() {
-            return connId;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) {
-                return true;
-            }
-            if (o == null || getClass() != o.getClass()) {
-                return false;
-            }
-            GroupConnPair that = (GroupConnPair) o;
-            return connId == that.connId &&
-                group.equals(that.group);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(group, connId);
-        }
-    }
-
-    public static class LookupSet {
-        public HashMap<GroupConnPair, Long> connGroup2Tran;
-        public HashMap<Long, Long> tran2FrontendConnId;
-
-        public LookupSet(HashMap<GroupConnPair, Long> connGroup2Tran,
-                         HashMap<Long, Long> tran2FrontendConnId) {
-            this.connGroup2Tran = connGroup2Tran;
-            this.tran2FrontendConnId = tran2FrontendConnId;
-        }
-    }
 }
 
 

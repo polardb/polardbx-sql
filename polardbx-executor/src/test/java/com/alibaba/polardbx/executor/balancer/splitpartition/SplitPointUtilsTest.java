@@ -61,7 +61,7 @@ public class SplitPointUtilsTest {
         SearchDatumInfo hashedResult = SearchDatumInfo.createFromHashCode(-585273832481696521L);
         SearchDatumInfo originResult = SearchDatumInfo.createFromField(field);
         SearchDatumInfo yearResult = SearchDatumInfo.createFromHashCode(2021);
-        SearchDatumInfo hashedYearResult = SearchDatumInfo.createFromHashCode(68493304647613789L);
+        SearchDatumInfo hashedYearResult = SearchDatumInfo.createFromHashCode(54516667770174486L);
         SearchDatumInfo result4 =
             SearchDatumInfo.createFromHashCodes(new Long[] {-585273832481696521L, -585273832481696521L});
 

@@ -17,10 +17,14 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.google.common.collect.HashMultiset;
+import com.google.common.collect.Multiset;
+import com.google.common.collect.TreeMultiset;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -28,7 +32,9 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rex.RexNode;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class CBOPushJoinRule extends PushJoinRule {
     public CBOPushJoinRule(RelOptRuleOperand operand, String description) {
@@ -57,6 +63,25 @@ public class CBOPushJoinRule extends PushJoinRule {
         RexNode joinCondition = join.getCondition();
         if (joinCondition.isAlwaysTrue() || joinCondition.isAlwaysFalse()) {
             return;
+        }
+
+        // this is a greedy pruning, may not find the optimal plan
+        // one may set CBO_RESTRICT_PUSH_JOIN_LIMIT to -1 to disable the pruning
+        // or increase CBO_RESTRICT_PUSH_JOIN_COUNT to postpone the pruning
+        if (PlannerContext.getPlannerContext(call).getRestrictCboPushJoin()) {
+            if (leftView.getSchemaName().equalsIgnoreCase(rightView.getSchemaName())) {
+                Multiset<String> tables = TreeMultiset.create();
+                tables.add(leftView.getSchemaName());
+                tables.addAll(leftView.getTableNames());
+                tables.addAll(rightView.getTableNames());
+                StringBuilder sb = new StringBuilder();
+                for (String table : tables) {
+                    sb.append(table).append(" ");
+                }
+                if (!PlannerContext.getPlannerContext(call).addTableList(sb.toString())) {
+                    return;
+                }
+            }
         }
         tryPushJoin(call, join, leftView, rightView, joinCondition);
     }

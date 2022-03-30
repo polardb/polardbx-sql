@@ -16,8 +16,18 @@
 
 package com.alibaba.polardbx.planner.common;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMap.Builder;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.Group;
@@ -45,7 +55,6 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableRecord;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.SimpleSchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
@@ -91,6 +100,7 @@ import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
@@ -101,6 +111,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql2rel.SqlToRelConverter;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
+import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.junit.Test;
@@ -151,7 +162,19 @@ public abstract class BasePlannerTest {
 
     private Set<String> ddlFlag = Sets.newHashSet();
 
+    // a map maps unit test name to it's sql, ddl statistics and config
+    private static Map<Class, Map<String, Object>>totalMap = new HashMap<>();
+
     private Map<String, Object> statisticMaps = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
+    protected Map<String, Object> configMaps = new HashMap<>();
+    /**
+     * it is ashamed that we use such a nasty map
+     *
+     * explain {schema->{  tableName->{statistics, {     column, info}}}}
+     */
+    private Map<String, Map<String, Map<String, List<Pair<String, Object>>>>> statisticsClassifier =
+        new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
     private String caseName;
 
@@ -159,9 +182,9 @@ public abstract class BasePlannerTest {
 
     private String sql;
 
-    private int sqlIndex;
+    protected int sqlIndex;
 
-    private String lineNum;
+    protected String lineNum;
 
     private String expect;
 
@@ -180,6 +203,7 @@ public abstract class BasePlannerTest {
     protected int partialAggBucketThreshold = -1;
     protected boolean enableMpp = false;
     protected boolean storageSupportsBloomFilter = false;
+    protected boolean storageUsingXxHashInBloomFilter = false;
     protected boolean forceWorkloadTypeAP = false;
     protected int inValuesThread = -1;
     protected SqlType sqlType;
@@ -225,11 +249,17 @@ public abstract class BasePlannerTest {
     }
 
     public void initTestEnv() {
+        loadConfig();
         initBasePlannerTestEnv();
         initExecutionContext();
-        initAppNameConfig(getAppName());
+
         loadDdl();
-        loadStatistic();
+        try {
+            loadStatistic();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        initAppNameConfig(getAppName());
         prepareSchemaByDdl();
     }
 
@@ -255,7 +285,8 @@ public abstract class BasePlannerTest {
                 if (file.getName().startsWith(clazz.getSimpleName() + ".") && file.getName().endsWith(".yml")) {
                     if (file.getName().equals(clazz.getSimpleName() + ".ddl.yml")
                         || file.getName().equals(clazz.getSimpleName() + ".outline.yml")
-                        || file.getName().equals(clazz.getSimpleName() + ".statistic.yml")) {
+                        || file.getName().equals(clazz.getSimpleName() + ".statistic.yml")
+                        || file.getName().equals(clazz.getSimpleName() + ".config.yml")) {
                         continue;
                     }
 
@@ -328,8 +359,20 @@ public abstract class BasePlannerTest {
             OptimizerContext.setContext(context);
             return;
         }
-        context = initOptiContext(appName);
+        String key = appName.equals(getAppName()) ? "defaltxxAPPName.isNew" : appName + ".isNew";
+        if (configMaps.containsKey(key)) {
+            useNewPartDb = (boolean) configMaps.get(key);
+            configMaps.remove(key);
+        }
+        key = appName.equals(getAppName()) ? "defaltxxAPPName.dbNumber" : appName + ".dbNumber";
+        int dbNumber = 4;
+        if (configMaps.containsKey(key)) {
+            dbNumber = ((Number) configMaps.get(key)).intValue();
+            configMaps.remove(key);
+        }
+        context = initOptiContext(appName, dbNumber);
         appNameOptiContextMaps.put(appName, context);
+        OptimizerHelper.clear();
         OptimizerHelper.init(new IServerConfigManager() {
             @Override
             public Object getAndInitDataSourceByDbName(String dbName) {
@@ -345,12 +388,25 @@ public abstract class BasePlannerTest {
             }
 
             @Override
-            public void restoreDDL(String schemaName, Long jobId) {
+            public DdlContext restoreDDL(String schemaName, Long jobId) {
+                return null;
             }
+
+            @Override
+            public long submitRebalanceDDL(String schemaName, String sql) {
+                return 0;
+            }
+
+            @Override
+            public long submitSubDDL(String schemaName, long parentJobId, long parentTaskId, boolean forRollback,
+                                     String sql) {
+                return 0;
+            }
+
         });
     }
 
-    public OptimizerContext initOptiContext(String appName) {
+    public OptimizerContext initOptiContext(String appName, int dbNumber) {
         OptimizerContext context = new OptimizerContext(appName);
         PartitionInfoManager partInfoMgr = new PartitionInfoManager(appName, appName, true);
         TableGroupInfoManager tableGroupInfoManager = new TableGroupInfoManager(appName);
@@ -362,10 +418,13 @@ public abstract class BasePlannerTest {
         TddlRuleManager rule = new TddlRuleManager(tddlRule, partInfoMgr, tableGroupInfoManager, appName);
 
         List<Group> groups = new LinkedList<>();
-        groups.add(fakeGroup(appName, appName + "_0000"));
-        groups.add(fakeGroup(appName, appName + "_0001"));
-        groups.add(fakeGroup(appName, appName + "_0002"));
-        groups.add(fakeGroup(appName, appName + "_0003"));
+        for (int i = 0; i < dbNumber; i++) {
+            groups.add(fakeGroup(appName, appName + String.format("_%04d",i)));
+        }
+//        groups.add(fakeGroup(appName, appName + "_0000"));
+//        groups.add(fakeGroup(appName, appName + "_0001"));
+//        groups.add(fakeGroup(appName, appName + "_0002"));
+//        groups.add(fakeGroup(appName, appName + "_0003"));
 
         Matrix matrix = new Matrix();
         matrix.setGroups(groups);
@@ -386,12 +445,10 @@ public abstract class BasePlannerTest {
         context.setPartitioner(new Partitioner(tddlRule, context));
 
         OptimizerContext.loadContext(context);
+
         StatisticManager statisticManager = new StatisticManager(appName,
-            null,
-            null,
-            null,
-            null,
-            new HashMap<>());
+            new MockStatisticDatasource(appName, statisticsClassifier.get(appName), ROW_COUNT));
+        statisticManager.init();
 
         context.setStatisticManager(statisticManager);
 
@@ -554,74 +611,13 @@ public abstract class BasePlannerTest {
         }
 
         StatisticManager statisticManager = appNameOptiContextMaps.get(appName).getStatisticManager();
-
-        // init Schema info
-        long rowCount = defaultRowCount;
-        if (statisticMaps != null && statisticMaps.get(logicalTableName) != null) {
-            rowCount = ((Number) statisticMaps.get(logicalTableName)).longValue();
-        }
-
-        statisticManager.setRowCount(logicalTableName, rowCount);
-
+        // for Forwards Compatibility where we have 'table.sampleRate=xxx'
         // sampleRate
         if (statisticMaps.get(logicalTableName + ".sampleRate") != null) {
             Number sampleRate = (Number) statisticMaps.get(logicalTableName + ".sampleRate");
             if (sampleRate != null) {
                 statisticManager.getCacheLine(logicalTableName)
                     .setSampleRate(sampleRate.floatValue());
-            }
-        }
-
-        for (ColumnMeta columnMeta : tm.getAllColumns()) {
-            String columnName = columnMeta.getName().toLowerCase();
-
-            // cardinality
-            if (statisticMaps.get(logicalTableName + "." + columnName + ".cardinality") != null) {
-                Number columnNdv =
-                    (Number) statisticMaps.get(logicalTableName + "." + columnName + ".cardinality");
-                if (columnNdv != null) {
-                    statisticManager.getCacheLine(logicalTableName)
-                        .setCardinality(columnName, columnNdv.longValue());
-                }
-            }
-
-            // nullCount
-            if (statisticMaps.get(logicalTableName + "." + columnName + ".nullCount") != null) {
-                Number nullCount = (Number) statisticMaps.get(logicalTableName + "." + columnName +
-                    ".nullCount");
-                if (nullCount != null) {
-                    statisticManager.getCacheLine(logicalTableName)
-                        .setNullCount(columnName, nullCount.longValue());
-                }
-            }
-
-            // histogram
-            if (statisticMaps.get(logicalTableName + "." + columnName + ".histogram") != null) {
-                Map<String, Object> histMap =
-                    (Map<String, Object>) statisticMaps.get(logicalTableName + "." + columnName +
-                        ".histogram");
-
-                JSONObject histogramJson = new JSONObject();
-                histogramJson.put("type", histMap.get("type"));
-                histogramJson.put("maxBucketSize", histMap.get("maxBucketSize"));
-                histogramJson.put("sampleRate", histMap.get("sampleRate"));
-                JSONArray bucketsJsonArray = new JSONArray();
-                histogramJson.put("buckets", bucketsJsonArray);
-
-                for (Map<String, Object> bucketMap : (List<Map<String, Object>>) histMap.get("buckets")) {
-                    JSONObject bucketJson = new JSONObject();
-                    bucketJson.put("count", bucketMap.get("count"));
-                    bucketJson.put("ndv", bucketMap.get("ndv"));
-                    bucketJson.put("preSum", bucketMap.get("preSum"));
-                    bucketJson.put("upper", bucketMap.get("upper"));
-                    bucketJson.put("lower", bucketMap.get("lower"));
-                    bucketsJsonArray.add(bucketJson);
-                }
-                Histogram histogram = Histogram.deserializeFromJson(histogramJson.toJSONString());
-                if (histogram != null) {
-                    statisticManager.getCacheLine(logicalTableName)
-                        .setHistogram(columnName, histogram);
-                }
             }
         }
     }
@@ -643,7 +639,7 @@ public abstract class BasePlannerTest {
         ToDrdsRelVisitor toDrdsRelVisitor = new ToDrdsRelVisitor(validatedNode, plannerContext);
         RelNode drdsRelNode = relNode.accept(toDrdsRelVisitor);
         logicalCreateTable = (LogicalCreateTable) drdsRelNode;
-        logicalCreateTable.prepareData();
+        logicalCreateTable.prepareData(new ExecutionContext());
 
         PartitionInfo partitionInfo =
             buildPartitionInfoByLogCreateTbl(logicalCreateTable, plannerContext.getExecutionContext());
@@ -678,7 +674,7 @@ public abstract class BasePlannerTest {
         ToDrdsRelVisitor toDrdsRelVisitor = new ToDrdsRelVisitor(validatedNode, plannerContext);
         RelNode drdsRelNode = relNode.accept(toDrdsRelVisitor);
         logicalCreateTable = (LogicalCreateTable) drdsRelNode;
-        logicalCreateTable.prepareData();
+        logicalCreateTable.prepareData(new ExecutionContext());
 
         ConfigDataMode.setConfigServerMode(mode);
 
@@ -940,44 +936,137 @@ public abstract class BasePlannerTest {
 
     }
 
-    @SuppressWarnings("unchecked")
-    private void loadDdl() {
-        String fileName = String.format("%s.ddl.yml", this.getClass().getSimpleName());
+    private void loadConfig() {
+        if (totalMap.get(this.getClass()) == null) {
+            String fileName = String.format("%s.config.yml", this.getClass().getSimpleName());
 
-        InputStream in = this.getClass().getResourceAsStream(fileName);
-
-        Yaml yaml = new Yaml();
-
-        this.ddlMaps = yaml.loadAs(in, Map.class);
-
-        IOUtils.closeQuietly(in);
-
-    }
-
-    private void loadStatistic() {
-        try {
-            String fileName = String.format("%s.statistic.yml", this.getClass().getSimpleName());
             InputStream in = this.getClass().getResourceAsStream(fileName);
-
+            if (in == null) {
+                return;
+            }
             Yaml yaml = new Yaml();
-            Map<String, Object> m = yaml.loadAs(in, Map.class);
-            this.statisticMaps = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-            this.statisticMaps.putAll(m);
+            this.configMaps = yaml.loadAs(in, Map.class);
             IOUtils.closeQuietly(in);
-        } catch (Exception e) {
-            // pass
+        } else {
+            this.configMaps = (Map<String, Object>)totalMap.get(this.getClass()).get("CONFIG");
         }
     }
 
-    private static String replaceBlank(String str) {
-        String dest = null;
-        if (str == null) {
-            return dest;
+    @SuppressWarnings("unchecked")
+    private void loadDdl() {
+        if (totalMap.get(this.getClass()) == null) {
+            String fileName = String.format("%s.ddl.yml", this.getClass().getSimpleName());
+            InputStream in = this.getClass().getResourceAsStream(fileName);
+            Yaml yaml = new Yaml();
+            this.ddlMaps = yaml.loadAs(in, Map.class);
+            IOUtils.closeQuietly(in);
         } else {
-            Pattern p = Pattern.compile("[ \\t\\x0B\\f\\r]");
-            Matcher m = p.matcher(str);
-            dest = m.replaceAll("");
-            return dest;
+            this.ddlMaps = (Map<String, String>)totalMap.get(this.getClass()).get("DDL");
+        }
+
+    }
+
+    private void loadStatistic() throws Exception{
+        this.statisticsClassifier = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        try {
+            if (totalMap.get(this.getClass()) == null) {
+                String fileName = String.format("%s.statistic.yml", this.getClass().getSimpleName());
+                InputStream in = this.getClass().getResourceAsStream(fileName);
+
+                Yaml yaml = new Yaml();
+                Map<String, Object> m = yaml.loadAs(in, Map.class);
+                this.statisticMaps = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+                this.statisticMaps.putAll(m);
+                IOUtils.closeQuietly(in);
+            } else {
+                this.statisticMaps = (Map<String, Object>)totalMap.get(this.getClass()).get("STATISTICS");
+            }
+        } catch (Exception e) {
+            // pass
+            // TODO: deal with the exception that the file is not in valid format
+        }
+        //classify statistics
+        statisticsClassifier.put(getAppName(), new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+        for (Entry<String, String> ddlItem : ddlMaps.entrySet()) {
+            // there are two cases 1:table 2:schema.table
+            String[] nameSplit = ddlItem.getKey().split("\\.");
+            switch (nameSplit.length) {
+            case 1:
+                statisticsClassifier.get(getAppName()).put(nameSplit[0],
+                    new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+                break;
+            case 2:
+                if (!statisticsClassifier.containsKey(nameSplit[0])) {
+                    statisticsClassifier.put(nameSplit[0], new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+                }
+                statisticsClassifier.get(nameSplit[0]).put(nameSplit[1],
+                    new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+                break;
+            default:
+                throw new Exception("unexpected ddl key: " + ddlItem.getKey());
+            }
+        }
+        //record reserved keyword
+        Set<String> keywords = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        keywords.add("cardinality");
+        keywords.add("TOPN");
+        keywords.add("histogram");
+        keywords.add("null_count");
+        keywords.add("sample_rate");
+        keywords.add("composite_cardinality");
+        for (Map.Entry<String, Object> entry : statisticMaps.entrySet()) {
+            // it is assumed four cases in the name, we classify the name according to the number of '.'
+            // 1:table 2:schema.table 3:table.columns.xxx 4:schema.table.columns.xxx
+            String name = entry.getKey();
+            String[] nameSplit = name.split("\\.");
+            // for Forwards Compatibility where we have 'table.column.nullCount=xxx'
+            if (nameSplit[nameSplit.length - 1].equalsIgnoreCase("nullCount")) {
+                nameSplit[nameSplit.length - 1] = "null_count";
+            }
+            List<Pair<String, Object>> infos = new ArrayList<>();
+            Map<String, List<Pair<String, Object>>> infosMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            switch (nameSplit.length) {
+            case 1:
+                //table
+                statisticsClassifier.get(getAppName()).putIfAbsent(name, infosMap);
+                statisticsClassifier.get(getAppName()).get(name).putIfAbsent("rowCount", infos);
+                statisticsClassifier.get(getAppName()).get(name).get("rowCount")
+                    .add(new Pair<>(null, entry.getValue()));
+                break;
+            case 2:
+                // ignore sample rate
+                if (nameSplit[1].equals("sampleRate")) {
+                    break;
+                }
+                //schema.table
+                statisticsClassifier.get(nameSplit[0]).putIfAbsent(nameSplit[1], infosMap);
+                statisticsClassifier.get(nameSplit[0]).get(nameSplit[1]).putIfAbsent("rowCount", infos);
+                statisticsClassifier.get(nameSplit[0]).get(nameSplit[1]).get("rowCount")
+                    .add(new Pair<>(null, entry.getValue()));
+                break;
+            case 3:
+                //table.columns.xxx
+                if (!keywords.contains(nameSplit[2])) {
+                    throw new Exception("unexpected statistics key: " + name);
+                }
+                statisticsClassifier.get(getAppName()).putIfAbsent(nameSplit[0], infosMap);
+                statisticsClassifier.get(getAppName()).get(nameSplit[0]).putIfAbsent(nameSplit[2], infos);
+                statisticsClassifier.get(getAppName()).get(nameSplit[0]).get(nameSplit[2])
+                    .add(new Pair<>(nameSplit[1], entry.getValue()));
+                break;
+            case 4:
+                //schema.table.columns.xxx
+                if (!keywords.contains(nameSplit[3])) {
+                    throw new Exception("unexpected statistics key: " + name);
+                }
+                statisticsClassifier.get(nameSplit[0]).putIfAbsent(nameSplit[1], infosMap);
+                statisticsClassifier.get(nameSplit[0]).get(nameSplit[1]).putIfAbsent(nameSplit[3], infos);
+                statisticsClassifier.get(nameSplit[0]).get(nameSplit[1]).get(nameSplit[3])
+                    .add(new Pair<>(nameSplit[2], entry.getValue()));
+                break;
+            default:
+                throw new Exception("unexpected statistics key: " + name);
+            }
         }
     }
 
@@ -990,6 +1079,14 @@ public abstract class BasePlannerTest {
         String shrinkContent = replaceBlank(content);
         if (o == null) {
             return Lists.newArrayList();
+        }
+        // explain statistics mode
+        if (o instanceof Map) {
+            if (((Map<?, ?>) o).containsKey("SQL") && ((Map<?, ?>) o).containsKey("DDL")
+                && ((Map<?, ?>) o).containsKey("STATISTICS") && ((Map<?, ?>) o).containsKey("CONFIG")) {
+                totalMap.put(clazz, (Map<String, Object>) o);
+                o = ((Map<?, ?>) o).get("SQL");
+            }
         }
         if (o instanceof List) {
             List<Map<String, String>> list = (List<Map<String, String>>) o;
@@ -1010,6 +1107,18 @@ public abstract class BasePlannerTest {
             return sqls;
         }
 
+    }
+
+    private static String replaceBlank(String str) {
+        String dest = null;
+        if (str == null) {
+            return dest;
+        } else {
+            Pattern p = Pattern.compile("[ \\t\\x0B\\f\\r]");
+            Matcher m = p.matcher(str);
+            dest = m.replaceAll("");
+            return dest;
+        }
     }
 
     private static Integer getNum(String content, String matchStr) {
@@ -1056,8 +1165,8 @@ public abstract class BasePlannerTest {
     private static final Map<String, String> caseContent = Maps.newHashMap();
     private static final Map<String, String> casePath = Maps.newHashMap();
 
-    private void execSqlAndVerifyPlan(String testMethodName, Integer sqlIdx, String targetSql, String targetPlan,
-                                      String expect, String nodetree) {
+    protected void execSqlAndVerifyPlan(String testMethodName, Integer sqlIdx, String targetSql, String targetPlan,
+                                        String expect, String nodetree) {
         String planStr;
         try {
             planStr = getPlan(targetSql);
@@ -1070,6 +1179,8 @@ public abstract class BasePlannerTest {
                 e.printStackTrace(pw);
                 planStr = w.toString();
             }
+        } finally {
+            CalcitePlanOptimizerTrace.setSqlExplainLevel(SqlExplainLevel.EXPPLAN_ATTRIBUTES);
         }
         planStr = planStr.trim();
 
@@ -1240,7 +1351,7 @@ public abstract class BasePlannerTest {
     protected PartitionInfo buildPartitionInfoByLogCreateTbl(LogicalCreateTable logicalCreateTable,
                                                              ExecutionContext executionContext) {
 
-        logicalCreateTable.prepareData();
+        logicalCreateTable.prepareData(new ExecutionContext());
         PartitionTableType tblType = PartitionTableType.SINGLE_TABLE;
         if (logicalCreateTable.isPartitionTable()) {
             tblType = PartitionTableType.PARTITION_TABLE;

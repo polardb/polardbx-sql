@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
@@ -75,10 +76,13 @@ public class AlterTableGroupMovePartitionRefreshMetaTask extends AlterTableGroup
         // 2、cleanup partition_group_delta
         partitionGroupAccessor.deletePartitionGroupsByTableGroupId(tableGroupId, true);
 
-        // 3、cleanup table_partition_delta
-        //todo luoyanxin only delete the related records
-        tablePartitionAccessor
-            .deleteTablePartitionConfigsForDeltaTable(schemaName, null);
+        for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
+            // 3、cleanup table_partition_delta
+            // only delete the related records
+            String tableName = infoContext.getTableName();
+            tablePartitionAccessor
+                .deleteTablePartitionConfigsForDeltaTable(schemaName, tableName);
+        }
 
     }
 }

@@ -419,6 +419,7 @@ public class DRDSRelJson extends RelJson {
             SqlRuntimeFilterFunction filterFunction = (SqlRuntimeFilterFunction) ((RexCall) node).getOperator();
             map.put("runtimeFilterId", filterFunction.getId());
             map.put("guessSelectivity", filterFunction.getGuessSelectivity());
+            map.put("usingXxHash", filterFunction.isUsingXxHash());
             final List<Object> listFilter = jsonBuilder.list();
             for (RexNode operand : ((RexCall) node).getOperands()) {
                 listFilter.add(toJson(operand));
@@ -606,12 +607,13 @@ public class DRDSRelJson extends RelJson {
             if (map.containsKey("runtimeFilterId")) {
                 final Integer runtimeFilterId = (Integer) map.get("runtimeFilterId");
                 double guessSelectivity = ((BigDecimal) map.get("guessSelectivity")).doubleValue();
+                boolean usingXxHash = ((Boolean) map.get("usingXxHash"));
                 final List<RexNode> operands = new ArrayList<>();
                 for (Object jsonNode : (List) map.get("operands")) {
                     operands.add(toRex(relInput, jsonNode));
                 }
                 SqlRuntimeFilterFunction filterFunction =
-                    new SqlRuntimeFilterFunction(runtimeFilterId, guessSelectivity);
+                    new SqlRuntimeFilterFunction(runtimeFilterId, guessSelectivity, usingXxHash);
                 return rexBuilder.makeCall(filterFunction, operands);
             }
 

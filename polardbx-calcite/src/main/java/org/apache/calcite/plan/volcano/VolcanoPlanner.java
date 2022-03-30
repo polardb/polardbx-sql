@@ -179,6 +179,7 @@ public class VolcanoPlanner extends AbstractRelOptPlanner {
   Set<RelSubset> explorationRoots = new HashSet<>();
 
   Map<String, Long> ruleCounter = null;
+  long ruleCount = 0;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -214,6 +215,14 @@ public class VolcanoPlanner extends AbstractRelOptPlanner {
     this.provenanceMap = LOGGER.isDebugEnabled() ? new HashMap<>()
         : Util.blackholeMap();
     initRuleQueue();
+  }
+
+  public void setRuleCounter() {
+    ruleCounter = new HashMap<>();
+  }
+
+  public long getRuleCount() {
+    return ruleCount;
   }
 
   private void initRuleQueue() {
@@ -392,13 +401,7 @@ public class VolcanoPlanner extends AbstractRelOptPlanner {
     this.root = null;
     this.originalRoot = null;
     if (ruleCounter != null) {
-      long total = ruleCounter.values().stream().reduce(0L, (a,b) -> a + b).longValue();
-      if (total > 0) {
-        for (Map.Entry<String, Long> entry : ruleCounter.entrySet()) {
-          System.out.println(entry.getKey() + ": " + entry.getValue());
-        }
-        System.out.println("---------------Total:" + total + "-------------------------");
-      }
+      ruleCount = ruleCounter.values().stream().reduce(0L, (a,b) -> a + b).longValue();
       this.ruleCounter.clear();
     }
   }

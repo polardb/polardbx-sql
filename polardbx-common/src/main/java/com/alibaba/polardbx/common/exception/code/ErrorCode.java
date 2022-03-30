@@ -340,6 +340,8 @@ public enum ErrorCode {
 
     ERR_PAUSED_DDL_JOB_EXISTS(ErrorType.Executor, 4662),
 
+    ERR_TABLE_META_TOO_OLD(ErrorType.Executor, 4663),
+
     // ============= server 从4700下标开始================
     ERR_SERVER(ErrorType.Server, 4700),
 
@@ -404,6 +406,10 @@ public enum ErrorCode {
 
     ERR_TRANS_CANNOT_EXECUTE_IN_RO_TRX(ErrorType.Transaction, 5012),
 
+    // ================权限相关异常从5101开始==================
+    /**
+     * 暂时不支持的权限点
+     */
     ERR_UNSUPPORTED_PRIVILEGE(ErrorType.Priviledge, 5101),
 
     ERR_GRANT_PRIVILEGE_FAILED(ErrorType.Priviledge, 5102),
@@ -511,6 +517,9 @@ public enum ErrorCode {
 
     ERR_CLUSTERED_INDEX_ADD_COLUMNS(ErrorType.Executor, 5323),
 
+    /**
+     * FastChecker 校验失败
+     */
     ERR_FAST_CHECKER(ErrorType.Executor, 5324),
 
     ERR_AUTH_AKSK_FAIL(ErrorType.Auth, 6001),
@@ -590,6 +599,8 @@ public enum ErrorCode {
 
     ERR_CDC_GENERIC(ErrorType.CDC, 9201),
 
+    ERR_REPLICATION_RESULT(ErrorType.CDC, 9204),
+
     ERR_PARTITION_MANAGEMENT(ErrorType.Executor, 9300),
     ERR_DUPLICATED_PARTITION_NAME(ErrorType.Executor, 9301),
     ERR_ADD_PARTITION(ErrorType.Executor, 9302),
@@ -602,6 +613,14 @@ public enum ErrorCode {
     ERR_PARTITION_NO_FOUND(ErrorType.Executor, 9309),
     ERR_PARTITION_KEY_DATA_TRUNCATED(ErrorType.Executor, 9310),
 
+    ERR_REPARTITION_KEY(ErrorType.Executor, 9311),
+    ERR_REPARTITION_TABLE_WITH_GSI(ErrorType.Executor, 9312),
+    ERR_TABLEGROUP_META_TOO_OLD(ErrorType.Executor, 9313),
+    ERR_TABLE_GROUP_CHANGED(ErrorType.Executor, 9314),
+    ERR_PHYSICAL_TOPOLOGY_CHANGING(ErrorType.Executor, 9315),
+    ERR_DN_IS_NOT_READY(ErrorType.Executor, 9316),
+
+    // ============= 私有协议 从10000下标开始================
     ERR_X_PROTOCOL_BAD_PACKET(ErrorType.Xprotocol, 10000),
 
     ERR_X_PROTOCOL_CLIENT(ErrorType.Xprotocol, 10001),

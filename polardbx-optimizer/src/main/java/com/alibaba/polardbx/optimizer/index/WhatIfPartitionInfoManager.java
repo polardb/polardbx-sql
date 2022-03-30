@@ -66,7 +66,8 @@ public class WhatIfPartitionInfoManager extends PartitionInfoManager {
         if (partitionInfo == null) {
             return false;
         }
-        return partitionInfo.getTableType() == PartitionTableType.BROADCAST_TABLE;
+        return partitionInfo.getTableType() == PartitionTableType.BROADCAST_TABLE
+            || partitionInfo.getTableType() == PartitionTableType.GSI_BROADCAST_TABLE;
     }
 
     @Override
@@ -75,6 +76,7 @@ public class WhatIfPartitionInfoManager extends PartitionInfoManager {
         if (partitionInfo == null) {
             return false;
         }
-        return partitionInfo.getTableType() == PartitionTableType.SINGLE_TABLE;
+        return partitionInfo.getTableType() == PartitionTableType.SINGLE_TABLE
+            || partitionInfo.getTableType() == PartitionTableType.GSI_SINGLE_TABLE;
     }
 }

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime;
 
+import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DivStructure;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
@@ -47,9 +49,10 @@ public class SecToTime extends AbstractScalarFunction {
                 return null;
             }
         }
-        Double value = DataTypes.DoubleType.convertFrom(args[0]);
 
-        DivStructure divStructure = DivStructure.fromDouble(value);
+        Decimal value = DataTypes.DecimalType.convertFrom(args[0]);
+
+        DivStructure divStructure = DivStructure.fromDecimal(value);
         if (divStructure == null) {
             return null;
         }

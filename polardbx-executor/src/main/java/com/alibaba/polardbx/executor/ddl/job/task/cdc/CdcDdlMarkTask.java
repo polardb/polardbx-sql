@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.google.common.collect.Maps;
 import lombok.Getter;
 import lombok.Setter;
@@ -35,6 +36,8 @@ import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
 import java.util.Map;
+
+import static com.alibaba.polardbx.common.cdc.ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE;
 
 /**
  * Created by ziyang.lb
@@ -135,6 +138,19 @@ public class CdcDdlMarkTask extends BaseDdlTask {
 
     private void mark4AlterTable(ExecutionContext executionContext) {
         DdlContext ddlContext = executionContext.getDdlContext();
+        AlterTablePreparedData alterTablePreparedData = physicalPlanData.getAlterTablePreparedData();
+
+        // 加减列操作，可能会导致逻辑表结构和物理表结构不一致，重新对
+        if (alterTablePreparedData != null) {
+            boolean isAddColumns = alterTablePreparedData.getAddedColumns() != null && !alterTablePreparedData
+                .getAddedColumns().isEmpty();
+            boolean isDropColumns = alterTablePreparedData.getDroppedColumns() != null && !alterTablePreparedData
+                .getDroppedColumns().isEmpty();
+            if (isAddColumns || isDropColumns) {
+                executionContext.getExtraCmds().put(REFRESH_CREATE_SQL_4_PHY_TABLE, "true");
+            }
+        }
+
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),

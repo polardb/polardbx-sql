@@ -20,6 +20,8 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
@@ -45,7 +47,6 @@ public class AlterTableHideMetaTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.hideTableMeta(metaDbConnection, schemaName, logicalTableName, columnNames, indexNames);
-        updateSupportedCommands(true, false, metaDbConnection);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
     }
@@ -53,6 +54,9 @@ public class AlterTableHideMetaTask extends BaseGmsTask {
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.showTableMeta(metaDbConnection, schemaName, logicalTableName, columnNames, indexNames);
+        // Refresh table meta to make hidden columns visible after rollback.
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        executionContext.refreshTableMeta();
     }
 
 }

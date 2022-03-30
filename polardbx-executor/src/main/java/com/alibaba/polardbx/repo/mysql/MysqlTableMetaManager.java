@@ -630,7 +630,7 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
             allColumnsOrderByDefined,
             primaryKeyMeta,
             secondaryIndexMetas,
-            hasPrimaryKey, TableStatus.PUBLIC, 0);
+            hasPrimaryKey, TableStatus.PUBLIC, 0, 0);
 
         return tableMeta;
 

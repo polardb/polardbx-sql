@@ -45,12 +45,13 @@ import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.server.DrdsContextHandler;
 import com.alibaba.polardbx.executor.mpp.server.TaskResource;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
+import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.manager.ManagerConnectionFactory;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.NIOAcceptor;
@@ -67,6 +68,7 @@ import com.alibaba.polardbx.ssl.SslContextFactory;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 
+import java.io.IOException;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -211,31 +213,8 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             processorCheckPeriod = system.getProcessorCheckPeriod();
             processorCheck();
 
-            // 执行一下jar包预热
+            // warming up jar package
             warmup();
-
-            // startup manager
-            ManagerConnectionFactory mf = new ManagerConnectionFactory();
-            mf.setCharset(system.getCharset());
-            mf.setIdleTimeout(system.getIdleTimeout());
-            manager = new NIOAcceptor(NAME + "Manager", system.getManagerPort(), mf, true);
-            manager.setProcessors(processors);
-            manager.start();
-            logger.info(manager.getName() + " is started and listening on " + manager.getPort());
-
-            // startup server
-            ServerConnectionFactory sf = new ServerConnectionFactory();
-            sf.setCharset(system.getCharset());
-            sf.setIdleTimeout(system.getIdleTimeout());
-            sf.setMaxPacketSize(system.getMaxAllowedPacket());
-            sf.setSocketRecvBuffer(system.getSocketRecvBuffer());
-            sf.setSocketSendBuffer(system.getSocketSendBuffer());
-            server = new NIOAcceptor(NAME + "Server", system.getServerPort(), sf, isOnline());
-            server.setProcessors(processors);
-            server.start();
-
-            // server started
-            logger.info(server.getName() + " is started and listening on " + server.getPort());
 
             if ((system.isMppServer() || system.isMppWorker()) && system.getRpcPort() > 0) {
                 // startup native mpp service
@@ -257,12 +236,42 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             CdcRpcClient.buildCdcRpcClient();
             tryStartCdcManager();
 
+            // init and start manager, listening manager port
+            startupManager(system);
+            // init and start server, listening server port
+            startupServer(system);
             logger.info("===============================================");
             logServerStartUp();
             this.startupTime = TimeUtil.currentTimeMillis();
         } catch (Throwable e) {
             throw new TddlRuntimeException(ErrorCode.ERR_SERVER, e, "start failed");
         }
+    }
+
+    private void startupServer(SystemConfig system) throws IOException {
+        ServerConnectionFactory sf = new ServerConnectionFactory();
+        sf.setCharset(system.getCharset());
+        sf.setIdleTimeout(system.getIdleTimeout());
+        sf.setMaxPacketSize(system.getMaxAllowedPacket());
+        sf.setSocketRecvBuffer(system.getSocketRecvBuffer());
+        sf.setSocketSendBuffer(system.getSocketSendBuffer());
+        server = new NIOAcceptor(NAME + "Server", system.getServerPort(), sf, isOnline());
+        server.setProcessors(processors);
+        // start server
+        server.start();
+        logger.info(server.getName() + " is started and listening on " + server.getPort());
+    }
+
+    private void startupManager(SystemConfig system) throws IOException {
+        // init manager
+        ManagerConnectionFactory mf = new ManagerConnectionFactory();
+        mf.setCharset(system.getCharset());
+        mf.setIdleTimeout(system.getIdleTimeout());
+        manager = new NIOAcceptor(NAME + "Manager", system.getManagerPort(), mf, true);
+        manager.setProcessors(processors);
+        // start manager
+        manager.start();
+        logger.info(manager.getName() + " is started and listening on " + manager.getPort());
     }
 
     private void tryStartCdcManager() {
@@ -647,7 +656,6 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         Integer mppRpcPort = systemConfig.getRpcPort();
         String metaDbAddr = systemConfig.getMetaDbAddr();
         String metaDbUser = systemConfig.getMetaDbUser();
-        String metaDbEncPasswd = systemConfig.getMetaDbPasswd();
         String metaDbName = systemConfig.getMetaDbName();
         String metaDbProp = systemConfig.getMetaDbProp();
 
@@ -664,7 +672,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
 
         logInfoSb.append("metaDbAddr=").append(metaDbAddr).append("\n");
         logInfoSb.append("metaDbUser=").append(metaDbUser).append("\n");
-        logInfoSb.append("metaDbPasswd=").append(metaDbEncPasswd).append("\n");
+        logInfoSb.append("metaDbPasswd=").append("xxxxxx").append("\n");
         logInfoSb.append("metaDbName=").append(metaDbName).append("\n");
         logInfoSb.append("metaDbProp=").append(metaDbProp).append("\n");
         if (metaDbAddr != null) {
@@ -675,10 +683,61 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                     .append(String
                         .format("mysql -h%s -P%s -u%s -p'%s' %s -Ac", ipPort.getKey(), ipPort.getValue(),
                             metaDbUser,
-                            PasswdUtil.decrypt(metaDbEncPasswd),
+                            "xxxxxx",
                             metaDbName))
                     .append("\n");
             }
+
+            try {
+                logInfoSb.append(String.format("\n===== ALL RW & RO DN INFO =====\n"));
+                for (StorageInstHaContext dnInfo : StorageHaManager.getInstance().getStorageHaCtxCache().values()) {
+                    String dnId = dnInfo.getStorageInstId();
+                    String vipAddr = dnInfo.getStorageVipAddr();
+                    if (vipAddr == null) {
+                        vipAddr = dnInfo.getCurrAvailableNodeAddr();
+                    }
+                    String dnUser = dnInfo.getUser();
+                    boolean isRwDn = dnInfo.isDNMaster();
+                    boolean isMetaDb = dnInfo.isMetaDb();
+                    if (isMetaDb || !isRwDn) {
+                        continue;
+                    }
+                    Pair<String, Integer> ipPort = AddressUtils.getIpPortPairByAddrStr(vipAddr);
+                    logInfoSb.append(String.format("rwDnUrl[%s]=", dnId))
+                        .append(String
+                            .format("mysql -Ac -h%s -P%s -u%s -p'xxxxxx' %s ", ipPort.getKey(), ipPort.getValue(),
+                                dnUser,
+                                "mysql"))
+                        .append("\n");
+
+                    for (StorageInstHaContext roDnInfo : StorageHaManager.getInstance().getStorageHaCtxCache()
+                        .values()) {
+                        String roDnId = roDnInfo.getStorageInstId();
+                        String masterDnId = roDnInfo.getStorageMasterInstId();
+                        boolean isRoDn = !roDnInfo.isDNMaster();
+                        if (!masterDnId.equalsIgnoreCase(dnId) || !isRoDn) {
+                            continue;
+                        }
+                        String roDnUser = dnInfo.getUser();
+                        String roDnVipAddr = roDnInfo.getStorageVipAddr();
+                        if (roDnVipAddr == null) {
+                            roDnVipAddr = roDnInfo.getCurrAvailableNodeAddr();
+                        }
+                        Pair<String, Integer> roDnIpPort = AddressUtils.getIpPortPairByAddrStr(roDnVipAddr);
+                        logInfoSb.append(String.format("    |-roDnUrl[%s]=", roDnId))
+                            .append(String
+                                .format("mysql -Ac -h%s -P%s -u%s -p'xxxxxx' %s ", roDnIpPort.getKey(),
+                                    roDnIpPort.getValue(),
+                                    roDnUser,
+                                    "mysql"))
+                            .append("\n");
+                    }
+                }
+
+            } catch (Throwable ex) {
+                logger.warn("Failed to log the dn info after start up. ", ex);
+            }
+
         }
         MetaDbLogUtil.START_UP_LOG.info(logInfoSb.toString());
     }

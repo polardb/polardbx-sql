@@ -40,7 +40,9 @@ public class CBOPushSemiJoinRule extends PushSemiJoinRule {
     @Override
     public boolean matches(RelOptRuleCall call) {
         return PlannerContext.getPlannerContext(call).getParamManager()
-            .getBoolean(ConnectionParams.ENABLE_CBO_PUSH_JOIN);
+            .getBoolean(ConnectionParams.ENABLE_CBO_PUSH_JOIN)
+            && !PlannerContext.getPlannerContext(call).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP);
     }
 }
 

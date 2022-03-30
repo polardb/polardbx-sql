@@ -54,6 +54,7 @@ import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.rpc.XConfig;
 import com.google.common.collect.Sets;
 import lombok.val;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -117,6 +118,7 @@ public class StorageHaManager extends AbstractLifecycle {
     protected int refreshStorageInfoOfMetaDbTarkInterval = checkStorageTaskPeriod * 12; // 60s
     protected ScheduledExecutorService refreshStorageInfoOfMetaDbExecutor = null;
     protected int storageHaManagerExecutorPoolSize = 8;
+    protected int storageHaManagerExecutorQueueSize = 4096;
     protected ThreadPoolExecutor storageHaManagerTaskExecutor = null;
     protected int parallelSwitchDsCountPerStorageInst = 4;
     protected CheckStorageHaTask checkStorageHaTask = new CheckStorageHaTask(this);
@@ -171,7 +173,7 @@ public class StorageHaManager extends AbstractLifecycle {
         loadStorageHaContext();
 
         storageHaManagerTaskExecutor =
-            ExecutorUtil.createBufferedExecutor("StorageHaManagerTaskExecutor", storageHaManagerExecutorPoolSize);
+            ExecutorUtil.createBufferedExecutor("StorageHaManagerTaskExecutor", storageHaManagerExecutorPoolSize, storageHaManagerExecutorQueueSize);
         checkStorageHaTaskExecutor =
             Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("CheckStorageHaTaskExecutor", true));
 
@@ -648,7 +650,8 @@ public class StorageHaManager extends AbstractLifecycle {
                 if (isVip == StorageInfoRecord.IS_VIP_TRUE) {
                     vipInfo = addrStr;
                     if (storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_XCLUSTER ||
-                        storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                        storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER ||
+                        storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
                         // if current storage inst is a xcluster inst,
                         // then its vip info should be ignored in storageInfos of storageInstHaContext
                         continue;
@@ -712,13 +715,13 @@ public class StorageHaManager extends AbstractLifecycle {
 
         // load storage infos for current inst
         List<StorageInfoRecord> storageInfoRecordsOfCurrInstId =
-            storageInfoAccessor.getStorageInfosByInstId(currInstId);
+            storageInfoAccessor.getAliveStorageInfosByInstId(currInstId);
         storageInfoRecords.addAll(storageInfoRecordsOfCurrInstId);
 
         // if current inst is a slave inst, then load all storage info for server master inst id
         if (!ServerInstIdManager.getInstance().isMasterInst()) {
             List<StorageInfoRecord> storageInfoRecordsOfServerMasterInstId =
-                storageInfoAccessor.getStorageInfosByInstId(ServerInstIdManager.getInstance().getMasterInstId());
+                storageInfoAccessor.getAliveStorageInfosByInstId(ServerInstIdManager.getInstance().getMasterInstId());
             storageInfoRecords.addAll(storageInfoRecordsOfServerMasterInstId);
         }
     }
@@ -743,7 +746,8 @@ public class StorageHaManager extends AbstractLifecycle {
             if (storageNode.isVip == StorageInfoRecord.IS_VIP_TRUE) {
                 storageVipAddrStr = AddressUtils.getAddrStrByIpPort(storageNode.ip, storageNode.port);
                 if (storageType == StorageInfoRecord.STORAGE_TYPE_XCLUSTER ||
-                    storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                    storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER ||
+                    storageType == StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
                     // if current storage inst is a xcluster inst,
                     // then its vip info should be ignored in getStorageRole info
                     continue;
@@ -1147,6 +1151,11 @@ public class StorageHaManager extends AbstractLifecycle {
         }
     }
 
+    public List<StorageInstHaContext> getMasterStorageList() {
+        return storageHaCtxCache.values().stream().filter(StorageInstHaContext::isDNMaster)
+            .collect(Collectors.toList());
+    }
+
     private List<StorageInstHaContext> getStorageNodesAndMetaDB() {
         List<StorageInstHaContext> nodes = new ArrayList<>(storageHaCtxCache.values());
         nodes.add(metaDbStorageHaCtx);
@@ -1342,7 +1351,8 @@ public class StorageHaManager extends AbstractLifecycle {
     private void changeElectionWeight(StorageInstHaContext storage, PrimaryZoneInfo primaryZoneInfo) {
         for (StorageInfoRecord replica : storage.getStorageInfo()) {
             if (replica.storageType != StorageInfoRecord.STORAGE_TYPE_XCLUSTER &&
-                replica.storageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                replica.storageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER &&
+                replica.storageType != StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
                 logger.warn("storage is not xcluster, should not set election_weight");
                 continue;
             }
@@ -1656,7 +1666,8 @@ public class StorageHaManager extends AbstractLifecycle {
                 String storageInstId = masterStorageInstIdSet.get(i);
                 StorageInstHaContext haContext = manager.storageHaCtxCache.get(storageInstId);
                 if (haContext.storageType != StorageInfoRecord.STORAGE_TYPE_XCLUSTER &&
-                    haContext.storageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER) {
+                    haContext.storageType != StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER &&
+                    haContext.storageType != StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
                     continue;
                 }
                 if (haContext.storageKind == StorageInfoRecord.INST_KIND_SLAVE) {
@@ -1710,9 +1721,15 @@ public class StorageHaManager extends AbstractLifecycle {
                      */
                     List<StorageInfoRecord> storageInfoRecordList = storageNodeRecMaps.get(storageInstId);
 
+                    /**
+                     * Some storage-instance exists in memory but not in metadb
+                     */
+                    if (CollectionUtils.isEmpty(storageInfoRecordList)) {
+                        continue;
+                    }
+
                     Set<String> addrSetFromMetaDb = new HashSet<>();
-                    for (int i = 0; i < storageInfoRecordList.size(); i++) {
-                        StorageInfoRecord storageInfoRecord = storageInfoRecordList.get(i);
+                    for (StorageInfoRecord storageInfoRecord : storageInfoRecordList) {
                         String addr = AddressUtils.getAddrStrByIpPort(storageInfoRecord.ip, storageInfoRecord.port);
                         addrSetFromMetaDb.add(addr);
                     }

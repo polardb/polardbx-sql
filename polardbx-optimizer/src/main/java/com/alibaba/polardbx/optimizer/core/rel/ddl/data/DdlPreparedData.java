@@ -26,6 +26,10 @@ public class DdlPreparedData {
     private String schemaName;
     private String tableName;
     private boolean withHint;
+    /**
+     * the table's version when prepare data for ddl task
+     */
+    protected Long tableVersion = -1L;
 
     public DdlPreparedData(final String schemaName, final String tableName) {
         this.schemaName = schemaName;

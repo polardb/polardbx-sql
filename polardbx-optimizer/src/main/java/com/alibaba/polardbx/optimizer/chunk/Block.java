@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.optimizer.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 
 import java.math.BigInteger;
 import java.sql.Blob;
@@ -180,9 +180,11 @@ public interface Block {
     }
 
     /**
-     * Add value in position to bloom filter.
+     * Add value at the position to the hasher of a bloom filter.
+     *
+     * @param sink To support multi column bloom filter, must be a streaming hasher
      */
-    default void addToBloomFilter(TddlHasher sink, int position) {
+    default void addToHasher(IStreamingHasher sink, int position) {
         throw new UnsupportedOperationException(getClass().getName());
     }
 

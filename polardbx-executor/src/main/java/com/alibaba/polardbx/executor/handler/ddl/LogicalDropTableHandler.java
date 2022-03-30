@@ -33,8 +33,11 @@ import com.alibaba.polardbx.executor.ddl.job.factory.DropPartitionTableWithGsiJo
 import com.alibaba.polardbx.executor.ddl.job.factory.DropTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.DropTableWithGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.RenameTableJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecycleMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -54,6 +57,9 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlRenameTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
 
@@ -126,8 +132,18 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         DdlPhyPlanBuilder dropTableBuilder =
             new DropTableBuilder(logicalDropTable.relDdl, dropTablePreparedData, executionContext).build();
         PhysicalPlanData physicalPlanData = dropTableBuilder.genPhysicalPlanData();
+        Map<String, Long> tableVersions = new HashMap<>();
 
-        return new DropTableJobFactory(physicalPlanData).create();
+        tableVersions.put(dropTablePreparedData.getTableName(),
+            dropTablePreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(dropTablePreparedData.getSchemaName(), tableVersions);
+
+        ExecutableDdlJob result = new DropTableJobFactory(physicalPlanData).create();
+        result.addTask(validateTableVersionTask);
+        result.addTaskRelationship(validateTableVersionTask, result.getHead());
+
+        return result;
     }
 
     private DdlJob handleRecycleBin(LogicalDropTable logicalDropTable, ExecutionContext executionContext) {
@@ -138,6 +154,8 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         SqlIdentifier targetTableNode = sourceTableNode.setName(sourceTableNode.names.size() - 1, binName);
 
         SqlNode sqlRenameTable = new SqlRenameTable(targetTableNode, sourceTableNode, SqlParserPos.ZERO);
+        executionContext.getDdlContext()
+            .setDdlStmt(CdcTruncateWithRecycleMarkTask.CDC_RECYCLE_HINTS + sqlRenameTable.toString());
 
         RenameTable renameTable =
             RenameTable.create(logicalDropTable.getCluster(), sqlRenameTable, sourceTableNode, targetTableNode);
@@ -167,8 +185,18 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         DropTableBuilder dropTableBuilder =
             new DropPartitionTableBuilder(logicalDropTable.relDdl, dropTablePreparedData, executionContext).build();
         PhysicalPlanData physicalPlanData = dropTableBuilder.genPhysicalPlanData();
+        Map<String, Long> tableVersions = new HashMap<>();
 
-        return new DropPartitionTableJobFactory(physicalPlanData).create();
+        tableVersions.put(dropTablePreparedData.getTableName(),
+            dropTablePreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(dropTablePreparedData.getSchemaName(), tableVersions);
+
+        ExecutableDdlJob result = new DropPartitionTableJobFactory(physicalPlanData).create();
+        result.addTask(validateTableVersionTask);
+        result.addTaskRelationship(validateTableVersionTask, result.getHead());
+
+        return result;
     }
 
     private DdlJob buildDropTableWithGsiJob(LogicalDropTable logicalDropTable, ExecutionContext executionContext) {

@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.server.mock;
 
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
+import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.Group;
@@ -193,7 +196,7 @@ public class MockExecutor {
                 if (ast instanceof SqlExplain) {
                     executionPlan = hintPlanner
                         .pushdown(Planner.getInstance().getPlan(
-                            ((SqlExplain) ast).getExplicandum(), plannerContext),
+                                ((SqlExplain) ast).getExplicandum(), plannerContext),
                             ast,
                             cmdBean,
                             hintCollection,
@@ -276,11 +279,8 @@ public class MockExecutor {
         context.setMatrix(getMatrix());
         context.setSchemaManager(schemaManager);
         context.setRuleManager(rule);
-
-        context.setStatisticManager(new StatisticManager(schemaName,
-            null, null, null, null,
-            new HashMap<>()));
-
+        StatisticManager statisticManager = new StatisticManager(schemaName, new MockStatisticDatasource());
+        context.setStatisticManager(statisticManager);
     }
 
     private Matrix getMatrix() {
@@ -343,7 +343,7 @@ public class MockExecutor {
                 "");
 
             return new TableMeta(DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
-                TableStatus.PUBLIC, 0);
+                TableStatus.PUBLIC, 0, 0);
         }
 
         @Override

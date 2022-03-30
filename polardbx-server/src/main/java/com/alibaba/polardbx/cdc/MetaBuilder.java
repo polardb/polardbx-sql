@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.cdc;
 
+import com.alibaba.druid.sql.SQLUtils;
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.cdc.entity.LogicMeta;
-import com.alibaba.polardbx.server.conn.InnerConnection;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
@@ -35,13 +39,19 @@ import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.rule.model.TargetDB;
+import com.alibaba.polardbx.server.conn.InnerConnection;
+import com.google.common.collect.Lists;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +62,11 @@ import java.util.stream.Collectors;
  **/
 public class MetaBuilder {
     private static volatile String lowerCaseFlag;
+
+    public static String escape(String str) {
+        String regex = "(?<!`)`(?!`)";
+        return str.replaceAll(regex, "``");
+    }
 
     static LogicMeta.LogicDbMeta buildLogicDbMeta(String schemaName, Map<String, List<TargetDB>> tablesParams)
         throws SQLException {
@@ -75,10 +90,15 @@ public class MetaBuilder {
         if (tablesParams != null && !tablesParams.isEmpty()) {
             Map<String, Pair<TablesRecord, TablesExtInfo>> tablesInfo = buildTablesInfo(schemaName);
             for (Map.Entry<String, List<TargetDB>> m : tablesParams.entrySet()) {
+                if (!tablesInfo.containsKey(m.getKey())) {
+                    throw new TddlNestableRuntimeException("table info is not found, schema is  " + schemaName +
+                        " , table is " + m.getKey() + " , tablesParams is " + JSONObject.toJSONString(tablesParams) +
+                        " , tablesInfo is " + JSONObject.toJSONString(tablesInfo));
+                }
                 TableMode tableMode = tablesInfo.get(m.getKey()).getValue().tableMode;
                 logicDbMeta.getLogicTableMetas().add(
-                    buildLogicTableMetaInternal(tableMode, m.getKey(), m.getValue(), tablesInfo.get(m.getKey()),
-                        group2PhyDbMapping, group2StorageInstMapping));
+                    buildLogicTableMetaInternal(schemaName, tableMode, m.getKey(), m.getValue(),
+                        tablesInfo.get(m.getKey()), group2PhyDbMapping, group2StorageInstMapping));
             }
         }
         return logicDbMeta;
@@ -89,13 +109,45 @@ public class MetaBuilder {
         throws SQLException {
         Map<String, String> group2PhyDbMapping = buildGroup2PhyDbMapping(schemaName);
         Map<String, String> group2StorageInstMapping = buildGroup2StorageInstMapping(schemaName);
-        return buildLogicTableMetaInternal(tableMode, tableName, targetDbList,
+        return buildLogicTableMetaInternal(schemaName, tableMode, tableName, targetDbList,
             buildOneTablesInfo(tableMode, schemaName, tableName),
             group2PhyDbMapping,
             group2StorageInstMapping);
     }
 
-    private static LogicMeta.LogicTableMeta buildLogicTableMetaInternal(TableMode tableMode,
+    static String getPhyCreateSql(String logicSchema, LogicMeta.LogicTableMeta tableMeta) {
+        String groupName = tableMeta.getPhySchemas().get(0).getGroup();
+        String phyTableName = tableMeta.getPhySchemas().get(0).getPhyTables().get(0);
+        try (Connection conn = getPhyConnection(logicSchema, groupName);
+            PreparedStatement ps = conn.prepareStatement("SHOW CREATE TABLE `" + escape(phyTableName) + "`");
+            ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                return rs.getString(2);
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC,
+                    "can`t find phy table " + phyTableName + "on group " + groupName);
+            }
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC, "fetch the DDL of " + phyTableName
+                + " on " + groupName + " failed. Caused by: " + e.getMessage(), e);
+        }
+    }
+
+    private static Connection getPhyConnection(String schemaName, String groupName)
+        throws SQLException {
+        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        if (executorContext != null) {
+            IGroupExecutor groupExecutor = executorContext.getTopologyHandler().get(groupName);
+            if (groupExecutor != null && groupExecutor.getDataSource() instanceof TGroupDataSource) {
+                TGroupDataSource dataSource = (TGroupDataSource) groupExecutor.getDataSource();
+                return dataSource.getConnection();
+            }
+        }
+        return null;
+    }
+
+    private static LogicMeta.LogicTableMeta buildLogicTableMetaInternal(String schemaName,
+                                                                        TableMode tableMode,
                                                                         String tableName,
                                                                         List<TargetDB> targetDbList,
                                                                         Pair<TablesRecord, TablesExtInfo> tableInfo,
@@ -108,6 +160,8 @@ public class MetaBuilder {
         logicTableMeta.setTableType(tableInfo.getValue().tableType);
         logicTableMeta.setTableCollation(tableInfo.getKey().tableCollation);
         logicTableMeta.setPhySchemas(Lists.newArrayList());
+
+        targetDbList = tryFilterTargetDb(schemaName, tableInfo, targetDbList);
         targetDbList.forEach(t -> {
             LogicMeta.PhySchema phySchema = new LogicMeta.PhySchema();
             phySchema.setGroup(t.getDbIndex());
@@ -121,15 +175,27 @@ public class MetaBuilder {
         return logicTableMeta;
     }
 
+    private static List<TargetDB> tryFilterTargetDb(String schemaName, Pair<TablesRecord, TablesExtInfo> tableInfo,
+                                                    List<TargetDB> parameter) {
+        //新分区表模式下的广播表的拓扑，获取到的是所有group的信息，需要特殊处理，只保留一个(老的sharding表不存在这个问题)
+        int tableType = tableInfo.getValue().tableType;
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName) && tableType == PartitionTableType.BROADCAST_TABLE
+            .getTableTypeIntValue() && !parameter.isEmpty()) {
+            return Lists.newArrayList(parameter.stream().min(Comparator.comparing(TargetDB::getDbIndex)).get());
+        } else {
+            return parameter;
+        }
+    }
+
     private static Map<String, String> buildGroup2PhyDbMapping(String schemaName)
         throws SQLException {
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
             dbGroupInfoAccessor.setConnection(metaDbConn);
 
-            // 在scale out场景下，会查询到group_type为GROUP_TYPE_SCALEOUT_FINISHED的记录，需要过滤掉
+            // 在scale out场景下，会查询到group_type为GROUP_TYPE_SCALEOUT_FINISHiED的记录，需要过滤掉
             return dbGroupInfoAccessor.queryDbGroupByDbName(schemaName).stream()
-                .filter(g -> g.groupType == DbGroupInfoRecord.GROUP_TYPE_NORMAL).collect(
+                .filter(DbGroupInfoRecord::isVisible).collect(
                     Collectors.toMap(g -> g.groupName, g -> translate(g.phyDbName)));
         }
     }
@@ -150,34 +216,35 @@ public class MetaBuilder {
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             TablesAccessor tablesAccessor = new TablesAccessor();
             tablesAccessor.setConnection(metaDbConn);
-            Map<String, TablesRecord> tablesMap =
-                tablesAccessor.query(schema).stream().collect(Collectors.toMap(i -> i.tableName, j -> j));
+            Map<String, TablesRecord> tablesMap = tablesAccessor.query(schema).stream()
+                .peek(t -> t.tableName = t.tableName.toLowerCase())//转小写
+                .collect(Collectors.toMap(i -> i.tableName, j -> j));
 
             if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
                 TablePartitionAccessor partitionAccessor = new TablePartitionAccessor();
                 partitionAccessor.setConnection(metaDbConn);
-                Map<String, List<TablePartitionRecord>> partitionRecords =
-                    partitionAccessor.getTablePartitionsByDbNameTbName(schema, null).stream()
-                        .collect(Collectors.groupingBy(TablePartitionRecord::getTableName));
+                Map<String, List<TablePartitionRecord>> partitionRecords = partitionAccessor
+                    .getTablePartitionsByDbNameTbName(schema, null, false).stream()
+                    .peek(t -> t.tableName = t.tableName.toLowerCase())//转小写
+                    .collect(Collectors.groupingBy(TablePartitionRecord::getTableName));
 
                 final Map<String, Pair<TablesRecord, TablesExtInfo>> result = new HashMap<>();
                 tablesMap.keySet().forEach(k -> {
-                    result.put(k,
-                        new Pair<>(tablesMap.get(k),
-                            new TablesExtInfo(TableMode.PARTITION, partitionRecords.get(k).get(0).tblType)));
+                    result.put(k, new Pair<>(tablesMap.get(k),
+                        new TablesExtInfo(TableMode.PARTITION, partitionRecords.get(k).get(0).tblType)));
                 });
                 return result;
             } else {
                 TablesExtAccessor tablesExtAccessor = new TablesExtAccessor();
                 tablesExtAccessor.setConnection(metaDbConn);
-                Map<String, TablesExtRecord> tablesExtMap =
-                    tablesExtAccessor.query(schema).stream().collect(Collectors.toMap(i -> i.tableName, j -> j));
+                Map<String, TablesExtRecord> tablesExtMap = tablesExtAccessor.query(schema).stream()
+                    .peek(t -> t.tableName = t.tableName.toLowerCase())//转小写
+                    .collect(Collectors.toMap(i -> i.tableName, j -> j));
 
                 final Map<String, Pair<TablesRecord, TablesExtInfo>> result = new HashMap<>();
                 tablesMap.keySet().forEach(k -> {
-                    result.put(k,
-                        new Pair<>(tablesMap.get(k),
-                            new TablesExtInfo(TableMode.SHARDING, tablesExtMap.get(k).tableType)));
+                    result.put(k, new Pair<>(tablesMap.get(k),
+                        new TablesExtInfo(TableMode.SHARDING, tablesExtMap.get(k).tableType)));
                 });
                 return result;
             }
@@ -211,7 +278,7 @@ public class MetaBuilder {
                 TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
                 tablePartitionAccessor.setConnection(metaDbConn);
                 List<TablePartitionRecord> records =
-                    tablePartitionAccessor.getTablePartitionsByDbNameTbName(schema, table);
+                    tablePartitionAccessor.getTablePartitionsByDbNameTbName(schema, table, false);
                 if (records == null || records.isEmpty()) {
                     throw new TddlNestableRuntimeException(
                         "TablePartitionRecord not found , schema is {" + schema + "}, table is {" + table + "}.");

@@ -21,16 +21,12 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.PhysicalDdlException;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTablePhyDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.spec.AlterTableRollbacker;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
@@ -188,7 +184,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
                             countUnknownTables++;
                         }
                         countError++;
-                        if(StringUtils.isEmpty(simpleErrMsg)){
+                        if (StringUtils.isEmpty(simpleErrMsg)) {
                             simpleErrMsg = errMsg.getMessage();
                         }
                     }
@@ -204,7 +200,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
                     causedMsg.append(DdlConstants.SEMICOLON).append(e.getMessage());
                     LOGGER.error(e);
                     countError++;
-                    if(StringUtils.isEmpty(simpleErrMsg)){
+                    if (StringUtils.isEmpty(simpleErrMsg)) {
                         simpleErrMsg = e.getMessage();
                     }
                 }
@@ -214,33 +210,6 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
                 // No any error actually.
                 return;
             }
-
-//            if (objectDoneCount == 0) {
-//                //no physical DDL done
-//                //so we can mark DdlTaskState from DIRTY to READY
-//                //check supported_commands to decide exception policy
-//                final DdlTask currentTask = this;
-//                DdlEngineAccessorDelegate delegate = new DdlEngineAccessorDelegate<Integer>() {
-//                    @Override
-//                    protected Integer invoke() {
-//                        DdlEngineRecord engineRecord = engineAccessor.query(jobId);
-//                        if (engineRecord.isSupportCancel()) {
-//                            onExceptionTryRollback();
-//                            currentTask.setState(DdlTaskState.READY);
-//                            DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
-//                            return engineTaskAccessor.updateTask(taskRecord);
-//                        }
-//                        return 0;
-//                    }
-//                };
-//                delegate.execute();
-//            } else {
-//                //some physical DDL failed && they do not support rollback
-//                //so we forbid CANCEL DDL command here
-//                if (!AlterTableRollbacker.checkIfRollbackable(ddlContext.getDdlStmt())) {
-//                    updateSupportedCommands(true, false, null);
-//                }
-//            }
 
             // Put various errors together.
             StringBuilder errMsg = new StringBuilder();
@@ -253,7 +222,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             } else {
                 // The job failed probably due to user's cancellation.
                 errMsg.append("The job '").append(ddlContext.getJobId()).append("' has been interrupted");
-                if(StringUtils.isEmpty(simpleErrMsg)){
+                if (StringUtils.isEmpty(simpleErrMsg)) {
                     simpleErrMsg = errMsg.toString();
                 }
             }
@@ -266,6 +235,25 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
                 simpleErrMsg
             );
         }
+    }
+
+    protected void enableRollback(final DdlTask currentTask) {
+        DdlEngineAccessorDelegate delegate = new DdlEngineAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                DdlEngineRecord engineRecord = engineAccessor.query(jobId);
+                // If successCount==0, check supported_commands to decide exception policy.
+                if (engineRecord.isSupportCancel()) {
+                    // No physical DDL has been done, so we can mark DdlTaskState from DIRTY to READY
+                    currentTask.setState(DdlTaskState.READY);
+                    onExceptionTryRollback();
+                    DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
+                    return engineTaskAccessor.updateTask(taskRecord);
+                }
+                return 0;
+            }
+        };
+        delegate.execute();
     }
 
     private boolean checkIfHandleError(PhyDdlTableOperation physicalPlan, ExecutionContext executionContext) {

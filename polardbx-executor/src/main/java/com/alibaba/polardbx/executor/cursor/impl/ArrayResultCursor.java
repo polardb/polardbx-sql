@@ -50,8 +50,13 @@ public class ArrayResultCursor extends ResultCursor {
     }
 
     public void addColumn(String columnName, DataType type) {
+        addColumn(columnName, type, true);
+    }
+
+    public void addColumn(String columnName, DataType type, boolean columnHeaderToUpperCase) {
         Field field = new Field(tableName, columnName, type);
-        ColumnMeta c = new ColumnMeta(this.tableName, TStringUtil.upperCase(columnName), null, field);
+        columnName = columnHeaderToUpperCase ? TStringUtil.upperCase(columnName) : columnName;
+        ColumnMeta c = new ColumnMeta(this.tableName, columnName, null, field);
         returnColumns.add(c);
     }
 

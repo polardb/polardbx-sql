@@ -29,7 +29,7 @@ public class BalanceOptions {
 
     public static long DEFAULT_MAX_PARTITION_SIZE = 512 << 20;
     public static final int MAX_PARTITION_COUNT = 8192;
-    public static final int DEFAULT_MAX_ACTION = 10;
+    public static final int DEFAULT_MAX_ACTION = 50;
     public static final int DEFAULT_MIN_PARTITIONS = 4;
     public static final int SPLIT_PARTITION_MIN_COUNT = 2;
     public static final int SPLIT_PARTITION_MAX_COUNT = 16;
@@ -38,6 +38,11 @@ public class BalanceOptions {
      * Whether this is just an explain
      */
     public boolean explain = false;
+
+    /**
+     * Whether manually or automatic rebalance
+     */
+    public boolean manually = false;
 
     /**
      * Max actions to perform in a job
@@ -95,6 +100,7 @@ public class BalanceOptions {
 
     public static BalanceOptions fromSqlNode(SqlRebalance sqlNode) {
         BalanceOptions res = withDefault();
+        res.manually = true;
         res.policy = sqlNode.getPolicy();
         res.explain = sqlNode.isExplain();
         res.debug = sqlNode.isDebug();

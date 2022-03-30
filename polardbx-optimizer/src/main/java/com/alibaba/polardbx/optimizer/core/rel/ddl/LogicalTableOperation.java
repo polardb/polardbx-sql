@@ -16,17 +16,27 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlBinaryStringLiteral;
+import org.apache.calcite.sql.SqlColumnDeclaration;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.Pair;
 
 import java.util.Map;
+import java.util.TreeMap;
 
 public class LogicalTableOperation extends BaseDdlOperation {
 
@@ -43,6 +53,7 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                              SqlNode tbPartitionBy,
                                                              SqlNode tbPartitions,
                                                              SqlNode partitionings,
+                                                             LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
                                                              SqlNode tableGroupName,
                                                              Map<SqlNode, RexNode> partBoundExprInfo) {
         CreateTablePreparedData preparedData = new CreateTablePreparedData();
@@ -62,6 +73,7 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setTbPartitionBy(tbPartitionBy);
         preparedData.setTbPartitions(tbPartitions);
         preparedData.setPartitioning(partitionings);
+        preparedData.setLocalPartitionDefinitionInfo(localPartitionDefinitionInfo);
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setPartBoundExprInfo(partBoundExprInfo);
 
@@ -80,6 +92,7 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                                          SqlNode tbPartitionBy,
                                                                          SqlNode tbParititons,
                                                                          SqlNode partitionings,
+                                                                         LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
                                                                          boolean isUnique,
                                                                          boolean clusteredIndex,
                                                                          SqlNode tableGroupName,
@@ -95,7 +108,17 @@ public class LogicalTableOperation extends BaseDdlOperation {
         CreateTablePreparedData indexTablePreparedData =
             prepareCreateTableData(tableMeta, isShadow, autoPartition,
                 isBroadcast, dbPartitionBy, dbPartitions, tbPartitionBy,
-                tbParititons, partitionings, tableGroupName, partBoundExprInfo);
+                tbParititons, partitionings, localPartitionDefinitionInfo, tableGroupName, partBoundExprInfo);
+
+        // Add all columns in primary table whose default value is binary, so binaryColumnDefaultValues may include
+        // columns that do not exist in GSI
+        Map<String, String> binaryColumnDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (ColumnMeta columnMeta: tableMeta.getAllColumns()) {
+            if (columnMeta.isBinaryDefault()) {
+                binaryColumnDefaultValues.put(columnMeta.getName(), columnMeta.getField().getDefault());
+            }
+        }
+        indexTablePreparedData.setBinaryColumnDefaultValues(binaryColumnDefaultValues);
 
         preparedData.setIndexTablePreparedData(indexTablePreparedData);
 
@@ -142,6 +165,12 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setOnGsi(onGsi);
 
         return preparedData;
+    }
+
+    protected boolean isTimestampColumnWithDefault(SqlColumnDeclaration colDef) {
+        return TStringUtil.equalsIgnoreCase(TimestampUtils.TYPE_NAME_TIMESTAMP,
+            colDef.getDataType().getTypeName().getSimple()) &&
+            colDef.getDefaultVal() != null;
     }
 
 }

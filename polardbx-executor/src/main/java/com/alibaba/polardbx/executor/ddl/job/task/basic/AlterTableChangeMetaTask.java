@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -44,7 +45,8 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
     private List<String> updatedColumns;
     private Map<String, String> changedColumns;
 
-    private boolean columnReorder;
+    private boolean hasTimestampColumnDefault;
+    private Map<String, String> binaryColumnDefaultValues;
 
     private List<String> droppedIndexes;
     private List<String> addedIndexes;
@@ -54,9 +56,13 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
     private boolean primaryKeyDropped = false;
     private List<String> addedPrimaryKeyColumns;
 
-    private SequenceBean sequenceBean;
+    private List<Pair<String, String>> columnAfterAnother;
+    private boolean requireLogicalColumnOrder;
 
     private String tableComment;
+    private String tableRowFormat;
+
+    private SequenceBean sequenceBean;
 
     public AlterTableChangeMetaTask(String schemaName,
                                     String logicalTableName,
@@ -68,14 +74,18 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
                                     List<String> addedColumns,
                                     List<String> updatedColumns,
                                     Map<String, String> changedColumns,
-                                    boolean columnReorder,
+                                    boolean hasTimestampColumnDefault,
+                                    Map<String, String> binaryColumnDefaultValues,
                                     List<String> droppedIndexes,
                                     List<String> addedIndexes,
                                     List<String> addedIndexesWithoutNames,
                                     Map<String, String> renamedIndexes,
                                     boolean primaryKeyDropped,
                                     List<String> addedPrimaryKeyColumns,
+                                    List<Pair<String, String>> columnAfterAnother,
+                                    boolean requireLogicalColumnOrder,
                                     String tableComment,
+                                    String tableRowFormat,
                                     SequenceBean sequenceBean) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
@@ -86,14 +96,18 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         this.addedColumns = addedColumns;
         this.updatedColumns = updatedColumns;
         this.changedColumns = changedColumns;
-        this.columnReorder = columnReorder;
+        this.hasTimestampColumnDefault = hasTimestampColumnDefault;
+        this.binaryColumnDefaultValues = binaryColumnDefaultValues;
         this.droppedIndexes = droppedIndexes;
         this.addedIndexes = addedIndexes;
         this.addedIndexesWithoutNames = addedIndexesWithoutNames;
         this.renamedIndexes = renamedIndexes;
         this.primaryKeyDropped = primaryKeyDropped;
         this.addedPrimaryKeyColumns = addedPrimaryKeyColumns;
+        this.columnAfterAnother = columnAfterAnother;
+        this.requireLogicalColumnOrder = requireLogicalColumnOrder;
         this.tableComment = tableComment;
+        this.tableRowFormat = tableRowFormat;
         this.sequenceBean = sequenceBean;
     }
 
@@ -103,9 +117,10 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         TableMetaChanger.changeTableMeta(metaDbConnection, schemaName, logicalTableName, dbIndex, phyTableName, sqlKind,
-            isPartitioned, droppedColumns, addedColumns, updatedColumns, changedColumns, columnReorder, droppedIndexes,
-            addedIndexes, addedIndexesWithoutNames, renamedIndexes, primaryKeyDropped, addedPrimaryKeyColumns,
-            tableComment,  sequenceBean, executionContext);
+            isPartitioned, droppedColumns, addedColumns, updatedColumns, changedColumns, hasTimestampColumnDefault,
+            binaryColumnDefaultValues, droppedIndexes, addedIndexes, addedIndexesWithoutNames, renamedIndexes,
+            primaryKeyDropped, addedPrimaryKeyColumns, columnAfterAnother, requireLogicalColumnOrder, tableComment,
+            tableRowFormat, sequenceBean, executionContext);
     }
 
     @Override

@@ -21,6 +21,8 @@ import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author chenghui.lch
@@ -28,10 +30,28 @@ import java.sql.Timestamp;
 public class DbGroupInfoRecord implements SystemTableRecord {
 
     public static final int GROUP_TYPE_NORMAL = 0;
+
     public static final int GROUP_TYPE_ADDED = 1;
     public static final int GROUP_TYPE_ADDING = 2;
-    public static final int GROUP_TYPE_REMOVING = 3;
     public static final int GROUP_TYPE_SCALEOUT_FINISHED = 4;
+
+    /**
+     * NORMAL -> BEFORE_REMOVE -> REMOVING
+     * BEFORE_REMOVE: stop place any partition on this group, and avoid broadcast-table read
+     * REMOVING: almost removed
+     */
+    public static final int GROUP_TYPE_BEFORE_REMOVE = 5;
+    public static final int GROUP_TYPE_REMOVING = 3;
+
+    private static final Map<Integer, String> grpTypeNameMap = new HashMap<>();
+    static  {
+        grpTypeNameMap.put(GROUP_TYPE_NORMAL, "GROUP_TYPE_NORMAL");
+        grpTypeNameMap.put(GROUP_TYPE_ADDED, "GROUP_TYPE_ADDED");
+        grpTypeNameMap.put(GROUP_TYPE_ADDING, "GROUP_TYPE_ADDING");
+        grpTypeNameMap.put(GROUP_TYPE_SCALEOUT_FINISHED, "GROUP_TYPE_SCALEOUT_FINISHED");
+        grpTypeNameMap.put(GROUP_TYPE_BEFORE_REMOVE, "GROUP_TYPE_BEFORE_REMOVE");
+        grpTypeNameMap.put(GROUP_TYPE_REMOVING, "GROUP_TYPE_REMOVING");
+    }
 
     public long id;
     public Timestamp gmtCreated;
@@ -59,5 +79,25 @@ public class DbGroupInfoRecord implements SystemTableRecord {
         this.phyDbName = rs.getString("phy_db_name");
         this.groupType = rs.getInt("group_type");
         return this;
+    }
+
+    public boolean isNormal() {
+        return this.groupType == GROUP_TYPE_NORMAL;
+    }
+
+    public boolean isVisible() {
+        return this.groupType == GROUP_TYPE_NORMAL || this.groupType == GROUP_TYPE_BEFORE_REMOVE;
+    }
+
+    public boolean isRemoving() {
+        return this.groupType == GROUP_TYPE_REMOVING;
+    }
+
+    public boolean isRemovable() {
+        return this.groupType == GROUP_TYPE_BEFORE_REMOVE || this.groupType == GROUP_TYPE_REMOVING;
+    }
+
+    public String getGroupTypeStr() {
+        return grpTypeNameMap.get(this.groupType);
     }
 }

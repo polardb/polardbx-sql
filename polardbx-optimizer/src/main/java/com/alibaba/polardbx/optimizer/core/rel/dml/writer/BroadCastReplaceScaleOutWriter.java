@@ -90,8 +90,4 @@ public class BroadCastReplaceScaleOutWriter extends AbstractSingleWriter impleme
         return writerList;
     }
 
-    @Override
-    public TableRule getTableRule() {
-        return insertWriter.getTableRule();
-    }
 }

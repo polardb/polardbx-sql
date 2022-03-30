@@ -63,16 +63,13 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
      */
     private final Mapping groupingMapping;
 
-    protected final TableRule tableRule;
-
     public BroadcastModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
-                                 Mapping updateSetMapping, Mapping groupingMapping, TableRule tableRule) {
+                                 Mapping updateSetMapping, Mapping groupingMapping) {
         super(targetTable, modify.getOperation());
         this.modify = modify;
         this.pkMapping = pkMapping;
         this.updateSetMapping = updateSetMapping;
         this.groupingMapping = groupingMapping;
-        this.tableRule = tableRule;
     }
 
     @Override
@@ -90,7 +87,7 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
 
         // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
-            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec, tableRule);
+            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec);
 
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {
@@ -118,8 +115,4 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
         return writerList;
     }
 
-    @Override
-    public TableRule getTableRule() {
-        return tableRule;
-    }
 }

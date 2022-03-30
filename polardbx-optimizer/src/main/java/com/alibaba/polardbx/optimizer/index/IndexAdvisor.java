@@ -16,6 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.index;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -24,15 +31,15 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartPruneStepPruningContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.Sets;
-import com.alibaba.polardbx.common.utils.CaseInsensitive;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.Sets;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.prepare.RelOptTableImpl;
@@ -50,12 +57,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
  * @author dylan
  */
 public class IndexAdvisor {
+
+    protected final Logger logger = LoggerFactory.getLogger(IndexAdvisor.class);
 
     private ExecutionPlan executionPlan;
 
@@ -78,7 +88,8 @@ public class IndexAdvisor {
     public enum AdviseType {
         LOCAL_INDEX,
         GLOBAL_INDEX,
-        GLOBAL_COVERING_INDEX
+        GLOBAL_COVERING_INDEX,
+        BROADCAST
     }
 
     public IndexAdvisor(ExecutionPlan executionPlan, ExecutionContext executionContext) {
@@ -112,52 +123,91 @@ public class IndexAdvisor {
 
         AdviceResult adviceResult = new AdviceResult(originalCost, executionPlan.getPlan());
 
-        // find indexable column
-        IndexableColumnSet indexableColumnSet = analyzeIndexableColumn(logicalPlan);
+        //prepare broadcast tables
+        if (adviseType == AdviseType.BROADCAST) {
+            if (logger.isDebugEnabled()) {
+                StringBuilder sb = new StringBuilder();
+                sb.append("origin rowcount ").append(mq.getRowCount(physicalPlan)).append("\n");
+                sb.append(RelUtils
+                        .toString(physicalPlan, executionContext.getParams().getCurrentParameter(),
+                            RexUtils.getEvalFunc(executionContext), executionContext))
+                    .append("original cost").append(originalCost.toString());
+                logger.debug(sb.toString());
+            }
+            BroadcastContext initContext = initBroadcast(unOptimizedPlan, originalCost);
+            if (initContext != null) {
+                for (Map.Entry<String, Set<String>> entry : initContext.broadcastTables.entrySet()) {
+                    if (entry.getValue().size() > 0) {
+                        executionContext.getSchemaManager(entry.getKey())
+                            .getTddlRuleManager().getTddlRule().getVersionedTableNames().clear();
+                    }
+                }
 
-        // find coverable column
-        coverableColumnSet = analyzeCoverableColumn(logicalPlan);
+                RelNode newLogicalPlan = Planner.getInstance().optimizeBySqlWriter(unOptimizedPlan, plannerContext);
+                RelNode finalPlan = Planner.getInstance().optimizeByPlanEnumerator(newLogicalPlan, plannerContext);
+                RelOptCost finalCost = mq.getCumulativeCost(finalPlan);
+                Configuration finalConfiguration =
+                    new Configuration(new HashSet<>(), finalCost, initContext.broadcastTables);
 
-        // find partition rule
-        partitionRuleSet = analyzePartitionRule(indexableColumnSet);
-
-        partitionPolicyMap = analyzePartitionPolicyMap(partitionRuleSet);
-
-        // find candidate index
-        Map<String, Map<String, Set<CandidateIndex>>> candidateMap = buildCandidateIndex(indexableColumnSet);
-
-        // enumerate configuration
-        Set<CandidateIndex> finalCandidateSet = enumerateConfiguration(candidateMap, logicalPlan, originalCost);
-        WhatIfContext whatIfContext = beginWhatIf(logicalPlan, finalCandidateSet);
-        RelNode finalPlan = Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, plannerContext);
-        RelOptCost finalCost = mq.getCumulativeCost(finalPlan);
-        endWhatIf(whatIfContext);
-
-        if (lessThan(finalCost, originalCost)) {
-            Configuration finalConfiguration = new Configuration(finalCandidateSet, finalCost);
-            adviceResult.setConfiguration(finalConfiguration);
-            WhatIfContext ctx = beginWhatIf(finalPlan, finalCandidateSet);
-            adviceResult.setAfterPlan(finalPlan, "\n" + RelUtils
-                .toString(finalPlan, executionContext.getParams().getCurrentParameter(),
-                    RexUtils.getEvalFunc(executionContext), executionContext));
-            endWhatIf(ctx);
-            adviceResult.setInfo(adviseType.name());
+                if (lessThan(finalCost, originalCost)) {
+                    adviceResult.setConfiguration(finalConfiguration);
+                    adviceResult.setAfterPlan(finalPlan, "\n" + RelUtils
+                        .toString(finalPlan, executionContext.getParams().getCurrentParameter(),
+                            RexUtils.getEvalFunc(executionContext), executionContext));
+                    endWhatIf(initContext);
+                    adviceResult.setInfo(adviseType.name());
+                    return adviceResult;
+                }
+                endWhatIf(initContext);
+            }
         } else {
-            Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(executionPlan.getAst());
-            String defaultSchemaName = executionContext.getSchemaName();
-            StringBuilder infoBuidler = new StringBuilder();
-            infoBuidler.append("Advisor can't not find any useful index. You can try to analyze tables to refresh ");
-            infoBuidler.append("statistics during the low business period by ");
-            infoBuidler.append("`ANALYZE TABLE ");
-            infoBuidler.append(tableSet.stream().map(pair -> {
-                String schemaName = pair.getKey() == null ? defaultSchemaName : pair.getKey();
-                String tableName = pair.getValue();
-                return "`" + schemaName + "`.`" + tableName + "`";
-            }).collect(Collectors.joining(",")));
-            infoBuidler.append("`");
-            adviceResult.setInfo(infoBuidler.toString());
+            // find indexable column
+            IndexableColumnSet indexableColumnSet = analyzeIndexableColumn(logicalPlan);
+
+            // find coverable column
+            coverableColumnSet = analyzeCoverableColumn(logicalPlan);
+
+            // find partition rule
+            partitionRuleSet = analyzePartitionRule(indexableColumnSet);
+
+            partitionPolicyMap = analyzePartitionPolicyMap(partitionRuleSet);
+
+            // find candidate index
+            Map<String, Map<String, Set<CandidateIndex>>> candidateMap = buildCandidateIndex(indexableColumnSet);
+
+            // enumerate configuration
+            Set<CandidateIndex> finalCandidateSet = enumerateConfiguration(candidateMap, logicalPlan, originalCost);
+            WhatIfContext whatIfContext = beginWhatIf(logicalPlan, finalCandidateSet);
+            RelNode finalPlan = Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, plannerContext);
+            RelOptCost finalCost = mq.getCumulativeCost(finalPlan);
+            endWhatIf(whatIfContext);
+
+            if (lessThan(finalCost, originalCost)) {
+                Configuration finalConfiguration = new Configuration(finalCandidateSet, finalCost);
+                adviceResult.setConfiguration(finalConfiguration);
+                WhatIfContext ctx = beginWhatIf(finalPlan, finalCandidateSet);
+                adviceResult.setAfterPlan(finalPlan, "\n" + RelUtils
+                    .toString(finalPlan, executionContext.getParams().getCurrentParameter(),
+                        RexUtils.getEvalFunc(executionContext), executionContext));
+                endWhatIf(ctx);
+                adviceResult.setInfo(adviseType.name());
+                return adviceResult;
+            }
         }
 
+        Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(executionPlan.getAst());
+        String defaultSchemaName = executionContext.getSchemaName();
+        StringBuilder infoBuidler = new StringBuilder();
+        infoBuidler.append("Advisor can't not find any useful index. You can try to analyze tables to refresh ");
+        infoBuidler.append("statistics during the low business period by ");
+        infoBuidler.append("`ANALYZE TABLE ");
+        infoBuidler.append(tableSet.stream().map(pair -> {
+            String schemaName = pair.getKey() == null ? defaultSchemaName : pair.getKey();
+            String tableName = pair.getValue();
+            return "`" + schemaName + "`.`" + tableName + "`";
+        }).collect(Collectors.joining(",")));
+        infoBuidler.append("`");
+        adviceResult.setInfo(infoBuidler.toString());
         return adviceResult;
     }
 
@@ -187,14 +237,16 @@ public class IndexAdvisor {
                         HumanReadableRule.getHumanReadableRule(partitionInfo.getPartitionInfo(tableName));
                     partitionRuleSet.addPartitionRule(schemaName, tableName, humanReadableRule);
                 } else {
-                    TableRule tableRule = executionContext.getSchemaManager(schemaName).getTddlRuleManager().getTableRule(tableName);
+                    TableRule tableRule =
+                        executionContext.getSchemaManager(schemaName).getTddlRuleManager().getTableRule(tableName);
                     HumanReadableRule humanReadableRule = HumanReadableRule.getHumanReadableRule(tableRule);
                     partitionRuleSet.addPartitionRule(schemaName, tableName, humanReadableRule);
                     // gsi
                     List<String> gsiList = GlobalIndexMeta
                         .getPublishedIndexNames(tableName, schemaName, executionContext);
                     for (String gsi : gsiList) {
-                        tableRule = executionContext.getSchemaManager(schemaName).getTddlRuleManager().getTableRule(gsi);
+                        tableRule =
+                            executionContext.getSchemaManager(schemaName).getTddlRuleManager().getTableRule(gsi);
                         humanReadableRule = HumanReadableRule.getHumanReadableRule(tableRule);
                         partitionRuleSet.addPartitionRule(schemaName, tableName, humanReadableRule);
                     }
@@ -386,13 +438,262 @@ public class IndexAdvisor {
         }
     }
 
+    class BroadcastContext extends WhatIfContext {
+        private Map<String, Set<String>> broadcastTables;
+
+        public BroadcastContext(
+            Map<String, SchemaManager> oldSchemaManagers,
+            List<Pair<String, TableScan>> tableScans,
+            Map<TableScan, TableMeta> oldMap,
+            Map<String, Set<String>> broadcastTables) {
+            super(oldSchemaManagers, tableScans, oldMap);
+            this.broadcastTables = broadcastTables;
+        }
+
+    }
+
+    class BroadcastInfo {
+        TableRule rule;
+        TableRule oldRule;
+        PartitionInfoManager.PartInfoCtx infoCtx;
+
+        BroadcastInfo(TableRule rule, TableRule oldRule) {
+            this.rule = rule;
+            this.oldRule = oldRule;
+            infoCtx = null;
+        }
+
+        BroadcastInfo(PartitionInfoManager.PartInfoCtx infoCtx) {
+            this.rule = null;
+            this.oldRule = null;
+            this.infoCtx = infoCtx;
+        }
+
+        void rollback(SchemaManager schemaManager, SchemaManager oldSchemaManager,
+                      String tableName, TableMeta tableMeta) {
+            if (infoCtx != null) {
+                PartitionInfoManager.PartInfoCtx ctx = oldSchemaManager.
+                    getTddlRuleManager().getPartitionInfoManager().getPartInfoCtx(tableName);
+                schemaManager.getTable(tableName).setPartitionInfo(ctx.getPartInfo());
+                schemaManager.getTddlRuleManager().getPartitionInfoManager().putPartInfoCtx(
+                    tableName, ctx);
+                tableMeta.setPartitionInfo(infoCtx.getPartInfo());
+            } else {
+                // rollback old table
+                if (schemaManager.getTddlRuleManager().isBroadCast(tableName)) {
+                    ((WhatIfTddlRuleManager) (schemaManager.getTddlRuleManager())).addTableRule(tableName,
+                        oldRule);
+                }
+            }
+        }
+
+        void prepare(SchemaManager schemaManager, String tableName, TableMeta tableMeta) {
+            if (infoCtx != null) {
+                PartitionInfoManager partitionInfoManager = schemaManager.getTddlRuleManager()
+                    .getPartitionInfoManager();
+                partitionInfoManager.putPartInfoCtx(tableName, infoCtx);
+                tableMeta.setPartitionInfo(infoCtx.getPartInfo());
+            } else {
+                ((WhatIfTddlRuleManager) (schemaManager.getTddlRuleManager())).addTableRule(tableName, rule);
+            }
+        }
+    }
+
+    public BroadcastInfo prepareInfo(String schemaName, String tableName,
+                                     SchemaManager schemaManager,
+                                     SchemaManager oldSchemaManager,
+                                     TableMeta whatIfTableMeta,
+                                     TableMeta oldTableMeta) {
+        BroadcastInfo broadcastInfo = null;
+        if (oldTableMeta.getRowCount() < executionContext.getParamManager().getInt(
+            ConnectionParams.INDEX_ADVISOR_BROADCAST_THRESHOLD)) {
+            if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+
+                PartitionInfo partitionInfo = PartitionInfoBuilder
+                    .buildPartitionInfoByPartDefAst(schemaName, tableName, null, null,
+                        null,
+                        new ArrayList<>(whatIfTableMeta.getPrimaryKey()),
+                        whatIfTableMeta.getAllColumns(),
+                        PartitionTableType.BROADCAST_TABLE,
+                        executionContext);
+
+                partitionInfo.setStatus(TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC);
+
+                PartitionInfoManager partitionInfoManager = schemaManager.getTddlRuleManager()
+                    .getPartitionInfoManager();
+                PartitionInfoManager.PartInfoCtx partInfoCtx =
+                    new PartitionInfoManager.PartInfoCtx(partitionInfoManager,
+                        tableName,
+                        partitionInfo.getTableGroupId(),
+                        partitionInfo);
+                broadcastInfo = new BroadcastInfo(partInfoCtx);
+            } else {
+
+                // make sure old table was not broadcast
+                if (!schemaManager.getTddlRuleManager().isBroadCast(tableName)) {
+                    TableRule tableRule =
+                        TableRuleBuilder.buildBroadcastTableRule(tableName, whatIfTableMeta);
+                    broadcastInfo = new BroadcastInfo(tableRule,
+                        oldSchemaManager.getTddlRuleManager().getTableRule(tableName));
+                }
+            }
+        }
+        return broadcastInfo;
+    }
+
+    private BroadcastContext initBroadcast(RelNode unOptimizedPlan, RelOptCost originalCost) {
+        TableScanFinder tableScanFinder = new TableScanFinder();
+        unOptimizedPlan.accept(tableScanFinder);
+        Map<String, Map<String, List<TableScan>>> tableScanClass = tableScanFinder.getMappedResult(
+            executionContext.getSchemaName());
+
+        Set<String> schemaNames = tableScanClass.keySet();
+
+        Map<String, SchemaManager> oldSchemaManagers = executionContext.getSchemaManagers();
+        Map<String, SchemaManager> whatIfSchemaManagers = new ConcurrentHashMap<>(oldSchemaManagers);
+        executionContext.setSchemaManagers(whatIfSchemaManagers);
+        for (String schemaName : schemaNames) {
+            SchemaManager oldSchemaManager = oldSchemaManagers.get(schemaName);
+            WhatIfSchemaManager whatIfSchemaManager =
+                new WhatIfSchemaManager(oldSchemaManager, new HashSet<>(), executionContext);
+            whatIfSchemaManager.init();
+            executionContext.getSchemaManagers().put(schemaName, whatIfSchemaManager);
+        }
+
+        Map<String, Map<String, BroadcastInfo>> broadcastTableInfo = new HashMap<>(schemaNames.size());
+        for (String schemaName : schemaNames) {
+            broadcastTableInfo.put(schemaName, new HashMap<>());
+        }
+
+        boolean anyBroadcast = false;
+        TableScanCounter tsc = new TableScanCounter();
+        unOptimizedPlan.accept(tsc);
+        int oldTableScanCount = tsc.getCount();
+        // try all schemas
+        for (Map.Entry<String, Map<String, List<TableScan>>> pair : tableScanClass.entrySet()) {
+            String schemaName = pair.getKey();
+
+            //try all tables
+            for (Map.Entry<String, List<TableScan>> entry : pair.getValue().entrySet()) {
+                String tableName = entry.getKey();
+                List<TableScan> tableScans = entry.getValue();
+                BroadcastInfo broadcastInfo = null;
+
+                //substitute all tableScan of the same table
+                for (TableScan tableScan : tableScans) {
+                    RelOptTable relOptTable = tableScan.getTable();
+                    TableMeta oldTableMeta = CBOUtil.getTableMeta(relOptTable);
+                    SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
+                    TableMeta whatIfTableMeta = schemaManager.getTable(oldTableMeta.getTableName());
+                    //don't broadcast gsi
+                    if (whatIfTableMeta.isGsi()) {
+                        continue;
+                    }
+                    // make sure the table is small enough to be broadcast
+                    if (broadcastInfo == null) {
+                        broadcastInfo =
+                            prepareInfo(schemaName, tableName, schemaManager,
+                                oldSchemaManagers.get(schemaName), whatIfTableMeta, oldTableMeta);
+                    }
+                    if (broadcastInfo != null) {
+                        ((RelOptTableImpl) relOptTable).setImplTable(whatIfTableMeta);
+                        broadcastInfo.prepare(schemaManager, tableName, whatIfTableMeta);
+                    }
+                }
+
+                //check the result of making the table broadcast
+                if (broadcastInfo != null) {
+                    //clear old meta
+                    whatIfSchemaManagers.get(schemaName).getTddlRuleManager().
+                        getTddlRule().getVersionedTableNames().clear();
+
+                    RelNode logicalPlan =
+                        Planner.getInstance().optimizeBySqlWriter(unOptimizedPlan, plannerContext);
+                    RelNode physicalPlan =
+                        Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, plannerContext);
+                    RelOptCost newCost = mq.getCumulativeCost(physicalPlan);
+                    if (logger.isDebugEnabled()) {
+                        StringBuilder sb = new StringBuilder("\n");
+                        sb.append("whatif rowcount ").append(mq.getRowCount(physicalPlan))
+                            .append("\n");
+                        sb.append(tableName).append("\n").
+                            append(RelUtils.toString(physicalPlan, executionContext.getParams().getCurrentParameter(),
+                                RexUtils.getEvalFunc(executionContext), executionContext))
+                            .append(originalCost.toString()).append("\n").append(newCost.toString());
+                    }
+
+                    // smaller cost
+                    if (lessThan(newCost, originalCost)) {
+                        tsc = new TableScanCounter();
+                        physicalPlan.accept(tsc);
+                        // more tables are pushed down
+                        if (tsc.getCount() < oldTableScanCount) {
+                            anyBroadcast = true;
+                            //record the useful table
+                            if (!broadcastTableInfo.containsKey(schemaName)) {
+                                broadcastTableInfo.put(schemaName, new HashMap<>());
+                            }
+                            broadcastTableInfo.get(schemaName).put(tableName, broadcastInfo);
+                        }
+                    }
+
+                    // rollback
+                    for (TableScan tableScan : tableScans) {
+                        RelOptTable relOptTable = tableScan.getTable();
+                        TableMeta oldTableMeta = CBOUtil.getTableMeta(relOptTable);
+                        SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
+                        TableMeta whatIfTableMeta = schemaManager.getTable(tableName);
+                        if (whatIfTableMeta.isGsi()) {
+                            continue;
+                        }
+
+                        ((RelOptTableImpl) relOptTable).setImplTable(oldTableMeta);
+                        broadcastInfo.rollback(schemaManager, oldSchemaManagers.get(schemaName),
+                            tableName, whatIfTableMeta);
+                    }
+                }
+
+            }
+        }
+
+        //prepare executionContext with new broadcast
+        Map<TableScan, TableMeta> oldMap = new HashMap<>();
+        for (Pair<String, TableScan> pair : tableScanFinder.getResult()) {
+            String schemaName = pair.getKey();
+            TableScan tableScan = pair.getValue();
+            RelOptTable relOptTable = tableScan.getTable();
+            if ((relOptTable instanceof RelOptTableImpl)) {
+                TableMeta oldTableMeta = CBOUtil.getTableMeta(relOptTable);
+                oldMap.put(tableScan, oldTableMeta);
+                TableMeta whatIfTableMeta =
+                    whatIfSchemaManagers.get(schemaName).getTable(oldTableMeta.getTableName());
+                ((RelOptTableImpl) relOptTable).setImplTable(whatIfTableMeta);
+
+                String tableName = whatIfTableMeta.getTableName();
+                if (broadcastTableInfo.get(schemaName).containsKey(tableName)) {
+                    broadcastTableInfo.get(schemaName).get(tableName).prepare(
+                        executionContext.getSchemaManager(schemaName), tableName, whatIfTableMeta);
+                }
+            }
+        }
+        if (!anyBroadcast) {
+            return null;
+        }
+
+        Map<String, Set<String>> broadcastTables = new HashMap<>();
+        for (Map.Entry<String, Map<String, BroadcastInfo>> entry : broadcastTableInfo.entrySet()) {
+            broadcastTables.put(entry.getKey(), entry.getValue().keySet());
+        }
+        return new BroadcastContext(oldSchemaManagers, tableScanFinder.getResult(), oldMap, broadcastTables);
+    }
+
     private WhatIfContext beginWhatIf(RelNode logicalPlan, Set<CandidateIndex> candidateIndexSet) {
         Set<String> schemaNames = candidateIndexSet.stream()
             .map(x -> x.getSchemaName().toLowerCase())
             .collect(Collectors.toSet());
 
         Map<String, SchemaManager> oldSchemaManagers = executionContext.getSchemaManagers();
-        Map<String, SchemaManager> whatIfSchemaManagers = new HashMap<>(oldSchemaManagers);
+        Map<String, SchemaManager> whatIfSchemaManagers = new ConcurrentHashMap<>(oldSchemaManagers);
         executionContext.setSchemaManagers(whatIfSchemaManagers);
         for (String schemaName : schemaNames) {
             SchemaManager oldSchemaManager = executionContext.getSchemaManager(schemaName);
@@ -431,7 +732,6 @@ public class IndexAdvisor {
                 ((RelOptTableImpl) relOptTable).setImplTable(whatIfContext.oldMap.get(tableScan));
             }
         }
-
     }
 
     private boolean isConfigurationRedundant(Set<CandidateIndex> candidateIndexSet) {

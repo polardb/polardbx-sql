@@ -30,6 +30,8 @@ public class MDC {
 
     public static final String MDC_KEY_APP = "app";
     public static final String MDC_KEY_CON = "CONNECTION";
+    public static final String MDC_KEY_JOB_ID = "JOB_ID";
+    public static final String MDC_KEY_TASK_ID = "TASK_ID";
 
     static MDCAdapter mdcAdapter;
 

@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import org.apache.calcite.jdbc.CalcitePrepare;
@@ -54,15 +55,30 @@ public class SqlDdlNodes {
                                            SqlNode likeTableName, SqlNodeList columnList,
                                            SqlNode query, SqlNode dbpartitionBy, SqlNode dbpartitions,
                                            SqlNode tbpartitionBy, SqlNode tbpartitions, String sourceSql,
-                                           boolean broadcast, SequenceBean sequence, SqlNode sqlPartition, SqlNode tableGroupName) {
-        return new SqlCreateTable(pos,
+                                           boolean broadcast, SequenceBean sequence, SqlNode sqlPartition,
+                                           SqlNode localPartition,
+                                           SqlNode tableGroupName,
+                                           SQLPartitionByRange localPartitionSuffix) {
+        return new SqlCreateTable(
+            pos,
             replace,
             ifNotExists,
             name,
             likeTableName,
             columnList,
-            query, dbpartitionBy, dbpartitions, tbpartitionBy, tbpartitions, sourceSql, broadcast, sequence,
-            sqlPartition, tableGroupName);
+            query,
+            dbpartitionBy,
+            dbpartitions,
+            tbpartitionBy,
+            tbpartitions,
+            sourceSql,
+            broadcast,
+            sequence,
+            sqlPartition,
+            localPartition,
+            tableGroupName,
+            localPartitionSuffix
+        );
   }
 
   /** Creates a CREATE VIEW. */

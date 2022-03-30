@@ -35,7 +35,8 @@ public class FetchSessionPerfSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         ArrayResultCursor resultCursor = buildResultCursor();
-        String serverInfo = TddlNode.getNodeIndex() + ":" + TddlNode.getNodeId() + ":" + TddlNode.getHost();
+        String serverInfo =
+            TddlNode.getNodeIndex() + ":" + TddlNode.getNodeId() + ":" + TddlNode.getHost() + ":" + TddlNode.getPort();
 
         List<SessionPerfItem> items = new ArrayList<>();
         XConnectionManager.getInstance().gatherSessionPerf(items);

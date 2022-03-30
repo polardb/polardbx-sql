@@ -308,7 +308,7 @@ public class GlobalIndexMeta {
 
     public static List<String> getShardingKeys(TableMeta tableMeta, String schemaName) {
         TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
-        return or.getSharedColumns(tableMeta.getTableName())
+        return or.getSharedColumnsForGsi(tableMeta.getTableName())
             .stream()
             .map(String::toUpperCase)
             .collect(Collectors.toList());
@@ -349,6 +349,10 @@ public class GlobalIndexMeta {
 
     public static boolean isAllGsiPublished(List<TableMeta> gsiMetas, PlannerContext context) {
         final ExecutionContext ec = context.getExecutionContext();
+        return gsiMetas.stream().allMatch(gsiMeta -> isPublished(ec, gsiMeta));
+    }
+
+    public static boolean isAllGsiPublished(List<TableMeta> gsiMetas, ExecutionContext ec) {
         return gsiMetas.stream().allMatch(gsiMeta -> isPublished(ec, gsiMeta));
     }
 

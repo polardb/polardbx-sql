@@ -124,13 +124,13 @@ public class GsiMetaChanger {
             afterIndexStatus.getValue()
         );
         //update index status in primary table
-        tableInfoManager.updateIndexesColumnsStatus(
-            schemaName,
-            primaryTableName,
-            Lists.newArrayList(indexName),
-            Lists.newArrayList(columns),
-            beforeIndexStatus.getValue(),
-            afterIndexStatus.getValue()
-        );
+//        tableInfoManager.updateIndexesColumnsStatus(
+//            schemaName,
+//            primaryTableName,
+//            Lists.newArrayList(indexName),
+//            Lists.newArrayList(columns),
+//            beforeIndexStatus.getValue(),
+//            afterIndexStatus.getValue()
+//        );
     }
 }

@@ -20,6 +20,8 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
@@ -71,8 +73,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearSeqCa
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsContinueDDLJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectDDLJobCache;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectGroupSeqRangeStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectRuleVersionStatement;
@@ -87,9 +91,12 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRul
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDDLJobs;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDDLResults;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalDeadlocks;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalIndex;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowLocalDeadlocks;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMetadataLock;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMoveDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowScheduleResultStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTableGroup;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSlowSqlCclStatement;
@@ -509,6 +516,16 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
     }
 
     @Override
+    public void endVisit(DrdsShowScheduleResultStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowScheduleResultStatement x) {
+        return true;
+    }
+
+    @Override
     public void endVisit(MysqlShowRouteStatement x) {
 
     }
@@ -629,6 +646,26 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
     }
 
     @Override
+    public void endVisit(DrdsShowGlobalDeadlocks x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowGlobalDeadlocks x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsShowLocalDeadlocks x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowLocalDeadlocks x) {
+        return true;
+    }
+
+    @Override
     public void endVisit(DrdsShowMetadataLock x) {
 
     }
@@ -655,6 +692,26 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
 
     @Override
     public boolean visit(DrdsCreateCclRuleStatement x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsCreateScheduleStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCreateScheduleStatement x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsDropScheduleStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsDropScheduleStatement x) {
         return false;
     }
 
@@ -2512,6 +2569,26 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
 
     @Override
     public void endVisit(DrdsAlterTableGroupSplitPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableAllocateLocalPartition x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableAllocateLocalPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableExpireLocalPartition x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableExpireLocalPartition x) {
 
     }
 }

@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
+import com.google.common.collect.Lists;
+import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -75,8 +78,12 @@ public abstract class DdlEngineJobsHandler extends HandlerCommon {
         return records;
     }
 
-    protected void interruptJob(String schemaName, long jobId) {
-        DdlRequest ddlRequest = new DdlRequest(schemaName, Lists.newArrayList(jobId));
+    protected List<DdlEngineTaskRecord> fetchTasks(long jobId) {
+        return schedulerManager.fetchTaskRecord(jobId);
+    }
+
+    protected void interruptJob(String schemaName, List<Long> jobIds) {
+        DdlRequest ddlRequest = new DdlRequest(schemaName, jobIds);
         GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), schemaName);
     }
 

@@ -149,7 +149,8 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         } finally {
             selectValuesPool.destroy();
         }
-
+        // Insert batch may be split in TConnection, so we need to set executionContext's PhySqlId for next part
+        executionContext.setPhySqlId(upsertEc.getPhySqlId() + 1);
         return affectRows;
     }
 
@@ -462,6 +463,10 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
 
                     if (skipTrivialUpdate && !rowResult.doInsert) {
                         rowResult.trivial = identicalRow(row.before, row.after, rowColumnMeta);
+                    }
+
+                    if (rowResult.skipUpdate() && !upsertEc.isClientFoundRows()) {
+                        rowResult.affectedRows = 0;
                     }
                 }
                 result.add(rowResult);

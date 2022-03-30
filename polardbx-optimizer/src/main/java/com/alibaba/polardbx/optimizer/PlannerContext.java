@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer;
 
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
@@ -35,8 +36,10 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.util.PlannerContextWithParam;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -101,6 +104,13 @@ public class PlannerContext implements Context, PlannerContextWithParam {
     private long expectedRowcount = -1;
 
     private Map<LogicalTableScan, RexNode> exprMap;
+
+    /**
+     * restrict the times of CBOPushJoinRule
+     */
+    private boolean restrictCboPushJoin = false;
+    private int pushJoinHitCount = 0;
+    private Set<String> tablesInLV;
 
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
@@ -402,5 +412,35 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     public void setExpectedRowcount(long expectedRowcount) {
         this.expectedRowcount = expectedRowcount;
+    }
+
+    public boolean getRestrictCboPushJoin() {
+        return restrictCboPushJoin;
+    }
+
+    public void setRestrictCboPushJoin(boolean restrictCboPushJoin) {
+        this.restrictCboPushJoin = restrictCboPushJoin;
+        if (restrictCboPushJoin) {
+            tablesInLV = new HashSet<>();
+        } else {
+            tablesInLV = null;
+        }
+        pushJoinHitCount = 0;
+    }
+
+    /**
+     * prune CBOPushJoinRule rule
+     * @param tables the list of tables in the logicalView
+     * @return false if CBOPushJoinRule is invoked too many times and the table multiset has been optimized
+     */
+    public boolean addTableList(String tables) {
+        pushJoinHitCount++;
+        // enable when the join push rule is called too many times
+        int limit = paramManager.getInt(ConnectionParams.CBO_RESTRICT_PUSH_JOIN_COUNT);
+        if (pushJoinHitCount >= limit) {
+            pushJoinHitCount = limit;
+            return tablesInLV.add(tables);
+        }
+        return true;
     }
 }

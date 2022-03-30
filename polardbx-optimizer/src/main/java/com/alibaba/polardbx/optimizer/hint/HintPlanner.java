@@ -240,7 +240,10 @@ public class HintPlanner extends TddlSqlToRelConverter {
             new TddlJavaTypeFactoryImpl(),
             connectionConfig);
 
-        RelOptPlanner planner = new VolcanoPlanner(DrdsRelOptCostImpl.FACTORY, Contexts.EMPTY_CONTEXT);
+        VolcanoPlanner planner = new VolcanoPlanner(DrdsRelOptCostImpl.FACTORY, Contexts.EMPTY_CONTEXT);
+        if (ec.isEnableRuleCounter()) {
+            planner.setRuleCounter();
+        }
         planner.clearRelTraitDefs();
         planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
         planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);
@@ -962,7 +965,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
             List<PartPrunedResult> allTbPrunedResults = new ArrayList<>();
             for (int i = 0; i < tableNames.size(); i++) {
-                PartitionPruneStep pruneStepInfo = PartitionPruneStepBuilder.generateFullScanPrueStepInfo(schemaName,
+                PartitionPruneStep pruneStepInfo = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(schemaName,
                     tableNames.get(i), ec);
                 PartPrunedResult tbPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, ec);
                 allTbPrunedResults.add(tbPrunedResult);

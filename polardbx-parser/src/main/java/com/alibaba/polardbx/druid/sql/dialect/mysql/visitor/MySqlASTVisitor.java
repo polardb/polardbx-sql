@@ -15,12 +15,15 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.visitor;
 
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropCheck;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowColumnsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateDatabaseStatement;
@@ -62,8 +65,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearSeqCa
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsContinueDDLJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectDDLJobCache;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectGroupSeqRangeStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectRuleVersionStatement;
@@ -79,9 +84,12 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRul
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDDLJobs;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDDLResults;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalDeadlocks;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalIndex;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowLocalDeadlocks;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMetadataLock;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMoveDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowScheduleResultStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTableGroup;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSlowSqlCclStatement;
@@ -319,6 +327,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
 
     boolean visit(DrdsShowDDLResults x);
 
+    void endVisit(DrdsShowScheduleResultStatement x);
+
+    boolean visit(DrdsShowScheduleResultStatement x);
+
     void endVisit(MysqlShowRouteStatement x);
 
     boolean visit(MysqlShowRouteStatement x);
@@ -367,6 +379,14 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
 
     boolean visit(DrdsShowGlobalIndex x);
 
+    void endVisit(DrdsShowGlobalDeadlocks x);
+
+    boolean visit(DrdsShowGlobalDeadlocks x);
+
+    void endVisit(DrdsShowLocalDeadlocks x);
+
+    boolean visit(DrdsShowLocalDeadlocks x);
+
     void endVisit(DrdsShowMetadataLock x);
 
     boolean visit(DrdsShowMetadataLock x);
@@ -378,6 +398,14 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     void endVisit(DrdsCreateCclRuleStatement x);
 
     boolean visit(DrdsCreateCclRuleStatement x);
+
+    void endVisit(DrdsCreateScheduleStatement x);
+
+    boolean visit(DrdsCreateScheduleStatement x);
+
+    void endVisit(DrdsDropScheduleStatement x);
+
+    boolean visit(DrdsDropScheduleStatement x);
 
     void endVisit(DrdsDropCclRuleStatement x);
 
@@ -876,117 +904,155 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     void endVisit(MySqlFlushStatement x);
 
     boolean visit(MySqlEventSchedule x);
+
     void endVisit(MySqlEventSchedule x);
 
     boolean visit(MySqlCreateEventStatement x);
+
     void endVisit(MySqlCreateEventStatement x);
 
     boolean visit(MySqlCreateAddLogFileGroupStatement x);
+
     void endVisit(MySqlCreateAddLogFileGroupStatement x);
 
     boolean visit(MySqlCreateServerStatement x);
+
     void endVisit(MySqlCreateServerStatement x);
 
     boolean visit(MySqlCreateTableSpaceStatement x);
+
     void endVisit(MySqlCreateTableSpaceStatement x);
 
     boolean visit(MySqlAlterEventStatement x);
+
     void endVisit(MySqlAlterEventStatement x);
 
     boolean visit(MySqlAlterLogFileGroupStatement x);
+
     void endVisit(MySqlAlterLogFileGroupStatement x);
 
     boolean visit(MySqlAlterServerStatement x);
+
     void endVisit(MySqlAlterServerStatement x);
 
     boolean visit(MySqlAlterTablespaceStatement x);
+
     void endVisit(MySqlAlterTablespaceStatement x);
 
     boolean visit(MySqlChecksumTableStatement x);
+
     void endVisit(MySqlChecksumTableStatement x);
 
     boolean visit(MySqlShowDatasourcesStatement x);
+
     void endVisit(MySqlShowDatasourcesStatement x);
 
     boolean visit(MySqlShowNodeStatement x);
+
     void endVisit(MySqlShowNodeStatement x);
 
     boolean visit(MySqlShowHelpStatement x);
+
     void endVisit(MySqlShowHelpStatement x);
 
     boolean visit(MySqlFlashbackStatement x);
+
     void endVisit(MySqlFlashbackStatement x);
 
     boolean visit(MySqlShowConfigStatement x);
+
     void endVisit(MySqlShowConfigStatement x);
 
     boolean visit(MySqlShowPlanCacheStatement x);
+
     void endVisit(MySqlShowPlanCacheStatement x);
 
     boolean visit(MySqlShowPhysicalProcesslistStatement x);
+
     void endVisit(MySqlShowPhysicalProcesslistStatement x);
 
     boolean visit(MySqlRenameSequenceStatement x);
+
     void endVisit(MySqlRenameSequenceStatement x);
 
     boolean visit(MySqlCheckTableStatement x);
+
     void endVisit(MySqlCheckTableStatement x);
 
     boolean visit(MysqlCreateFullTextCharFilterStatement x);
+
     void endVisit(MysqlCreateFullTextCharFilterStatement x);
 
     boolean visit(MysqlShowFullTextStatement x);
+
     void endVisit(MysqlShowFullTextStatement x);
 
     boolean visit(MysqlShowCreateFullTextStatement x);
+
     void endVisit(MysqlShowCreateFullTextStatement x);
 
     boolean visit(MysqlAlterFullTextStatement x);
+
     void endVisit(MysqlAlterFullTextStatement x);
 
     boolean visit(MysqlDropFullTextStatement x);
+
     void endVisit(MysqlDropFullTextStatement x);
 
     boolean visit(MysqlCreateFullTextTokenizerStatement x);
+
     void endVisit(MysqlCreateFullTextTokenizerStatement x);
 
     boolean visit(MysqlCreateFullTextTokenFilterStatement x);
+
     void endVisit(MysqlCreateFullTextTokenFilterStatement x);
 
     boolean visit(MysqlCreateFullTextAnalyzerStatement x);
+
     void endVisit(MysqlCreateFullTextAnalyzerStatement x);
 
     boolean visit(MysqlCreateFullTextDictionaryStatement x);
+
     void endVisit(MysqlCreateFullTextDictionaryStatement x);
 
     boolean visit(MySqlAlterTableAlterFullTextIndex x);
+
     void endVisit(MySqlAlterTableAlterFullTextIndex x);
 
     boolean visit(MySqlExecuteForAdsStatement x);
+
     void endVisit(MySqlExecuteForAdsStatement x);
 
     boolean visit(MySqlManageInstanceGroupStatement x);
+
     void endVisit(MySqlManageInstanceGroupStatement x);
 
     boolean visit(MySqlRaftMemberChangeStatement x);
+
     void endVisit(MySqlRaftMemberChangeStatement x);
 
     boolean visit(MySqlRaftLeaderTransferStatement x);
+
     void endVisit(MySqlRaftLeaderTransferStatement x);
 
     boolean visit(MySqlMigrateStatement x);
+
     void endVisit(MySqlMigrateStatement x);
 
     boolean visit(MySqlShowClusterNameStatement x);
+
     void endVisit(MySqlShowClusterNameStatement x);
 
     boolean visit(MySqlShowJobStatusStatement x);
+
     void endVisit(MySqlShowJobStatusStatement x);
 
     boolean visit(MySqlShowMigrateTaskStatusStatement x);
+
     void endVisit(MySqlShowMigrateTaskStatusStatement x);
 
     boolean visit(MySqlSubPartitionByValue x);
+
     void endVisit(MySqlSubPartitionByValue x);
 
     boolean visit(MySqlExtPartition x);
@@ -996,7 +1062,6 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     boolean visit(MySqlExtPartition.Item x);
 
     void endVisit(MySqlExtPartition.Item x);
-
 
     boolean visit(DrdsInspectRuleVersionStatement x);
 
@@ -1055,9 +1120,11 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     void endVisit(DrdsAlterTablePartition x);
 
     boolean visit(MySqlSetRoleStatement x);
+
     void endVisit(MySqlSetRoleStatement x);
 
     boolean visit(MySqlSetDefaultRoleStatement x);
+
     void endVisit(MySqlSetDefaultRoleStatement x);
 
     boolean visit(DrdsAlterTableGroupSplitPartition x);
@@ -1076,6 +1143,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
 
     void endVisit(DrdsAlterTableGroupExtractHotKey x);
 
+    boolean visit(DrdsSplitHotKey x);
+
+    void endVisit(DrdsSplitHotKey x);
+
     boolean visit(DrdsAlterTableGroupReorgPartition x);
 
     void endVisit(DrdsAlterTableGroupReorgPartition x);
@@ -1087,4 +1158,12 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     boolean visit(DrdsRefreshTopology x);
 
     void endVisit(DrdsRefreshTopology x);
+
+    boolean visit(DrdsAlterTableAllocateLocalPartition x);
+
+    void endVisit(DrdsAlterTableAllocateLocalPartition x);
+
+    boolean visit(DrdsAlterTableExpireLocalPartition x);
+
+    void endVisit(DrdsAlterTableExpireLocalPartition x);
 } //

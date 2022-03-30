@@ -115,6 +115,7 @@ import static com.alibaba.polardbx.optimizer.planmanager.parametric.MyParametric
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdvisor;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSharding;
+import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
 import static org.apache.calcite.sql.SqlKind.STATISTICS_AFFINITY;
 
 public class PlanManagerUtil {
@@ -592,6 +593,9 @@ public class PlanManagerUtil {
             return false;
         }
 
+        if (isExplainStatistics(explain)) {
+            return false;
+        }
         if (!sqlParameterized.needCache()) {
             return false;
         }
@@ -721,10 +725,6 @@ public class PlanManagerUtil {
             points.add(point);
         }
         return points;
-    }
-
-    public static boolean isSteady(Point point) {
-        return point.getInflationNarrow() > INFLATION_NARROW_MAX || point.getChooseTime() > STEADY_CHOOSE_TIME;
     }
 
     public static long getBaselineIdFromExecutionContext(ExecutionContext executionContext) {

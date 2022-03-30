@@ -22,6 +22,8 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
+import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
+import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +31,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.gms.metadb.table.ColumnsRecord.FLAG_BINARY_DEFAULT;
 
 /**
  * @author dylan
@@ -227,7 +230,17 @@ public class InformationSchemaViewManager extends ViewManager {
             },
             String.format(
                 "select C.TABLE_CATALOG, C.TABLE_SCHEMA, C.TABLE_NAME, C.COLUMN_NAME, C.ORDINAL_POSITION, "
-                    + "C.COLUMN_DEFAULT, C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
+                    + "IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
+                    + "  IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
+                    + "  IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
+                    + "    IF(C.DATETIME_PRECISION > 0, "
+                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
+                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
+                    + "    ), "
+                    + "    C.COLUMN_DEFAULT"
+                    + "  )"
+                    + ") AS COLUMN_DEFAULT, "
+                    + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
                     + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
                     + "C.COLUMN_TYPE, C.COLUMN_KEY, C.EXTRA, C.PRIVILEGES, C.COLUMN_COMMENT, C.GENERATION_EXPRESSION "
                     + "from %s.COLUMNS AS C JOIN %s.TABLES_EXT AS E ON C"
@@ -236,7 +249,17 @@ public class InformationSchemaViewManager extends ViewManager {
                     + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
                     + "UNION ALL "
                     + "select C.TABLE_CATALOG, C.TABLE_SCHEMA, C.TABLE_NAME, C.COLUMN_NAME, C.ORDINAL_POSITION, "
-                    + "C.COLUMN_DEFAULT, C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
+                    + "IF(STRCMP(LOWER(C.DATA_TYPE), 'timestamp'), "
+                    + "  IF((C.FLAG & " + FLAG_BINARY_DEFAULT + "),UNHEX(C.COLUMN_DEFAULT),C.COLUMN_DEFAULT), "
+                    + "  IF(STRCMP(TIMEDIFF(C.COLUMN_DEFAULT, '0000-00-00 00:00:00.000000'), '00:00:00.000000'), "
+                    + "    IF(C.DATETIME_PRECISION > 0, "
+                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s'), "
+                    + "       DATE_FORMAT(CONVERT_TZ(C.COLUMN_DEFAULT, '+8:00', CUR_TIME_ZONE()), '%s')"
+                    + "    ), "
+                    + "    C.COLUMN_DEFAULT"
+                    + "  )"
+                    + ") AS COLUMN_DEFAULT, "
+                    + "C.IS_NULLABLE, C.DATA_TYPE, C.CHARACTER_MAXIMUM_LENGTH, C.CHARACTER_OCTET_LENGTH, "
                     + "C.NUMERIC_PRECISION, C.NUMERIC_SCALE, C.DATETIME_PRECISION, C.CHARACTER_SET_NAME, C.COLLATION_NAME, "
                     + "C.COLUMN_TYPE, C.COLUMN_KEY, C.EXTRA, C.PRIVILEGES, C.COLUMN_COMMENT, C.GENERATION_EXPRESSION "
                     + "from %s.COLUMNS AS C JOIN (SELECT * FROM %s.TABLE_PARTITIONS GROUP BY TABLE_SCHEMA, TABLE_NAME)"
@@ -249,8 +272,9 @@ public class InformationSchemaViewManager extends ViewManager {
                     + "COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
                     + "NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME, COLLATION_NAME, "
                     + "COLUMN_TYPE, COLUMN_KEY, EXTRA, PRIVILEGES, COLUMN_COMMENT, GENERATION_EXPRESSION "
-                    + "from information_schema.information_schema_columns"
-                , MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME)
+                    + "from information_schema.information_schema_columns",
+                "%Y-%m-%d %H:%i:%s.%f", "%Y-%m-%d %H:%i:%s", MetaDbSchema.NAME, MetaDbSchema.NAME,
+                "%Y-%m-%d %H:%i:%s.%f", "%Y-%m-%d %H:%i:%s", MetaDbSchema.NAME, MetaDbSchema.NAME)
         );
 
         defineView("KEY_COLUMN_USAGE", new String[] {
@@ -327,8 +351,8 @@ public class InformationSchemaViewManager extends ViewManager {
                     + "'default' as NODEGROUP,\n"
                     + "null as TABLESPACE_NAME\n"
                     + "FROM %s.TABLE_DETAIL join %s.table_partitions \n"
-                    + "on TABLE_DETAIL.SCHEMA_NAME = table_partitions.table_schema\n"
-                    + "and TABLE_DETAIL.LOGICAL_TABLE = table_partitions.table_name\n"
+                    + "on TABLE_DETAIL.TABLE_SCHEMA = table_partitions.table_schema\n"
+                    + "and TABLE_DETAIL.TABLE_NAME = table_partitions.table_name\n"
                     + "and TABLE_DETAIL.PARTITION_NAME = table_partitions.part_name\n"
                     + "where table_partitions.tbl_type != 1\n"
                     + "union all\n"
@@ -465,19 +489,18 @@ public class InformationSchemaViewManager extends ViewManager {
                 + MetaDbSchema.NAME + "." + GmsSystemTables.COLUMN_STATISTICS + " S "
                 + "on C.TABLE_SCHEMA = S.SCHEMA_NAME and C.TABLE_NAME = S.TABLE_NAME "
                 + "and C.COLUMN_NAME = S.COLUMN_NAME");
-
     }
 
     private void defineCommonView() {
 
         defineVirtualView(VirtualViewType.VIRTUAL_STATISTIC, new String[] {
-                "TABLE_NAME",
-                "TABLE_ROWS",
-                "COLUMN_NAME",
-                "CARDINALITY",
-                "NDV_SOURCE",
-                "TOPN",
-                "HISTOGRAM"});
+            "TABLE_NAME",
+            "TABLE_ROWS",
+            "COLUMN_NAME",
+            "CARDINALITY",
+            "NDV_SOURCE",
+            "TOPN",
+            "HISTOGRAM"});
 
         defineVirtualView(VirtualViewType.INFORMATION_SCHEMA_TABLES, new String[] {
             "TABLE_CATALOG",
@@ -1004,6 +1027,15 @@ public class InformationSchemaViewManager extends ViewManager {
             "FREE_PAGE_CLOCK"
         });
 
+        defineVirtualView(VirtualViewType.INNODB_PURGE_FILES, new String[] {
+            "log_id",
+            "start_time",
+            "original_path",
+            "original_size",
+            "temporary_path",
+            "current_size"
+        });
+
         defineVirtualView(VirtualViewType.INNODB_FT_DEFAULT_STOPWORD, new String[] {
             "value"
         });
@@ -1226,7 +1258,21 @@ public class InformationSchemaViewManager extends ViewManager {
         );
 
         defineVirtualView(VirtualViewType.TABLE_GROUP, new String[] {
-            "SCHEMA_NAME",
+            "TABLE_SCHEMA",
+            "TABLE_GROUP_ID",
+            "TABLE_GROUP_NAME",
+            "LOCALITY",
+            "PRIMARY_ZONE",
+            "IS_MANUAL_CREATE",
+            "CUR_PART_KEY",
+            "MAX_PART_KEY",
+            "PART_COUNT",
+            "TABLE_COUNT",
+            "INDEX_COUNT"
+        });
+
+        defineVirtualView(VirtualViewType.FULL_TABLE_GROUP, new String[] {
+            "TABLE_SCHEMA",
             "TABLE_GROUP_ID",
             "TABLE_GROUP_NAME",
             "LOCALITY",
@@ -1236,10 +1282,32 @@ public class InformationSchemaViewManager extends ViewManager {
             "TABLES"
         });
 
+        defineVirtualView(VirtualViewType.LOCAL_PARTITIONS, new String[] {
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "LOCAL_PARTITION_NAME",
+            "LOCAL_PARTITION_METHOD",
+            "LOCAL_PARTITION_EXPRESSION",
+            "LOCAL_PARTITION_DESCRIPTION",
+            "LOCAL_PARTITION_COMMENT"
+        });
+
+        defineVirtualView(VirtualViewType.LOCAL_PARTITIONS_SCHEDULE, new String[] {
+            "SCHEDULE_ID",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "STATUS",
+            "SCHEDULE_EXPR",
+            "SCHEDULE_COMMENT",
+            "TIME_ZONE",
+            "LAST_FIRE_TIME",
+            "NEXT_FIRE_TIME"
+        });
+
         defineVirtualView(VirtualViewType.TABLE_DETAIL, new String[] {
-            "SCHEMA_NAME",
+            "TABLE_SCHEMA",
             "TABLE_GROUP_NAME",
-            "LOGICAL_TABLE",
+            "TABLE_NAME",
             "PHYSICAL_TABLE",
             "PARTITION_SEQ",
             "PARTITION_NAME",
@@ -1293,6 +1361,7 @@ public class InformationSchemaViewManager extends ViewManager {
             "ID",
             "HIT_COUNT",
             "SQL",
+            "TYPE_DIGEST",
             "PLAN"
         });
 
@@ -1481,23 +1550,39 @@ public class InformationSchemaViewManager extends ViewManager {
 
             "QUEUED_REQUEST_DEPTH",
 
-            "TRACE_ID",
-            "SQL",
-            "EXTRA",
-            "TYPE",
-            "REQUEST_STATUS",
-            "FETCH_COUNT",
-            "TOKEN_COUNT",
-            "TIME_SINCE_REQUEST",
-            "DATA_PKT_RESPONSE_TIME",
-            "RESPONSE_TIME",
-            "FINISH_TIME",
-            "TOKEN_DONE_COUNT",
-            "ACTIVE_OFFER_TOKEN_COUNT",
-            "START_TIME",
-            "RESULT_CHUNK",
-            "RETRANSMIT",
-            "USE_CACHE"
-        });
+                "TRACE_ID",
+                "SQL",
+                "EXTRA",
+                "TYPE",
+                "REQUEST_STATUS",
+                "FETCH_COUNT",
+                "TOKEN_COUNT",
+                "TIME_SINCE_REQUEST",
+                "DATA_PKT_RESPONSE_TIME",
+                "RESPONSE_TIME",
+                "FINISH_TIME",
+                "TOKEN_DONE_COUNT",
+                "ACTIVE_OFFER_TOKEN_COUNT",
+                "START_TIME",
+                "RESULT_CHUNK",
+                "RETRANSMIT",
+                "USE_CACHE"
+            });
+
+            defineVirtualView(VirtualViewType.DDL_PLAN, new String[] {
+                "ID",
+                "PLAN_ID",
+                "JOB_ID",
+                "TABLE_SCHEMA",
+                "ddl_stmt",
+                "state",
+                "ddl_type",
+                "progress",
+                "retry_count",
+                "result",
+                "extras",
+                "gmt_created",
+                "gmt_modified"
+            });
+        }
     }
-}

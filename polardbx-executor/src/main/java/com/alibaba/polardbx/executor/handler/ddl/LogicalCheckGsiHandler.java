@@ -61,7 +61,8 @@ public class LogicalCheckGsiHandler extends LogicalCommonDdlHandler {
             ValidateGsiExistenceTask validateTask = new ValidateGsiExistenceTask(
                 prepareData.getSchemaName(),
                 prepareData.getTableName(),
-                prepareData.getIndexName()
+                prepareData.getIndexName(),
+                null, null
             );
             CheckGsiTask checkTask = CheckGsiTask.create(prepareData);
             job.addSequentialTasks(Arrays.asList(validateTask, checkTask));

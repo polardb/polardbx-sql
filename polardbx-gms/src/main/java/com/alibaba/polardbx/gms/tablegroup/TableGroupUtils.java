@@ -23,6 +23,7 @@ import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -39,9 +40,8 @@ public class TableGroupUtils {
 
     public static List<TableGroupConfig> getAllTableGroupInfoByDb(String dbName) {
 
-        List<TableGroupConfig> result = new ArrayList<>();
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
+        return MetaDbUtil.queryMetaDbWrapper(null, (conn) -> {
+            List<TableGroupConfig> result = new ArrayList<>();
             TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
             PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
             TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
@@ -63,18 +63,24 @@ public class TableGroupUtils {
                     new TableGroupConfig(tableGroupRecord, partitionGroupRecords, tablePartRecordInfoContexts);
                 result.add(tableGroupConfig);
             }
-
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return result;
+            return result;
+        });
     }
 
     public static TableGroupConfig getTableGroupInfoByGroupId(Long tableGroupId) {
         TableGroupConfig tableGroupConfig = null;
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
+            tableGroupConfig = getTableGroupInfoByGroupId(conn, tableGroupId);
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+        return tableGroupConfig;
+    }
+
+    public static TableGroupConfig getTableGroupInfoByGroupId(Connection metaDbConn, Long tableGroupId) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
+            TableGroupConfig tableGroupConfig = null;
             TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
             PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
             TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
@@ -96,32 +102,25 @@ public class TableGroupUtils {
                     partitionGroupRecords,
                     tablePartRecordInfoContexts);
             }
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return tableGroupConfig;
+            return tableGroupConfig;
+        });
     }
 
-    public static TablePartRecordInfoContext getTablePartRecordInfoContextsByDbNameAndTableName(String dbName,
+    public static TablePartRecordInfoContext getTablePartRecordInfoContextsByDbNameAndTableName(Connection metaDbConn,
+                                                                                                String dbName,
                                                                                                 String tbName) {
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
             TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
-
             tablePartitionAccessor.setConnection(conn);
 
             return tablePartitionAccessor.getTablePartRecordInfoContextsByDbNameAndTableName(dbName, tbName);
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
+        });
     }
 
     public static TableGroupConfig getTableGroupInfoByGroupName(String schemaName, String tableGroupName) {
-        TableGroupConfig tableGroupConfig = null;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
+        return MetaDbUtil.queryMetaDbWrapper(null, (conn) -> {
+            TableGroupConfig tableGroupConfig = null;
+
             TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
             PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
             TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
@@ -131,7 +130,7 @@ public class TableGroupUtils {
             tablePartitionAccessor.setConnection(conn);
 
             List<TableGroupRecord> tableGroupRecords =
-                tableGroupAccessor.getTableGroupsBySchemaAndName(schemaName, tableGroupName);
+                tableGroupAccessor.getTableGroupsBySchemaAndName(schemaName, tableGroupName, false);
             if (tableGroupRecords != null && tableGroupRecords.size() > 0) {
                 List<PartitionGroupRecord> partitionGroupRecords =
                     partitionGroupAccessor.getPartitionGroupsByTableGroupId(tableGroupRecords.get(0).id, false);
@@ -149,60 +148,22 @@ public class TableGroupUtils {
                     tableGroupConfig.setLocality(locality);
                 }
             }
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return tableGroupConfig;
-    }
-
-    public static Map<String, List<Long>> getAllPhysicalDbAndPartitionGroupMap() {
-        Map<String, List<Long>> dbAndPartitionGroupId = new HashMap<>();
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
-            PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
-
-            partitionGroupAccessor.setConnection(conn);
-
-            List<PartitionGroupRecord> partitionGroupRecords = partitionGroupAccessor.getAllPartitionGroups();
-            if (partitionGroupRecords != null && partitionGroupRecords.size() > 0) {
-                for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
-                    if (dbAndPartitionGroupId.containsKey(partitionGroupRecord.phy_db)) {
-                        dbAndPartitionGroupId.get(partitionGroupRecord.phy_db).add(partitionGroupRecord.id);
-                    } else {
-                        List<Long> partGroupIds = new ArrayList<>();
-                        partGroupIds.add(partitionGroupRecord.id);
-                        dbAndPartitionGroupId.put(partitionGroupRecord.phy_db, partGroupIds);
-                    }
-                }
-            }
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return dbAndPartitionGroupId;
+            return tableGroupConfig;
+        });
     }
 
     public static PartitionGroupRecord getPartitionGroupById(Long pgId) {
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+        return MetaDbUtil.queryMetaDbWrapper(null, (conn) -> {
             PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
             partitionGroupAccessor.setConnection(conn);
             return partitionGroupAccessor.getPartitionGroupById(pgId);
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
+        });
     }
 
-    public static List<PartitionGroupRecord> getOutDatePartitionGroupsByTgId(Long tableGroupId) {
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
-            partitionGroupAccessor.setConnection(conn);
-            return partitionGroupAccessor.getOutDatedPartitionGroupsByTableGroupIdFromDelta(tableGroupId);
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
+    public static List<PartitionGroupRecord> getOutDatePartitionGroupsByTgId(Connection conn, Long tableGroupId) {
+        PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
+        partitionGroupAccessor.setConnection(conn);
+        return partitionGroupAccessor.getOutDatedPartitionGroupsByTableGroupIdFromDelta(tableGroupId);
     }
 
     public static int[] insertOldDatedPartitionGroupToDeltaTable(List<PartitionGroupRecord> outDatedPartitionGroups,
@@ -252,8 +213,10 @@ public class TableGroupUtils {
         tableGroupAccessor.setConnection(metadb);
         partitionGroupAccessor.setConnection(metadb);
         List<TableGroupRecord> tableGroupRecords = tableGroupAccessor.getTableGroupsByID(tableGroupId);
-        if (tableGroupRecords != null && tableGroupRecords.size() > 0 && tableGroupRecords.get(0).manual_create == 0) {
-            tableGroupAccessor.deleteTableGroupsById(schemaName, tableGroupRecords.get(0).id);
+        if (tableGroupRecords != null && tableGroupRecords.size() > 0) {
+            if (tableGroupRecords.get(0).manual_create == 0) {
+                tableGroupAccessor.deleteTableGroupsById(schemaName, tableGroupRecords.get(0).id);
+            }
             partitionGroupAccessor.deletePartitionGroupsByTableGroupId(tableGroupRecords.get(0).id, false);
             isDelete = true;
         }
@@ -261,35 +224,45 @@ public class TableGroupUtils {
     }
 
     public static List<PartitionGroupRecord> getAllUnVisiablePartitionGroupByGroupId(Long tableGroupId) {
-        List<PartitionGroupRecord> partitionGroupRecords = null;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+        return getAllUnVisiablePartitionGroupByGroupId(null, tableGroupId);
+    }
+
+    public static List<PartitionGroupRecord> getAllUnVisiablePartitionGroupByGroupId(Connection metaDbConn,
+                                                                                     Long tableGroupId) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
             PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
             partitionGroupAccessor.setConnection(conn);
 
-            partitionGroupRecords =
-                partitionGroupAccessor.getPartitionGroupsByTableGroupId(tableGroupId, true);
-
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return partitionGroupRecords;
+            return partitionGroupAccessor.getPartitionGroupsByTableGroupId(tableGroupId, true);
+        });
     }
 
     public static List<PartitionGroupRecord> getPartitionGroupsByGroupId(Long tableGroupId) {
-        List<PartitionGroupRecord> partitionGroupRecords = null;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+        return getPartitionGroupsByGroupId(null, tableGroupId);
+    }
+
+    public static List<PartitionGroupRecord> getPartitionGroupsByGroupId(Connection metaDbConn, Long tableGroupId) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
             PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
             partitionGroupAccessor.setConnection(conn);
 
-            partitionGroupRecords =
-                partitionGroupAccessor.getPartitionGroupsByTableGroupId(tableGroupId, false);
+            return partitionGroupAccessor.getPartitionGroupsByTableGroupId(tableGroupId, false);
+        });
+    }
 
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
+    public static Map<Long, PartitionGroupRecord> getPartitionGroupsMapByGroupId(long tableGroupId) {
+        return getPartitionGroupsMapByGroupId(null, tableGroupId);
+    }
+
+    public static Map<Long, PartitionGroupRecord> getPartitionGroupsMapByGroupId(Connection conn,
+                                                                                 long tableGroupId) {
+        List<PartitionGroupRecord> partitionGroupRecords = getPartitionGroupsByGroupId(conn, tableGroupId);
+        Map<Long, PartitionGroupRecord> partitionGroupRecordsMap = new HashMap<>();
+        for (PartitionGroupRecord record : partitionGroupRecords) {
+            partitionGroupRecordsMap.put(record.getId(), record);
         }
-        return partitionGroupRecords;
+
+        return partitionGroupRecordsMap;
     }
 
     public static List<GroupDetailInfoExRecord> mockTheOrderedLocation(String logicalDbName) {

@@ -58,7 +58,7 @@ public class PolicySplitPartition implements BalancePolicy {
                 if (!supportAutoSplit(firstPartition.getPartitionStrategy())) {
                     continue;
                 }
-                if (!firstPartition.enableAutoSplit()) {
+                if (!options.manually && !firstPartition.enableAutoSplit()) {
                     continue;
                 }
                 if (!needSplit(options, pg)) {

@@ -37,12 +37,17 @@ public class RuntimeFilterBuilderExec extends AbstractExecutor {
     // Internal States
     protected Chunk inputChunk;
     protected int position;
+    /**
+     * idx for parallel execution
+     */
+    private final int idx;
 
     public RuntimeFilterBuilderExec(Executor input, BloomFilterProduce filterClient,
-                                    ExecutionContext context) {
+                                    ExecutionContext context, int idx) {
         super(context);
         this.input = input;
         this.filterClient = filterClient;
+        this.idx = idx;
         createBlockBuilders();
     }
 
@@ -55,7 +60,7 @@ public class RuntimeFilterBuilderExec extends AbstractExecutor {
     Chunk doNextChunk() {
         Chunk ret = input.nextChunk();
         if (ret != null) {
-            filterClient.addChunk(ret);
+            filterClient.addChunk(ret, idx);
         }
         return ret;
     }

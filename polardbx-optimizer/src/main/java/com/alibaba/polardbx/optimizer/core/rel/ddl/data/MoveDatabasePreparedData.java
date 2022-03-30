@@ -61,7 +61,7 @@ public class MoveDatabasePreparedData extends DdlPreparedData {
     private String sourceSql;
     /**
      * storageGroups
-     * key:storageInst
+     * key:targetStorageInst
      * value:sourceGroupNames
      */
     private final Map<String, List<String>> storageGroups;

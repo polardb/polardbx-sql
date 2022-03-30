@@ -404,6 +404,13 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             return null;
         }
 
+        // If this table's logical column order is different from physical column order, then we can not use input's
+        // sqlTemplate since it may not contain column names
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
+        if (tableMeta.requireLogicalColumnOrder()) {
+            sqlTemplate = logicalInsert.getSqlTemplate();
+        }
+
         SingleTableOperation singleTableOperation = new SingleTableOperation(logicalInsert,
             processor,
             tableName,

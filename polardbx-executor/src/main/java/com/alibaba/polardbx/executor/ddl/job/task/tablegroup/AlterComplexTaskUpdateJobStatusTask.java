@@ -48,6 +48,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
     boolean subTask;
     List<String> relatedLogicalTables;
     String tableGroupName;
+    String logicalTableName;
 
     @JSONCreator
     public AlterComplexTaskUpdateJobStatusTask(String schemaName,
@@ -58,19 +59,17 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
                                                ComplexTaskMetaManager.ComplexTaskStatus afterJobStatus,
                                                ComplexTaskMetaManager.ComplexTaskStatus beforeTableStatus,
                                                ComplexTaskMetaManager.ComplexTaskStatus afterTableStatus) {
-        super(schemaName, logicalTableName);
+        super(schemaName, "");
         this.relatedLogicalTables = relatedLogicalTables;
         this.beforeJobStatus = beforeJobStatus;
         this.afterJobStatus = afterJobStatus;
         this.beforeTableStatus = beforeTableStatus;
         this.afterTableStatus = afterTableStatus;
         this.subTask = subTask;
+        this.logicalTableName = logicalTableName;
         onExceptionTryRecoveryThenRollback();
     }
 
-    /**
-     *
-     */
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         if (subTask && beforeJobStatus != afterJobStatus) {
@@ -93,7 +92,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
         }
 
         for (String relatedTable : relatedLogicalTables) {
-            tableInfoManager.updateVersion(schemaName, relatedTable);
+            tableInfoManager.updateVersionAndNotify(schemaName, relatedTable);
         }
 
         if (subTask) {
@@ -153,7 +152,7 @@ public class AlterComplexTaskUpdateJobStatusTask extends BaseGmsTask {
         }
 
         for (String relatedTable : relatedLogicalTables) {
-            tableInfoManager.updateVersion(schemaName, relatedTable);
+            tableInfoManager.updateVersionAndNotify(schemaName, relatedTable);
         }
 
         if (subTask) {

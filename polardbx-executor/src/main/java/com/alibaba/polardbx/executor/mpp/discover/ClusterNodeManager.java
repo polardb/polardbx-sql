@@ -28,6 +28,8 @@ import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeServer;
 import com.alibaba.polardbx.gms.node.NodeState;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.http.client.HttpClient;
 import io.airlift.json.JsonCodec;

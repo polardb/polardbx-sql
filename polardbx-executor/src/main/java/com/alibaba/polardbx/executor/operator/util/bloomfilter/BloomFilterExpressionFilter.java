@@ -35,8 +35,11 @@ public class BloomFilterExpressionFilter {
 
     public boolean filter(Chunk.ChunkRow row) {
         if (expression.isExistBloomFilter()) {
-            return filters.stream()
-                .anyMatch(c -> c.filter(row));
+            for (int i = 0; i < filters.size(); i++) {
+                if (filters.get(i).filter(row)) {
+                    return true;
+                }
+            }
         }
         return false;
     }

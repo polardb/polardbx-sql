@@ -16,18 +16,27 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoRecord;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshDbTopologyPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshTopologyPreparedData;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class LogicalRefreshTopology extends BaseDdlOperation {
 
@@ -41,13 +50,14 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
         return new LogicalRefreshTopology(ddl);
     }
 
-    public void preparedData(
-        Map<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbTableGroupAndInstGroupInfo) {
-        assert dbTableGroupAndInstGroupInfo != null;
+    public void preparedData(ExecutionContext ec) {
+        Map<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> info = prepareInfo(ec);
+        assert info != null;
+
         preparedData = new RefreshTopologyPreparedData();
         Map<String, RefreshDbTopologyPreparedData> dbPreparedDataMap = new HashMap<>();
-        for (Map.Entry<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbEntry : dbTableGroupAndInstGroupInfo
-            .entrySet()) {
+        for (Map.Entry<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbEntry :
+            info.entrySet()) {
             List<GroupDetailInfoExRecord> groupDetailInfoExRecords = new ArrayList<>();
             Map<String, List<Pair<String, String>>> instGroupDbInfo = dbEntry.getValue().getValue();
             for (Map.Entry<String, List<Pair<String, String>>> entry : instGroupDbInfo.entrySet()) {
@@ -76,7 +86,48 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
             dbPreparedDataMap.put(dbEntry.getKey(), refreshDbTopologyPreparedData);
         }
         preparedData.setAllRefreshTopologyPreparedData(dbPreparedDataMap);
-        preparedData.setDbTableGroupAndInstGroupInfo(dbTableGroupAndInstGroupInfo);
+        preparedData.setDbTableGroupAndInstGroupInfo(info);
+    }
+
+    private Map<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> prepareInfo(
+        ExecutionContext executionContext) {
+
+        Map<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbTableGroupAndInstGroupInfo =
+            new HashMap<>();
+
+        List<DbInfoRecord> newPartDbInfoRecords =
+            DbTopologyManager.getNewPartDbInfoFromMetaDb(executionContext.getSchemaName());
+        if (CollectionUtils.isEmpty(newPartDbInfoRecords)) {
+            return dbTableGroupAndInstGroupInfo;
+        }
+
+        for (DbInfoRecord dbInfoRecord : newPartDbInfoRecords) {
+            String schemaName = dbInfoRecord.dbName;
+            OptimizerContext oc =
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " not found");
+            TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getBroadcastTableGroupConfig();
+
+            Map<String, List<Pair<String, String>>> instGroupDbInfo =
+                DbTopologyManager.generateDbAndGroupNewConfigInfo(schemaName);
+            if (GeneralUtil.isNotEmpty(instGroupDbInfo)) {
+                final boolean shareStorageMode =
+                    executionContext.getParamManager().getBoolean(ConnectionParams.SHARE_STORAGE_MODE);
+                //for local debug
+                if (shareStorageMode) {
+                    Map<String, List<Pair<String, String>>> copyInstGroupDbInfo = new HashMap<>();
+                    for (Map.Entry<String, List<Pair<String, String>>> entry : instGroupDbInfo.entrySet()) {
+                        for (Pair<String, String> pair : entry.getValue()) {
+                            copyInstGroupDbInfo.computeIfAbsent(entry.getKey(), o -> new ArrayList<>()).add(Pair.of(
+                                GroupInfoUtil.buildGroupNameFromPhysicalDb(pair.getValue() + "S"),
+                                pair.getValue() + "S"));
+                        }
+                    }
+                    instGroupDbInfo = copyInstGroupDbInfo;
+                }
+                dbTableGroupAndInstGroupInfo.put(dbInfoRecord.dbName, new Pair<>(tableGroupConfig, instGroupDbInfo));
+            }
+        }
+        return dbTableGroupAndInstGroupInfo;
     }
 
     public RefreshTopologyPreparedData getPreparedData() {

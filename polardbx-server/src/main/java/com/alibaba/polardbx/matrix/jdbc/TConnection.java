@@ -71,12 +71,15 @@ import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.AsyncDDLContext;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.context.MultiDdlContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
@@ -216,6 +219,17 @@ public class TConnection implements IConnection {
     private InternalTimeZone logicalTimeZone = null;
 
     /**
+     * <pre>
+     * For UPDATE statements, the affected-rows value by default is the number of rows actually changed.
+     * If you specify the CLIENT_FOUND_ROWS flag to mysql_real_connect() when connecting to mysqld, the affected-rows value is the number of rows “found”; that is, matched by the WHERE clause.
+     *
+     * For INSERT ... ON DUPLICATE KEY UPDATE statements, the affected-rows value per row is 1 if the row is inserted as a new row, 2 if an existing row is updated, and 0 if an existing row is set to its current values.
+     * If you specify the CLIENT_FOUND_ROWS flag, the affected-rows value is 1 (not 0) if an existing row is set to its current values.
+     * </pre>
+     */
+    private boolean clientFoundRows = true;
+
+    /**
      * 和show processlist里显示的ID一致，用于生成mpp的QueryId
      */
     private long id;
@@ -248,10 +262,8 @@ public class TConnection implements IConnection {
         this.executor = ds.getExecutor();
         this.executorService = ds.borrowExecutorService();
         this.logicalTimeZone = ds.getLogicalDbTimeZone();
-        /**
-         * FIXME @jinwu for ShareReadView
-         */
-        this.shareReadView = dnSupportShareReadView() ? ShareReadViewPolicy.ON : ShareReadViewPolicy.OFF;
+        // 默认关闭ShareReadView 特殊场景手动开启
+        this.shareReadView = ShareReadViewPolicy.OFF;
     }
 
     public boolean getShareReadView() {
@@ -712,7 +724,8 @@ public class TConnection implements IConnection {
             return;
         }
         ExecutionPlan plan = executionContext.getFinalPlan();
-        if (plan != null) { // only deal with plan not null
+        if (plan != null && !plan.isDirectShardingKey()) {
+            // only deal with plan not null and not direct sharding point select
             if (plan.getCacheKey() != null) {
                 OptimizerContext.getContext(executionContext.getSchemaName()).getPlanManager()
                     .feedBack(plan, ex,
@@ -733,7 +746,8 @@ public class TConnection implements IConnection {
             return null;
         }
         ExecutionPlan executionPlan = executionContext.getFinalPlan();
-        if (executionPlan != null) { // only deal with plan not null
+        if (executionPlan != null && !executionPlan.isDirectShardingKey()) {
+            // only deal with plan not null and not direct sharding point select
             RelNode plan = executionPlan.getPlan();
             PlannerContext plannerContext = PlannerContext.getPlannerContext(plan);
             BaselineInfo baselineInfo = plannerContext.getBaselineInfo();
@@ -957,6 +971,11 @@ public class TConnection implements IConnection {
             return;
         }
 
+        if (null == ec) {
+            // Defensive. When called in TConnection.close, it's possible that ec is null
+            return;
+        }
+
         if (ec.getTransaction() == null) {
             return;
         }
@@ -1024,6 +1043,7 @@ public class TConnection implements IConnection {
         boolean testMode = false;
         Long phySqlId = 0L;
         boolean rescheduled = false;
+        DdlContext ddlContext = null;
         boolean isExecutingPreparedStmt = false;
         PreparedStmtCache preparedStmtCache = null;
 
@@ -1036,6 +1056,7 @@ public class TConnection implements IConnection {
             testMode = this.executionContext.isTestMode();
             phySqlId = this.executionContext.getPhySqlId();
             rescheduled = this.executionContext.isRescheduled();
+            ddlContext = this.executionContext.getDdlContext();
             isExecutingPreparedStmt = this.executionContext.isExecutingPreparedStmt();
             preparedStmtCache = this.executionContext.getPreparedStmtCache();
         }
@@ -1082,6 +1103,8 @@ public class TConnection implements IConnection {
         this.executionContext.setRescheduled(rescheduled);
         this.executionContext.setReturning(null);
         this.executionContext.setOptimizedWithReturning(false);
+        this.executionContext.setClientFoundRows(isClientFoundRows());
+        this.executionContext.setDdlContext(ddlContext);
         this.executionContext.setIsExecutingPreparedStmt(isExecutingPreparedStmt);
         this.executionContext.setPreparedStmtCache(preparedStmtCache);
         return this.executionContext;
@@ -1261,11 +1284,11 @@ public class TConnection implements IConnection {
 
             ExceptionUtils.throwSQLException(exceptions, "close tconnection", Collections.EMPTY_LIST);
         } finally {
-
             try {
                 cleanHints();
                 if (this.trx != null) {
                     this.trx.close();
+                    releaseTransactionalMdl(executionContext);
                     refreshTableMeta();
                 }
             } finally {
@@ -1809,9 +1832,15 @@ public class TConnection implements IConnection {
             // force update transaction policy
             this.trxPolicy = loadTrxPolicy(executionContext);
             loadShareReadView(executionContext);
+
+            boolean isSingleShard = false;
+            if (executionContext.getFinalPlan() != null) {
+                RelNode plan = executionContext.getFinalPlan().getPlan();
+                isSingleShard = plan instanceof SingleTableOperation || plan instanceof DirectTableOperation
+                    || plan instanceof DirectShardingKeyTableOperation;
+            }
             TransactionClass trxConfig = trxPolicy.getTransactionType(false, executionContext.isReadOnly(),
-                executionContext.getFinalPlan() != null
-                    && executionContext.getFinalPlan().getPlan() instanceof SingleTableOperation);
+                isSingleShard);
             if (logicalTimeZone != null) {
                 setTimeZoneVariable(serverVariables);
             }
@@ -2207,5 +2236,13 @@ public class TConnection implements IConnection {
     public boolean dnSupportShareReadView() {
         return dataSource.getConfigHolder().getExecutorContext()
             .getStorageInfoManager().supportSharedReadView();
+    }
+
+    public boolean isClientFoundRows() {
+        return clientFoundRows;
+    }
+
+    public void setClientFoundRows(boolean clientFoundRows) {
+        this.clientFoundRows = clientFoundRows;
     }
 }

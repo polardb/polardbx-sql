@@ -47,8 +47,10 @@ public class StatisticUtils {
 
     public static void logInfo(String schemaName, String msg) {
         logger.info(msg);
-        OptimizerContext.getContext(schemaName).getStatisticManager().getStatisticLogInfo()
-            .add("msg");
+        OptimizerContext oc = OptimizerContext.getContext(schemaName);
+        if (oc != null) {
+            oc.getStatisticManager().getStatisticLogInfo().add("msg");
+        }
     }
 
     public static void logDebug(String schemaName, String msg) {
@@ -219,5 +221,9 @@ public class StatisticUtils {
         String[] orderStr = Arrays.copyOf(cols.toArray(new String[0]), index);
         Arrays.sort(orderStr);
         return String.join(",", orderStr);
+    }
+
+    public static String buildSketchKey(String schemaName, String tableName, String columnNames) {
+        return (schemaName + ":" + tableName + ":" + columnNames).toLowerCase();
     }
 }

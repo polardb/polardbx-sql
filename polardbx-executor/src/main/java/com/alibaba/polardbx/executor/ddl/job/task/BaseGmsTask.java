@@ -18,6 +18,8 @@ package com.alibaba.polardbx.executor.ddl.job.task;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutor;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

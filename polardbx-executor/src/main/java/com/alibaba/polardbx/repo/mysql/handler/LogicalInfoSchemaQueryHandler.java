@@ -359,7 +359,7 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
         tableNames.removeIf(SystemTables::contains);
 
         SchemaManager schemaManager =
-            OptimizerContext.getContext(executionContext.getSchemaName()).getLatestSchemaManager();
+            OptimizerContext.getContext(targetDb).getLatestSchemaManager();
 
         Iterator<String> iter = tableNames.iterator();
         // Mock mode dont consider mem table/recycle bin table/hidden table/privilege of table

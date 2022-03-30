@@ -28,6 +28,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.google.common.collect.Lists;
@@ -77,7 +79,9 @@ public class CreateIndexJobFactory extends DdlJobFactory {
         String logicalTableName = physicalPlanData.getLogicalTableName();
         String indexName = physicalPlanData.getIndexName();
 
-        DdlTask validateTask = new CreateIndexValidateTask(schemaName, logicalTableName, indexName);
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        TableGroupConfig tableGroupConfig = isNewPart ? physicalPlanData.getTableGroupConfig() : null;
+        DdlTask validateTask = new CreateIndexValidateTask(schemaName, logicalTableName, indexName, tableGroupConfig);
         DdlTask addMetaTask = new CreateIndexAddMetaTask(schemaName, logicalTableName);
         DdlTask phyDdlTask =
             new CreateIndexPhyDdlTask(schemaName, physicalPlanData).onExceptionTryRecoveryThenRollback();

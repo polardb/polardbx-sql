@@ -37,6 +37,8 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public final class Split {
+
+    public static final Split EMPTY_SPLIT = new Split(true, null);
     private final boolean remoteSplit;
     private final ConnectorSplit connectorSplit;
 
@@ -45,7 +47,7 @@ public final class Split {
         @JsonProperty("remoteSplit") boolean remoteSplit,
         @JsonProperty("connectorSplit") ConnectorSplit connectorSplit) {
         this.remoteSplit = requireNonNull(remoteSplit, "remoteSplit is null");
-        this.connectorSplit = requireNonNull(connectorSplit, "connectorSplit is null");
+        this.connectorSplit = connectorSplit;
     }
 
     @JsonProperty

@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -51,9 +54,8 @@ public class InformationSchemaInnodbLockWaitsHandler extends BaseVirtualViewSubC
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
-        InformationSchemaInnodbTrxHandler.TransInfo transInfo =
-            new InformationSchemaInnodbTrxHandler.TransInfo(schemaNames);
-        Map<String, List<TGroupDataSource>> instId2GroupList = virtualViewHandler.getInstId2GroupList(schemaNames);
+        TrxLookupSet lookupSet = TransactionUtils.getTrxLookupSet(schemaNames);
+        Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(schemaNames);
 
         for (List<TGroupDataSource> groupDataSourceList : instId2GroupList.values()) {
 
@@ -78,10 +80,8 @@ public class InformationSchemaInnodbLockWaitsHandler extends BaseVirtualViewSubC
                     Long requesting_mysql_thread_id = rs.getLong("requesting_mysql_thread_id");
                     Long blocking_mysql_thread_id = rs.getLong("blocking_mysql_thread_id");
 
-                    Long requestingTranId =
-                        transInfo.mysqlConnId2PolarDbXTranId(groupNameList, requesting_mysql_thread_id);
-                    Long blockingTranId = transInfo.mysqlConnId2PolarDbXTranId(groupNameList, blocking_mysql_thread_id);
-
+                    Long requestingTranId = lookupSet.getTransactionId(groupNameList, requesting_mysql_thread_id);
+                    Long blockingTranId = lookupSet.getTransactionId(groupNameList, blocking_mysql_thread_id);
                     if (requestingTranId == null || blockingTranId == null) {
                         continue;
                     }

@@ -33,7 +33,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.BufferResult;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.units.DataSize;
 
 import java.net.URI;

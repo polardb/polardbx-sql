@@ -120,12 +120,15 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLTinyIntExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuesExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseStatement;
@@ -4943,7 +4946,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
         final SQLExpr partitionMode = x.getPartitionMode();
         if (partitionMode != null) {
-            print0(ucase ? " PARTITION_MODE " : " partition_mode ");
+            print0(ucase ? " MODE " : " mode ");
             printExpr(partitionMode, false);
         }
 
@@ -5102,6 +5105,36 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
+    public void endVisit(DrdsAlterTableAllocateLocalPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableAllocateLocalPartition x) {
+        print0("ALLOCATE LOCAL PARTITION");
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableExpireLocalPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableExpireLocalPartition x) {
+        print0("EXPIRE LOCAL PARTITION ");
+        int i = 0;
+        for (SQLName partition : x.getPartitions()) {
+            if (i > 0) {
+                print0(", ");
+            }
+            partition.accept(this);
+            i++;
+        }
+        return false;
+    }
+
+    @Override
     public boolean visit(DrdsAlterTableGroupMergePartition x) {
         print0(ucase ? "MERGE PARTITIONS " : "merge partitions ");
         int i = 0;
@@ -5148,14 +5181,53 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(DrdsAlterTableGroupExtractHotKey x) {
-        print0(ucase ? "EXTRACT TO PARTITION BY HOT VALUE(" : "extract to partition by hot value(");
-        x.getHotKey().accept(this);
+        print0(ucase ? "EXTRACT TO PARTITION " : "extract to partition ");
+        if (x.getHotKeyPartitionName() != null) {
+            x.getHotKeyPartitionName().accept(this);
+            print0(" ");
+        }
+        print0(ucase ? "BY HOT VALUE(" : " by hot value(");
+        int i = 0;
+        for (SQLExpr hotkey : x.getHotKeys()) {
+            if (i > 0) {
+                print0(", ");
+            }
+            hotkey.accept(this);
+            i++;
+        }
         print0(")");
         return false;
     }
 
     @Override
     public void endVisit(DrdsAlterTableGroupExtractHotKey x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsSplitHotKey x) {
+        print0(ucase ? "SPLIT INTO " : "split into ");
+        if (x.getHotKeyPartitionName() != null) {
+            x.getHotKeyPartitionName().accept(this);
+            print0(" ");
+        }
+        print0(ucase ? "PARTITIONS " : " partitions ");
+        x.getPartitions().accept(this);
+        print0(ucase ? " BY HOT VALUE(" : " by hot value(");
+        int i = 0;
+        for (SQLExpr hotkey : x.getHotKeys()) {
+            if (i > 0) {
+                print0(", ");
+            }
+            hotkey.accept(this);
+            i++;
+        }
+        print0(")");
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsSplitHotKey x) {
 
     }
 
@@ -5195,11 +5267,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     @Override
     public boolean visit(DrdsAlterTableGroupRenamePartition x) {
         boolean firstPart = true;
+        print0(ucase ? "RENAME PARTITION " : "rename partition ");
         for (Pair<SQLName, SQLName> pair : x.getChangePartitionsPair()) {
             if (!firstPart) {
                 print0(", ");
             }
-            print0(ucase ? "RENAME PARTITION " : "rename partition ");
             pair.getKey().accept(this);
             print0(ucase ? " TO " : " to ");
             pair.getValue().accept(this);
@@ -6860,7 +6932,11 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLAlterTableReOrganizePartition x) {
-        print0(ucase ? "REORGANIZE " : "reorganize ");
+        if (dbType == DbType.mysql) {
+            print0(ucase ? "REORGANIZE PARTITION " : "reorganize partition ");
+        } else {
+            print0(ucase ? "REORGANIZE " : "reorganize ");
+        }
 
         printAndAccept(x.getNames(), ", ");
 
@@ -7457,7 +7533,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 //            }
 
             if (x.getColumns().size() == 1) {
-                if (DbType.mysql == getDbType() && columns) {
+                if (columns) {
                     print0(ucase ? " COLUMNS (" : " columns (");
                 } else {
                     print0(" (");
@@ -7465,7 +7541,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                 x.getColumns().get(0).accept(this);
                 print(')');
             } else {
-                if (DbType.mysql == getDbType() && columns) {
+                if (columns) {
                     print0(ucase ? " COLUMNS (" : " columns (");
                 } else {
                     print0(" (");
@@ -9671,6 +9747,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             print0(ucase ? "PARTITION BY " : "partition by ");
             partitionBy.accept(this);
         }
+
+//        SQLPartitionBy localPartitionBy = x.getLocalPartitioning();
+//        if (localPartitionBy != null) {
+//            println();
+//            print0(ucase ? "LOCAL PARTITION BY " : "local partition by ");
+//            localPartitionBy.accept(this);
+//        }
 
         List<SQLIdentifierExpr> routeBy = x.getRouteBy();
         if (routeBy != null && routeBy.size() > 0) {

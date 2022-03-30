@@ -98,14 +98,19 @@ public class GsiFastChecker extends FastChecker {
     @Override
     public boolean check(ExecutionContext baseEc) {
         boolean tsoCheckResult = tsoCheck(baseEc);
-        if (tsoCheckResult == true) {
+        if (tsoCheckResult) {
             return true;
         } else {
             SQLRecorderLogger.ddlLogger
                 .warn(MessageFormat.format("[{0}] FastChecker with TsoCheck failed, begin XaCheck",
                     baseEc.getTraceId()));
         }
-        boolean xaCheckResult = xaCheckForHeterogeneousTable(baseEc);
-        return xaCheckResult;
+
+        /**
+         * When tsoCheck is failed, bypath to use old checker directly.
+         * because xaCheck of gsi is easily to caused deadlock by using lock tables
+         */
+        //boolean xaCheckResult = xaCheckForHeterogeneousTable(baseEc);
+        return tsoCheckResult;
     }
 }

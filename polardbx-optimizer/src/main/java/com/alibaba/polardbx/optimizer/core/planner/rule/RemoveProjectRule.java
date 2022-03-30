@@ -60,7 +60,7 @@ public class RemoveProjectRule extends RelOptRule {
         // if the project node contains un-pushable function, don't transform the insert rel node.
         List<RexNode> exps = project.getChildExps();
         for (RexNode node : exps) {
-            if (RexUtils.containsUnPushableFunction(node)) {
+            if (RexUtils.containsUnPushableFunction(node, false)) {
                 return;
             }
         }

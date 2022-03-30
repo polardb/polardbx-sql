@@ -26,7 +26,6 @@ import com.alibaba.polardbx.common.utils.extension.Activate;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ExecutorTemplate;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -42,6 +41,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -58,26 +58,49 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
     @Override
     public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName) {
-        return doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, null);
+        return doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, null, false);
+    }
+
+    @Override
+    public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, boolean throwExceptions) {
+        return doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, null, throwExceptions);
     }
 
     @Override
     public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope) {
-        return doSync(action, schemaName, scope, null);
+        return doSync(action, schemaName, scope, null, false);
+    }
+
+    @Override
+    public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope,
+                                                boolean throwExceptions) {
+        return doSync(action, schemaName, scope, null, throwExceptions);
     }
 
     @Override
     public void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler) {
-        doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, handler);
+        doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, handler, false);
+    }
+
+    @Override
+    public void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler, boolean throwExceptions) {
+        doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, handler, throwExceptions);
     }
 
     @Override
     public void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler) {
-        doSync(action, schemaName, scope, handler);
+        doSync(action, schemaName, scope, handler, false);
+    }
+
+    @Override
+    public void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler,
+                     boolean throwExceptions) {
+        doSync(action, schemaName, scope, handler, throwExceptions);
     }
 
     private List<List<Map<String, Object>>> doSync(IGmsSyncAction action, String schemaName,
-                                                   SyncScope scope, ISyncResultHandler handler) {
+                                                   SyncScope scope, ISyncResultHandler handler,
+                                                   boolean throwExceptions) {
         final List<List<Map<String, Object>>> results = Collections.synchronizedList(new ArrayList(1));
         final List<Pair<NodeInfo, List<Map<String, Object>>>> resultsForHandler =
             Collections.synchronizedList(new ArrayList(1));
@@ -116,7 +139,7 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
         }
 
         if (GeneralUtil.isNotEmpty(syncNodes)) {
-            sync(resultsForHandler, localNode, syncNodes, action, schemaName);
+            sync(resultsForHandler, localNode, syncNodes, action, schemaName, throwExceptions);
             for (Pair<NodeInfo, List<Map<String, Object>>> result : resultsForHandler) {
                 results.add(result.getValue());
             }
@@ -135,9 +158,11 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
     }
 
     private void sync(List<Pair<NodeInfo, List<Map<String, Object>>>> resultsForHandler, NodeInfo localNode,
-                      List<NodeInfo> remoteNodes, IGmsSyncAction action, String schemaName) {
+                      List<NodeInfo> remoteNodes, IGmsSyncAction action, String schemaName, boolean throwExceptions) {
         // Use thread pool for manager port to avoid conflict with server port.
         ExecutorTemplate template = new ExecutorTemplate(CobarServer.getInstance().getManagerExecutor());
+
+        Map<String, String> nodeExceptions = new HashMap<>();
 
         for (final NodeInfo remoteNode : remoteNodes) {
             if (remoteNode == null || (remoteNode.equals(localNode))) {
@@ -167,6 +192,7 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
                         String error = String.format("Failed to SYNC to '" + remoteNode.getManagerKey()
                             + "'. Caused by: %s", e.getMessage());
                         logger.error(error, e);
+                        nodeExceptions.put(remoteNode.getManagerKey(), e.getMessage());
                         throw GeneralUtil.nestedException(error, e);
                     } else {
                         logger.error(e);
@@ -185,6 +211,13 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
         // 同步等待所有结果
         template.waitForResult();
+
+        if (throwExceptions && GeneralUtil.isNotEmpty(nodeExceptions)) {
+            StringBuilder buf = new StringBuilder();
+            buf.append("Failed to SYNC the following nodes:").append("\n");
+            nodeExceptions.forEach((key, value) -> buf.append(key).append(" - ").append(value).append(";\n"));
+            throw GeneralUtil.nestedException(buf.toString());
+        }
     }
 
     @Override

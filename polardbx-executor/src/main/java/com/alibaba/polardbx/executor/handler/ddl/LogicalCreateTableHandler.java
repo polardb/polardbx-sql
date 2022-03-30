@@ -19,11 +19,12 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.builder.CreatePartitionTableBuilder;
@@ -39,10 +40,12 @@ import com.alibaba.polardbx.executor.ddl.job.validator.ConstraintValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -54,6 +57,9 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -61,6 +67,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PARTITION_MANAGEMENT;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TABLE_ALREADY_EXISTS;
 
 public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
@@ -75,11 +82,33 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
 
         SqlCreateTable sqlCreateTable = (SqlCreateTable) logicalCreateTable.relDdl.sqlNode;
         if (sqlCreateTable.getLikeTableName() != null) {
-            String createTableSqlForLike = generateCreateTableSqlForLike(sqlCreateTable, executionContext);
-            logicalCreateTable.setCreateTableSqlForLike(createTableSqlForLike);
+            final String sourceCreateTableSql = generateCreateTableSqlForLike(sqlCreateTable, executionContext);
+            MySqlCreateTableStatement stmt =
+                (MySqlCreateTableStatement) FastsqlUtils.parseSql(sourceCreateTableSql).get(0);
+            stmt.getTableSource().setSimpleName(SqlIdentifier.surroundWithBacktick(logicalCreateTable.getTableName()));
+            final String targetCreateTableSql = stmt.toString();
+            final SqlCreateTable targetTableAst = (SqlCreateTable)
+                new FastsqlParser().parse(targetCreateTableSql, executionContext).get(0);
+
+            PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
+            SqlCreateTable createTableLikeSqlAst = (SqlCreateTable)
+                new FastsqlParser().parse(sourceCreateTableSql, executionContext).get(0);
+            createTableLikeSqlAst.setSourceSql(targetTableAst.getSourceSql());
+            createTableLikeSqlAst.setTargetTable(sqlCreateTable.getTargetTable());
+            if (!DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName())) {
+                createTableLikeSqlAst.setGlobalKeys(null);
+                createTableLikeSqlAst.setGlobalUniqueKeys(null);
+            }
+            ExecutionPlan createTableLikeSqlPlan = Planner.getInstance().getPlan(createTableLikeSqlAst, plannerContext);
+            LogicalCreateTable logicalCreateTableLikeRelNode = (LogicalCreateTable) createTableLikeSqlPlan.getPlan();
+            logicalCreateTable = logicalCreateTableLikeRelNode;
+            boolean returnImmediately = validatePlan(logicalCreateTable, executionContext);
+            if(returnImmediately){
+                return new TransientDdlJob();
+            }
         }
 
-        logicalCreateTable.prepareData();
+        logicalCreateTable.prepareData(executionContext);
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalCreateTable.getSchemaName());
         if (!isNewPartDb) {
             if (logicalCreateTable.isWithGsi()) {
@@ -101,17 +130,27 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         SqlCreateTable sqlCreateTable = (SqlCreateTable) logicalDdlPlan.getNativeSqlNode();
         final String schemaName = logicalDdlPlan.getSchemaName();
         final String logicalTableName = logicalDdlPlan.getTableName();
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+
+        if (isNewPart) {
+            if (sqlCreateTable.isBroadCast()) {
+                String tableGroupName = sqlCreateTable.getTableGroupName() == null ? null :
+                    ((SqlIdentifier) sqlCreateTable.getTableGroupName()).getLastName();
+                if (tableGroupName != null && !TableGroupNameUtil.BROADCAST_TG_NAME_TEMPLATE
+                    .equalsIgnoreCase(tableGroupName)) {
+                    throw new TddlRuntimeException(ERR_PARTITION_MANAGEMENT,
+                        "can't set the broadcast table's tablegroup explicitly");
+                }
+            }
+        }
 
         if (sqlCreateTable.getLikeTableName() != null) {
-            final String likeTableName = ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getLastName();
-            if (TStringUtil.equalsIgnoreCase(logicalDdlPlan.getTableName(), likeTableName)) {
-                if (sqlCreateTable.isIfNotExists()) {
-                    DdlHelper.storeFailedMessage(logicalDdlPlan.getSchemaName(), DdlConstants.ERROR_TABLE_EXISTS,
-                        "Table '" + likeTableName + "' already exists", executionContext);
-                    return true;
-                } else {
-                    throw new TddlRuntimeException(ERR_TABLE_ALREADY_EXISTS, likeTableName);
-                }
+            final String targetSchemaName = logicalDdlPlan.getSchemaName();
+            final String targetTableName = logicalDdlPlan.getTableName();
+
+            boolean tableExists = TableValidator.checkIfTableExists(targetSchemaName, targetTableName);
+            if(tableExists){
+                throw new TddlNestableRuntimeException(String.format("Not unique table/alias: '%s'", targetTableName));
             }
             return false;
         }
@@ -153,6 +192,8 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
 
         return new CreateTableJobFactory(
             createTablePreparedData.isAutoPartition(),
+            createTablePreparedData.isTimestampColumnDefault(),
+            createTablePreparedData.getBinaryColumnDefaultValues(),
             physicalPlanData,
             executionContext
         ).create();
@@ -173,9 +214,11 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
                 partitionTableType).build();
         PhysicalPlanData physicalPlanData = createTableBuilder.genPhysicalPlanData();
 
+        PartitionInfo partitionInfo = createTableBuilder.getPartitionInfo();
         return new CreatePartitionTableJobFactory(
-            createTablePreparedData.isAutoPartition(), physicalPlanData,
-            executionContext, createTablePreparedData).create();
+            createTablePreparedData.isAutoPartition(), createTablePreparedData.isTimestampColumnDefault(),
+            createTablePreparedData.getBinaryColumnDefaultValues(), physicalPlanData, executionContext,
+            createTablePreparedData, partitionInfo).create();
     }
 
     private DdlJob buildCreateTableWithGsiJob(LogicalCreateTable logicalCreateTable,
@@ -205,7 +248,8 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
     private final static String CREATE_TABLE = "CREATE TABLE";
     private final static String CREATE_TABLE_IF_NOT_EXISTS = "CREATE TABLE IF NOT EXISTS";
 
-    private String generateCreateTableSqlForLike(SqlCreateTable sqlCreateTable, ExecutionContext executionContext) {
+    public static String generateCreateTableSqlForLike(SqlCreateTable sqlCreateTable,
+                                                       ExecutionContext executionContext) {
         SqlIdentifier sourceTableName = (SqlIdentifier) sqlCreateTable.getLikeTableName();
         String sourceTableSchema =
             sourceTableName.names.size() > 1 ? sourceTableName.names.get(0) : executionContext.getSchemaName();
@@ -219,7 +263,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             new LogicalShowCreateTableHandler(sourceTableRepository);
 
         SqlShowCreateTable sqlShowCreateTable =
-            SqlShowCreateTable.create(SqlParserPos.ZERO, sqlCreateTable.getLikeTableName());
+            SqlShowCreateTable.create(SqlParserPos.ZERO, sqlCreateTable.getLikeTableName(), true);
         ExecutionContext copiedContext = executionContext.copy();
         copiedContext.setSchemaName(sourceTableSchema);
         PlannerContext plannerContext = PlannerContext.fromExecutionContext(copiedContext);

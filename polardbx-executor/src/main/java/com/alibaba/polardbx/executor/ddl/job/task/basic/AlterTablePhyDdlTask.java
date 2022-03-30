@@ -17,18 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.PhysicalDdlException;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
-import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
-import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -42,6 +35,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkV
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import com.google.common.collect.Lists;
 import lombok.Getter;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.RelNode;
@@ -49,6 +43,7 @@ import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +53,12 @@ import java.util.List;
 public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     private String logicalTableName;
+
+    private String sourceSql;
+
+    public void setSourceSql(String sourceSql) {
+        this.sourceSql = sourceSql;
+    }
 
     @JSONCreator
     public AlterTablePhyDdlTask(String schemaName, String logicalTableName, PhysicalPlanData physicalPlanData) {
@@ -69,30 +70,13 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
     public void executeImpl(ExecutionContext executionContext) {
         try {
             super.executeImpl(executionContext);
-        }catch (PhysicalDdlException e){
+        } catch (PhysicalDdlException e) {
             int successCount = e.getSuccessCount();
             if (successCount == 0) {
-                final DdlTask currentTask = this;
-                DdlEngineAccessorDelegate delegate = new DdlEngineAccessorDelegate<Integer>() {
-                    @Override
-                    protected Integer invoke() {
-                        DdlEngineRecord engineRecord = engineAccessor.query(jobId);
-                        //if successCount==0, check supported_commands to decide exception policy
-                        if (engineRecord.isSupportCancel()) {
-                            //no physical DDL done
-                            //so we can mark DdlTaskState from DIRTY to READY
-                            currentTask.setState(DdlTaskState.READY);
-                            onExceptionTryRollback();
-                            DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
-                            return engineTaskAccessor.updateTask(taskRecord);
-                        }
-                        return 0;
-                    }
-                };
-                delegate.execute();
+                enableRollback(this);
             } else {
-                //some physical DDL failed && they do not support rollback
-                //so we forbid CANCEL DDL command here
+                // Some physical DDLs failed && they do not support rollback,
+                // so we forbid CANCEL DDL command here.
                 if (!AlterTableRollbacker.checkIfRollbackable(executionContext.getDdlContext().getDdlStmt())) {
                     updateSupportedCommands(true, false, null);
                 }
@@ -104,7 +88,7 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     @Override
     protected List<RelNode> genRollbackPhysicalPlans(ExecutionContext executionContext) {
-        String origSql = executionContext.getDdlContext().getDdlStmt();
+        String origSql = StringUtils.isNotEmpty(sourceSql) ? sourceSql : executionContext.getDdlContext().getDdlStmt();
         SQLAlterTableStatement alterTableStmt = (SQLAlterTableStatement) FastsqlUtils.parseSql(origSql).get(0);
         if (AlterTableRollbacker.checkIfRollbackable(alterTableStmt)) {
             return genReversedPhysicalPlans(alterTableStmt, executionContext);

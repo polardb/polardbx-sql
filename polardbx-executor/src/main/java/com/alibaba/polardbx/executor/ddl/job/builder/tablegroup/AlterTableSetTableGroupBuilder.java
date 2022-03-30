@@ -18,8 +18,10 @@ package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
@@ -27,9 +29,11 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSetTableGroupPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,6 +50,7 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
     protected Map<String, Set<String>> sourceTableTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected Map<String, Set<String>> targetTableTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected List<PartitionGroupRecord> newPartitionRecords = new ArrayList<>();
+    private boolean onlyChangeSchemaMeta = false;
 
     public AlterTableSetTableGroupBuilder(DDL ddl, AlterTableSetTableGroupPreparedData preparedData,
                                           ExecutionContext executionContext) {
@@ -55,11 +60,68 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
 
     @Override
     public AlterTableSetTableGroupBuilder build() {
-        buildSqlTemplate();
-        buildChangedTableTopology(preparedData.getSchemaName(), preparedData.getTableName());
-        buildPhysicalPlans(preparedData.getTableName());
+        checkAndSetChangeSchemaMeta();
+        if (!onlyChangeSchemaMeta) {
+            buildSqlTemplate();
+            buildChangedTableTopology(preparedData.getSchemaName(), preparedData.getTableName());
+            buildPhysicalPlans(preparedData.getTableName());
+        }
         built = true;
         return this;
+    }
+
+    private void checkAndSetChangeSchemaMeta() {
+        onlyChangeSchemaMeta = false;
+        if (StringUtils.isEmpty(preparedData.getTableGroupName())) {
+            onlyChangeSchemaMeta = true;
+        } else {
+            String tableGroupName = preparedData.getTableGroupName();
+            TableGroupConfig tableGroupInfo =
+                OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
+                    .getTableGroupConfigByName(tableGroupName);
+            if (tableGroupInfo == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_EXISTS,
+                    "tablegroup:" + tableGroupName + " is not exists");
+            }
+            if (GeneralUtil.isEmpty(tableGroupInfo.getAllTables())) {
+                onlyChangeSchemaMeta = true;
+            } else {
+                TablePartRecordInfoContext tablePartRecordInfoContext =
+                    tableGroupInfo.getAllTables().get(0);
+                String tableInTbGrp = tablePartRecordInfoContext.getLogTbRec().tableName;
+
+                PartitionInfo targetPartitionInfo =
+                    executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableInTbGrp)
+                        .getPartitionInfo();
+                String logicTableName = preparedData.getTableName();
+                PartitionInfo sourcePartitionInfo =
+                    OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
+                        .getPartitionInfo(logicTableName);
+                targetPartitionInfo.equals(sourcePartitionInfo);
+                if (!PartitionInfoUtil.partitionEquals(sourcePartitionInfo,targetPartitionInfo)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        "the partition policy of tablegroup:" + tableGroupName + " is not match to table: "
+                            + logicTableName);
+                }
+                if (targetPartitionInfo.getTableGroupId().longValue() == sourcePartitionInfo.getTableGroupId()
+                    .longValue()) {
+                    onlyChangeSchemaMeta = true;
+                    //do nothing
+                } else {
+                    boolean allPartLocIsSame = true;
+                    for (int i=0;i<targetPartitionInfo.getPartitionBy().getPartitions().size() ;i++) {
+                        PartitionSpec sourcePartSpec = sourcePartitionInfo.getPartitionBy().getPartitions().get(i);
+                        PartitionSpec targetPartSpec = targetPartitionInfo.getPartitionBy().getPartitions().get(i);
+                        if (!sourcePartSpec.getLocation().getGroupKey().equalsIgnoreCase(targetPartSpec.getLocation().getGroupKey())) {
+                            allPartLocIsSame = false;
+                            break;
+                        }
+                    }
+                    onlyChangeSchemaMeta = allPartLocIsSame;
+                }
+            }
+        }
+
     }
 
     @Override
@@ -116,7 +178,8 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
         String createTableStr = AlterTableGroupUtils
             .fetchCreateTableDefinition(relDdl, executionContext, location.getGroupKey(), location.getPhyTableName(),
                 preparedData.getSchemaName());
-        sqlTemplate = AlterTableGroupUtils.getSqlTemplate(createTableStr, executionContext);
+        sqlTemplate = AlterTableGroupUtils.getSqlTemplate(preparedData.getSchemaName(), preparedData.getTableName(),
+            createTableStr, executionContext);
     }
 
     public Map<String, Set<String>> getSourceTableTopology() {
@@ -129,5 +192,9 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
 
     public List<PartitionGroupRecord> getNewPartitionRecords() {
         return newPartitionRecords;
+    }
+
+    public boolean isOnlyChangeSchemaMeta() {
+        return onlyChangeSchemaMeta;
     }
 }

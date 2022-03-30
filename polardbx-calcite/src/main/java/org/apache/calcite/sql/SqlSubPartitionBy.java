@@ -49,4 +49,9 @@ public class SqlSubPartitionBy extends SqlCall {
     public List<SqlNode> getOperandList() {
         return null;
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        return false;
+    }
 }

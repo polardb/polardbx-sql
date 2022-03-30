@@ -142,7 +142,6 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
         }
     }
 
-    @Override
     public void deleteByTableNameAndColumnNames(String schemaName, String logicalTableName, String columnNames) {
         if (!ConfigDataMode.isMasterMode()) {
             return;

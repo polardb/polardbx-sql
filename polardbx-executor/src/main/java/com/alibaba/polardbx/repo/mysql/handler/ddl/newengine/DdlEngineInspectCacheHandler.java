@@ -79,7 +79,7 @@ public class DdlEngineInspectCacheHandler extends DdlEngineJobsHandler {
             row.get("SERVER"),
             row.get("JOB_ID"),
             row.get("SCHEMA_NAME"),
-            row.get("RESOURCES"),
+            row.get("DDL_STMT"),
             row.get("STATE"),
             row.get("INTERRUPTED"),
             NONE

@@ -28,6 +28,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLOrderingSpecification;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
@@ -52,6 +53,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -78,10 +80,12 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -123,6 +127,9 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         result.initMeta();
 
         String sql = fetchShowCreateTableFromPhy(schemaName, tableName, showCreateTable, show, executionContext);
+
+        sql = LogicalShowCreateTableHandler.reorgLogicalColumnOrder(schemaName, tableName, sql);
+
         result.initMeta();
 
         StringBuilder partitionStr = new StringBuilder();
@@ -150,6 +157,16 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         List<SQLTableElement> toRemove = Lists.newArrayList();
         for (SQLTableElement sqlTableElement : createTable.getTableElementList()) {
+            // handle binary default value
+            if (sqlTableElement instanceof SQLColumnDefinition) {
+                String columnName = SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getColumnName());
+                ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
+                if (columnMeta.isBinaryDefault()) {
+                    SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
+                    ((SQLColumnDefinition) sqlTableElement).setDefaultExpr(newDefaultVal);
+                }
+            }
+
             if (sqlTableElement instanceof SQLColumnDefinition
                 && SqlValidatorImpl.isImplicitKey(((SQLColumnDefinition) sqlTableElement).getNameAsString())
                 && !needShowImplicitId(executionContext) && !showCreateTable.isFull()) {
@@ -172,6 +189,11 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
             }
         }
         createTable.getTableElementList().removeAll(localIndexes);
+        if(createTable.getOptionHints() != null){
+            createTable.getOptionHints().removeIf(
+                e-> StringUtils.contains(e.getText(), "PARTITION BY")
+            );
+        }
 
         List<SQLTableElement> indexDefs =
             buildIndexDefs(schemaName, gsiMeta, tableName, tableMeta, localIndexes, showCreateTable.isFull());
@@ -193,6 +215,9 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         if (!tableMeta.isAutoPartition() || showCreateTable.isFull()) {
             sql = sql + partitionStr;
         }
+        if(tableMeta.getLocalPartitionDefinitionInfo() != null){
+            sql += "\n" + tableMeta.getLocalPartitionDefinitionInfo().toString();
+        }
 
         sql = sql + buildTableGroupInfo(schemaName, showCreateTable, partInfo);
 
@@ -202,9 +227,9 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
     private String buildTableGroupInfo(String schemaName, SqlShowCreateTable showCreateTable,
                                        PartitionInfo partInfo) {
-        TableGroupConfig tgConfig =
-            OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
-                .getTableGroupConfigById(partInfo.getTableGroupId());
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+        TableGroupConfig tgConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(partInfo.getTableGroupId());
 
         if (tgConfig == null) {
             return "";

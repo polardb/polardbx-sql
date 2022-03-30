@@ -64,7 +64,10 @@ public class SqlPartitionByScope extends ListScope {
         if (fld != null) {
             return SqlQualified.create(this, 1, createTbNs, identifier);
         }
-        return super.fullyQualify(identifier);
+
+        String tableName = ((SqlCreateTable) createTbNode).getName().toString();
+        throw validator.newValidationError(identifier,
+            RESOURCE.columnNotFoundInTable(identifier.toString(), tableName));
     }
 
     @Override

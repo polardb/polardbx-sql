@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.dal.BaseDalOperation;
+import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.metadata.InfoSchemaCommon;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
@@ -44,6 +45,7 @@ import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.optimizer.view.VirtualViewType;
+import com.alibaba.polardbx.repo.mysql.common.ResultSetHelper;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyQueryCursor;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
@@ -54,6 +56,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShow;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -121,7 +124,9 @@ public class MyBaseDalHandler extends BaseDalHandler {
             } // end of if
 
             if (dal.single()) {
-                return myRepo.getCursorFactory().repoCursor(executionContext, dal.getInput(null).get(0));
+                ShowColumnsContext showColumnsContext = extractSchemaTableNameForShowColumns(dal, executionContext);
+                Cursor cursor = myRepo.getCursorFactory().repoCursor(executionContext, dal.getInput(null).get(0));
+                return reorgLogicalColumnOrder(showColumnsContext, cursor);
             }
 
             return buildMultiCursor(executionContext, dal);
@@ -129,6 +134,105 @@ public class MyBaseDalHandler extends BaseDalHandler {
             // Restore default repo in case we had cross-schema access.
             myRepo = repo;
         }
+    }
+
+    private Cursor reorgLogicalColumnOrder(ShowColumnsContext context, Cursor cursor) {
+        if (context != null) {
+            ArrayResultCursor resultCursor = new ArrayResultCursor(context.tableName);
+
+            resultCursor.addColumn("Field", DataTypes.StringType, false);
+            resultCursor.addColumn("Type", DataTypes.StringType, false);
+            if (context.isFull) {
+                resultCursor.addColumn("Collation", DataTypes.StringType, false);
+            }
+            resultCursor.addColumn("Null", DataTypes.StringType, false);
+            resultCursor.addColumn("Key", DataTypes.StringType, false);
+            resultCursor.addColumn("Default", DataTypes.StringType, false);
+            resultCursor.addColumn("Extra", DataTypes.StringType, false);
+            if (context.isFull) {
+                resultCursor.addColumn("Privileges", DataTypes.StringType, false);
+                resultCursor.addColumn("Comment", DataTypes.StringType, false);
+            }
+
+            resultCursor.initMeta();
+
+            List<Object[]> rows = new ArrayList<>();
+            try {
+                Row row;
+                while ((row = cursor.next()) != null) {
+                    if (context.isFull) {
+                        rows.add(new Object[] {
+                            row.getString(0),
+                            row.getString(1),
+                            row.getString(2),
+                            row.getString(3),
+                            row.getString(4),
+                            row.getString(5),
+                            row.getString(6),
+                            row.getString(7),
+                            row.getString(8)
+                        });
+                    } else {
+                        rows.add(new Object[] {
+                            row.getString(0),
+                            row.getString(1),
+                            row.getString(2),
+                            row.getString(3),
+                            row.getString(4),
+                            row.getString(5)
+                        });
+                    }
+                }
+            } finally {
+                if (cursor != null) {
+                    cursor.close(new ArrayList<>());
+                }
+            }
+
+            ResultSetHelper.reorgLogicalColumnOrder(context.schemaName, context.tableName, rows, resultCursor);
+
+            return resultCursor;
+        }
+
+        return cursor;
+    }
+
+    private ShowColumnsContext extractSchemaTableNameForShowColumns(BaseDalOperation dal,
+                                                                    ExecutionContext executionContext) {
+        if (dal.getKind() == SqlKind.SHOW && dal.getNativeSqlNode() instanceof SqlShow) {
+            boolean isShowColumns = TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW COLUMNS");
+            boolean isShowFullColumns = TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW FULL COLUMNS");
+            if (isShowColumns || isShowFullColumns) {
+                SqlShow sqlShow = (SqlShow) dal.getNativeSqlNode();
+
+                String schemaName = null;
+                if (sqlShow.getDbName() != null) {
+                    schemaName = ((SqlIdentifier) sqlShow.getDbName()).getLastName();
+                }
+                if (TStringUtil.isEmpty(schemaName)) {
+                    schemaName = dal.getSchemaName();
+                }
+                if (TStringUtil.isEmpty(schemaName)) {
+                    schemaName = executionContext.getSchemaName();
+                }
+
+                String tableName = ((SqlIdentifier) sqlShow.getTableName()).getLastName();
+
+                ShowColumnsContext context = new ShowColumnsContext();
+                context.isFull = isShowFullColumns;
+                context.schemaName = schemaName;
+                context.tableName = tableName;
+
+                return context;
+            }
+        }
+        return null;
+    }
+
+    private class ShowColumnsContext {
+        public boolean isFull;
+        public String schemaName;
+        public String tableName;
     }
 
     private Cursor handleForShowView(BaseDalOperation dal, ExecutionContext executionContext) {
@@ -164,14 +268,23 @@ public class MyBaseDalHandler extends BaseDalHandler {
                 rowType = converter.toRel(validatedNode).getRowType();
             }
 
+            ShowColumnsContext showColumnsContext = extractSchemaTableNameForShowColumns(dal, executionContext);
             ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
-//                    | Field | Type    | Null | Key | Default | Extra |
-            resultCursor.addColumn("Field", DataTypes.StringType);
-            resultCursor.addColumn("Type", DataTypes.StringType);
-            resultCursor.addColumn("Null", DataTypes.StringType);
-            resultCursor.addColumn("Key", DataTypes.StringType);
-            resultCursor.addColumn("Default", DataTypes.StringType);
-            resultCursor.addColumn("Extra", DataTypes.StringType);
+            if (showColumnsContext != null) {
+                resultCursor.addColumn("Field", DataTypes.StringType, false);
+                resultCursor.addColumn("Type", DataTypes.StringType, false);
+                if (showColumnsContext.isFull) {
+                    resultCursor.addColumn("Collation", DataTypes.StringType, false);
+                }
+                resultCursor.addColumn("Null", DataTypes.StringType, false);
+                resultCursor.addColumn("Key", DataTypes.StringType, false);
+                resultCursor.addColumn("Default", DataTypes.StringType, false);
+                resultCursor.addColumn("Extra", DataTypes.StringType, false);
+                if (showColumnsContext.isFull) {
+                    resultCursor.addColumn("Privileges", DataTypes.StringType, false);
+                    resultCursor.addColumn("Comment", DataTypes.StringType, false);
+                }
+            }
 
             for (int i = 0; i < rowType.getFieldCount(); i++) {
                 String field = rowType.getFieldList().get(i).getName();
@@ -180,7 +293,11 @@ public class MyBaseDalHandler extends BaseDalHandler {
                     field = row.getColumnList().get(i);
                 }
                 // todo 此处LogicalDescHandler实现中Null字段默认为YES, 且Type存在问题
-                resultCursor.addRow(new Object[] {field, type.toString().toLowerCase(), "YES", "", "NULL", ""});
+                if (showColumnsContext.isFull) {
+                    resultCursor.addRow(new Object[] {field, type.toString().toLowerCase(), "NULL", "YES", "", "NULL", "", "select", ""});
+                } else {
+                    resultCursor.addRow(new Object[] {field, type.toString().toLowerCase(), "YES", "", "NULL", ""});
+                }
             }
             return resultCursor;
         }

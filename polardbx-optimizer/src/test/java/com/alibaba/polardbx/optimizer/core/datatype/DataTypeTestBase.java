@@ -30,6 +30,7 @@ import com.alibaba.polardbx.optimizer.config.schema.RootSchemaFactory;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlJavaTypeFactoryImpl;
@@ -221,13 +222,7 @@ public class DataTypeTestBase {
             String.valueOf(parserConfig.caseSensitive()));
         CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
 
-        StatisticManager statisticManager = new StatisticManager(SCHEMA_NAME,
-            null,
-            null,
-            null,
-            null,
-            new HashMap<>());
-
+        StatisticManager statisticManager = new StatisticManager(SCHEMA_NAME, new MockStatisticDatasource());
         // prepare optimizer context
         OptimizerContext context = new OptimizerContext(SCHEMA_NAME);
         OptimizerContext.loadContext(context);

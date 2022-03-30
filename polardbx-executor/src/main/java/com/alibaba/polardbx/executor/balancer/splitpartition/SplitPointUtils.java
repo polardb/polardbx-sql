@@ -130,10 +130,10 @@ public class SplitPointUtils {
         }
 
         if (partitionBy.getStrategy() == PartitionStrategy.HASH) {
-            long hashCode = partitionBy.getHasher().calcHashCode(result);
+            long hashCode = partitionBy.getHasher().calcHashCodeForHashStrategy(result);
             result = SearchDatumInfo.createFromHashCode(hashCode);
         } else if (partitionBy.getStrategy() == PartitionStrategy.KEY) {
-            Long[] hashCodes = partitionBy.getHasher().calcHashCodeForKey(result);
+            Long[] hashCodes = partitionBy.getHasher().calcHashCodeForKeyStrategy(result);
             result = SearchDatumInfo.createFromHashCodes(hashCodes);
         }
 

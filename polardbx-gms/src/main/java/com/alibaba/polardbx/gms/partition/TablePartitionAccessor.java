@@ -24,11 +24,14 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -69,6 +72,10 @@ public class TablePartitionAccessor extends AbstractAccessor {
         "select " + ALL_COLUMNS
             + " from table_partitions where table_schema=? and table_name=? and part_level=? order by parent_id, part_position asc";
 
+    private static final String GET_TABLE_PARTITIONS_BY_DB_LEVEL =
+        "select " + ALL_COLUMNS
+            + " from table_partitions where table_schema=? and part_level=? order by parent_id, part_position asc";
+
     private static final String GET_PUBLIC_TABLE_PARTITIONS_BY_DB_TB_LEVEL =
         "select " + ALL_COLUMNS
             + " from table_partitions where table_schema=? and table_name=? and part_level=? and part_status=1 order by parent_id, part_position asc";
@@ -82,15 +89,14 @@ public class TablePartitionAccessor extends AbstractAccessor {
     private static final String UPDATE_STATUS_FOR_LOGICAL_TABLE =
         "update table_partitions set part_status=? where table_schema=? and table_name=? and part_level=0";
 
-    private static final String UPDATE_STATUS_FOR_ONE_PARTITION =
-        "update table_partitions set part_status=? where (table_schema=? and table_name=? and part_name=?) "
-            + " or parent_id = ?";
-
     private static final String UPDATE_PART_BOUND_DESC_FOR_ONE_PARTITION =
         "update table_partitions set part_desc=? where table_schema=? and table_name=? and part_name=?";
 
     private static final String UPDATE_META_VERSION_FOR_LOGICAL_TABLE =
         "update table_partitions set meta_version=? where part_level=0 and table_schema=? and table_name=? ";
+
+    private static final String UPDATE_TABLE_PARTITIONS_SWITCH_NAME_TYPE =
+        "update table_partitions set table_name=? , tbl_type = ? where table_schema=? and table_name=? ";
 
     private static final String DELETE_TABLE_PARTITIONS_BY_TABLE_AND_PARTITION =
         "delete from table_partitions where (table_schema=? and table_name=? and part_name=?) "
@@ -98,6 +104,12 @@ public class TablePartitionAccessor extends AbstractAccessor {
 
     private static final String DELETE_TABLE_PARTITIONS_BY_ID =
         "delete from table_partitions where id=?";
+
+    private static final String UPDATE_TABLE_PARTITIONS_ADD_SHARD_COLUMNS =
+        "update table_partitions set part_expr=? , part_desc = ? where id = ? ";
+
+    private static final String UPDATE_TABLE_PARTITIONS_CHANGE_GROUP_ID =
+        "update table_partitions set group_id =? where id = ? ";
 
     private static final String GET_SUBPARTITIONS_BY_SCHEMA_NAME_GROUP_ID =
         "select " + ALL_COLUMNS
@@ -163,6 +175,26 @@ public class TablePartitionAccessor extends AbstractAccessor {
             records =
                 MetaDbUtil.query(from_delta_table ? GET_TABLE_PARTITIONS_BY_DB_TB_LEVEL_FROM_DELTA_TABLE :
                     GET_TABLE_PARTITIONS_BY_DB_TB_LEVEL, params, TablePartitionRecord.class, connection);
+
+            return records;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public List<TablePartitionRecord> getTablePartitionsByDbNameLevel(String dbName, int level) {
+        try {
+
+            List<TablePartitionRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+
+            assert dbName != null;
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, level);
+            records =
+                MetaDbUtil.query(GET_TABLE_PARTITIONS_BY_DB_LEVEL, params, TablePartitionRecord.class, connection);
 
             return records;
         } catch (Exception e) {
@@ -259,7 +291,8 @@ public class TablePartitionAccessor extends AbstractAccessor {
         }
     }
 
-    public List<TablePartitionRecord> getTablePartitionsByDbNameTbName(String dbName, String tbName) {
+    public List<TablePartitionRecord> getTablePartitionsByDbNameTbName(String dbName, String tbName,
+                                                                       boolean fromDelta) {
         try {
 
             List<TablePartitionRecord> records;
@@ -313,6 +346,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, newGroupId);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, oldGroupId);
+
+            DdlMetaLogUtil.logSql(RENEW_GROUP_ID, params);
+
             MetaDbUtil.update(RENEW_GROUP_ID, params, connection);
             return;
         } catch (Exception e) {
@@ -328,6 +364,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, newGroupId);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, id);
+
+            DdlMetaLogUtil.logSql(RENEW_GROUP_ID_BY_ID, params);
+
             MetaDbUtil.update(RENEW_GROUP_ID_BY_ID, params, connection);
             return;
         } catch (Exception e) {
@@ -344,27 +383,10 @@ public class TablePartitionAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, newStatus);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, dbName);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tbName);
+
+            DdlMetaLogUtil.logSql(UPDATE_STATUS_FOR_LOGICAL_TABLE, params);
+
             MetaDbUtil.update(UPDATE_STATUS_FOR_LOGICAL_TABLE, params, connection);
-            return;
-        } catch (Exception e) {
-            logger.error("Failed to query the system table 'table_partitions'", e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
-                e.getMessage());
-        }
-    }
-
-    public void updateStatusForOnePartition(String dbName, String tbName, String partName, Integer newStatus) {
-        try {
-
-            List<TablePartitionRecord> tablePartitionRecords =
-                getTablePartitionsByDbNameTbNamePtName(dbName, tbName, partName);
-            Map<Integer, ParameterContext> params = new HashMap<>();
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, newStatus);
-            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, dbName);
-            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tbName);
-            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, partName);
-            MetaDbUtil.setParameter(5, params, ParameterMethod.setLong, tablePartitionRecords.get(0).id);
-            MetaDbUtil.update(UPDATE_STATUS_FOR_ONE_PARTITION, params, connection);
             return;
         } catch (Exception e) {
             logger.error("Failed to query the system table 'table_partitions'", e);
@@ -380,6 +402,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, dbName);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tbName);
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, partName);
+
+            DdlMetaLogUtil.logSql(UPDATE_PART_BOUND_DESC_FOR_ONE_PARTITION, params);
+
             MetaDbUtil.update(UPDATE_PART_BOUND_DESC_FOR_ONE_PARTITION, params, connection);
             return;
         } catch (Exception e) {
@@ -395,6 +420,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newPartitionName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, groupId);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, oldPartitionName);
+
+            DdlMetaLogUtil.logSql(UPDATE_PARTITION_NAME_BY_GROUPID, params);
+
             MetaDbUtil.update(UPDATE_PARTITION_NAME_BY_GROUPID, params, connection);
             return;
         } catch (Exception e) {
@@ -410,10 +438,113 @@ public class TablePartitionAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, newOpVersion);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, dbName);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tbName);
+
+            DdlMetaLogUtil.logSql(UPDATE_META_VERSION_FOR_LOGICAL_TABLE, params);
+
             MetaDbUtil.update(UPDATE_META_VERSION_FOR_LOGICAL_TABLE, params, connection);
             return;
         } catch (Exception e) {
             logger.error("Failed to query the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void alterNameAndType(String dbName, String tbName, String newTbName, int tbType) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newTbName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, tbType);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, dbName);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, tbName);
+            DdlMetaLogUtil.logSql(UPDATE_TABLE_PARTITIONS_SWITCH_NAME_TYPE, params);
+            MetaDbUtil.update(UPDATE_TABLE_PARTITIONS_SWITCH_NAME_TYPE, params, connection);
+            return;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void addColumnForPartExprAndPartDesc(String dbName, String tbName, List<String> changeColumns) {
+        // todo: support subpartition wumu
+        List<TablePartitionRecord> partitionRecords = getTablePartitionsByDbNameTbNameLevel(dbName, tbName,
+            TablePartitionRecord.PARTITION_LEVEL_PARTITION, false);
+        try {
+            List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>();
+
+            for (TablePartitionRecord partitionRecord : partitionRecords) {
+                Map<Integer, ParameterContext> params = new HashMap<>();
+                List<String> partDescList = new ArrayList<>();
+
+                // build new partExpr
+                String partExpr = StringUtils.join(changeColumns, ",");
+
+                // build new partDesc
+                String[] partDescArray = partitionRecord.getPartDesc().split(",");
+
+                partDescList.add(partDescArray[0]);
+                for (int i = 0; i < changeColumns.size() - 1; ++i) {
+                    partDescList.add(String.valueOf(Long.MAX_VALUE));
+                }
+                String partDesc = StringUtils.join(partDescList, ",");
+
+                int index = 1;
+                MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, partExpr);
+                MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, partDesc);
+                MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, partitionRecord.id);
+                paramsBatch.add(params);
+            }
+            MetaDbUtil.update(UPDATE_TABLE_PARTITIONS_ADD_SHARD_COLUMNS, paramsBatch, this.connection);
+            return;
+        } catch (Exception e) {
+            logger.error("Failed to update the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void updateTablePartitionsGroupInfo(String dbName, String tbName,
+                                               TablePartitionRecord logicalTableRecord,
+                                               List<TablePartitionRecord> partitionRecords,
+                                               Map<String, List<TablePartitionRecord>> subPartitionInfos) {
+        try {
+            List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>();
+
+            // get record id of logical table
+            List<TablePartitionRecord> results =
+                getTablePartitionsByDbNameTbNameLevel(dbName, tbName,
+                    TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE, false);
+            assert results.size() == 1;
+            TablePartitionRecord logTbRec = results.get(0);
+
+            Map<Integer, ParameterContext> param = new HashMap<>();
+            MetaDbUtil.setParameter(1, param, ParameterMethod.setLong, logicalTableRecord.groupId);
+            MetaDbUtil.setParameter(2, param, ParameterMethod.setLong, logTbRec.id);
+            paramsBatch.add(param);
+
+            // get records of partitions
+            List<TablePartitionRecord> partRecList = getTablePartitionsByDbNameTbNameLevel(dbName, tbName,
+                TablePartitionRecord.PARTITION_LEVEL_PARTITION, false);
+            assert partRecList.size() == partitionRecords.size();
+            for (int i = 0; i < partRecList.size(); i++) {
+                TablePartitionRecord partRec = partRecList.get(i);
+                TablePartitionRecord logicalPartRec = partitionRecords.get(i);
+                Map<Integer, ParameterContext> params = new HashMap<>();
+                MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, logicalPartRec.groupId);
+                MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, partRec.id);
+                paramsBatch.add(params);
+            }
+
+            // todo: support subpartition wumu
+
+            MetaDbUtil.update(
+                UPDATE_TABLE_PARTITIONS_CHANGE_GROUP_ID, paramsBatch,
+                this.connection);
+            return;
+        } catch (Exception e) {
+            logger.error("Failed to update the system table 'table_partitions'", e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
                 e.getMessage());
         }
@@ -426,11 +557,23 @@ public class TablePartitionAccessor extends AbstractAccessor {
             assert dbName != null;
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
             if (tbName == null) {
+
+                DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_SCHEMA_NAME, params);
+
                 MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_SCHEMA_NAME, params, connection);
+
+                DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_SCHEMA_NAME_FROM_DELTA_TABLE, params);
+
                 MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_SCHEMA_NAME_FROM_DELTA_TABLE, params, connection);
             } else {
                 MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tbName);
+
+                DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_TABLE_NAME, params);
+
                 MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_TABLE_NAME, params, connection);
+
+                DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_TABLE_NAME_FROM_DELTA_TABLE, params);
+
                 MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_TABLE_NAME_FROM_DELTA_TABLE, params, connection);
             }
             return;
@@ -448,33 +591,16 @@ public class TablePartitionAccessor extends AbstractAccessor {
             assert dbName != null;
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
             if (tbName == null) {
+                DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_SCHEMA_NAME_FROM_DELTA_TABLE, params);
+
                 MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_SCHEMA_NAME_FROM_DELTA_TABLE, params, connection);
             } else {
                 MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tbName);
+                DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_TABLE_NAME_FROM_DELTA_TABLE, params);
+
                 MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_TABLE_NAME_FROM_DELTA_TABLE, params, connection);
             }
             return;
-        } catch (Exception e) {
-            logger.error("Failed to query the system table 'table_partitions'", e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
-                e.getMessage());
-        }
-    }
-
-    public List<TablePartitionRecord> getTablePartitionsByGroupId(String schemaName, Long id) {
-        try {
-
-            List<TablePartitionRecord> records;
-            Map<Integer, ParameterContext> params = new HashMap<>();
-
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
-            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, id);
-            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, id);
-            records =
-                MetaDbUtil
-                    .query(GET_SUBPARTITIONS_BY_SCHEMA_NAME_GROUP_ID, params, TablePartitionRecord.class, connection);
-
-            return records;
         } catch (Exception e) {
             logger.error("Failed to query the system table 'table_partitions'", e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
@@ -487,6 +613,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
 
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, id);
+
+            DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_ID, params);
+
             MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_ID, params, connection);
             return;
         } catch (Exception e) {
@@ -506,6 +635,8 @@ public class TablePartitionAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tbName);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, ptName);
             MetaDbUtil.setParameter(4, params, ParameterMethod.setLong, tablePartitionRecords.get(0).id);
+
+            DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_TABLE_AND_PARTITION, params);
 
             MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_TABLE_AND_PARTITION, params, connection);
             return;
@@ -672,6 +803,9 @@ public class TablePartitionAccessor extends AbstractAccessor {
         if (toDeltaTable) {
             sql = isUpsert ? UPSERT_TABLE_PARTITIONS_TO_DELTA_TABLE : INSERT_IGNORE_TABLE_PARTITIONS_TO_DELTA_TABLE;
         }
+
+        DdlMetaLogUtil.logSql(sql, paramsBatch);
+
         int[] ret = MetaDbUtil.insert(sql, paramsBatch, this.connection);
         return ret;
     }
@@ -703,7 +837,7 @@ public class TablePartitionAccessor extends AbstractAccessor {
     public List<TablePartitionConfig> getAllTablePartitionConfigsInner(String dbName, Connection metaDbConn) {
 
         List<TablePartitionConfig> partitionConfigArr = new ArrayList<>();
-        List<TablePartitionRecord> records = getTablePartitionsByDbNameTbName(dbName, null);
+        List<TablePartitionRecord> records = getTablePartitionsByDbNameTbName(dbName, null, false);
         Map<String, TablePartRecordInfoContext> tbPartRecInfoMap = new HashMap<>();
         for (int i = 0; i < records.size(); i++) {
             TablePartitionRecord partRec = records.get(i);
@@ -781,7 +915,7 @@ public class TablePartitionAccessor extends AbstractAccessor {
                                                                                          String tableName) {
 
         TablePartRecordInfoContext tablePartRecordInfoContext = new TablePartRecordInfoContext();
-        List<TablePartitionRecord> tablePartitionRecords = getTablePartitionsByDbNameTbName(dbName, tableName);
+        List<TablePartitionRecord> tablePartitionRecords = getTablePartitionsByDbNameTbName(dbName, tableName, false);
         Map<String, TablePartRecordInfoContext> allTablePartInfoCotexts = new HashMap<>();
         for (TablePartitionRecord tablePartitionRecord : tablePartitionRecords) {
             switch (tablePartitionRecord.getPartLevel()) {
@@ -853,7 +987,7 @@ public class TablePartitionAccessor extends AbstractAccessor {
         return partitionConfig;
     }
 
-    private TablePartitionConfig buildPartitionConfByPartitionRecords(TablePartRecordInfoContext confContext) {
+    public static TablePartitionConfig buildPartitionConfByPartitionRecords(TablePartRecordInfoContext confContext) {
 
         TablePartitionRecord logTbRec = confContext.getLogTbRec();
         List<TablePartitionRecord> partitionRecList = confContext.getPartitionRecList();
@@ -907,6 +1041,8 @@ public class TablePartitionAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, groupId);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, partName);
+
+            DdlMetaLogUtil.logSql(DELETE_TABLE_PARTITIONS_BY_GID_AND_PART_FROM_DELTA_TABLE, params);
 
             MetaDbUtil.delete(DELETE_TABLE_PARTITIONS_BY_GID_AND_PART_FROM_DELTA_TABLE, params, connection);
             return;

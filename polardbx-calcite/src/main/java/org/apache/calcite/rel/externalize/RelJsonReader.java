@@ -19,6 +19,7 @@ package org.apache.calcite.rel.externalize;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
@@ -31,6 +32,7 @@ import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.AggregateCall;
+import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.core.Window;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -53,10 +55,12 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Reads a JSON plan and converts it back to a tree of relational expressions.
@@ -321,6 +325,18 @@ public class RelJsonReader {
 
       public ImmutableList<ImmutableList<RexNode>> getDynamicTuples(String tag) {
         throw new UnsupportedOperationException();
+      }
+
+      public ImmutableSet<CorrelationId> getVariablesSet() {
+        if (jsonRel.get("variablesSet") != null) {
+          Set<CorrelationId> correlationIdSet = new HashSet<>();
+          for (Object id : (List)jsonRel.get("variablesSet")) {
+            correlationIdSet.add(new CorrelationId(((Number)id).intValue()));
+          }
+          return ImmutableSet.copyOf(correlationIdSet);
+        } else {
+          return ImmutableSet.of();
+        }
       }
     };
     try {

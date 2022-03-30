@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -57,6 +59,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class PhyTableInsertSharder {
 
@@ -160,14 +163,27 @@ public class PhyTableInsertSharder {
             // use group sequence even in single table.
             handleWithSequence(schemaName, true);
 
-            String groupIndex;
-            TableRule tr = or.getTableRule(logicalTableName);
-            if (tr != null) {
-                groupIndex = tr.getDbNamePattern();
+            String groupIndex = "";
+            String physicalTableName;
+            if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName).
+                    getPartitionInfoManager().getPartitionInfo(logicalTableName);
+                physicalTableName = partitionInfo.getPrefixTableName();
+
+                Map<String, Set<String>> topology = partitionInfo.getTopology();
+                assert(topology.size() == 1);
+                for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
+                    groupIndex = entry.getKey();
+                }
             } else {
-                groupIndex = or.getDefaultDbIndex(logicalTableName);
+                TableRule tr = or.getTableRule(logicalTableName);
+                if (tr != null) {
+                    groupIndex = tr.getDbNamePattern();
+                } else {
+                    groupIndex = or.getDefaultDbIndex(logicalTableName);
+                }
+                physicalTableName = tr.getTbNamePattern();
             }
-            final String physicalTableName = tr.getTbNamePattern();
 
             PhyTableShardResult shardResult = new PhyTableShardResult(groupIndex, physicalTableName, null);
             shardResults = Lists.newArrayList(shardResult);
@@ -183,8 +199,16 @@ public class PhyTableInsertSharder {
             if (!enableBroadcast && groupNames != null) {
                 groupNames = groupNames.subList(0, 1);
             }
-            TableRule tr = or.getTableRule(logicalTableName);
-            final String physicalTableName = tr.getTbNamePattern();
+
+            String physicalTableName;
+            if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName).
+                    getPartitionInfoManager().getPartitionInfo(logicalTableName);
+                physicalTableName = partitionInfo.getPrefixTableName();
+            } else {
+                TableRule tr = or.getTableRule(logicalTableName);
+                physicalTableName = tr.getTbNamePattern();
+            }
 
             shardResults = new ArrayList<>();
             for (String groupIndex : groupNames) {

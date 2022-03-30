@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
@@ -173,6 +174,14 @@ public class PushJoinRule extends RelOptRule {
                 return true;
             }
 
+            if ( (leftView.getPartitions() != null) || rightView.getPartitions() != null) {
+                /**
+                 * Forbid to push join where any logical table use "partition()" syntax to specify partitions
+                 * , the join-push optimization of use "partition()" syntax will be supported later.
+                 */
+                return false;
+            }
+
             getShardColumnRef(call, leftView, leftTable, leftPartitionInfo, rightView, rightTable, rightPartitionInfo,
                 lShardColumnRef,
                 rShardColumnRef);
@@ -232,13 +241,19 @@ public class PushJoinRule extends RelOptRule {
             return;
         }
 
+        // 将条件分为三部分：ON中的条件，作用于左孩子的条件和作用于右孩子的条件
+        List<RexNode> leftFilters = new ArrayList<>();
+        List<RexNode> rightFilters = new ArrayList<>();
+        RelOptPredicateList preds = classifyFilters(rel, joinCondition, leftFilters, rightFilters);
+        perform(call, leftFilters, rightFilters, preds);
+    }
+
+    static public RelOptPredicateList classifyFilters(RelNode rel
+        , RexNode joinCondition, List<RexNode> leftFilters, List<RexNode> rightFilters) {
         Join join = (Join) rel;
         JoinRelType joinType = join.getJoinType();
         List<RexNode> filters = RelOptUtil.conjunctions(joinCondition);
 
-        // 将条件分为三部分：ON中的条件，作用于左孩子的条件和作用于右孩子的条件
-        List<RexNode> leftFilters = new ArrayList<>();
-        List<RexNode> rightFilters = new ArrayList<>();
         RelOptUtil.classifyFilters(join,
             filters,
             joinType,
@@ -266,8 +281,7 @@ public class PushJoinRule extends RelOptRule {
         if (preds.rightInferredPredicates.size() > 0) {
             rightFilters.addAll(preds.rightInferredPredicates);
         }
-
-        perform(call, leftFilters, rightFilters, preds);
+        return preds;
     }
 
     private boolean findShardColumnMatch(RelNode root, RelNode join,
@@ -317,13 +331,20 @@ public class PushJoinRule extends RelOptRule {
                                      String leftTable, PartitionInfo lPartitionInfo, LogicalView rightView,
                                      String rightTable, PartitionInfo rPartitionInfo, List<Integer> lShardColumnRef,
                                      List<Integer> rShardColumnRefForJoin) {
+
         if (null != lShardColumnRef) {
-            lShardColumnRef.addAll(getRefByColumnName(leftView, leftTable, lPartitionInfo.getPartitionColumns(), true));
+            //lShardColumnRef.addAll(getRefByColumnName(leftView, leftTable, lPartitionInfo.getPartitionColumns(), true));
+            lShardColumnRef.addAll(getRefByColumnName(leftView, leftTable, PartitionInfoUtil.getActualPartitionColumns(lPartitionInfo), true));
         }
 
         if (null != rShardColumnRefForJoin) {
+
+//            List<Integer> rShardColumnRef =
+//                getRefByColumnName(rightView, rightTable, rPartitionInfo.getPartitionColumns(), false);
+
             List<Integer> rShardColumnRef =
-                getRefByColumnName(rightView, rightTable, rPartitionInfo.getPartitionColumns(), false);
+                getRefByColumnName(rightView, rightTable, PartitionInfoUtil.getActualPartitionColumns(rPartitionInfo), false);
+
             for (int rColRef : rShardColumnRef) {
                 rShardColumnRefForJoin.add(leftView.getRowType().getFieldCount() + rColRef);
             }

@@ -22,7 +22,15 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
+import com.alibaba.polardbx.gms.util.DbNameUtil;
+import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+
+import java.sql.Connection;
 
 public class TableGroupValidator {
 
@@ -36,21 +44,27 @@ public class TableGroupValidator {
 
         LimitValidator.validateTableCount(schemaName);
 
-        // Check the number of table partitions per physical database.
-        validateTableGroupPartitionNum(schemaName, tableGroupName, paramManager);
     }
 
-    public static void validateTableGroupNameLength(String tableGrupName) {
-        LimitValidator.validateTableGroupNameLength(tableGrupName);
-    }
-
-    public static void validateTableGroupPartitionNum(String schemaName, String tableGroupName,
-                                                      ParamManager paramManager) {
-        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
-            .getTableGroupConfigByName(tableGroupName);
-        if (tableGroupConfig != null && GeneralUtil.isNotEmpty(tableGroupConfig.getPartitionGroupRecords())) {
-            LimitValidator.validateTablePartitionNum(tableGroupConfig.getPartitionGroupRecords().size(), paramManager);
+    public static void validateTableGroupName(String tableGroupName) {
+        validateTableGroupNameLength(tableGroupName);
+        if (tableGroupName.equalsIgnoreCase(TableGroupNameUtil.SINGLE_DEFAULT_TG_NAME_TEMPLATE)
+            || tableGroupName.equalsIgnoreCase(TableGroupNameUtil.BROADCAST_TG_NAME_TEMPLATE)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                "can't create the tablegroup:[" + tableGroupName + "] which is used internally");
         }
+        for (int i = 0; i < tableGroupName.length(); i++) {
+            if (!DbNameUtil.isWord(tableGroupName.charAt(i))) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                    String.format(
+                        "Failed to execute this command because the tableGroupName[%s] contains some invalid characters",
+                        tableGroupName));
+            }
+        }
+    }
+
+    public static void validateTableGroupNameLength(String tableGroupName) {
+        LimitValidator.validateTableGroupNameLength(tableGroupName);
     }
 
     public static void validateTableGroupExistence(String schemaName, String tableGroupName) {
@@ -71,4 +85,26 @@ public class TableGroupValidator {
         }
     }
 
+    public static void validatePhysicalGroupIsNormal(String schemaName, String group) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
+            dbGroupInfoAccessor.setConnection(connection);
+            DbGroupInfoRecord dbGroupInfoRecord =
+                dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(schemaName, group, false);
+            if (dbGroupInfoRecord != null) {
+                if (dbGroupInfoRecord.groupType != DbGroupInfoRecord.GROUP_TYPE_NORMAL) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PHYSICAL_TOPOLOGY_CHANGING,
+                        String.format("the physical group[%s] is changing, please retry this command later",
+                            group));
+                }
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_PHYSICAL_TOPOLOGY_CHANGING,
+                    String.format("the physical group[%s] is changing, please retry this command later",
+                        group));
+            }
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
 }

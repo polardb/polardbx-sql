@@ -94,11 +94,6 @@ public enum ExecutionStrategy {
         final boolean withGsi = !gsiMetas.isEmpty();
         final boolean allGsiPublished = GlobalIndexMeta.isAllGsiPublished(gsiMetas, context);
 
-        if (isSingleTable && !withGsi) {
-            result.execStrategy = PUSHDOWN;
-            return result;
-        }
-
         // Unique key detail
         final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(targetTable, schema, true, tm -> true, ec);
         final boolean withoutPkAndUk = uniqueKeys.isEmpty() || uniqueKeys.get(0).isEmpty();

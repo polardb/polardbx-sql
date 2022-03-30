@@ -38,22 +38,17 @@ import com.alibaba.polardbx.net.packet.RowDataPacket;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
-import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
-import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -64,7 +59,7 @@ import java.util.stream.Collectors;
 public final class ShowStorage {
 
     private static final int FIELD_COUNT = 10;
-    private static final int EXTRA_FIELD_COUNT = 1;
+    private static final int EXTRA_FIELD_COUNT = 2;
 
     private static final ResultSetHeaderPacket HEADER_PACKET = PacketUtil.getHeader(FIELD_COUNT);
     private static final ResultSetHeaderPacket EXTRA_HEADER_PACKET =
@@ -115,6 +110,10 @@ public final class ShowStorage {
         i = 0;
         EXTRA_PACKETS[i] = PacketUtil.getField("REPLICAS", Fields.FIELD_TYPE_VAR_STRING);
         EXTRA_PACKETS[i++].packetId = packetId;
+
+        EXTRA_PACKETS[i] = PacketUtil.getField("STORAGE_RW_INST_ID", Fields.FIELD_TYPE_VAR_STRING);
+        EXTRA_PACKETS[i++].packetId = ++packetId;
+
 
         EXTRA_EOF_PACKET.packetId = ++packetId;
     }
@@ -173,6 +172,20 @@ public final class ShowStorage {
         proxy.packetEnd();
     }
 
+    protected static class StorageInstCtxSorter implements Comparator<StorageInstHaContext> {
+        public StorageInstCtxSorter() {
+        }
+
+        @Override
+        public int compare(StorageInstHaContext o1, StorageInstHaContext o2) {
+            String o1SortKey =
+                String.format("%s#%s#%s", o1.getStorageMasterInstId(), o1.getStorageKind(), o1.getStorageInstId());
+            String o2SortKey =
+                String.format("%s#%s#%s", o2.getStorageMasterInstId(), o2.getStorageKind(), o2.getStorageInstId());
+            return o1SortKey.compareTo(o2SortKey);
+        }
+    }
+
     private static List<Map<String, String>> getStorageInfoFromMetaDb(boolean showReplicas) {
 
         Map<String, StorageInstHaContext> storageInstHaCtxCache =
@@ -180,12 +193,17 @@ public final class ShowStorage {
 
         List<Map<String, String>> storageInstInfoMaps = new ArrayList<>();
 
+        TreeSet<StorageInstHaContext> dnInfos = new TreeSet<>(new StorageInstCtxSorter());
+        dnInfos.addAll(storageInstHaCtxCache.values());
+
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            Set<String> nonDeletableStorage = DbTopologyManager.getNonDeletableStorageInst(metaDbConn);
             GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
             groupDetailInfoAccessor.setConnection(metaDbConn);
-            for (Map.Entry<String, StorageInstHaContext> haCtxItem : storageInstHaCtxCache.entrySet()) {
-                String storageInstId = haCtxItem.getKey();
-                StorageInstHaContext ctx = haCtxItem.getValue();
+            dnInfos.stream().forEach(dnInfo -> {
+                String storageInstId = dnInfo.getStorageInstId();
+                String storageMasterInstId = dnInfo.getStorageMasterInstId();
+                StorageInstHaContext ctx = dnInfo;
                 String leaderNode = ctx.getCurrAvailableNodeAddr();
                 boolean isLeaderHealthy = ctx.isCurrAvailableNodeAddrHealthy();
                 int instKind = ctx.getStorageKind();
@@ -201,11 +219,12 @@ public final class ShowStorage {
                 Pair<Integer, Integer> dbCntAndGrpCnt =
                     groupDetailInfoAccessor.getDbCountAndGroupCountByStorageInstId(storageInstId);
 
-                boolean deletable = instKind != StorageInfoRecord.INST_KIND_META_DB &&
-                    !DbTopologyManager.singleGroupStorageInstList.contains(storageInstId);
+                // If contains single group or default group, the instance
+                boolean deletable = DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, storageInstId, instKind);
 
                 Map<String, String> storageInstInfoMap = new HashMap<>();
                 storageInstInfoMap.put("storageInstId", storageInstId);
+                storageInstInfoMap.put("storageRwInstId", storageMasterInstId);
                 storageInstInfoMap.put("leaderNode", leaderNode);
                 storageInstInfoMap.put("isHealthy", String.valueOf(isLeaderHealthy));
                 storageInstInfoMap.put("instKind", instKindStr);
@@ -215,10 +234,10 @@ public final class ShowStorage {
                 storageInstInfoMap.put("deletable", BooleanUtils.toStringTrueFalse(deletable));
 
                 if (showReplicas) {
-                    storageInstInfoMap.put("replicas", haCtxItem.getValue().getReplicaString());
+                    storageInstInfoMap.put("replicas", dnInfo.getReplicaString());
                 }
                 storageInstInfoMaps.add(storageInstInfoMap);
-            }
+            });
 
         } catch (Throwable ex) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex);
@@ -249,6 +268,9 @@ public final class ShowStorage {
         }
 
         row.add(StringUtil.encode(storageInstInfoMap.get("replicas"), charset));
+
+        String storageRwInstId = storageInstInfoMap.get("storageRwInstId");
+        row.add(StringUtil.encode(storageRwInstId, charset));
         return row;
     }
 
@@ -264,5 +286,4 @@ public final class ShowStorage {
             return "NA";
         }
     }
-
 }

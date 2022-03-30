@@ -35,8 +35,8 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -106,8 +106,12 @@ public class TableGroupInfoManager extends AbstractLifecycle {
         }
     }
 
-    public void reloadTableGroupByGroupId(Long Id) {
-        TableGroupConfig tableGroupConfig = TableGroupUtils.getTableGroupInfoByGroupId(Id);
+    public void reloadTableGroupByGroupId(Long id) {
+        reloadTableGroupByGroupId(null, id);
+    }
+
+    public void reloadTableGroupByGroupId(Connection conn, Long Id) {
+        TableGroupConfig tableGroupConfig = TableGroupUtils.getTableGroupInfoByGroupId(conn, Id);
         synchronized (tableGroupConfigInfoCache) {
             if (tableGroupConfig != null) {
                 if (tableGroupConfig.getTableGroupRecord().tg_type == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG) {
@@ -121,6 +125,10 @@ public class TableGroupInfoManager extends AbstractLifecycle {
     }
 
     public void reloadTableGroupByGroupIdAndTableName(Long id, String dbName, String tableName) {
+        reloadTableGroupByGroupIdAndTableName(null, id, dbName, tableName);
+    }
+
+    public void reloadTableGroupByGroupIdAndTableName(Connection conn, Long id, String dbName, String tableName) {
         TableGroupConfig tableGroupConfig = tableGroupConfigInfoCache.get(id);
         if (tableGroupConfig != null) {
             TablePartRecordInfoContext tablePartRecordInfoContext = null;
@@ -132,19 +140,38 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     return;
                 } else {
                     tablePartRecordInfoContext =
-                        TableGroupUtils.getTablePartRecordInfoContextsByDbNameAndTableName(dbName, tableName);
+                        TableGroupUtils.getTablePartRecordInfoContextsByDbNameAndTableName(conn, dbName, tableName);
+                    if (tablePartRecordInfoContext != null) {
+                        synchronized (tableGroupConfig.getAllTables()) {
+                            tableGroupConfig.getAllTables().add(tablePartRecordInfoContext);
+                        }
+                    }
                 }
             } else {
-                tableGroupConfig.setTables(new ArrayList<>());
-            }
-
-            if (tablePartRecordInfoContext != null) {
-                synchronized (tableGroupConfig.getAllTables()) {
-                    tableGroupConfig.getAllTables().add(tablePartRecordInfoContext);
-                }
+                reloadTableGroupByGroupId(conn, id);
             }
         } else {
-            reloadTableGroupByGroupId(id);
+            reloadTableGroupByGroupId(conn, id);
+        }
+    }
+
+    /**
+     * invalidate tables in table group by id
+     */
+    public void invalidate(Long id, String tableName) {
+        TableGroupConfig tableGroupConfig = tableGroupConfigInfoCache.get(id);
+        if (tableGroupConfig != null) {
+            synchronized (tableGroupConfig.getAllTables()) {
+                tableGroupConfig.getAllTables().removeIf(
+                    o -> tableName.equalsIgnoreCase(o.getTableName()));
+            }
+            TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+            if (tableGroupConfig.getAllTables().isEmpty()
+                && tableGroupRecord.tg_type != TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG) {
+                synchronized (tableGroupConfigInfoCache) {
+                    tableGroupConfigInfoCache.remove(id);
+                }
+            }
         }
     }
 

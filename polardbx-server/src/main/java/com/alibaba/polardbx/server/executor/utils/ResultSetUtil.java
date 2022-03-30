@@ -148,17 +148,17 @@ public class ResultSetUtil {
         boolean existNext = rs.next();
 
         java.sql.ResultSetMetaData metaData = rs.getMetaData();
-        int colunmCount = metaData.getColumnCount();
+        int columnCount = metaData.getColumnCount();
         boolean existUndecidedType = false;
         List<Integer> undecidedTypeIndexs = new ArrayList<Integer>();
         synchronized (packet) {
             if (packet.resulthead == null) {
                 packet.resulthead = new ResultSetHeaderPacket();
-                packet.resulthead.fieldCount = colunmCount;
+                packet.resulthead.fieldCount = columnCount;
             }
             String javaCharset = CharsetUtil.getJavaCharset(charset);
             int charsetIndex = CharsetUtil.getIndex(charset);
-            if (colunmCount > 0) {
+            if (columnCount > 0) {
                 if (packet.fieldPackets == null) {
                     while (metaData instanceof ResultSetMetaDataProxy) {
                         java.sql.ResultSetMetaData newMetaData =
@@ -168,8 +168,8 @@ public class ResultSetUtil {
                         }
                         metaData = newMetaData;
                     }
-                    packet.fieldPackets = new FieldPacket[colunmCount];
-                    for (int i = 0; i < colunmCount; i++) {
+                    packet.fieldPackets = new FieldPacket[columnCount];
+                    for (int i = 0; i < columnCount; i++) {
                         int j = i + 1;
                         packet.fieldPackets[i] = new FieldPacket();
                         if (metaData instanceof com.mysql.jdbc.ResultSetMetaData) {
@@ -252,11 +252,11 @@ public class ResultSetUtil {
                 break;
             }
             RowDataPacket row = null;
-            row = new RowDataMultiPacket(colunmCount, c::getNewPacketId);
+            row = new RowDataMultiPacket(columnCount, c::getNewPacketId);
             final XRowSet xRowSet =
                 (rs instanceof TResultSet && ((TResultSet) rs).getCurrentKVPair() instanceof XRowSet) ?
                     (XRowSet) ((TResultSet) rs).getCurrentKVPair() : null;
-            for (int i = 0; i < colunmCount; i++) {
+            for (int i = 0; i < columnCount; i++) {
                 int j = i + 1;
                 if (existUndecidedType && undecidedTypeIndexs.contains(i)) {
                     // 根据数据的类型，重新设置下type

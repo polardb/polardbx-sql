@@ -19,9 +19,17 @@ package com.alibaba.polardbx.executor.ddl.job.meta.misc;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 
 import java.sql.Connection;
+import java.util.List;
 import java.util.UUID;
 
 import static com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableType.BROADCAST;
@@ -56,7 +64,12 @@ public class RepartitionMetaChanger {
             } else {
                 primaryTableType = SHARDING;
             }
-            doCutOver(schemaName, sourceTableName, targetTableName, tableInfoManager, primaryTableType);
+            if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                doPartitionTableCutOver(schemaName, sourceTableName, targetTableName, tableInfoManager,
+                    primaryTableType);
+            } else {
+                doCutOver(schemaName, sourceTableName, targetTableName, tableInfoManager, primaryTableType);
+            }
         } finally {
             tableInfoManager.setConnection(null);
         }
@@ -121,4 +134,77 @@ public class RepartitionMetaChanger {
         tableInfoManager.updateTablesExtVersion(schemaName, targetTableName, newVersion);
     }
 
+    public static void doPartitionTableCutOver(
+        final String schemaName,
+        final String sourceTableName,
+        final String targetTableName,
+        final TableInfoManager tableInfoManager,
+        final GsiMetaManager.TableType primaryTableType) {
+
+        String random = UUID.randomUUID().toString();
+
+        List<TablePartitionRecord> sourceTablePartition =
+            tableInfoManager.queryTablePartitions(schemaName, sourceTableName, false);
+        if (sourceTablePartition == null || sourceTablePartition.isEmpty()) {
+            String msgContent = String.format("Table '%s.%s' doesn't exist", schemaName, sourceTableName);
+            throw new TddlNestableRuntimeException(msgContent);
+        }
+        List<TablePartitionRecord> targetTablePartition =
+            tableInfoManager.queryTablePartitions(schemaName, targetTableName, false);
+        if (targetTablePartition == null || targetTablePartition.isEmpty()) {
+            String msgContent = String.format("Table '%s.%s' doesn't exist", schemaName, targetTableName);
+            throw new TddlNestableRuntimeException(msgContent);
+        }
+
+        long newVersion =
+            Math.max(sourceTablePartition.get(0).metaVersion, targetTablePartition.get(0).metaVersion) + 1;
+
+        tableInfoManager.alterTablePartitionsCurOver(schemaName, sourceTableName, random,
+            PartitionTableType.GSI_TABLE.getTableTypeIntValue());
+
+        switch (primaryTableType) {
+        case SINGLE:
+            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+                PartitionTableType.SINGLE_TABLE.getTableTypeIntValue());
+            break;
+        case BROADCAST:
+            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+                PartitionTableType.BROADCAST_TABLE.getTableTypeIntValue());
+            break;
+        case GSI:
+            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+                PartitionTableType.GSI_TABLE.getTableTypeIntValue());
+            break;
+        case SHARDING:
+            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+                PartitionTableType.PARTITION_TABLE.getTableTypeIntValue());
+            break;
+        default:
+            throw new TddlNestableRuntimeException("unknown primary table type");
+        }
+
+        tableInfoManager.alterTablePartitionsCurOver(schemaName, random, targetTableName,
+            PartitionTableType.GSI_TABLE.getTableTypeIntValue());
+
+        tableInfoManager.updateTablePartitionsVersion(schemaName, sourceTableName, newVersion);
+        tableInfoManager.updateTablePartitionsVersion(schemaName, targetTableName, newVersion);
+    }
+
+    public static void changeTableMeta4RepartitionKey(Connection metaDbConn,
+                                                      final String schemaName,
+                                                      final String tableName,
+                                                      List<String> changeShardColumns) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+
+        List<TablePartitionRecord> tablePartition =
+            tableInfoManager.queryTablePartitions(schemaName, tableName, false);
+        if (tablePartition == null || tablePartition.isEmpty()) {
+            String msgContent = String.format("Table '%s.%s' doesn't exist", schemaName, tableName);
+            throw new TddlNestableRuntimeException(msgContent);
+        }
+
+        tableInfoManager.addShardColumns4RepartitionKey(schemaName, tableName, changeShardColumns);
+        tableInfoManager.updateTablePartitionsVersion(schemaName, tableName, tablePartition.get(0).metaVersion + 1);
+    }
 }

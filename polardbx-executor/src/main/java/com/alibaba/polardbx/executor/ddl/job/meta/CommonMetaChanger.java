@@ -46,20 +46,11 @@ public class CommonMetaChanger {
 
     public static PhyInfoSchemaContext getPhyInfoSchemaContext(String schemaName, String logicalTableName,
                                                                String dbIndex, String phyTableName) {
-        IGroupExecutor groupExecutor = ExecutorContext.getContext(schemaName).getTopologyHandler().get(dbIndex);
-
-        if (groupExecutor == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate",
-                "Not found group executor for " + dbIndex);
-        }
-
-        TGroupDataSource dataSource = (TGroupDataSource) groupExecutor.getDataSource();
+        TGroupDataSource dataSource = getPhyDataSource(schemaName, dbIndex);
 
         String phyTableSchema = getPhyTableSchema(dataSource);
-
-        if (dataSource == null || TStringUtil.isBlank(logicalTableName) || TStringUtil.isBlank(phyTableName)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate",
-                "invalid data source or physical table name");
+        if (TStringUtil.isBlank(logicalTableName) || TStringUtil.isBlank(phyTableName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate", "invalid physical table name");
         }
 
         PhyInfoSchemaContext phyInfoSchemaContext = new PhyInfoSchemaContext();
@@ -70,6 +61,21 @@ public class CommonMetaChanger {
         phyInfoSchemaContext.phyTableName = phyTableName;
 
         return phyInfoSchemaContext;
+    }
+
+    public static TGroupDataSource getPhyDataSource(String schemaName, String dbIndex) {
+        IGroupExecutor groupExecutor = ExecutorContext.getContext(schemaName).getTopologyHandler().get(dbIndex);
+        if (groupExecutor == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate",
+                "Not found group executor for " + dbIndex);
+        }
+
+        TGroupDataSource dataSource = (TGroupDataSource) groupExecutor.getDataSource();
+        if (dataSource == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate", "invalid physical data source");
+        }
+
+        return dataSource;
     }
 
     private static String getPhyTableSchema(TGroupDataSource groupDataSource) {
@@ -100,7 +106,7 @@ public class CommonMetaChanger {
             LOGGER.warn(
                 "Failed to sync with config manager. Caused by: " + e.getMessage()
                     + "\nLet's wait at most " + (waitingTime / 1000)
-                    + "seconds (twice of the time that scan interval plus notify interval in config manager)");
+                    + "seconds (twice of the time that scan interval plus notify interval in config manager)", e);
             try {
                 Thread.sleep(waitingTime);
             } catch (Exception ignored) {
@@ -122,7 +128,7 @@ public class CommonMetaChanger {
             LOGGER.warn(
                 "Failed to sync with config manager. "
                     + "Let's wait at most " + (waitingTime / 1000)
-                    + "seconds (twice of the time that scan interval plus notify interval in config manager)");
+                    + "seconds (twice of the time that scan interval plus notify interval in config manager)", e);
             try {
                 Thread.sleep(waitingTime);
             } catch (Exception ignored) {

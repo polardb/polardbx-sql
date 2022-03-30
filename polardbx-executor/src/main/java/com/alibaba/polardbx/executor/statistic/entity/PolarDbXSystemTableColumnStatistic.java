@@ -29,6 +29,12 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.clearspring.analytics.stream.frequency.CountMinSketch;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.google.common.collect.Lists;
 import org.apache.commons.codec.binary.Base64;
 
 import java.sql.Connection;
@@ -36,6 +42,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -61,9 +68,11 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         + "  `sample_rate` float not null,\n"
         + "  `extend_field` longtext default null comment 'json string extend field',\n"
         + "  primary key `logical_table_column` (`schema_name`, `table_name`, `column_name`)\n"
-        + ") engine=innodb default charset=utf8;";
+        + ") engine=innodb default charset=utf8mb4;";
 
     private static final String ALTER_TABLE_TOPN = "ALTER TABLE `" + TABLE_NAME + "` ADD COLUMN `TOPN` LONGTEXT";
+
+    private static final String ALTER_TABLE_UTF8MB4 = "ALTER TABLE `" + TABLE_NAME + "` CHARACTER SET = UTF8MB4";
 
     private static final String SELECT_SQL =
         "SELECT TABLE_NAME, COLUMN_NAME, CARDINALITY, CMSKETCH, HISTOGRAM, TOPN, NULL_COUNT, SAMPLE_RATE, UNIX_TIMESTAMP(GMT_MODIFIED) AS UNIX_TIME FROM `"
@@ -113,20 +122,24 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
         }
         Connection conn = null;
         PreparedStatement ps = null;
-        PreparedStatement psAlter = null;
+        PreparedStatement psAlterTopN = null;
+        PreparedStatement psAlterCharSet = null;
         try {
             conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             ps = conn.prepareStatement(CREATE_TABLE_IF_NOT_EXIST_SQL);
             ps.executeUpdate();
-            psAlter = conn.prepareStatement(ALTER_TABLE_TOPN);
-            psAlter.executeUpdate();
+            psAlterCharSet = conn.prepareStatement(ALTER_TABLE_UTF8MB4);
+            psAlterCharSet.executeUpdate();
+            psAlterTopN = conn.prepareStatement(ALTER_TABLE_TOPN);
+            psAlterTopN.executeUpdate();
         } catch (Exception e) {
             if (!e.getMessage().contains("Duplicate column name")) {
                 logger.error("create " + TABLE_NAME + " if not exist error", e);
             }
         } finally {
             JdbcUtils.close(ps);
-            JdbcUtils.close(psAlter);
+            JdbcUtils.close(psAlterTopN);
+            JdbcUtils.close(psAlterCharSet);
             JdbcUtils.close(conn);
         }
     }
@@ -277,12 +290,13 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     }
 
     @Override
-    public void selectAll(StatisticManager statisticManager, long sinceTime) {
+    public Collection<Row> selectAll(long sinceTime) {
+        Collection<Row> rows = Lists.newLinkedList();
         if (!canRead()) {
-            return;
+            return rows;
         }
         if (!checkTableFromCache()) {
-            return;
+            return rows;
         }
         Connection conn = null;
         PreparedStatement ps = null;
@@ -309,13 +323,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
                         rs.getFloat("SAMPLE_RATE"),
                         rs.getLong("UNIX_TIME"));
 
-                    StatisticManager.CacheLine cacheLine = statisticManager.getCacheLine(row.getTableName(), true);
-                    cacheLine.setCardinality(row.getColumnName(), row.getCardinality());
-                    cacheLine.setCountMinSketch(row.getColumnName(), row.getCountMinSketch());
-                    cacheLine.setHistogram(row.getColumnName(), row.getHistogram());
-                    cacheLine.setNullCount(row.getColumnName(), row.getNullCount());
-                    cacheLine.setSampleRate(row.getSampleRate());
-                    cacheLine.setTopN(row.getColumnName(), row.getTopN());
+                    rows.add(row);
                 } catch (Exception e) {
                     logger.error("parse row of " + TABLE_NAME + " error", e);
                 }
@@ -327,6 +335,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
         }
+        return rows;
     }
 
     @Override

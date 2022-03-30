@@ -49,7 +49,7 @@ public class MySqlCreateTableTest141 extends MysqlTest {
                 "\tKEY xid (id)\n" +
                 ")\n" +
                 "DBPARTITION BY hash(id)\n" +
-                "TBPARTITION BY hash(id) TBPARTITIONS 2", stmt.toString());
+                "TBPARTITION BY hash(id) TBPARTITIONS 2 /*! ENGINE = innodb MAX_ROWS = 1000000 */", stmt.toString());
 
         assertEquals("create table sbtest1 (\n" +
                 "\tid INTEGER unsigned not null,\n" +
@@ -59,7 +59,7 @@ public class MySqlCreateTableTest141 extends MysqlTest {
                 "\tkey xid (id)\n" +
                 ")\n" +
                 "dbpartition by hash(id)\n" +
-                "tbpartition by hash(id) tbpartitions 2", stmt.toLowerCaseString());
+                "tbpartition by hash(id) tbpartitions 2 /*! ENGINE = innodb MAX_ROWS = 1000000 */", stmt.toLowerCaseString());
 
     }
 

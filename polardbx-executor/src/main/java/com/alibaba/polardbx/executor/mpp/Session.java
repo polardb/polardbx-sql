@@ -167,6 +167,14 @@ public final class Session {
                     ConnectionProperties.DELAY_EXECUTION_STRATEGY,
                     clientContext.getParamManager().getInt(ConnectionParams.DELAY_EXECUTION_STRATEGY));
             }
+
+            if (!hintCmds.containsKey(ConnectionProperties.DELAY_EXECUTION_STRATEGY)) {
+                if (clientContext.getParamManager().getBoolean(ConnectionParams.KEEP_DELAY_EXECUTION_STRATEGY)) {
+                    hintCmds.put(
+                        ConnectionProperties.DELAY_EXECUTION_STRATEGY,
+                        clientContext.getParamManager().getInt(ConnectionParams.DELAY_EXECUTION_STRATEGY));
+                }
+            }
         }
 
         if (!hintCmds.containsKey(ConnectionProperties.MPP_METRIC_LEVEL)) {

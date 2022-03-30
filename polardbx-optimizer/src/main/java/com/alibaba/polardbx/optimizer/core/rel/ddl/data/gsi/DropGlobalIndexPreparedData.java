@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropTablePreparedData;
 
@@ -24,6 +26,7 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
     private DropTablePreparedData indexTablePreparedData;
     private String primaryTableName;
     private boolean ifExists;
+    private boolean repartition;
 
     public DropGlobalIndexPreparedData(final String schemaName,
                                        final String primaryTableName,
@@ -33,6 +36,13 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
         setTableName(indexTableName);
         DropTablePreparedData indexTablePreparedData =
             new DropTablePreparedData(schemaName, indexTableName, ifExists);
+        try {
+            TableMeta gsiTableMeta =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(indexTableName);
+            indexTablePreparedData.setTableVersion(gsiTableMeta.getVersion());
+        } catch (Exception ex) {
+            //ignore, i.e repartition the indexTableName is not created yet
+        }
         indexTablePreparedData.setWithHint(false);
         this.indexTablePreparedData = indexTablePreparedData;
         this.primaryTableName = primaryTableName;
@@ -64,5 +74,13 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setIfExists(final boolean ifExists) {
         this.ifExists = ifExists;
+    }
+
+    public boolean isRepartition() {
+        return this.repartition;
+    }
+
+    public void setRepartition(boolean repartition) {
+        this.repartition = repartition;
     }
 }

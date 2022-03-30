@@ -130,6 +130,8 @@ public class SequenceLoadFromDBManager extends AbstractSequenceManager {
 
     private long checkInterval = GROUP_SEQ_UPDATE_INTERVAL;
 
+    private boolean groupSeqCatcherEnabled = false;
+
     public SequenceLoadFromDBManager(String appName, String schemaName, String unitName, TddlRuleManager rule,
                                      Map<String, Object> connectionProperties) {
         this.appName = appName;
@@ -143,12 +145,22 @@ public class SequenceLoadFromDBManager extends AbstractSequenceManager {
             this.step = DEFAULT_INNER_STEP;
         }
 
+        // Enable various sequences when it is enabled globally in DRDS mode.
         if (ConfigDataMode.isMasterMode()) {
             checkInterval = GeneralUtil.getPropertyLong(connectionProperties,
                 ConnectionProperties.GROUP_SEQ_CHECK_INTERVAL,
                 GROUP_SEQ_UPDATE_INTERVAL);
 
+            groupSeqCatcherEnabled =
+                GeneralUtil.getPropertyBoolean(connectionProperties, ConnectionProperties.ENABLE_GROUP_SEQ_CATCHER,
+                    true);
+        }
+
+        if (ConfigDataMode.isMasterMode()) {
             this.customUnitGroupSeqSupported = true;
+            groupSeqCatcherEnabled =
+                GeneralUtil.getPropertyBoolean(connectionProperties, ConnectionProperties.ENABLE_GROUP_SEQ_CATCHER,
+                    true);
         }
 
         if (customUnitGroupSeqSupported) {
@@ -222,6 +234,10 @@ public class SequenceLoadFromDBManager extends AbstractSequenceManager {
             this.simpleSeqDao = simpleSeqDao;
         } catch (Exception ex) {
             throw new TddlRuntimeException(ErrorCode.ERR_INIT_SEQUENCE_FROM_DB, ex, ex.getMessage());
+        }
+
+        if (!groupSeqCatcherEnabled) {
+            return;
         }
 
         groupSeqCatchers =

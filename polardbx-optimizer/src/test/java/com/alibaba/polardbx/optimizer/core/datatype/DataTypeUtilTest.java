@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.datatype;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.CollationName;
 import org.apache.calcite.rel.type.RelDataType;
 import org.junit.Assert;
 import org.junit.Test;
@@ -146,5 +148,56 @@ public class DataTypeUtilTest {
             this.nullable = nullable;
             this.expectedTypeString = expectedTypeString;
         }
+    }
+
+    @Test
+    public void testEqual() {
+        Assert.assertTrue(DataTypeUtil.equals(
+            new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI, 255),
+            new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI, 255),
+            true
+        ));
+
+        Assert.assertFalse(DataTypeUtil.equals(
+            new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI, 255),
+            new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI, 200),
+            true
+        ));
+
+        Assert.assertFalse(DataTypeUtil.equals(
+            new VarcharType(CharsetName.GBK, CollationName.GBK_CHINESE_CI, 255),
+            new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI, 255),
+            true
+        ));
+
+        Assert.assertTrue(DataTypeUtil.equals(
+            new DateTimeType(2),
+            new DateTimeType(2),
+            true
+        ));
+
+        Assert.assertFalse(DataTypeUtil.equals(
+            new DateTimeType(2),
+            new DateTimeType(6),
+            true
+        ));
+
+        Assert.assertTrue(DataTypeUtil.equals(
+            new TimeType(2),
+            new TimeType(2),
+            true
+        ));
+
+        Assert.assertFalse(DataTypeUtil.equals(
+            new TimeType(2),
+            new TimeType(6),
+            true
+        ));
+
+        Assert.assertTrue(DataTypeUtil.equals(
+            new DecimalType(),
+            new DecimalType(),
+            true
+        ));
     }
 }

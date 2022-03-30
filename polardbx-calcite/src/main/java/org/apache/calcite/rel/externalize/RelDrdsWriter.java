@@ -189,17 +189,17 @@ public class RelDrdsWriter implements RelWriter {
             }
         }
 
-        switch (detailLevel) {
-            case NON_COST_ATTRIBUTES:
-            case ALL_ATTRIBUTES:
-                if (!withIdPrefix) {
-                    // If we didn't print the rel id at the start of the line,
-                    // print
-                    // it at the end.
-                    s.append(", id = ").append(rel.getId());
-                }
-                break;
-        }
+//        switch (detailLevel) {
+//            case NON_COST_ATTRIBUTES:
+//            case ALL_ATTRIBUTES:
+//                if (!withIdPrefix) {
+//                    // If we didn't print the rel id at the start of the line,
+//                    // print
+//                    // it at the end.
+//                    s.append(", id = ").append(rel.getId());
+//                }
+//                break;
+//        }
         pw.println(s);
         spacer.add(2);
 

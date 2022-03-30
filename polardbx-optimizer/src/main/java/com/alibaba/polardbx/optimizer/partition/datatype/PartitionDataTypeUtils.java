@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
+import com.alibaba.polardbx.optimizer.core.datatype.BytesType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
@@ -254,7 +255,16 @@ public class PartitionDataTypeUtils {
                     // handle null value.
                     return 1;
                 }
-                return ((SliceType) fieldType).getCollationHandler().compareSp(storedStr, valueStr);
+
+                if (valueType instanceof BytesType) {
+                    // handle bytes param
+                    // we consider the "set names" charset is same to field charset.
+                    Slice binaryStoredStr = ((SliceType) fieldType).getCharsetHandler().encodeFromUtf8(storedStr);
+                    return ((SliceType) fieldType).getCollationHandler().compareSp(binaryStoredStr, valueStr);
+                } else {
+                    // just compare as utf8
+                    return fieldType.compare(storedStr, valueStr);
+                }
             } else {
                 String valueStr = DataTypes.StringType.convertFrom(value);
                 if (valueStr == null) {

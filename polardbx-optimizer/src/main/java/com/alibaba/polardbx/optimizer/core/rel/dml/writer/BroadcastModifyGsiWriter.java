@@ -107,15 +107,4 @@ public class BroadcastModifyGsiWriter extends AbstractSingleWriter
         return writerList;
     }
 
-    @Override
-    public TableRule getTableRule() {
-        switch (getOperation()) {
-        case UPDATE:
-            return updateWriter.getTableRule();
-        case DELETE:
-            return deleteWriter.getTableRule();
-        default:
-            throw new AssertionError("Cannot handle operation " + getOperation().name());
-        }
-    }
 }

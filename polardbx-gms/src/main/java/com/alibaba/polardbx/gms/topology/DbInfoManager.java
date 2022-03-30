@@ -43,8 +43,12 @@ public class DbInfoManager extends AbstractLifecycle {
         normalPartDbTypeSet.add(DbInfoRecord.DB_TYPE_NEW_PART_DB);
     }
 
-    public static final String PARTITION_MODE_SHARDING = "sharding";
-    public static final String PARTITION_MODE_PARTITIONING = "partitioning";
+    public static final String MODE_DRDS = "drds";
+    public static final String MODE_AUTO = "auto";
+    // partitioning is the same as auto
+    public static final String MODE_PARTITIONING = "partitioning";
+    // sharding is the same as drds
+    public static final String MODE_SHARDING = "sharding";
 
     protected volatile Map<String, DbInfoRecord> allDbInfoMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
     protected volatile Map<Long, DbInfoRecord> dbIdMap = new HashMap<>();
@@ -91,9 +95,9 @@ public class DbInfoManager extends AbstractLifecycle {
 
     public static String getPartitionModeByDbType(int dbType) {
         if (dbType == DbInfoRecord.DB_TYPE_PART_DB) {
-            return PARTITION_MODE_SHARDING;
+            return MODE_DRDS;
         } else if (dbType == DbInfoRecord.DB_TYPE_NEW_PART_DB) {
-            return PARTITION_MODE_PARTITIONING;
+            return MODE_AUTO;
         } else {
             return null;
         }

@@ -2,7 +2,7 @@
     select * from lineitem where l_orderkey = 1;
 
   plan: |
-    LogicalView(tables="lineitem[p3]", sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` = 1)")
+    LogicalView(tables="lineitem[p4]", sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` = 1)")
 
 - sql: |
     select * from lineitem where l_orderkey in (1,2,3);
@@ -19,7 +19,7 @@
 
   plan: |
     Gather(concurrent=true)
-      LogicalView(tables="lineitem[p1,p3]", shardCount=2, sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` BETWEEN 8 AND 11)")
+      LogicalView(tables="lineitem[p3,p4]", shardCount=2, sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` BETWEEN 8 AND 11)")
 
 - sql: |
     select * from t_ab_hash where a = 1 and b = 1
@@ -47,7 +47,7 @@
 
   plan: |
     Gather(concurrent=true)
-      LogicalView(tables="t_a_hash[p2,p3]", shardCount=2, sql="SELECT `a`, `b` FROM `t_a_hash` AS `t_a_hash` WHERE (`a` IN(1, 2))")
+      LogicalView(tables="t_a_hash[p1,p4]", shardCount=2, sql="SELECT `a`, `b` FROM `t_a_hash` AS `t_a_hash` WHERE (`a` IN(1, 2))")
 
 - sql: |
     /*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=10)*/

@@ -41,8 +41,59 @@
               `exception_action` char(64) not null default 'TRY_RECOVERY_THEN_PAUSE',
               `value` longtext,
               `extra` longtext,
-              unique key `job_id_task_id` (`job_id`, `task_id`),
+               key `job_id` (`job_id`),
               primary key `task_id_key` (`task_id`)
+            ) default charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            drop index job_id_task_id on ddl_engine_task;
+        ]]></Change>
+        <Change><![CDATA[
+           alter table ddl_engine_task add index(job_id);
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="ddl_engine_archive">
+        <Create><![CDATA[
+            create table if not exists `ddl_engine_archive` (
+              `id` bigint unsigned not null,
+              `job_id` bigint unsigned not null,
+              `ddl_type` varchar(64) not null,
+              `schema_name` varchar(64) not null,
+              `object_name` varchar(64) not null,
+              `response_node` varchar(64),
+              `execution_node` varchar(64),
+              `state` varchar(64) not null,
+              `resources` text default null,
+              `progress` smallint default '0',
+              `trace_id` varchar(64),
+              `context` longtext,
+              `task_graph` longtext comment 'task graph in agency-list format',
+              `result` longtext,
+              `ddl_stmt` longtext,
+              `gmt_created` bigint unsigned not null,
+              `gmt_modified` bigint unsigned not null,
+              `max_parallelism` smallint NOT NULL DEFAULT 1 comment 'max parallelism for ddl tasks',
+              `supported_commands` int NOT NULL comment 'bitmap of supported commands',
+              `paused_policy` varchar(64) not null,
+              `rollback_paused_policy` varchar(64) not null,
+              key (`job_id`),
+              key (`schema_name`, `job_id`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="ddl_engine_task_archive">
+        <Create><![CDATA[
+            create table if not exists `ddl_engine_task_archive` (
+              `job_id` bigint(20) unsigned not null,
+              `task_id` bigint(20) unsigned not null,
+              `schema_name` varchar(64) not null,
+              `name` varchar(256) not null,
+              `state` char(32) not null default 'INIT',
+              `exception_action` char(64) not null default 'TRY_RECOVERY_THEN_PAUSE',
+              `value` longtext,
+              `extra` longtext,
+              key `job_id_task_id` (`job_id`, `task_id`),
+              key `task_id_key` (`task_id`)
             ) default charset=utf8
         ]]></Create>
     </SystemTable>
@@ -56,6 +107,27 @@
               `gmt_created` timestamp not null default current_timestamp,
               `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
               unique key (`resource`, `type`)
+            ) default charset=utf8
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="ddl_plan">
+        <Create><![CDATA[
+            create table if not exists `ddl_plan` (
+              `id` bigint unsigned not null auto_increment,
+              `plan_id` bigint(20) unsigned not null,
+              `job_id` bigint(20) null,
+              `table_schema` varchar(64) not null,
+              `ddl_stmt` text not null,
+              `state` char(32) not null default 'INIT',
+              `ddl_type` varchar(64) not null,
+              `progress` smallint default '0',
+              `retry_count` int default '0',
+              `result` longtext,
+              `extras` text,
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key(id),
+              unique key(plan_id)
             ) default charset=utf8
         ]]></Create>
     </SystemTable>

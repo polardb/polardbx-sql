@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropPartitionGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableRemoveMetaTask;
@@ -30,8 +31,10 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropGsi;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
+import com.google.common.collect.Lists;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -74,14 +77,14 @@ public class DropGsiJobFactory extends DdlJobFactory {
     @Override
     protected void validate() {
         ValidateGsiExistenceTask validateTask =
-            new ValidateGsiExistenceTask(schemaName, primaryTableName, indexTableName);
+            new ValidateGsiExistenceTask(schemaName, primaryTableName, indexTableName, null, null);
         validateTask.doValidate(schemaName, primaryTableName, indexTableName, executionContext);
     }
 
     @Override
     protected ExecutableDdlJob doCreate() {
         ValidateGsiExistenceTask validateTask =
-            new ValidateGsiExistenceTask(schemaName, primaryTableName, indexTableName);
+            new ValidateGsiExistenceTask(schemaName, primaryTableName, indexTableName, null, null);
 
         List<DdlTask> taskList = new ArrayList<>();
         //1. validate
@@ -113,7 +116,7 @@ public class DropGsiJobFactory extends DdlJobFactory {
         taskList.add(dropGsiTableRemoveTableMetaTask);
 
         //4. sync after drop table
-        TableSyncTask dropTableSyncTask = new TableSyncTask(schemaName, indexTableName);
+        TablesSyncTask dropTableSyncTask = new TablesSyncTask(schemaName, Lists.newArrayList(primaryTableName, indexTableName));
         taskList.add(dropTableSyncTask);
 
         final ExecutableDdlJob4DropGsi executableDdlJob = new ExecutableDdlJob4DropGsi();
@@ -158,6 +161,12 @@ public class DropGsiJobFactory extends DdlJobFactory {
                     preparedData.getPrimaryTableName(),
                     preparedData.getIndexTableName(),
                     executionContext);
+            if (preparedData.isRepartition()) {
+                // add source partition for drop gsi
+                builder.setPartitionInfo(OptimizerContext.getContext(preparedData.getSchemaName())
+                    .getPartitionInfoManager()
+                    .getPartitionInfo(preparedData.getPrimaryTableName()));
+            }
             builder.build();
             PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData();
 

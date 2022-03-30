@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.sync;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 
@@ -46,9 +45,7 @@ public class TablesMetaChangeSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        for (String tableName : logicalTables) {
-            ((GmsTableMetaManager) oldSchemaManager).tonewversion(tableName);
-        }
+        oldSchemaManager.toNewVersionInTrx(logicalTables, true);
         return null;
     }
 

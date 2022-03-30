@@ -37,8 +37,13 @@ import org.apache.calcite.sql.SqlSelect.LockMode;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.TABLE_NAME_PARAM_INDEX;
+import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.buildParameterContextForTableName;
+import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.changeParameterContextIndex;
 
 /**
  * @author lingce.ldm 2017-11-16 13:43
@@ -142,6 +147,26 @@ public abstract class BaseTableOperation extends BaseQueryOperation {
             }
         }
         return pw;
+    }
+
+    protected Map<Integer, ParameterContext> buildParam(String tableName, Map<Integer, ParameterContext> param) {
+        Map<Integer, ParameterContext> newParam = new HashMap<>();
+        /**
+         * 添加 TableName
+         */
+        int index = 1;
+        for (int i : paramIndex) {
+            if (i == TABLE_NAME_PARAM_INDEX) {
+                newParam.put(index, buildParameterContextForTableName(tableName, index));
+            } else {
+                final ParameterContext parameterContext = param.get(i + 1);
+                if (null != parameterContext) {
+                    newParam.put(index, changeParameterContextIndex(parameterContext, index));
+                }
+            }
+            index++;
+        }
+        return newParam;
     }
 
     public abstract <T> List<T> getTableNames();

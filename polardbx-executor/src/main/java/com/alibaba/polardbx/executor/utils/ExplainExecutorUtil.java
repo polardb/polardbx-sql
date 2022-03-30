@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
+import com.alibaba.polardbx.statistics.ExplainStatisticsHandler;
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -86,15 +89,11 @@ import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.alibaba.polardbx.rpc.client.XSession;
-import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
@@ -122,6 +121,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -139,6 +139,7 @@ import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainLogica
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSharding;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSimple;
+import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainVec;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isPhysicalFragment;
 import static com.alibaba.polardbx.optimizer.utils.RelUtils.disableMpp;
@@ -200,15 +201,19 @@ public class ExplainExecutorUtil {
                 } else if (adviseTypeString
                     .equalsIgnoreCase(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX.toString())) {
                     adviseType = IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX;
+                } else if (adviseTypeString.equalsIgnoreCase(IndexAdvisor.AdviseType.BROADCAST.toString())) {
+                    adviseType = IndexAdvisor.AdviseType.BROADCAST;
                 } else if (adviseTypeString.equalsIgnoreCase("ALL")) {
                     AdviceResult localIndexAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.LOCAL_INDEX);
                     AdviceResult gsiAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_INDEX);
                     AdviceResult coveringGsiAdviceResult =
                         indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX);
+                    AdviceResult broadcastAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.BROADCAST);
 
                     adviceResultList.add(localIndexAdviceResult);
                     adviceResultList.add(gsiAdviceResult);
                     adviceResultList.add(coveringGsiAdviceResult);
+                    adviceResultList.add(broadcastAdviceResult);
 
                     return ExplainExecutorUtil.handleExplainAdvisor(adviceResultList, executionContext);
                 }
@@ -219,26 +224,28 @@ public class ExplainExecutorUtil {
                 }
             }
 
-            AdviceResult localIndexAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.LOCAL_INDEX);
-            AdviceResult gsiAdviceResult = indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_INDEX);
-
-            if (localIndexAdviceResult.getAfterPlan() != null && gsiAdviceResult.getAfterPlan() != null) {
-                if (gsiAdviceResult.getConfiguration().getAfterCost()
-                    .isLt(localIndexAdviceResult.getConfiguration().getAfterCost())) {
-                    adviceResultList.add(gsiAdviceResult);
-                } else {
-                    adviceResultList.add(localIndexAdviceResult);
+            AdviceResult bestResult = null;
+            IndexAdvisor.AdviseType[] types = {IndexAdvisor.AdviseType.LOCAL_INDEX,
+                IndexAdvisor.AdviseType.GLOBAL_INDEX, IndexAdvisor.AdviseType.BROADCAST};
+            for (IndexAdvisor.AdviseType type : types) {
+                AdviceResult adviceResult = indexAdvisor.advise(type);
+                if (adviceResult.getAfterPlan() != null) {
+                    if (bestResult == null || adviceResult.getConfiguration().getAfterCost()
+                        .isLt(bestResult.getConfiguration().getAfterCost())) {
+                        bestResult = adviceResult;
+                    }
                 }
-            } else if (localIndexAdviceResult.getAfterPlan() != null) {
-                adviceResultList.add(localIndexAdviceResult);
-            } else if (gsiAdviceResult.getAfterPlan() != null) {
-                adviceResultList.add(gsiAdviceResult);
+            }
+            if (bestResult != null) {
+                adviceResultList.add(bestResult);
             } else {
                 AdviceResult coveringGsiAdviceResult =
                     indexAdvisor.advise(IndexAdvisor.AdviseType.GLOBAL_COVERING_INDEX);
                 adviceResultList.add(coveringGsiAdviceResult);
             }
             return ExplainExecutorUtil.handleExplainAdvisor(adviceResultList, executionContext);
+        } else if (isExplainStatistics(explain)) {
+            return ExplainStatisticsHandler.handleExplainStatistics(executionContext, executionPlan);
         } else if (isExplainVec(explain)) {
             return ExplainExecutorUtil.handleExplainVec(executionContext, executionPlan, explain.explainMode);
         } else {
@@ -299,9 +306,11 @@ public class ExplainExecutorUtil {
                     round(afterCost.getMemory(), 1),
                     round(afterCost.getIo(), 1),
                     round(afterCost.getNet(), 1),
+                    configuration.broadcastSql() +
+                        (configuration.getCandidateIndexSet().size()> 0?
                     String.join(";",
                         configuration.getCandidateIndexSet().stream()
-                            .map(candidateIndex -> candidateIndex.getSql()).collect(Collectors.toList())) + ";",
+                            .map(candidateIndex -> candidateIndex.getSql()).collect(Collectors.toList())) + ";" : ""),
                     adviceResult.getAfterPlanForDisplay(),
                     adviceResult.getInfo()
                 });
@@ -949,6 +958,7 @@ public class ExplainExecutorUtil {
         ArrayResultCursor result = new ArrayResultCursor("PhysicalPlan");
         if (executionPlan.getPlan() instanceof DirectTableOperation
             || executionPlan.getPlan() instanceof SingleTableOperation
+            || executionPlan.getPlan() instanceof DirectShardingKeyTableOperation
             || executionPlan.getPlan() instanceof PhyTableOperation
             || executionPlan.getPlan() instanceof PhyQueryOperation) {
             ResultCursor rc = PlanExecutor.execByExecPlanNodeByOne(executionPlan, executionContext);

@@ -29,6 +29,7 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.alibaba.polardbx.executor.mpp.execution.RemoteTask;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
@@ -51,6 +52,12 @@ public class DynamicSplitPlacementPolicy implements SplitPlacementPolicy {
 
     @Override
     public Multimap<Node, Split> computeAssignments(List<Split> splits) {
+        if (splits.size() == 0) {
+            //create the empty assignments for mpp scan
+            Multimap<Node, Split> assignment = HashMultimap.create();
+            assignment.put(nodeSelector.selectRandomNodes(1).get(0), Split.EMPTY_SPLIT);
+            return assignment;
+        }
         return nodeSelector.computeAssignments(splits, remoteTasks.get());
     }
 }

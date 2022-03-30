@@ -17,6 +17,7 @@
 package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.util.Litmus;
 
 /**
  * Created by luoyanxin.
@@ -25,7 +26,8 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  */
 public class SqlPartitionByList extends SqlPartitionBy {
     protected boolean isColumns;
-    public SqlPartitionByList(SqlParserPos pos){
+
+    public SqlPartitionByList(SqlParserPos pos) {
         super(pos);
     }
 
@@ -35,5 +37,14 @@ public class SqlPartitionByList extends SqlPartitionBy {
 
     public void setColumns(boolean columns) {
         isColumns = columns;
+    }
+
+    @Override
+    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+        if (!super.equalsDeep(node, litmus)) {
+            return false;
+        }
+
+        return isColumns == ((SqlPartitionByList) node).isColumns;
     }
 }

@@ -137,4 +137,6 @@ public interface DataType<DATA> extends Comparator<Object> {
      * @return represented field type.
      */
     MySQLStandardFieldType fieldType();
+
+    boolean equalDeeply(DataType that);
 }

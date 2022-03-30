@@ -105,9 +105,12 @@ public class Rex2ExprUtil {
      *
      * @param leftType left operand type.
      * @param rightType right operand type.
+     * @param isLeftConst is left operand constant value.
+     * @param isRightConst is right operand constant value.
      * @return The comparison type chosen to do compare.
      */
-    public static DataType compareTypeOf(DataType leftType, DataType rightType) {
+    public static DataType compareTypeOf(DataType leftType, DataType rightType, boolean isLeftConst,
+                                         boolean isRightConst) {
         MySQLResultType cmpType = cmpType(leftType, rightType);
 
         MySQLStandardFieldType lFieldType = leftType.fieldType();
@@ -163,8 +166,12 @@ public class Rex2ExprUtil {
 
         // fix cmp type
         if (cmpType == REAL_RESULT
-            && (lResultType == DECIMAL_RESULT && rResultType == STRING_RESULT)
-            || (rResultType == DECIMAL_RESULT && lResultType == STRING_RESULT)) {
+            && ((lResultType == DECIMAL_RESULT && !isLeftConst) && (rResultType == STRING_RESULT && isRightConst))
+            || ((rResultType == DECIMAL_RESULT && !isRightConst) && (lResultType == STRING_RESULT && isLeftConst))) {
+            // decimal col - string const -> decimal
+            // string const - decimal col -> decimal
+            // decimal col - string col -> double
+            // string col - decimal col -> double
             cmpType = DECIMAL_RESULT;
         }
 
@@ -188,6 +195,10 @@ public class Rex2ExprUtil {
         }
 
         return tmpResType;
+    }
+
+    public static DataType compareTypeOf(DataType leftType, DataType rightType) {
+        return compareTypeOf(leftType, rightType, false, false);
     }
 
     private static MySQLResultType cmpType(DataType leftType, DataType rightType) {

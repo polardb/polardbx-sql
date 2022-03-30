@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -33,6 +34,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
@@ -73,7 +75,14 @@ public class CreateTableGroupHandler extends HandlerCommon {
         if (schemaName == null) {
             schemaName = executionContext.getSchemaName();
         }
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (!isNewPart) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                "can't execute the create tablegroup command in non-partitioning database");
+        }
         String tableGroupName = logicalCreateTableGroup.getTableGroupName();
+        TableGroupValidator.validateTableGroupName(tableGroupName);
+
         boolean isIfNotExists = logicalCreateTableGroup.isIfNotExists();
         String locality = sqlNode.getLocality();
 
@@ -124,7 +133,7 @@ public class CreateTableGroupHandler extends HandlerCommon {
                 tableGroupRecord.schema = schemaName;
                 tableGroupRecord.tg_name = tableGroupName;
                 tableGroupRecord.locality = locality;
-                tableGroupRecord.inited = 0;
+                tableGroupRecord.setInited(0);
                 tableGroupRecord.meta_version = 1L;
                 tableGroupRecord.manual_create = 1;
                 long tgId = tableGroupAccessor.addNewTableGroup(tableGroupRecord);

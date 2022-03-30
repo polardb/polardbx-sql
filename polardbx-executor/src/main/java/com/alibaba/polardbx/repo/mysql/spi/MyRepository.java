@@ -34,7 +34,7 @@ import com.google.common.cache.LoadingCache;
 
 public class MyRepository extends AbstractLifecycle implements IRepository {
 
-    private transient LoadingCache<Group, TddlGroupExecutor> executors;
+    private transient LoadingCache<Group, IGroupExecutor> executors;
 
     private RepositoryConfig config;
 
@@ -61,7 +61,7 @@ public class MyRepository extends AbstractLifecycle implements IRepository {
         cfm = new CursorFactoryMyImpl(this);
         cef = new CommandHandlerFactoryMyImp(this);
 
-        executors = CacheBuilder.newBuilder().build(new CacheLoader<Group, TddlGroupExecutor>() {
+        executors = CacheBuilder.newBuilder().build(new CacheLoader<Group, IGroupExecutor>() {
 
             @Override
             public TddlGroupExecutor load(Group group) {
@@ -107,7 +107,7 @@ public class MyRepository extends AbstractLifecycle implements IRepository {
     }
 
     @Override
-    public TddlGroupExecutor getGroupExecutor(final Group group) {
+    public IGroupExecutor getGroupExecutor(final Group group) {
         try {
 
             return executors.get(group);

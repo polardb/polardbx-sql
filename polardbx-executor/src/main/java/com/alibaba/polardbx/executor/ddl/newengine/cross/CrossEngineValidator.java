@@ -37,6 +37,10 @@ import org.apache.calcite.rel.RelNode;
  */
 public class CrossEngineValidator {
 
+    private static final String QUEUED = "queued";
+    private static final String ONGOING = "ongoing";
+    private static final String FENCED = "fenced";
+
     public static boolean isDDLSupported(ExecutionContext executionContext) {
         return executionContext.getDdlContext() != null;
     }

@@ -20,27 +20,34 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.GenericPhyObjectRecorder;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.repo.mysql.spi.MyPhyDdlTableCursor;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.alibaba.polardbx.common.ddl.Attribute.MEDIAN_JOB_IDLE_WAITING_TIME;
 
 /**
  * Created by chuanqin on 18/6/21.
@@ -59,6 +66,8 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
     private final int totalSize;
     private AtomicInteger numObjectsDone = new AtomicInteger(0);
     private AtomicInteger numObjectsSkipped = new AtomicInteger(0);
+
+    private Map<String, GenericPhyObjectRecorder> phyObjectRecorderMap = new ConcurrentHashMap<>();
 
     private final boolean isDDL;
     private int prefetch;
@@ -103,10 +112,10 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
                         .getTopologyExecutor()
                         .execByExecPlanNode(singleNode, executionContext);
                     cursors.add(cursor);
-                    if (CrossEngineValidator.isDDLSupported(executionContext)) {
+                    if (isDDL) {
                         numObjectsDone.incrementAndGet();
+                        phyObjectRecorder.recordDone();
                     }
-                    phyObjectRecorder.recordDone();
                 } catch (Throwable t) {
                     if (!phyObjectRecorder.checkIfIgnoreException(t)) {
                         throw GeneralUtil.nestedException(t);
@@ -127,11 +136,19 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
         } else if (executionContext.getParamManager().getBoolean(ConnectionParams.BLOCK_CONCURRENT)) {
             List<Future<Cursor>> futures = new ArrayList<>(subNodes.size());
             for (RelNode subNode : subNodes) {
-                if (!CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext).checkIfDone()) {
-                    Future<Cursor> rcfuture = ExecutorContext.getContext(schemaName)
+                GenericPhyObjectRecorder phyObjectRecorder =
+                    CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext);
+                if (!phyObjectRecorder.checkIfDone()) {
+                    Future<Cursor> future = ExecutorContext.getContext(schemaName)
                         .getTopologyExecutor()
                         .execByExecPlanNodeFuture(subNode, executionContext, null);
-                    futures.add(rcfuture);
+                    futures.add(future);
+                    if (isDDL) {
+                        String phyTableKey = genPhyTableKeyForDdl(subNode);
+                        if (TStringUtil.isNotBlank(phyTableKey)) {
+                            phyObjectRecorderMap.put(phyTableKey, phyObjectRecorder);
+                        }
+                    }
                 } else {
                     numObjectsSkipped.incrementAndGet();
                 }
@@ -145,17 +162,27 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
             List<Throwable> exs = new ArrayList<>();
             Throwable ex = null;
             for (int i = 0; i < futures.size(); i++) {
-                GenericPhyObjectRecorder phyObjectRecorder =
-                    CrossEngineValidator.getPhyObjectRecorder(subNodes.get(i), executionContext);
+                GenericPhyObjectRecorder phyObjectRecorder = null;
                 try {
-                    cursors.add(futures.get(i).get());
-                    if (CrossEngineValidator.isDDLSupported(executionContext)) {
-                        numObjectsDone.incrementAndGet();
+                    Cursor cursor = futures.get(i).get();
+
+                    if (isDDL && cursor instanceof MyPhyDdlTableCursor) {
+                        RelNode relNode = ((MyPhyDdlTableCursor) cursor).getRelNode();
+                        String phyTableKey = genPhyTableKeyForDdl(relNode);
+                        if (TStringUtil.isNotBlank(phyTableKey)) {
+                            phyObjectRecorder = phyObjectRecorderMap.get(phyTableKey);
+                        }
                     }
-                    phyObjectRecorder.recordDone();
+
+                    cursors.add(cursor);
+
+                    if (phyObjectRecorder != null) {
+                        numObjectsDone.incrementAndGet();
+                        phyObjectRecorder.recordDone();
+                    }
                 } catch (Exception e) {
                     ex = e;
-                    if (!phyObjectRecorder.checkIfIgnoreException(e)) {
+                    if (phyObjectRecorder == null || !phyObjectRecorder.checkIfIgnoreException(e)) {
                         exs.add(new TddlException(e));
                     }
                 }
@@ -177,12 +204,19 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
 
             if (isDDL) {
                 for (RelNode subNode : subNodes) {
-                    if (!CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext).checkIfDone()) {
+                    GenericPhyObjectRecorder phyObjectRecorder =
+                        CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext);
+                    if (!phyObjectRecorder.checkIfDone()) {
                         FutureCursor cursor = new FutureCursor(ExecutorContext.getContext(schemaName)
                             .getTopologyExecutor()
                             .execByExecPlanNodeFuture(subNode, executionContext, completedCursorQueue)
                         );
                         cursors.add(cursor);
+
+                        String phyTableKey = genPhyTableKeyForDdl(subNode);
+                        if (TStringUtil.isNotBlank(phyTableKey)) {
+                            phyObjectRecorderMap.put(phyTableKey, phyObjectRecorder);
+                        }
                     } else {
                         numObjectsSkipped.incrementAndGet();
                     }
@@ -198,26 +232,27 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
                 prefetchCursor();
             }
 
-            RelNode relNode = null;
+            GenericPhyObjectRecorder phyObjectRecorder = null;
             try {
                 long startWaitNano = System.nanoTime();
                 Future<Cursor> future = completedCursorQueue.take();
                 currentCursor = future.get();
 
                 RuntimeStatHelper.statWaitLockTimecost(targetPlanStatGroup, startWaitNano);
-                if (CrossEngineValidator.isDDLSupported(executionContext)) {
-                    numObjectsDone.incrementAndGet();
 
-                    if (currentCursor instanceof PhyDdlTableCursor) {
-                        PhyDdlTableCursor phyDdlTableCursor = (PhyDdlTableCursor) currentCursor;
-                        if (phyDdlTableCursor.getRelNode() instanceof PhyDdlTableOperation) {
-                            relNode = phyDdlTableCursor.getRelNode();
-                            CrossEngineValidator.getPhyObjectRecorder(relNode, executionContext).recordDone();
+                if (isDDL && currentCursor instanceof MyPhyDdlTableCursor) {
+                    RelNode relNode = ((MyPhyDdlTableCursor) currentCursor).getRelNode();
+                    String phyTableKey = genPhyTableKeyForDdl(relNode);
+                    if (TStringUtil.isNotBlank(phyTableKey)) {
+                        phyObjectRecorder = phyObjectRecorderMap.get(phyTableKey);
+                        if (phyObjectRecorder != null) {
+                            numObjectsDone.incrementAndGet();
+                            phyObjectRecorder.recordDone();
                         }
                     }
                 }
             } catch (Throwable e) {
-                if (!CrossEngineValidator.getPhyObjectRecorder(relNode, executionContext).checkIfIgnoreException(e)) {
+                if (phyObjectRecorder == null || !phyObjectRecorder.checkIfIgnoreException(e)) {
                     throw GeneralUtil.nestedException(e);
                 }
             }
@@ -239,7 +274,7 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
         Row ret;
 
         while (true) {
-            if (CrossEngineValidator.isDDLSupported(executionContext)) {
+            if (isDDL) {
                 if ((numObjectsSkipped.get() + numObjectsDone.get() == totalSize)
                     && currentIndex >= numObjectsDone.get()) {
                     return null;
@@ -250,12 +285,12 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
             }
 
             if (currentCursor == null && completedCursorQueue != null) {
-                RelNode relNode = null;
+                GenericPhyObjectRecorder phyObjectRecorder = null;
                 try {
                     long startWaitLockNano = System.nanoTime();
                     Future<Cursor> future;
-                    if (CrossEngineValidator.isDDLSupported(executionContext)) {
-                        future = completedCursorQueue.poll(DdlConstants.MEDIAN_WAITING_TIME, TimeUnit.MILLISECONDS);
+                    if (isDDL) {
+                        future = completedCursorQueue.poll(MEDIAN_JOB_IDLE_WAITING_TIME, TimeUnit.MILLISECONDS);
                         if (future == null) {
                             // Try again
                             continue;
@@ -269,22 +304,21 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
                     RuntimeStatHelper.statWaitLockTimecost(targetPlanStatGroup, startWaitLockNano);
                     RuntimeStatHelper.registerCursorStatByParentCursor(executionContext, this, currentCursor);
 
-                    if (CrossEngineValidator.isDDLSupported(executionContext)) {
-                        numObjectsDone.incrementAndGet();
-
-                        if (currentCursor instanceof PhyDdlTableCursor) {
-                            PhyDdlTableCursor phyDdlTableCursor = (PhyDdlTableCursor) currentCursor;
-                            if (phyDdlTableCursor.getRelNode() instanceof PhyDdlTableOperation) {
-                                relNode = phyDdlTableCursor.getRelNode();
-                                CrossEngineValidator.getPhyObjectRecorder(relNode, executionContext).recordDone();
+                    if (isDDL && currentCursor instanceof MyPhyDdlTableCursor) {
+                        RelNode relNode = ((MyPhyDdlTableCursor) currentCursor).getRelNode();
+                        String phyTableKey = genPhyTableKeyForDdl(relNode);
+                        if (TStringUtil.isNotBlank(phyTableKey)) {
+                            phyObjectRecorder = phyObjectRecorderMap.get(phyTableKey);
+                            if (phyObjectRecorder != null) {
+                                numObjectsDone.incrementAndGet();
+                                phyObjectRecorder.recordDone();
                             }
                         }
                     }
                 } catch (ExecutionException e) {
                     throw GeneralUtil.nestedException(e.getCause());
                 } catch (Throwable e) {
-                    if (!CrossEngineValidator.getPhyObjectRecorder(relNode, executionContext)
-                        .checkIfIgnoreException(e)) {
+                    if (phyObjectRecorder == null || !phyObjectRecorder.checkIfIgnoreException(e)) {
                         throw GeneralUtil.nestedException(e);
                     }
                 }
@@ -327,12 +361,18 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
         }
     }
 
+    private String genPhyTableKeyForDdl(RelNode relNode) {
+        return DdlHelper.genPhyTableInfo(relNode, executionContext.getDdlContext());
+    }
+
     @Override
     public List<Throwable> doClose(List<Throwable> exs) {
         exs.addAll(exceptionsWhenCloseSubCursor);
         for (Cursor cursor : cursors) {
             exs = cursor.close(exs);
         }
+
+        phyObjectRecorderMap.clear();
 
         cursors.clear();
         return exs;

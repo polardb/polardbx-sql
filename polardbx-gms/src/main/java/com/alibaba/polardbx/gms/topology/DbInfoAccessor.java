@@ -43,6 +43,9 @@ public class DbInfoAccessor extends AbstractAccessor {
 
     protected static final String SELECT_DB_INFO_BY_DB_NAME = "select * from `" + DB_INFO_TABLE + "` where db_name=?";
 
+    protected static final String SELECT_DB_INFO_BY_DB_TYPE =
+        "select * from `" + DB_INFO_TABLE + "` where db_name=? and db_type=?";
+
     protected static final String SELECT_ALL_DB_INFO_LIST = "select * from `" + DB_INFO_TABLE + "`";
 
     protected static final String SELECT_DB_INFO_BY_DB_NAME_FOR_UPDATE =
@@ -156,6 +159,22 @@ public class DbInfoAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, dbType);
             records = MetaDbUtil.query(SELECT_DB_INFO_BY_TYPE, params, DbInfoRecord.class, connection);
+            return records;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + DB_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                DB_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<DbInfoRecord> getDbInfoBySchAndType(String schemaName, int dbType) {
+        try {
+            List<DbInfoRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, dbType);
+            records = MetaDbUtil.query(SELECT_DB_INFO_BY_DB_TYPE, params, DbInfoRecord.class, connection);
             return records;
         } catch (Exception e) {
             logger.error("Failed to query the system table '" + DB_INFO_TABLE + "'", e);

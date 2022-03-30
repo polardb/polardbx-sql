@@ -61,4 +61,7 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask {
         ExecutorHelper.execute(backFillPlan, executionContext);
     }
 
+    public static String getTaskName() {
+        return "AlterTableGroupBackFillTask";
+    }
 }

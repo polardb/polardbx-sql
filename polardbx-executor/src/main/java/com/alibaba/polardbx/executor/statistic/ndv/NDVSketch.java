@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.statistic.ndv;
 
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
@@ -120,6 +121,15 @@ public class NDVSketch implements NDVSketchService {
         removeList.forEach(sketchKey -> stringNDVShardSketchMap.remove(sketchKey));
     }
 
+    @Override
+    public void remove(String tableName, String columns) {
+        if (StringUtils.isEmpty(tableName) || StringUtils.isEmpty(columns)) {
+            return;
+        }
+        String sketchKey = buildSketchKey(schemaName, tableName, columns);
+        stringNDVShardSketchMap.remove(sketchKey);
+    }
+
     public StatisticResult getCardinality(String tableName, String columnNames) {
         NDVShardSketch ndvSketch = stringNDVShardSketchMap.get(buildSketchKey(schemaName, tableName, columnNames));
         if (ndvSketch == null) {
@@ -134,6 +144,14 @@ public class NDVSketch implements NDVSketchService {
             return StatisticResult.build(HLL_SKETCH).setValue(cardinality);
         }
 
+    }
+
+    @Override
+    public Map<? extends String, ? extends Long> getCardinalityMap() {
+        Map<String, Long> rsMap = Maps.newConcurrentMap();
+        stringNDVShardSketchMap.entrySet().stream()
+            .forEach(entry -> rsMap.put(entry.getKey(), entry.getValue().getCardinality()));
+        return rsMap;
     }
 
     @Override
@@ -184,7 +202,11 @@ public class NDVSketch implements NDVSketchService {
 
     @Override
     public void reBuildShardParts(String tableName, String columnName) throws SQLException {
+        remove(tableName, columnName);
         String ndvKey = buildSketchKey(schemaName, tableName, columnName);
-        stringNDVShardSketchMap.put(ndvKey, NDVShardSketch.buildNDVShardSketch(schemaName, tableName, columnName));
+        NDVShardSketch ndvShardSketch = NDVShardSketch.buildNDVShardSketch(schemaName, tableName, columnName);
+        if (ndvShardSketch != null) {
+            stringNDVShardSketchMap.put(ndvKey, ndvShardSketch);
+        }
     }
 }

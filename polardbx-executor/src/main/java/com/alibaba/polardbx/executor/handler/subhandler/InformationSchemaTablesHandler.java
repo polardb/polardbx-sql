@@ -251,7 +251,7 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
 
                         long data_length = rs.getLong("DATA_LENGTH");
                         double scale = 1;
-                        if (data_length != 0) {
+                        if (data_length != 0 && rs.getLong("AVG_ROW_LENGTH") > 0) {
                             scale = ((double) (tableRows * rs.getLong("AVG_ROW_LENGTH"))) / data_length;
                         }
 

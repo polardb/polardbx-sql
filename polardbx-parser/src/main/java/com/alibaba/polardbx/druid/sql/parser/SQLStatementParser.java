@@ -168,6 +168,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.FullTextType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPurgeTransStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
@@ -970,6 +971,8 @@ public class SQLStatementParser extends SQLParser {
 
             } else if (lexer.identifierEquals(FnvHash.Constants.TABLEGROUP)) {
                 stmt = parseDropTableGroup();
+            } else if (lexer.identifierEquals("SCHEDULE")) {
+                stmt = parseDropSchedule();
             } else if (lexer.identifierEquals(FnvHash.Constants.OUTLINE)) {
                 lexer.reset(mark);
                 stmt = parseDropOutline();
@@ -1226,6 +1229,28 @@ public class SQLStatementParser extends SQLParser {
 
         SQLName name = this.exprParser.name();
         stmt.setName(name);
+
+        return stmt;
+    }
+
+    protected SQLStatement parseDropSchedule() {
+        if (lexer.token == Token.DROP) {
+            lexer.nextToken();
+        }
+
+        acceptIdentifier("SCHEDULE");
+
+        DrdsDropScheduleStatement stmt = new DrdsDropScheduleStatement();
+        stmt.setDbType(dbType);
+
+        if (lexer.token == Token.IF) {
+            lexer.nextToken();
+            accept(Token.EXISTS);
+            stmt.setIfExist(true);
+        }
+
+        stmt.setScheduleId(lexer.integerValue().longValue());
+        accept(Token.LITERAL_INT);
 
         return stmt;
     }

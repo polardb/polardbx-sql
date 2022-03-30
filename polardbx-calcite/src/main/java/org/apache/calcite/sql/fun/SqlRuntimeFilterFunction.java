@@ -30,8 +30,9 @@ public class SqlRuntimeFilterFunction extends SqlFunction {
 
     private int id;
     private double guessSelectivity;
+    private boolean usingXxHash;
 
-    public SqlRuntimeFilterFunction(int id, double guessSelectivity) {
+    public SqlRuntimeFilterFunction(int id, double guessSelectivity, boolean usingXxHash) {
         super(
             "BLOOMFILTER",
             SqlKind.RUNTIME_FILTER,
@@ -42,6 +43,7 @@ public class SqlRuntimeFilterFunction extends SqlFunction {
         );
         this.id = id;
         this.guessSelectivity = guessSelectivity;
+        this.usingXxHash = usingXxHash;
     }
 
     public int getId() {
@@ -50,6 +52,10 @@ public class SqlRuntimeFilterFunction extends SqlFunction {
 
     public double getGuessSelectivity() {
         return guessSelectivity;
+    }
+
+    public boolean isUsingXxHash() {
+        return usingXxHash;
     }
 
     @Override
@@ -70,6 +76,10 @@ public class SqlRuntimeFilterFunction extends SqlFunction {
         for (SqlNode operand : call.getOperandList()) {
             writer.sep(",");
             operand.unparse(writer, 0, 0);
+        }
+        if (usingXxHash) {
+            writer.sep(",");
+            writer.print("1");
         }
         writer.endList(frame);
     }

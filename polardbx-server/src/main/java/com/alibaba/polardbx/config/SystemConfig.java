@@ -241,9 +241,9 @@ public final class SystemConfig {
     private int shardDbCountEachStorageInst = DbTopologyManager.DEFAULT_SHARD_DB_COUNT_EACH_STORAGE_INST;
 
     /**
-     * eanble to partition management
+     * the default partition mode of create database
      */
-    private boolean enablePartitionManagement = false;
+    private String defaultPartitionMode = "drds";
 
     /**
      * enable to forbid push dml with hint
@@ -280,6 +280,16 @@ public final class SystemConfig {
     private String metaDbRootPasswd = "";
     private String polarxRootUser = "polardbx_root";
     private String polarxRootPasswd = "";
+
+    /**
+     * logical-db-warmming-up-executor pool size
+     */
+    private int logicalDbWarmmingUpExecutorPoolSize = 4;
+
+    /**
+     * enable auto warm up for logical db
+     */
+    private boolean enableLogicalDbWarmmingUp;
 
     public static long getDefaultMemoryLimit() {
         // By default reserve 3GB space for general use, unless the remaining
@@ -996,14 +1006,6 @@ public final class SystemConfig {
         this.timerTaskExecutor = timerTaskExecutor;
     }
 
-    public boolean isEnablePartitionManagement() {
-        return enablePartitionManagement;
-    }
-
-    public void setEnablePartitionManagement(boolean enablePartitionManagement) {
-        this.enablePartitionManagement = enablePartitionManagement;
-    }
-
     public int getCclRescheduleTimeoutCheckPeriod() {
         return cclRescheduleTimeoutCheckPeriod;
     }
@@ -1018,6 +1020,22 @@ public final class SystemConfig {
 
     public void setProcessCclTriggerPeriod(int processCclTriggerPeriod) {
         this.processCclTriggerPeriod = processCclTriggerPeriod;
+    }
+
+    public boolean getEnableLogicalDbWarmmingUp() {
+        return enableLogicalDbWarmmingUp;
+    }
+
+    public void setEnableLogicalDbWarmmingUp(boolean enableLogicalDbWarmmingUp) {
+        this.enableLogicalDbWarmmingUp = enableLogicalDbWarmmingUp;
+    }
+
+    public int getLogicalDbWarmmingUpExecutorPoolSize() {
+        return logicalDbWarmmingUpExecutorPoolSize;
+    }
+
+    public void setLogicalDbWarmmingUpExecutorPoolSize(int logicalDbWarmmingUpExecutorPoolSize) {
+        this.logicalDbWarmmingUpExecutorPoolSize = logicalDbWarmmingUpExecutorPoolSize;
     }
 
     public boolean isInitializeGms() {
@@ -1082,5 +1100,13 @@ public final class SystemConfig {
 
     public void setForceCleanup(boolean forceCleanup) {
         this.forceCleanup = forceCleanup;
+    }
+
+    public String getDefaultPartitionMode() {
+        return defaultPartitionMode;
+    }
+
+    public void setDefaultPartitionMode(String defaultPartitionMode) {
+        this.defaultPartitionMode = defaultPartitionMode;
     }
 }

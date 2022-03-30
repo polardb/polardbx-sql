@@ -166,7 +166,7 @@ public class RepoSchemaManager extends AbstractLifecycle implements SchemaManage
             "");
 
         return new TableMeta(DUAL, new ArrayList<ColumnMeta>(), index, new ArrayList<IndexMeta>(), true,
-            TableStatus.PUBLIC, 0);
+            TableStatus.PUBLIC, 0, 0);
     }
 
     public void setGroup(Group group) {

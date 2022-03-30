@@ -24,11 +24,14 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
+import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.MetaUtils;
@@ -36,7 +39,6 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import jdk.nashorn.internal.objects.Global;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -47,6 +49,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
 
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.buildSketchKey;
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.estimate;
@@ -132,15 +135,11 @@ public class NDVShardSketch {
         String schemaName = shardInfo[0];
         String tableName = shardInfo[1];
         Map<String, Set<String>> topologyTmp;
-        TddlRuleManager ruleManager = getContext(schemaName).getRuleManager();
-        if (ruleManager == null) {
+        try {
+            topologyTmp = getContext(schemaName).getLatestSchemaManager().getTable(tableName).getLatestTopology();
+        } catch (TableNotFoundException tableNotFoundException) {
             return false;
         }
-        TableRule rule = ruleManager.getTableRule(tableName);
-        if (rule == null) {
-            return false;
-        }
-        topologyTmp = rule.getActualTopology();
 
         Map<String, Set<String>> topology = Maps.newHashMap();
 
@@ -517,6 +516,9 @@ public class NDVShardSketch {
 
         // shard parts build
         String[] shardPart = buildShardParts(schemaName, tableName);
+        if (shardPart == null) {
+            return null;
+        }
         long[] dnCardinalityArray = new long[shardPart.length];
         String sketchType = "HYPER_LOG_LOG";
         byte[][] sketchArray = new byte[shardPart.length][];
@@ -566,10 +568,14 @@ public class NDVShardSketch {
      */
     public static String[] buildShardParts(String schemaName, String tableName) {
         // shard parts build
-        Map<String, Set<String>> topologyMap =
-            OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTable(tableName)
+        Map<String, Set<String>> topologyMap;
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            topologyMap = OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTable(tableName)
                 .getActualTopology();
-
+        } else {
+            topologyMap = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
+                .getPartitionInfo(tableName).getTopology();
+        }
         return topologyPartToShard(topologyMap);
     }
 
@@ -626,7 +632,8 @@ public class NDVShardSketch {
                     c = ds.getConnection();
                     int queryTimeout = OptimizerContext.getContext(schemaName).getParamManager()
                         .getInt(ConnectionParams.STATISTIC_NDV_SKETCH_QUERY_TIMEOUT);
-                    c.setNetworkTimeout(null, queryTimeout);
+                    Executor socketTimeoutExecutor = TGroupDirectConnection.socketTimeoutExecutor;
+                    c.setNetworkTimeout(socketTimeoutExecutor, queryTimeout);
                     st = c.createStatement();
                     rs = st.executeQuery(sql);
 
@@ -636,8 +643,14 @@ public class NDVShardSketch {
                         }
                         hllBytes = rs.getBytes("HLL");
                     }
-                } catch (SQLException e) {
-                    throw e;
+                } catch (SQLException ex) {
+                    if (ex.getErrorCode() == 1146 && ex.getSQLState().equals("42S02")) {
+                        OptimizerContext.getContext(schemaName).getStatisticManager().getSds()
+                            .removeLogicalTableList(Lists.newArrayList(shardKeys[1]));
+
+                        return null;
+                    }
+                    throw ex;
                 } finally {
                     if (rs != null) {
                         try {

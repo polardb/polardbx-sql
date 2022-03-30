@@ -141,7 +141,6 @@ import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.implicit.TypeCoercion;
 import org.apache.calcite.sql2rel.InitializerContext;
-import org.apache.calcite.util.BitString;
 import org.apache.calcite.util.Bug;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.ImmutableNullableList;
@@ -153,17 +152,13 @@ import org.apache.calcite.util.trace.CalciteTrace;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.util.AbstractList;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
-import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -175,6 +170,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
@@ -1309,6 +1305,28 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         return probPk;
     }
 
+    private static List<SqlIdentifier> getPkColumns(SqlCreateTable createTable) {
+        List<SqlIdentifier> probPk = null;
+        if (createTable.getPrimaryKey() != null) {
+            probPk = createTable.getPrimaryKey().getColumns().stream()
+                .map(SqlIndexColumnName::getColumnName).collect(Collectors.toList());
+        } else {
+            // Search in column list.
+            if (createTable.getColDefs() != null) {
+                for (Pair<SqlIdentifier, SqlColumnDeclaration> pair : createTable.getColDefs()) {
+                    if (pair.getValue().getSpecialIndex() == SqlColumnDeclaration.SpecialIndex.PRIMARY) {
+                        if (null == probPk) {
+                            probPk = ImmutableList.of(pair.getKey());
+                        } else {
+                            throw new NotSupportException("Unexpected: Multiple pk definitions.");
+                        }
+                    }
+                }
+            }
+        }
+        return probPk;
+    }
+
     private static SqlColumnDeclaration getColumnDefine(SqlCreateTable createTable, String identifier) {
         Optional<Pair<SqlIdentifier, SqlColumnDeclaration>> colDef =
             createTable.getColDefs().stream()
@@ -1333,20 +1351,53 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         return true;
     }
 
-    public static SqlNode assignAutoPartitionNewPartition(SqlIdentifier firstKey, String typeName) {
-        if (!supportNewPartition(typeName)) {
-            throw new NotSupportException(
-                "Key '" + firstKey.getLastName() + "' type '" + typeName + "' for auto partition");
+    public static SqlNode assignAutoPartitionNewPartition(List<SqlIdentifier> keys, List<String> typeNames) {
+        assert keys.size() == typeNames.size();
+        Set<String> duplicateChecker = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        List<SqlIdentifier> validKeys = new ArrayList<>();
+        List<String> validTypeNames = new ArrayList<>();
+        for (int i = 0; i < keys.size(); ++i) {
+            // Use as much as possible.
+            if (!supportNewPartition(typeNames.get(i))) {
+                if (0 == i) {
+                    // First key must be valid.
+                    throw new NotSupportException(
+                        "Key '" + keys.get(i).getLastName() + "' type '" + typeNames.get(i) + "' for auto partition");
+                }
+                // Or just ignore and next.
+            } else {
+                // Put valid keys in correct order and remove duplicates.
+                if (duplicateChecker.add(keys.get(i).getLastName())) {
+                    validKeys.add(keys.get(i));
+                    validTypeNames.add(typeNames.get(i));
+                }
+            }
         }
+
+        assert validKeys.size() == validTypeNames.size();
+        final int maxPartitionColumnCount = DynamicConfig.getInstance().getMaxPartitionColumnCount();
+        if (validKeys.size() > maxPartitionColumnCount) {
+            // Cut to max column count.
+            validKeys = validKeys.subList(0, maxPartitionColumnCount);
+            validTypeNames = validTypeNames.subList(0, maxPartitionColumnCount);
+        }
+
+        // Generate the partitioning clause.
         final SqlPartitionByHash sqlPartitionByHash = new SqlPartitionByHash(true, false, SqlParserPos.ZERO);
         sqlPartitionByHash
             .setPartitionsCount(SqlLiteral
                 .createLiteralForIntTypes(Long.toString(DynamicConfig.getInstance().getAutoPartitionPartitions()),
                     SqlParserPos.ZERO, SqlTypeName.BIGINT));
-        sqlPartitionByHash.getColumns().add(firstKey);
-        sqlPartitionByHash.setSourceSql(
-            "KEY(" + SqlIdentifier.surroundWithBacktick(firstKey.getLastName()) + ") PARTITIONS "
-                + DynamicConfig.getInstance().getAutoPartitionPartitions());
+        sqlPartitionByHash.getColumns().addAll(validKeys);
+        final StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < validKeys.size(); ++i) {
+            if (i != 0) {
+                builder.append(", ");
+            }
+            builder.append(SqlIdentifier.surroundWithBacktick(validKeys.get(i).getLastName()));
+        }
+        sqlPartitionByHash.setSourceSql("KEY(" + builder + ") PARTITIONS "
+            + DynamicConfig.getInstance().getAutoPartitionPartitions());
         return sqlPartitionByHash;
     }
 
@@ -1386,14 +1437,18 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         }
 
         // Generate partition clause.
-        final SqlColumnDeclaration columnDefine =
-            getColumnDefine(createTable, index.getColumns().get(0).getColumnNameStr());
-        final String dataType = columnDefine.getDataType().getTypeName().getLastName().toLowerCase();
+        List<SqlColumnDeclaration> columnDefines = index.getColumns().stream()
+            .map(col -> getColumnDefine(createTable, col.getColumnNameStr())).collect(Collectors.toList());
+
+        final List<String> dataTypes = columnDefines.stream()
+            .map(def -> def.getDataType().getTypeName().getLastName().toLowerCase()).collect(Collectors.toList());
+
+        boolean firstColumnGood = !dataTypes.isEmpty() && supportNewPartition(dataTypes.get(0));
 
         // Just keep the local index if type not support for auto partition.
         if (!index.isGlobal() && !index.isClustered()) {
             // Normal index.
-            if (!supportNewPartition(dataType)) {
+            if (!firstColumnGood) {
                 return null;
             }
             // Special index.
@@ -1406,8 +1461,27 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             throw new NotSupportException("GSI with special index type");
         }
 
+        // Concat PK after GSI index.
+        final List<SqlIdentifier> pks = getPkColumns(createTable);
+        if (null == pks || pks.isEmpty()) {
+            throw new NotSupportException("Unexpected: PK not found for auto partition");
+        }
+        final List<String> pkDataTypes = pks.stream()
+            .map(col -> getColumnDefine(createTable, col.getLastName()).getDataType().getTypeName().getLastName()
+                .toLowerCase()).collect(Collectors.toList());
+
+        final List<SqlIdentifier> concatKeys = columnDefines.stream()
+            .map(SqlColumnDeclaration::getName).collect(Collectors.toList());
+        if (null == index.getType() || index.getType().isEmpty() ||
+            !index.getType().equalsIgnoreCase("UNIQUE")) {
+            // Only concat PK when key is not unique.
+            concatKeys.addAll(pks);
+            dataTypes.addAll(pkDataTypes);
+        }
+        assert concatKeys.size() == dataTypes.size();
+
         return index.rebuildToGsiNewPartition(
-            newIndexName, assignAutoPartitionNewPartition(columnDefine.getName(), dataType), clustered);
+            newIndexName, assignAutoPartitionNewPartition(concatKeys, dataTypes), clustered);
     }
 
     private static class RewriteOps {
@@ -1487,14 +1561,14 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             }
 
             // Now generate partition definition via primary key.
-            final SqlIdentifier firstPk = getPkFirstColumn(createTable);
-            if (null == firstPk) {
+            final List<SqlIdentifier> pks = getPkColumns(createTable);
+            if (null == pks || pks.isEmpty()) {
                 throw new NotSupportException("Unexpected: PK not found for auto partition");
             }
-            final String pkDataType =
-                getColumnDefine(createTable, firstPk.getLastName()).getDataType().getTypeName().getLastName()
-                    .toLowerCase();
-            createTable.setSqlPartition(assignAutoPartitionNewPartition(firstPk, pkDataType));
+            final List<String> pkDataTypes = pks.stream()
+                .map(col -> getColumnDefine(createTable, col.getLastName()).getDataType().getTypeName().getLastName()
+                    .toLowerCase()).collect(Collectors.toList());
+            createTable.setSqlPartition(assignAutoPartitionNewPartition(pks, pkDataTypes));
         }
 
         RewriteOps ops = new RewriteOps();
@@ -4850,55 +4924,31 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         List<RelDataType> relDataTypes = new ArrayList<>();
         List<String> fieldList = new ArrayList<>();
         final SqlCreateTable sqlCreateTbNode = (SqlCreateTable) node;
-        final SqlNodeList sqlNode = (SqlNodeList) sqlCreateTbNode.getOperandList().get(1);
-        for (int i = 0; i < sqlNode.size(); i++) {
-            final SqlColumnDeclaration sqlColumnDeclaration = (SqlColumnDeclaration) sqlNode.get(i);
-            final List<SqlNode> operandList =
-                sqlColumnDeclaration.getOperandList();
-            final SqlIdentifier name = (SqlIdentifier) operandList.get(0);
-            final SqlDataTypeSpec dataType = (SqlDataTypeSpec) operandList.get(1);
-            final SqlTypeName sqlTypeName = SqlTypeName.get(dataType.getTypeName().getSimple());
-            if (sqlTypeName != null) {
-                final RelDataType sqlType =
-                    typeFactory.createSqlType(sqlTypeName, dataType.getPrecision(), dataType.getScale());
-                fieldList.add(name.getSimple());
-                relDataTypes.add(sqlType);
-            }
-        }
-
-        if (sqlNode.size() > 0) {
-            for (int i = 0; i < sqlNode.size(); i++) {
-                final SqlColumnDeclaration sqlColumnDeclaration = (SqlColumnDeclaration) sqlNode.get(i);
-                final List<SqlNode> operandList =
-                    sqlColumnDeclaration.getOperandList();
-                final SqlIdentifier name = (SqlIdentifier) operandList.get(0);
-                final SqlDataTypeSpec dataType = (SqlDataTypeSpec) operandList.get(1);
-                final SqlTypeName sqlTypeName = SqlTypeName.get(dataType.getTypeName().getSimple());
+        final List<Pair<SqlIdentifier, SqlColumnDeclaration>> colDefs = sqlCreateTbNode.getColDefs();
+        if (colDefs != null) {
+            for (Pair<SqlIdentifier, SqlColumnDeclaration> column : colDefs) {
+                final SqlIdentifier name = column.left;
+                final SqlDataTypeSpec dataType = column.right.getDataType();
+                String typeName = dataType.getTypeName().getSimple().toUpperCase();
+                switch (typeName) {
+                case "INT":
+                    typeName = "INTEGER";
+                    break;
+                case "LONGBLOB":
+                    /**
+                     * because SqlTypeName.get("LONGBLOB") always return null,
+                     * and this will lead to the missing relDataType of cols of createTableNode,
+                     * so use BLOB instead.
+                     */
+                    typeName = SqlTypeName.BLOB.getName();
+                    break;
+                }
+                final SqlTypeName sqlTypeName = SqlTypeName.get(typeName);
                 if (sqlTypeName != null) {
                     final RelDataType sqlType =
                         typeFactory.createSqlType(sqlTypeName, dataType.getPrecision(), dataType.getScale());
                     fieldList.add(name.getSimple());
                     relDataTypes.add(sqlType);
-                }
-            }
-        } else {
-            if (sqlCreateTbNode.getColDefs() != null) {
-                for (Pair<SqlIdentifier, SqlColumnDeclaration> column : sqlCreateTbNode.getColDefs()) {
-                    final SqlIdentifier name = column.left;
-                    final SqlDataTypeSpec dataType = column.right.getDataType();
-                    String typeName = dataType.getTypeName().getSimple().toUpperCase();
-                    switch (typeName) {
-                    case "INT":
-                        typeName = "INTEGER";
-                        break;
-                    }
-                    final SqlTypeName sqlTypeName = SqlTypeName.get(typeName);
-                    if (sqlTypeName != null) {
-                        final RelDataType sqlType =
-                            typeFactory.createSqlType(sqlTypeName, dataType.getPrecision(), dataType.getScale());
-                        fieldList.add(name.getSimple());
-                        relDataTypes.add(sqlType);
-                    }
                 }
             }
         }

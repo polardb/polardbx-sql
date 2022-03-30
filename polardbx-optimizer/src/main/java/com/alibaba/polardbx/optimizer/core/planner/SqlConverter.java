@@ -226,7 +226,11 @@ public class SqlConverter {
     public RelOptCluster createRelOptCluster(PlannerContext plannerContext) {
         RexBuilder rexBuilder = new RexBuilder(typeFactory);
         RelOptCostFactory costFactory = DrdsRelOptCostImpl.FACTORY;
-        RelOptPlanner planner = new VolcanoPlanner(costFactory, plannerContext);
+        VolcanoPlanner planner = new VolcanoPlanner(costFactory, plannerContext);
+        if (plannerContext != null && plannerContext.getExecutionContext()!=null &&
+            plannerContext.getExecutionContext().isEnableRuleCounter()) {
+            planner.setRuleCounter();
+        }
         planner.clearRelTraitDefs();
         planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
         planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);

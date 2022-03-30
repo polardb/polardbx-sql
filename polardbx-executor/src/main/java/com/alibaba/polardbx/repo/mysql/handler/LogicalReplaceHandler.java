@@ -138,6 +138,8 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
         } finally {
             selectValuesPool.destroy();
         }
+        // Insert batch may be split in TConnection, so we need to set executionContext's PhySqlId for next part
+        executionContext.setPhySqlId(replaceEc.getPhySqlId() + 1);
         return affectRows;
     }
 

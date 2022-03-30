@@ -324,4 +324,14 @@ public class TimeType extends AbstractDataType<java.sql.Time> {
     public MySQLStandardFieldType fieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_TIME;
     }
+
+    @Override
+    public boolean equalDeeply(DataType that) {
+        if (that == null || that.getClass() != this.getClass()) {
+            return false;
+        }
+
+        TimeType thatType = (TimeType) that;
+        return thatType.scale == this.scale;
+    }
 }

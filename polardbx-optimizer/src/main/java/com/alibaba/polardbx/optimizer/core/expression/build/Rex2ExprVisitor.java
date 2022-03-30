@@ -115,6 +115,13 @@ public class Rex2ExprVisitor extends RexVisitorImpl<IExpression> {
 
     @Override
     public IExpression visitDynamicParam(RexDynamicParam dynamicParam) {
+        /**
+         * When
+         *  index >= 0, it means the content of RexDynamicParam is the params value can be fetched from ExecutionContext
+         *  index = -1, it means the content of RexDynamicParam is phy table name;
+         *  index = -2, it means the content of RexDynamicParam is scalar subquery;
+         *  index = -3, it means the content of RexDynamicParam is apply subquery.
+         */
         if (dynamicParam.getIndex() == -3) {
             DynamicParamExpression dynamicParamExpression = null;
             if (dynamicParam.getSubqueryKind() == null) {

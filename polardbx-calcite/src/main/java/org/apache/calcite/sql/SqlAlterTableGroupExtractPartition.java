@@ -18,6 +18,7 @@ package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidator;
@@ -34,15 +35,17 @@ import java.util.List;
 public class SqlAlterTableGroupExtractPartition extends SqlAlterSpecification {
 
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("EXTRACT PARTITION", SqlKind.EXTRACT_PARTITION);
-    private final SqlNode hotKey;
+    private final List<SqlNode> hotKeys;
     private SqlAlterTableGroup parent;
     private final List<SqlPartition> newPartitions;
 
     private String extractPartitionName;
+    private final SQLName hotKeyPartitionName;
 
-    public SqlAlterTableGroupExtractPartition(SqlParserPos pos, SqlNode hotkey) {
+    public SqlAlterTableGroupExtractPartition(SqlParserPos pos, List<SqlNode> hotKeys, SQLName hotKeyPartitionName) {
         super(pos);
-        this.hotKey = hotkey;
+        this.hotKeys = hotKeys;
+        this.hotKeyPartitionName = hotKeyPartitionName;
         newPartitions = new ArrayList<>();
     }
 
@@ -52,6 +55,10 @@ public class SqlAlterTableGroupExtractPartition extends SqlAlterSpecification {
 
     public void setExtractPartitionName(String extractPartitionName) {
         this.extractPartitionName = extractPartitionName;
+    }
+
+    public SQLName getHotKeyPartitionName() {
+        return hotKeyPartitionName;
     }
 
     @Override
@@ -72,8 +79,8 @@ public class SqlAlterTableGroupExtractPartition extends SqlAlterSpecification {
         this.parent = parent;
     }
 
-    public SqlNode getHotKey() {
-        return hotKey;
+    public List<SqlNode> getHotKeys() {
+        return hotKeys;
     }
 
     public List<SqlPartition> getNewPartitions() {
@@ -83,12 +90,13 @@ public class SqlAlterTableGroupExtractPartition extends SqlAlterSpecification {
     @Override
     public void validate(SqlValidator validator, SqlValidatorScope scope) {
         validator.setColumnReferenceExpansion(false);
-        // Validate partitionsCount
-        if (this.hotKey != null) {
-            RelDataType dataType = validator.deriveType(scope, this.hotKey);
-            if (dataType == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
-                    "The hot value is invalid"));
+        for (SqlNode hotKey : hotKeys) {
+            if (hotKey != null) {
+                RelDataType dataType = validator.deriveType(scope, hotKey);
+                if (dataType == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                        "The hot value is invalid"));
+                }
             }
         }
     }

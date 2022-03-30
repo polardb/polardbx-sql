@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -71,12 +72,16 @@ public class AlterTableValidateTask extends BaseValidateTask {
     private transient TableMeta tableMeta;
 
     private String tableName;
+    private Long tableVersion;
+    private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public AlterTableValidateTask(String schemaName, String tableName, String stmt) {
+    public AlterTableValidateTask(String schemaName, String tableName, String stmt, Long tableVersion, TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.tableName = tableName;
         this.stmt = stmt;
+        this.tableVersion = tableVersion;
+        this.tableGroupConfig = tableGroupConfig;
     }
 
     @Override
@@ -90,6 +95,9 @@ public class AlterTableValidateTask extends BaseValidateTask {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, schemaName, tableName);
         }
 
+        if (tableMeta.getVersion() < tableVersion.longValue()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TABLE_META_TOO_OLD, schemaName, tableName);
+        }
         if (OptimizerContext.getContext(schemaName).getRuleManager() != null) {
             this.tableRule =
                 OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTable(tableName);
@@ -255,6 +263,9 @@ public class AlterTableValidateTask extends BaseValidateTask {
         if (columns.size() == 1 && columns
             .contains(TddlConstants.IMPLICIT_COL_NAME)) { // no columns without implicit primary key
             throw new TddlRuntimeException(ErrorCode.ERR_DROP_ALL_COLUMNS);
+        }
+        if (tableGroupConfig!=null) {
+            TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
         }
     }
 

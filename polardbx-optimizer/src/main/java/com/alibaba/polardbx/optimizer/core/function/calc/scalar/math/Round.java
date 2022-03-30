@@ -59,7 +59,7 @@ public class Round extends AbstractScalarFunction {
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
         DataType type = getReturnType();
-        if (FunctionUtils.isNull(args[0])) {
+        if (FunctionUtils.isNull(args[0]) || (args.length > 1 && FunctionUtils.isNull(args[1]))) {
             return null;
         }
 
@@ -69,32 +69,34 @@ public class Round extends AbstractScalarFunction {
         }
 
         if (DataTypeUtil.isIntType(type)) {
-            return intOperator(args, ec);
+            return intOperator(args);
         } else if (DataTypeUtil.isDecimalType(type)) {
-            return decimalOperator(args, ec);
+            return decimalOperator(args);
         } else if (DataTypeUtil.isRealType(type)) {
-            return realOperator(args, ec);
+            return realOperator(args);
         }
         return null;
     }
 
-    private long intOperator(Object[] args, ExecutionContext ec) {
+    private long intOperator(Object[] args) {
         Object arg0 = args[0];
         Object arg1 = args[1];
+
         boolean isArg0Unsigned =
             operandTypes.get(0) instanceof ULongType || arg0 instanceof UInt64 || arg0 instanceof BigInteger;
-        boolean isArg1Unsigned = false;
-        if (operandTypes.size() > 1) {
-            isArg1Unsigned =
-                operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
-        }
+        boolean isArg1Unsigned =
+            operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
 
-        long value = isArg0Unsigned
-            ? DataTypes.ULongType.convertFrom(arg0).longValue()
+        Object valueObj = isArg0Unsigned
+            ? DataTypes.ULongType.convertFrom(arg0)
             : DataTypes.LongType.convertFrom(arg0);
-        long dec = isArg1Unsigned
-            ? DataTypes.ULongType.convertFrom(arg1).longValue()
+        long value = valueObj == null ? 0L : ((Number) valueObj).longValue();
+
+        Object decObj = isArg1Unsigned
+            ? DataTypes.ULongType.convertFrom(arg1)
             : DataTypes.LongType.convertFrom(arg1);
+        long dec = decObj == null ? 0L : ((Number) decObj).longValue();
+
         if (dec >= 0 || isArg1Unsigned) {
             // integer have not digits after point
             return value;
@@ -116,7 +118,7 @@ public class Round extends AbstractScalarFunction {
         }
     }
 
-    private Decimal decimalOperator(Object[] args, ExecutionContext ec) {
+    private Decimal decimalOperator(Object[] args) {
         Object arg0 = args[0];
         Object arg1 = args[1];
 
@@ -127,9 +129,11 @@ public class Round extends AbstractScalarFunction {
         }
 
         Decimal value = DataTypes.DecimalType.convertFrom(arg0);
-        long dec = isArg1Unsigned
-            ? DataTypes.ULongType.convertFrom(arg1).longValue()
+
+        Object decObj = isArg1Unsigned
+            ? DataTypes.ULongType.convertFrom(arg1)
             : DataTypes.LongType.convertFrom(arg1);
+        long dec = decObj == null ? 0L : ((Number) decObj).longValue();
 
         if (isArg1Unsigned) {
             dec = UInt64Utils.compareUnsigned(dec, DecimalTypeBase.MAX_DECIMAL_SCALE) < 0 ? dec :
@@ -152,20 +156,18 @@ public class Round extends AbstractScalarFunction {
         }
     }
 
-    private Double realOperator(Object[] args, ExecutionContext ec) {
+    private Double realOperator(Object[] args) {
         Object arg0 = args[0];
         Object arg1 = args[1];
 
         Double value = DataTypes.DoubleType.convertFrom(arg0);
-        boolean isArg1Unsigned = false;
-        if (operandTypes.size() > 1) {
-            isArg1Unsigned =
-                operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
-        }
+        boolean isArg1Unsigned =
+            operandTypes.get(1) instanceof ULongType || arg1 instanceof UInt64 || arg1 instanceof BigInteger;
 
-        long dec = isArg1Unsigned
-            ? DataTypes.ULongType.convertFrom(arg1).longValue()
+        Object decObj = isArg1Unsigned
+            ? DataTypes.ULongType.convertFrom(arg1)
             : DataTypes.LongType.convertFrom(arg1);
+        long dec = decObj == null ? 0L : ((Number) decObj).longValue();
 
         boolean isDecNeg = dec < 0 && !isArg1Unsigned;
         long absDec = isDecNeg ? -dec : dec;

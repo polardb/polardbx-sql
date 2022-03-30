@@ -57,9 +57,8 @@ public class ReplicateBroadcastModifyWriter extends BroadcastModifyWriter implem
     protected final TableMeta tableMeta;
 
     public ReplicateBroadcastModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
-                                          Mapping updateSetMapping, Mapping groupingMapping, TableRule tableRule,
-                                          TableMeta tableMeta) {
-        super(targetTable, modify, pkMapping, updateSetMapping, groupingMapping, tableRule);
+                                          Mapping updateSetMapping, Mapping groupingMapping, TableMeta tableMeta) {
+        super(targetTable, modify, pkMapping, updateSetMapping, groupingMapping);
         this.tableMeta = tableMeta;
     }
 
@@ -118,7 +117,7 @@ public class ReplicateBroadcastModifyWriter extends BroadcastModifyWriter implem
 
         // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
-            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec, tableRule);
+            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec);
 
         PartitionInfo newPartitionInfo = tableMeta.getNewPartitionInfo();
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> replicatedShardResult = new HashMap<>();

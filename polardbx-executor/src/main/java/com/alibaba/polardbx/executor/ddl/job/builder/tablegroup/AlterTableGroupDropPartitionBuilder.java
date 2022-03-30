@@ -24,8 +24,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.List;
@@ -43,7 +41,9 @@ public class AlterTableGroupDropPartitionBuilder extends AlterTableGroupBaseBuil
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
         List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getTargetGroupDetailInfoExRecords();
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
+        List<TablePartRecordInfoContext> allTables = tableGroupConfig.getAllTables();
+        generateNewPhysicalTableNames(allTables);
+        for (TablePartRecordInfoContext tablePartRecordInfoContext : allTables) {
             String tableName = tablePartRecordInfoContext.getTableName();
             AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
                 createAlterTableGroupItemPreparedData(tableName, groupDetailInfoExRecords);

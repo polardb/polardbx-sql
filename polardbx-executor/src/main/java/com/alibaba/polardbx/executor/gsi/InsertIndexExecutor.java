@@ -42,6 +42,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
+import org.apache.calcite.util.Pair;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
@@ -60,7 +61,6 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
-import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -250,8 +250,17 @@ public class InsertIndexExecutor extends IndexExecutor {
         assert null != oc;
         final boolean isBroadcast = oc.getRuleManager().isBroadCast(tableMeta.getTableName());
         if (isBroadcast && mayForGsi) {
-            assert shardResults.size() == 1;
-            Map<String, List<Integer>> values = shardResults.values().stream().findFirst().get();
+            // build shardResults for alter table repartition when gsi is broadcast table
+            Map<String, List<Integer>> values = new HashMap<>();
+            for (Map<String, List<Integer>> entry : shardResults.values()) {
+                assert entry.size() == 1;
+                String phyTableName = entry.keySet().stream().findFirst().get();
+                if (values.containsKey(phyTableName)) {
+                    values.get(phyTableName).addAll(entry.get(phyTableName));
+                } else {
+                    values.putAll(entry);
+                }
+            }
             List<String> groupNames = HintUtil.allGroup(schemaName);
             shardResults.clear();
             for (String gn : groupNames) {
@@ -721,7 +730,7 @@ public class InsertIndexExecutor extends IndexExecutor {
             selectKeyNames, executionContext);
         List<Integer> distinctRowIndexes = new ArrayList<>();
         // [(row index in logical insert, conflicting values in database)]
-        List<Pair<Integer, List<Object>>> duplicateRows = new ArrayList<>();
+        List<org.apache.calcite.util.Pair<Integer, List<Object>>> duplicateRows = new ArrayList<>();
 
         try {
             for (int i = 0; i < physicalPlans.size(); i++) {

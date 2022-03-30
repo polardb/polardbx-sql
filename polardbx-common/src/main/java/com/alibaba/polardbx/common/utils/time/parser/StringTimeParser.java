@@ -16,18 +16,39 @@
 
 package com.alibaba.polardbx.common.utils.time.parser;
 
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import io.airlift.slice.DynamicSliceOutput;
+import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 
 import java.sql.Types;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags.FLAG_WEEK_FIRST_WEEKDAY;
+import static com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags.FLAG_WEEK_MONDAY_FIRST;
+import static com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags.FLAG_WEEK_YEAR;
+
+/**
+ * Parse the string to time.
+ */
 
 public class StringTimeParser extends MySQLTimeParserBase {
+    private static final byte[][] DAYS =
+        Arrays.stream(new String[] {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"})
+            .map(String::getBytes)
+            .collect(Collectors.toList())
+            .toArray(new byte[][] {});
+
+    private static final byte[][] DAYS_ABBR =
+        Arrays.stream(new String[] {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"})
+            .map(String::getBytes)
+            .collect(Collectors.toList())
+            .toArray(new byte[][] {});
+
     private static final byte[][] WEEK_DAYS =
         Arrays.stream(new String[] {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"})
             .map(String::getBytes)
@@ -304,7 +325,8 @@ public class StringTimeParser extends MySQLTimeParserBase {
             }
 
             if (status != null) {
-                status.addWarning(notZeroDate ? TimeParserFlags.FLAG_TIME_WARN_TRUNCATED : TimeParserFlags.FLAG_TIME_WARN_ZERO_DATE);
+                status.addWarning(
+                    notZeroDate ? TimeParserFlags.FLAG_TIME_WARN_TRUNCATED : TimeParserFlags.FLAG_TIME_WARN_ZERO_DATE);
                 status.setStatus(TimeParseStatus.StatusType.ERROR);
             }
             return null;
@@ -935,6 +957,273 @@ public class StringTimeParser extends MySQLTimeParserBase {
         return t;
     }
 
+    public static byte[] makeFormat(MysqlDateTime mysqlDateTime, byte[] formatAsBytes) {
+        SliceOutput sliceOutput = new DynamicSliceOutput(MySQLTimeTypeUtil.MAX_DATETIME_PRECISION);
+
+        if (mysqlDateTime.isNeg()) {
+            sliceOutput.appendByte('-');
+        }
+        int formatPos = 0;
+        int formatEndPos = formatAsBytes.length;
+        for (; formatPos != formatEndPos; formatPos++) {
+            if (formatAsBytes[formatPos] != '%' || formatPos + 1 == formatEndPos) {
+                sliceOutput.appendByte(formatAsBytes[formatPos]);
+            } else {
+                final byte byteVal = formatAsBytes[++formatPos];
+                switch (byteVal) {
+                case 'M': {
+                    int month = (int) mysqlDateTime.getMonth();
+                    if (month == 0) {
+                        return null;
+                    }
+                    byte[] monthName = MONTHS[month - 1];
+                    sliceOutput.appendBytes(monthName);
+                    break;
+                }
+                case 'b': {
+                    int month = (int) mysqlDateTime.getMonth();
+                    if (month == 0) {
+                        return null;
+                    }
+                    byte[] monthName = MONTHS_ABBR[month - 1];
+                    sliceOutput.appendBytes(monthName);
+                    break;
+                }
+                case 'W': {
+                    int month = (int) mysqlDateTime.getMonth();
+                    int year = (int) mysqlDateTime.getYear();
+                    int day = (int) mysqlDateTime.getDay();
+                    if (mysqlDateTime.getSqlType() == Types.TIME || (month == 0 && year == 0)) {
+                        return null;
+                    }
+                    long dayNumber = MySQLTimeCalculator.calDayNumber(year, month, day);
+                    int weekDay = MySQLTimeCalculator.calWeekDay(dayNumber, false);
+                    byte[] dayName = DAYS[weekDay];
+                    sliceOutput.appendBytes(dayName);
+                    break;
+                }
+                case 'a': {
+                    int month = (int) mysqlDateTime.getMonth();
+                    int year = (int) mysqlDateTime.getYear();
+                    int day = (int) mysqlDateTime.getDay();
+                    if (mysqlDateTime.getSqlType() == Types.TIME || (month == 0 && year == 0)) {
+                        return null;
+                    }
+                    long dayNumber = MySQLTimeCalculator.calDayNumber(year, month, day);
+                    int weekDay = MySQLTimeCalculator.calWeekDay(dayNumber, false);
+                    byte[] dayName = DAYS_ABBR[weekDay];
+                    sliceOutput.appendBytes(dayName);
+                    break;
+                }
+                case 'D': {
+                    if (mysqlDateTime.getSqlType() == Types.TIME) {
+                        return null;
+                    }
+                    int day = (int) mysqlDateTime.getDay();
+                    byte[] bytes = bytesWithFillChar(day, 1, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    if (day >= 10 && day <= 19) {
+                        sliceOutput.appendBytes("th".getBytes());
+                    } else {
+                        final int mod = day % 10;
+                        switch (mod) {
+                        case 1:
+                            sliceOutput.appendBytes("st".getBytes());
+                            break;
+                        case 2:
+                            sliceOutput.appendBytes("nd".getBytes());
+                            break;
+                        case 3:
+                            sliceOutput.appendBytes("rd".getBytes());
+                            break;
+                        case 4:
+                            sliceOutput.appendBytes("th".getBytes());
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case 'Y': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getYear(), 4, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'y': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getYear() % 100, 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'm': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getMonth(), 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'c': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getMonth(), 1, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'd': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getDay(), 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'e': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getDay(), 1, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'f': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getSecondPart() / 1000, 6, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'H': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getHour(), 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'h':
+                case 'I': {
+                    int hours = ((int) mysqlDateTime.getHour() % 24 + 11) % 12 + 1;
+                    byte[] bytes = bytesWithFillChar(hours, 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'i': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getMinute(), 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'j': {
+                    if (mysqlDateTime.getSqlType() == Types.TIME) {
+                        return null;
+                    }
+                    int diff = (int) (MySQLTimeCalculator.calDayNumber(
+                        mysqlDateTime.getYear(),
+                        mysqlDateTime.getMonth(),
+                        mysqlDateTime.getDay())
+                        - MySQLTimeCalculator.calDayNumber(mysqlDateTime.getYear(), 1, 1) + 1);
+                    byte[] bytes = bytesWithFillChar(diff, 3, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'k': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getHour(), 1, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'l': {
+                    int hours = ((int) mysqlDateTime.getHour() % 24 + 11) % 12 + 1;
+                    byte[] bytes = bytesWithFillChar(hours, 1, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'p': {
+                    int hours = (int) (mysqlDateTime.getHour() % 24);
+                    sliceOutput.appendBytes(
+                        hours < 12 ? "AM".getBytes() : "PM".getBytes()
+                    );
+                    break;
+                }
+                case 'r': {
+                    int hour = (int) mysqlDateTime.getHour();
+                    int minute = (int) mysqlDateTime.getMinute();
+                    int second = (int) mysqlDateTime.getSecond();
+                    final String format = hour % 24 < 12 ? "%02d:%02d:%02d AM" : "%02d:%02d:%02d PM";
+                    byte[] bytes = String.format(
+                        format,
+                        (hour + 11) % 12 + 1,
+                        minute,
+                        second).getBytes();
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'S':
+                case 's': {
+                    byte[] bytes = bytesWithFillChar((int) mysqlDateTime.getSecond(), 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'T': {
+                    int hour = (int) mysqlDateTime.getHour();
+                    int minute = (int) mysqlDateTime.getMinute();
+                    int second = (int) mysqlDateTime.getSecond();
+                    final String format = "%02d:%02d:%02d";
+                    byte[] bytes = String.format(format, hour, minute, second).getBytes();
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'U':
+                case 'u': {
+                    if (mysqlDateTime.getSqlType() == Types.TIME) {
+                        return null;
+                    }
+                    int weekMode = formatAsBytes[formatPos] == 'U' ? FLAG_WEEK_FIRST_WEEKDAY : FLAG_WEEK_MONDAY_FIRST;
+                    long[] ret = MySQLTimeConverter.datetimeToWeek(mysqlDateTime, weekMode);
+                    int week = (int) ret[0];
+
+                    byte[] bytes = bytesWithFillChar(week, 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'v':
+                case 'V': {
+                    if (mysqlDateTime.getSqlType() == Types.TIME) {
+                        return null;
+                    }
+                    int weekMode = formatAsBytes[formatPos] == 'V'
+                        ? (FLAG_WEEK_YEAR | FLAG_WEEK_FIRST_WEEKDAY)
+                        : (FLAG_WEEK_YEAR | FLAG_WEEK_MONDAY_FIRST);
+                    long[] ret = MySQLTimeConverter.datetimeToWeek(mysqlDateTime, weekMode);
+                    int week = (int) ret[0];
+
+                    byte[] bytes = bytesWithFillChar(week, 2, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'x':
+                case 'X': {
+                    if (mysqlDateTime.getSqlType() == Types.TIME) {
+                        return null;
+                    }
+                    int weekMode = formatAsBytes[formatPos] == 'X'
+                        ? (FLAG_WEEK_YEAR | FLAG_WEEK_FIRST_WEEKDAY)
+                        : (FLAG_WEEK_YEAR | FLAG_WEEK_MONDAY_FIRST);
+                    long[] ret = MySQLTimeConverter.datetimeToWeek(mysqlDateTime, weekMode);
+                    int year = (int) ret[1];
+
+                    byte[] bytes = bytesWithFillChar(year, 4, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                case 'w': {
+                    int month = (int) mysqlDateTime.getMonth();
+                    int year = (int) mysqlDateTime.getYear();
+                    int day = (int) mysqlDateTime.getDay();
+                    if (mysqlDateTime.getSqlType() == Types.TIME || (month == 0 && year == 0)) {
+                        return null;
+                    }
+                    long dayNumber = MySQLTimeCalculator.calDayNumber(year, month, day);
+                    int weekDay = MySQLTimeCalculator.calWeekDay(dayNumber, true);
+
+                    byte[] bytes = bytesWithFillChar(weekDay, 1, (byte) '0');
+                    sliceOutput.appendBytes(bytes);
+                    break;
+                }
+                default: {
+                    sliceOutput.appendByte(formatAsBytes[formatPos]);
+                    break;
+                }
+
+                }
+            }
+        }
+
+        Slice slice = sliceOutput.slice();
+        return slice.getBytes();
+    }
+
     private static int[] checkWord(byte[][] lib, byte[] timestampAsBytes, final int startPos, final int endPos) {
         int[] res = new int[2];
         int alphaEnd;
@@ -967,5 +1256,22 @@ public class StringTimeParser extends MySQLTimeParserBase {
         res[0] = foundCount == 1 ? foundPos : 0;
         res[1] = res[0] > 0 ? alphaEnd : startPos;
         return res;
+    }
+
+    private static byte[] bytesWithFillChar(int num, int fullLen, byte fillChar) {
+        int numLen = (int) (Math.log10(num) + 1);
+        byte[] numStr = new byte[Math.max(fullLen, numLen)];
+
+        // write digit
+        int pos = numStr.length - 1;
+        for (; pos >= 0 && num != 0; pos--) {
+            numStr[pos] = (byte) ((num % 10) + '0');
+            num /= 10;
+        }
+        // fill
+        for (int i = 0; i <= pos; i++) {
+            numStr[i] = fillChar;
+        }
+        return numStr;
     }
 }

@@ -71,6 +71,8 @@ public class PartTupleRouteFunction extends PartRouteFunction {
         return partBitSet;
     }
 
+
+
     public SearchDatumInfo buildTupleSearchDatumInfo(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
         return buildSearchDatumInfoForTupleData(ec, pruningCtx);
     }

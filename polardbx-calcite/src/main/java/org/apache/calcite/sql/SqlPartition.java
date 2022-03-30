@@ -17,6 +17,7 @@
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlValidator;
@@ -110,7 +111,28 @@ public class SqlPartition extends SqlNode {
 
     @Override
     public boolean equalsDeep(SqlNode node, Litmus litmus) {
-        return false;
+        if (this == node) {
+            return true;
+        }
+
+        if (this.getClass() != node.getClass()) {
+            return false;
+        }
+
+        SqlPartition sqlPart = (SqlPartition) node;
+
+        if (!equalDeep(name, sqlPart.name, litmus)) {
+            return false;
+        }
+
+        // TODO: support subpartition
+
+        if (!StringUtils.equalsIgnoreCase(comment, sqlPart.comment)
+            || !StringUtils.equalsIgnoreCase(locality, sqlPart.locality)) {
+            return false;
+        }
+
+        return equalDeep(values, sqlPart.values, litmus);
     }
 
     public SqlNode getName() {

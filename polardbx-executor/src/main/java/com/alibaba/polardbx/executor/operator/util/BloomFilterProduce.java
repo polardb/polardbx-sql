@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
+import com.alibaba.polardbx.common.utils.bloomfilter.BitSet;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.google.common.net.HttpHeaders;
 import com.google.common.net.MediaType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -24,9 +26,8 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilter;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpUriBuilder;
 import io.airlift.http.client.JsonBodyGenerator;
@@ -36,6 +37,7 @@ import io.airlift.json.JsonCodec;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -57,6 +59,7 @@ public class BloomFilterProduce {
     private String query;
 
     private AtomicInteger counter = new AtomicInteger(0);
+    private List<IStreamingHasher> hasherList;
 
     private BloomFilterProduce(List<List<Integer>> bloomfilterId, List<List<Integer>> hashKeys,
                                List<BloomFilter> bloomFilters, HttpClient client, URI uri, String query) {
@@ -66,19 +69,26 @@ public class BloomFilterProduce {
         this.client = client;
         this.uri = uri;
         this.query = query;
+        this.hasherList = Collections.synchronizedList(new ArrayList<>());
     }
 
     public static BloomFilterProduce create(List<List<Integer>> bloomfilterId, List<List<Integer>> hashKeys,
                                             List<BloomFilter> bloomFilters, HttpClient client, URI uri,
                                             String query) {
+        if (bloomFilters.isEmpty()) {
+            throw new IllegalArgumentException("Empty BloomFilterList in BloomFilterProduce");
+        }
         return new BloomFilterProduce(bloomfilterId, hashKeys, bloomFilters, client, uri, query);
     }
 
-    public void addChunk(Chunk input) {
+    /**
+     * @param idx 并发执行时的序号
+     */
+    public void addChunk(Chunk input, int idx) {
+        IStreamingHasher hasher = hasherList.get(idx);
         for (int index = 0; index < hashKeys.size(); index++) {
             BloomFilter bloomFilter = bloomFilters.get(index);
             List<Integer> hashColumns = hashKeys.get(index);
-            TddlHasher hasher = bloomFilter.newHasher();
             for (int pos = 0; pos < input.getPositionCount(); pos++) {
                 Chunk.ChunkRow row = input.rowAt(pos);
                 bloomFilter.put(row.hashCode(hasher, hashColumns));
@@ -86,16 +96,24 @@ public class BloomFilterProduce {
         }
     }
 
+    /**
+     * 由于多个worker会共用同一个BloomFilterProduce
+     * 根据并发度初始化BloomFilter的Hasher来提升性能
+     */
     public void addCounter() {
         this.counter.incrementAndGet();
+        this.hasherList.add(bloomFilters.get(0).newHasher());
     }
 
     public List<BloomFilterInfo> convertBloomFilterInfo() {
         List<BloomFilterInfo> bloomFilterInfos = new ArrayList<>();
         for (int i = 0; i < bloomFilters.size(); i++) {
             for (Integer id : bloomfilterId.get(i)) {
-                logger.info(String
-                    .format("Produce bloom filter id: %d, first value %x", id, bloomFilters.get(i).getBitmap()[0]));
+                if (logger.isInfoEnabled()) {
+                    logger.info(String
+                        .format("Converting bloom filter info, id: %d, bitset usage: %.2f", id,
+                            BitSet.getUsage(bloomFilters.get(i).getBitmap())));
+                }
                 bloomFilterInfos.add(
                     new BloomFilterInfo(id, bloomFilters.get(i).getBitmap(), bloomFilters.get(i).getNumHashFunctions(),
                         bloomFilters.get(i).getHashMethodInfo()));
@@ -110,9 +128,10 @@ public class BloomFilterProduce {
             if (uri == null) {
                 QueryManager queryManager = ServiceProvider.getInstance().getServer().getQueryManager();
                 queryManager.getQueryExecution(query).mergeBloomFilter(filterInfos);
-                logger.info("Local send the bloom-filters " + filterInfos);
+                if (logger.isInfoEnabled()) {
+                    logger.info("Local send the bloom-filters " + filterInfos);
+                }
             } else {
-//                URI uri = URI.create("http://127.0.0.1:9090/");
                 JsonCodec<List<BloomFilterInfo>> codec = listJsonCodec(BloomFilterInfo.class);
                 JsonBodyGenerator<List<BloomFilterInfo>> jsonBodyGenerator =
                     jsonBodyGenerator(codec, filterInfos);
@@ -132,9 +151,12 @@ public class BloomFilterProduce {
                     logger.error("Failed to send http bloom fliter", e);
                     throw GeneralUtil.nestedException(e);
                 }
-                logger.info("Http send the bloom-filters " + filterInfos + ", uri: " + uri + ", query: " + query);
+                if (logger.isInfoEnabled()) {
+                    logger.info("Http send the bloom-filters " + filterInfos + ", uri: " + uri + ", query: " + query);
+                }
             }
             this.bloomFilters = null;
+            this.hasherList = null;
         }
     }
 }

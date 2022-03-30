@@ -310,6 +310,13 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
         );
     }
 
+    /**
+     * Description info for logging and explain
+     */
+    public String getDescription() {
+        return "";
+    }
+
     protected String remark() {
         return "";
     }

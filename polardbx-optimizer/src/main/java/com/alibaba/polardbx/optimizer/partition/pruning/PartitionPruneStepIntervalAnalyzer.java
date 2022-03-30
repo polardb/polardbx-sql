@@ -128,17 +128,109 @@ public class PartitionPruneStepIntervalAnalyzer {
     }
 
     protected static class StepRangeIntervalInfoComparator implements Comparator<StepIntervalInfo> {
-        protected SearchDatumComparator querySpaceComparator;
+        protected RangeEndPointComparator rngEndPointComparator;
 
         public StepRangeIntervalInfoComparator(SearchDatumComparator querySpaceComparator) {
-            this.querySpaceComparator = querySpaceComparator;
+            this.rngEndPointComparator = new RangeEndPointComparator(querySpaceComparator);
         }
 
         @Override
         public int compare(StepIntervalInfo o1, StepIntervalInfo o2) {
-            return this.querySpaceComparator.compare(o1.getMinVal().getBndValue(), o2.getMinVal().getBndValue());
+            return this.rngEndPointComparator.compare(o1.getMinVal(), o2.getMinVal());
         }
     }
+
+    /**
+     * The Comparator for the endPoint of a interval
+     *
+     *  <pre>
+     *  we define "<A" as the virtual endpoint "A-" and define ">A" as the virtual endpoint "A+":
+     *      <=A: A]
+     *      <A:  A-]
+     *      >=A: [A
+     *      >A: [A+
+     *   and we has the order:
+     *      A- < A < A+
+     *
+     *  </pre>
+     *
+     */
+    protected static class RangeEndPointComparator implements Comparator<RangeInterval> {
+        protected SearchDatumComparator querySpaceComparator;
+        public RangeEndPointComparator(SearchDatumComparator querySpaceComparator) {
+            this.querySpaceComparator = querySpaceComparator;
+        }
+
+        @Override
+        public int compare(RangeInterval o1Rng, RangeInterval o2Rng) {
+            int cmpRs = 0;
+            if (o1Rng.isMaxInf()) {
+                if (o2Rng.isMaxInf()) {
+                    cmpRs = 0;
+                } else if (o2Rng.isMinInf()) {
+                    cmpRs = 1;
+                } else {
+                    cmpRs = 1;
+                }
+            } else if (o1Rng.isMinInf()) {
+                if (o2Rng.isMaxInf()) {
+                    cmpRs = -1;
+                } else if (o2Rng.isMinInf()) {
+                    cmpRs = 0;
+                } else {
+                    cmpRs = -1;
+                }
+            } else {
+                if (o2Rng.isMaxInf()) {
+                    cmpRs = -1;
+                } else if (o2Rng.isMinInf()) {
+                    cmpRs = 1;
+                } else {
+                    cmpRs = this.querySpaceComparator.compare(o1Rng.getBndValue(), o2Rng.getBndValue());
+                    if (cmpRs == 0) {
+                        if ( o1Rng.getNearType() > o2Rng.getNearType() ) {
+                            cmpRs = 1;
+                        } else if ( o1Rng.getNearType() < o2Rng.getNearType() ) {
+                            cmpRs = -1;
+                        }
+                    }
+                }
+            }
+            return cmpRs;
+        }
+    }
+
+    protected static boolean isNeighbour(SearchDatumComparator querySpaceComparator, RangeInterval o1, RangeInterval o2) {
+        boolean checkRs = false;
+        int cmpRs = querySpaceComparator.compare(o1.getBndValue(), o2.getBndValue());
+        if (cmpRs == 0) {
+            if (o1.getNearType() == RangeInterval.NEAR_TYPE_LEFT) {
+                if (o2.getNearType() == RangeInterval.NEAR_TYPE_LEFT) {
+                    checkRs = false;
+                } else if (o2.getNearType() == RangeInterval.NEAR_TYPE_RIGHT) {
+                    checkRs = false;
+                } else {
+                    // o2.getNearType() == RangeInterval.NEAR_TYPE_MIDDLE
+                    checkRs = true;
+                }
+            } else if (o1.getNearType() == RangeInterval.NEAR_TYPE_RIGHT) {
+                if (o2.getNearType() == RangeInterval.NEAR_TYPE_LEFT) {
+                    checkRs = false;
+                } else if (o2.getNearType() == RangeInterval.NEAR_TYPE_RIGHT) {
+                    checkRs = false;
+                } else {
+                    // o2.getNearType() == RangeInterval.NEAR_TYPE_MIDDLE
+                    checkRs = true;
+                }
+            } else {
+                // o1.getNearType() == RangeInterval.NEAR_TYPE_MIDDLE
+                checkRs = true;
+            }
+        }
+        return checkRs;
+
+    }
+
 
     protected static List<StepIntervalInfo> mergeIntervalsForUnionStep(PartitionInfo partInfo,
                                                                        List<StepIntervalInfo> ranges) {
@@ -147,6 +239,7 @@ public class PartitionPruneStepIntervalAnalyzer {
 
         // Sort all the start point for each ranges
         SearchDatumComparator querySpaceComparator = partInfo.getPartitionBy().getQuerySpaceComparator();
+        RangeEndPointComparator rangeEndPointComparator = new RangeEndPointComparator(querySpaceComparator);
 
         StepRangeIntervalInfoComparator intervalInfoComparator =
             new StepRangeIntervalInfoComparator(querySpaceComparator);
@@ -170,8 +263,8 @@ public class PartitionPruneStepIntervalAnalyzer {
         for (int i = 0; i < sortedRangeInfos.size(); ++i) {
 
             StepIntervalInfo rng = sortedRangeInfos.get(i);
-            SearchDatumInfo rngStart = rng.getMinVal().getBndValue();
-            SearchDatumInfo rngEnd = rng.getMaxVal().getBndValue();
+            RangeInterval rngMinPoint = rng.getMinVal();
+            RangeInterval rngMaxPoint = rng.getMaxVal();
             if (resultRanges.isEmpty()) {
                 StepIntervalInfo newRng = new StepIntervalInfo(rng);
                 resultRanges.add(newRng);
@@ -179,25 +272,37 @@ public class PartitionPruneStepIntervalAnalyzer {
                 lastRange = newRng;
             } else {
 
-                int cmpRs = querySpaceComparator.compare(lastRange.getMaxVal().getBndValue(), rngStart);
+                int cmpRs = rangeEndPointComparator.compare(lastRange.getMaxVal(), rngMinPoint);
                 if (cmpRs > 0) {
 
                     /**
                      *      rng_{i-1}:  [a,    b]
-                     *      rng_{i}:         [e,   c]  
+                     *      rng_{i}:         [e,   c]
                      *
                      * range[i-1].start <= range[i].start < range[i-1].end ,
                      * so range[i-1] and range[i] must be overlap
+                     *
                      */
-                    int cmpEndRs = querySpaceComparator.compare(lastRange.getMaxVal().getBndValue(), rngEnd);
+                    int cmpEndRs = rangeEndPointComparator.compare(lastRange.getMaxVal(), rngMaxPoint);
                     if (cmpEndRs < 0) {
 
                         /**
                          *      rng_{i-1}:  [a,      b]
-                         *      rng_{i}:         [e,   c] 
+                         *      rng_{i}:         [e,   c]
                          *
-                         * Merge range[i-1] and range[i], 
+                         * Merge range[i-1] and range[i],
                          * so use range[i].end = max( range[i-1].end, range[i].end )
+                         *
+                         *  case1:
+                         *      rng_{i-1}:  (a,   b]
+                         *      rng_{i}:       (e,  c)
+                         *      s.t.
+                         *          b > e
+                         *          b < c
+                         *
+                         *      then
+                         *          range[i-1] and range[i] are overlap, but can merge
+                         *
                          */
                         lastRange.setMaxVal(rng.getMaxVal());
                         lastRange.setMaxValStep(rng.getMaxValStep());
@@ -206,10 +311,40 @@ public class PartitionPruneStepIntervalAnalyzer {
                     } else {
                         /**
                          *    rng_{i-1}:  [a,          b]
-                         *    rng_{i}:        [e,   c] 
-                         *    range[i-1].end >= range[i-1].end 
+                         *    rng_{i}:        [e,   c]
+                         *    range[i-1].end >= range[i-1].end
                          *    ,
                          *    so no need to update the bound of last lastRanges
+                         *
+                         *  case1:
+                         *      rng_{i-1}:  [a,         b)
+                         *      rng_{i}:         [e, c]
+                         *      s.t.
+                         *          b > c
+                         *
+                         *  case2:
+                         *      rng_{i-1}:  [a,         b]
+                         *      rng_{i}:         [e,    b)
+                         *
+                         *      s.t.
+                         *          range[i-1].end is closed & range[i].end is open
+                         *
+                         *  case3:
+                         *      rng_{i-1}:  (a,     b)
+                         *      rng_{i}:       (e,  b)
+                         *      s.t.
+                         *          b > e
+                         *          range[i-1] and range[i] are overlap, but can merge
+                         *
+                         *  case4:
+                         *      rng_{i-1}:  (a,     b]
+                         *      rng_{i}:       (e,  b]
+                         *      s.t.
+                         *          b > e
+                         *
+                         *      then
+                         *          range[i-1] and range[i] are overlap, but can merge
+                         *
                          */
                     }
                 } else if (cmpRs == 0) {
@@ -217,70 +352,106 @@ public class PartitionPruneStepIntervalAnalyzer {
                     /**
                      * range[i-1].start <= range[i].start = range[i-1].end,
                      *
-                     * Four cases:
+                     * All cases:
                      *  case1:
                      *      rng_{i-1}:  (a, b)
-                     *      rng_{i}:         (b, c)   
+                     *      rng_{i}:         (b, c)
                      *
                      *      if range[i-1].end is open & range[i].start is open,
                      *      then
                      *          range[i-1] and range[i] are be NOT overlap, so can NOT merge
                      *
-                     *  case2:
+                     *  case2***:
                      *      rng_{i-1}:  (a, b]
-                     *      rng_{i}:         (b, c)  
+                     *      rng_{i}:         [b, c)
                      *
-                     *      if range[i-1].end is closed & range[i].start is open,
+                     *      if range[i-1].end is closed & range[i].start is  close,
                      *      then
-                     *          range[i-1] and range[i] are NOT overlap, but can merge
+                     *          range[i-1] and range[i] are overlap, but can merge
                      *
-                     *  case3:
-                     *      rng_{i-1}:  (a, b)
-                     *      rng_{i}:         [b, c)  
-                     *
-                     *      if range[i-1].end is open & range[i].start is closed 
-                     *      then
-                     *          range[i-1] and range[i] are NOT overlap, but can merge
-                     *  case4:
-                     *      rng_{i-1}:  (a, b]
-                     *      rng_{i}:         [b, c)  
-                     *
-                     *      range[i-1].end is closed & range[i].start is closed      
-                     *      then
-                     *          range[i-1] and range[i] are overlap, need merge
                      */
-                    boolean lastRngEndIncluded = lastRange.getMaxVal().isIncludedBndValue();
-                    boolean rngStartIncluded = rng.getMinVal().isIncludedBndValue();
-                    if (!lastRngEndIncluded && !rngStartIncluded) {
-                        /**
-                         * Handle for case1
-                         */
-                        //  range[i-1] and range[i] are be NOT overlap, so can NOT merge
-                        StepIntervalInfo newRng = new StepIntervalInfo(rng);
-                        labelAsSinglePointIntervalIfFound(partInfo, newRng);
-                        resultRanges.add(newRng);
-                        lastRange = newRng;
 
-                    } else {
+                    if (rng.getMinVal().isIncludedBndValue()) {
                         /**
-                         * Handle for case2 case3 case4
+                         * Only handle range merge for case2 :
+                         *
+                         *      rng_{i-1}:  (a, b]
+                         *      rng_{i}:         [b, c)
                          */
-                        //  range[i-1] and range[i] are be maybe overlap, can merge
                         lastRange.setMaxVal(rng.getMaxVal());
                         lastRange.setMaxValStep(rng.getMaxValStep());
                         lastRange.setBuildFromSingePointInterval(false);
                         labelAsSinglePointIntervalIfFound(partInfo, lastRange);
+                    } else {
+                        /**
+                         * Handle for case1, create new range:
+                         */
+                        StepIntervalInfo newRng = new StepIntervalInfo(rng);
+                        labelAsSinglePointIntervalIfFound(partInfo, newRng);
+                        resultRanges.add(newRng);
+                        lastRange = newRng;
                     }
+
                 } else {
                     /**
                      * range[i-1].start  <= range[i-1].end < range[i].start ,
-                     * so range[i-1] and range[i] must be NOT overlap, 
+                     * so range[i-1] and range[i] must be NOT overlap,
                      * so range[i-1] and range[i] are independent ranges
+                     *
+                     *      rng_{i-1}:    [a,    b]
+                     *      rng_{i}:                 [e,   c]
+                     *
+                     * All cases:
+                     *  case1:
+                     *      rng_{i-1}:  (a, b)
+                     *      rng_{i}:         (b, c)
+                     *
+                     *      if range[i-1].end is open & range[i].start is open,
+                     *      then
+                     *          range[i-1] and range[i] are be NOT overlap, so can NOT merge
+                     *
+                     *  case2***:
+                     *      rng_{i-1}:  (a, b)
+                     *      rng_{i}:         [b, c)
+                     *
+                     *      if range[i-1].end is open & range[i].start is closed
+                     *      then
+                     *          range[i-1] and range[i] are NOT overlap, but can merge
+
+                     *  case3***:
+                     *      rng_{i-1}:  (a, b]
+                     *      rng_{i}:         (b, c)
+                     *
+                     *      if range[i-1].end is close & range[i].start is open
+                     *      then
+                     *          range[i-1] and range[i] are NOT overlap, but can merge
+                     *
+                     *  case4:
+                     *      rng_{i-1}:  (a, b]
+                     *      rng_{i}:           (e, c)
+                     *      s.t.
+                     *        b < e
+                     *          range[i-1] and range[i] are NOT overlap, but can NOT merge
+                     *
                      */
-                    StepIntervalInfo newRng = new StepIntervalInfo(rng);
-                    labelAsSinglePointIntervalIfFound(partInfo, newRng);
-                    resultRanges.add(newRng);
-                    lastRange = newRng;
+
+                    if (isNeighbour(querySpaceComparator, lastRange.getMaxVal(), rngMinPoint)) {
+                        /**
+                         * Only handle range merge for case2 & case3
+                         */
+                        lastRange.setMaxVal(rng.getMaxVal());
+                        lastRange.setMaxValStep(rng.getMaxValStep());
+                        lastRange.setBuildFromSingePointInterval(false);
+                        labelAsSinglePointIntervalIfFound(partInfo, lastRange);
+                    } else {
+                        /**
+                         * Only handle range merge for case1 & case4
+                         */
+                        StepIntervalInfo newRng = new StepIntervalInfo(rng);
+                        labelAsSinglePointIntervalIfFound(partInfo, newRng);
+                        resultRanges.add(newRng);
+                        lastRange = newRng;
+                    }
                 }
             }
         }
@@ -315,11 +486,9 @@ public class PartitionPruneStepIntervalAnalyzer {
 
         }
         if (maxVal == null) {
-            // no any range of < & <= ,so maxVal is +inf 
-            maxVal = new RangeInterval();
-            maxVal.setBndValue(SearchDatumInfo.createMaxValDatumInfo(partColCnt));
-            maxVal.setCmpKind(ComparisonKind.LESS_THAN);
-            maxVal.setMaxInf(true);
+            // no any range of < & <= ,so maxVal is +inf
+            maxVal = RangeInterval.buildRangeInterval(SearchDatumInfo.createMaxValDatumInfo(partColCnt),
+                ComparisonKind.LESS_THAN, false, 0, true, false);
         }
 
         // process all range predicates with > & >=, find the range predicate with the max value 
@@ -334,11 +503,9 @@ public class PartitionPruneStepIntervalAnalyzer {
             }
         }
         if (minVal == null) {
-            // no any range of > & >= ,so minVal is -inf 
-            minVal = new RangeInterval();
-            minVal.setBndValue(SearchDatumInfo.createMinValDatumInfo(partColCnt));
-            minVal.setCmpKind(ComparisonKind.GREATER_THAN);
-            minVal.setMinInf(true);
+            // no any range of > & >= ,so minVal is -inf
+            minVal = RangeInterval.buildRangeInterval(SearchDatumInfo.createMinValDatumInfo(partColCnt),
+                ComparisonKind.GREATER_THAN, false, 0, false, true);
         }
 
         SearchDatumComparator querySpaceComparator = partInfo.getPartitionBy().getQuerySpaceComparator();
@@ -391,53 +558,6 @@ public class PartitionPruneStepIntervalAnalyzer {
         } else if (comRs == 0) {
             // minVal = maxVal, but maxVal or minVal is NOT included
             if (!minVal.isIncludedBndValue() || !maxVal.isIncludedBndValue()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    protected static boolean checkIfEqualValuesConflict(SearchDatumComparator querySpaceComparator,
-                                                        RangeInterval minVal,
-                                                        RangeInterval maxVal,
-                                                        List<SearchDatumInfo> equalValues) {
-
-        if (equalValues.isEmpty()) {
-            return false;
-        }
-
-        // Check if all equal values is same
-        SearchDatumInfo lastEqVal = null;
-        for (int i = 0; i < equalValues.size(); i++) {
-            SearchDatumInfo eqVal = equalValues.get(i);
-            if (lastEqVal == null) {
-                lastEqVal = eqVal;
-            } else {
-                int cmpEqRs = querySpaceComparator.compare(lastEqVal, eqVal);
-                if (cmpEqRs != 0) {
-                    return true;
-                }
-            }
-        }
-
-        if (!maxVal.isMaxInf()) {
-            int cmpMaxRs = querySpaceComparator.compare(lastEqVal, maxVal.getBndValue());
-            if (cmpMaxRs > 0) {
-                // eqVal > maxVal
-                return true;
-            } else if (cmpMaxRs == 0 && !maxVal.isIncludedBndValue()) {
-                // eqVal = maxVal, but maxVal is NOT included
-                return true;
-            }
-        }
-
-        if (!minVal.isMinInf()) {
-            int cmpMinRs = querySpaceComparator.compare(lastEqVal, minVal.getBndValue());
-            if (cmpMinRs < 0) {
-                // eqVal < minVal
-                return true;
-            } else if (cmpMinRs == 0 && !minVal.isIncludedBndValue()) {
-                // eqVal = minVal, but minVal is NOT included
                 return true;
             }
         }
@@ -507,11 +627,8 @@ public class PartitionPruneStepIntervalAnalyzer {
                 }
             }
         }
-        RangeInterval rangeInterval = new RangeInterval();
-        rangeInterval.setBndValue(mostExprRs.getSearchDatumInfo());
-        rangeInterval.setCmpKind(mostExprRsCmpKind);
-        rangeInterval.setIncludedBndValue(mostExprRsCmpKind.containEqual());
-        rangeInterval.setExprIndex(exprIndex);
+        RangeInterval rangeInterval = RangeInterval.buildRangeInterval(mostExprRs.getSearchDatumInfo(),
+            mostExprRsCmpKind, mostExprRsCmpKind.containEqual(), exprIndex, false, false);
         return rangeInterval;
     }
 

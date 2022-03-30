@@ -47,6 +47,8 @@ public class SystemTables {
     public static final String DRDS_SYSTABLE_LEADERSHIP = "__drds__systable__leadership__";
     public static final String DRDS_SYSTABLE_DDL_JOBS = "__drds__systable__ddl_jobs__";
     public static final String DRDS_SYSTABLE_DDL_OBJECTS = "__drds__systable__ddl_objects__";
+
+    // Global Secondary Indexes
     public static final String DRDS_SYSTABLE_TABLES = "__drds__systable__tables__";
     public static final String DRDS_SYSTABLE_INDEXES = "__drds__systable__indexes__";
     public static final String DRDS_SYSTABLE_BACKFILL_OBJECTS = "__drds__systable__backfill_objects__";

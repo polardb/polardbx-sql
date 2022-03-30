@@ -19,17 +19,27 @@ package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.sql.SqlPauseDdlJob;
+import org.apache.commons.collections.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class DdlEnginePauseJobsHandler extends DdlEngineJobsHandler {
+
+    private final static Logger LOG = SQLRecorderLogger.ddlEngineLogger;
 
     public DdlEnginePauseJobsHandler(IRepository repo) {
         super(repo);
@@ -42,38 +52,53 @@ public class DdlEnginePauseJobsHandler extends DdlEngineJobsHandler {
     }
 
     public Cursor doPause(boolean isAll, List<Long> jobIds, ExecutionContext executionContext) {
-        List<DdlEngineRecord> records =
-            fetchRecords(executionContext.getSchemaName(), isAll, jobIds);
-        records.stream().forEach(e -> {
-            DdlState state = DdlState.valueOf(e.state);
-            if (!(state == DdlState.RUNNING || state == DdlState.ROLLBACK_RUNNING)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
-                    "Only RUNNING/ROLLBACK_RUNNING jobs can be paused, job %s is in %s state", e.jobId, e.state));
-            }
-        });
+        boolean enableOperateSubJob =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_OPERATE_SUBJOB);
+        List<DdlEngineRecord> records = fetchRecords(executionContext.getSchemaName(), isAll, jobIds);
 
         int countDone = 0;
         for (DdlEngineRecord record : records) {
-            if (DdlState.RUNNING == DdlState.valueOf(record.state)) {
-                if (schedulerManager.tryPauseDdl(
-                    record.jobId,
-                    DdlState.RUNNING,
-                    DdlState.PAUSED)) {
-                    countDone++;
-                    interruptJob(record.schemaName, record.jobId);
-                }
-            } else if (DdlState.ROLLBACK_RUNNING == DdlState.valueOf(record.state)) {
-                if (schedulerManager.tryPauseDdl(
-                    record.jobId,
-                    DdlState.ROLLBACK_RUNNING,
-                    DdlState.ROLLBACK_PAUSED)) {
-                    countDone++;
-                    interruptJob(record.schemaName, record.jobId);
-                }
+            if (record.isSubJob() && !enableOperateSubJob) {
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
             }
+            List<Long> pausedJobs = new ArrayList<>();
+            pauseJobs(record, executionContext, true, pausedJobs);
+            interruptJob(record.schemaName, pausedJobs);
+            countDone += pausedJobs.size();
         }
 
         return new AffectRowCursor(new int[] {countDone});
+    }
+
+    private void pauseJobs(DdlEngineRecord record, ExecutionContext ec, boolean subJob,
+                           List<Long> pausedJobs) {
+        DdlState before = DdlState.valueOf(record.state);
+        DdlState after = DdlState.PAUSE_JOB_STATE_TRANSFER.get(before);
+        if (!(before == DdlState.RUNNING || before == DdlState.ROLLBACK_RUNNING)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, String.format(
+                "Only RUNNING/ROLLBACK_RUNNING jobs can be paused, job %s is in %s state", record.jobId, before));
+        }
+
+        if (schedulerManager.tryPauseDdl(record.jobId, before, after)) {
+            LOG.info(String.format("pause job %d", record.jobId));
+            pausedJobs.add(record.jobId);
+            if (subJob) {
+                pauseSubJobs(record.jobId, ec, pausedJobs);
+            }
+        }
+    }
+
+    private void pauseSubJobs(long jobId, ExecutionContext ec, List<Long> pausedJobs) {
+        List<SubJobTask> subJobs = schedulerManager.fetchSubJobsRecursive(jobId);
+        List<Long> subJobIds = GeneralUtil.emptyIfNull(subJobs)
+            .stream().flatMap(x -> x.fetchAllSubJobs().stream()).collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(subJobIds)) {
+            return;
+        }
+        List<DdlEngineRecord> records = schedulerManager.fetchRecords(subJobIds);
+        for (DdlEngineRecord record : GeneralUtil.emptyIfNull(records)) {
+            pauseJobs(record, ec, false, pausedJobs);
+        }
     }
 
 }

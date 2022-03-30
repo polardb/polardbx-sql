@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.meta.GsiMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
@@ -35,6 +34,7 @@ import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.ImmutableList;
 import lombok.Getter;
 
 import java.sql.Connection;
@@ -83,6 +83,7 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
         this.indexType = indexType;
         this.indexStatus = indexStatus;
         this.clusteredIndex = clusteredIndex;
+        onExceptionTryRecoveryThenRollback();
     }
 
     @Override
@@ -93,7 +94,8 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
 
         final String appName = AppNameUtil.buildAppNameByInstAndDbName(InstIdUtil.getInstId(), schemaName);
         final TableMeta primaryTableMeta =
-            GmsTableMetaManager.fetchTableMeta(schemaName, logicalTableName, null, true, true);
+            GmsTableMetaManager.fetchTableMeta(metaDbConnection,
+                schemaName, logicalTableName, null, null, true, true);
 
         FailPoint.assertNotNull(primaryTableMeta);
         primaryTableMeta.setSchemaName(schemaName);

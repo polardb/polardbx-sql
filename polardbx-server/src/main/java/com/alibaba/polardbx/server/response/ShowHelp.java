@@ -103,6 +103,14 @@ public final class ShowHelp {
     private static final List<HelpData> datas = new ArrayList<HelpData>();
 
     static {
+        // DDL
+        datas.add(new HelpData("show [full] ddl", "Report all running ddl", ""));
+        datas.add(new HelpData("recover ddl JOBID", "Recover a paused ddl job", "recover ddl 123"));
+        datas.add(new HelpData("rollback ddl JOBID", "Rollback a paused ddl job", "rollback ddl 123"));
+        datas.add(new HelpData("pause ddl JOBID", "Pause a running ddl job", "pause ddl 123"));
+        datas.add(new HelpData("show ddl status", "Report ddl statistics", ""));
+        datas.add(new HelpData("show ddl result", "Report recent ddl result", ""));
+
         // show
         datas.add(new HelpData("show rule", "Report all table rule", ""));
         datas.add(new HelpData("show rule from TABLE", "Report table rule", "show rule from user"));
@@ -154,6 +162,10 @@ public final class ShowHelp {
         datas.add(new HelpData("clear ccl_rules", "Clear the ccl rules", "clear ccl_rules"));
         datas.add(new HelpData("show ccl_triggers", "Report the ccl trigger info", "show ccl_triggers"));
         datas.add(new HelpData("clear ccl_triggers", "Clear the ccl triggers", "clear ccl_triggers"));
+
+        datas.add(new HelpData("show global/local deadlocks",
+            "Show global deadlocks caused by global transactions, or show local deadlocks on each DN",
+            "show global deadlocks"));
         //deprecated
         //datas.add(new HelpData("show git_commit", "Report the release info ", "show git_commit"));
     }

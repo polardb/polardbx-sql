@@ -20,6 +20,7 @@ import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.core.AggregateCall;
+import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.core.Window;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -31,6 +32,7 @@ import org.apache.calcite.util.ImmutableBitSet;
 import com.google.common.collect.ImmutableList;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Context from which a relational expression can initialize itself,
@@ -113,6 +115,8 @@ public interface RelInput {
   boolean supportMpp();
 
   List<Window.Group> getWindowGroups();
+
+  Set<CorrelationId> getVariablesSet();
 }
 
 // End RelInput.java

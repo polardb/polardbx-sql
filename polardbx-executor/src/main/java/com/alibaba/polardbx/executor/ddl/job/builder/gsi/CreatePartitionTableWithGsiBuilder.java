@@ -83,8 +83,7 @@ public class CreatePartitionTableWithGsiBuilder {
     }
 
     private void buildIndexTablePhysicalPlans() {
-        for (Map.Entry<String, CreateGlobalIndexPreparedData> entry :
-            preparedData.getIndexTablePreparedDataMap().entrySet()) {
+        for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : preparedData.getIndexTablePreparedDataMap().entrySet()) {
             buildIndexTablePhysicalPlans(entry.getKey(), entry.getValue());
         }
     }

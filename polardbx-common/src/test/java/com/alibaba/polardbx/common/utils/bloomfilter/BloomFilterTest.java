@@ -16,8 +16,7 @@
 
 package com.alibaba.polardbx.common.utils.bloomfilter;
 
-import com.alibaba.polardbx.util.bloomfilter.BloomFilter;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import org.junit.Test;
 
 import java.util.HashSet;
@@ -36,7 +35,7 @@ public class BloomFilterTest {
         HashSet<Long> allValues = new HashSet<>(NUM_ELEMENT);
         Random random = new Random(0);
 
-        TddlHasher hasher = bloomFilter.newHasher();
+        IStreamingHasher hasher = bloomFilter.newHasher();
 
         for (int i = 0; i < NUM_ELEMENT; i++) {
             long value = random.nextLong();
@@ -45,7 +44,8 @@ public class BloomFilterTest {
         }
 
         for (Long value : allValues) {
-            assertTrue(bloomFilter.mightContain(hasher.putLong(value).hash()));
+            hasher.putLong(value);
+            assertTrue(bloomFilter.mightContain(hasher.hash()));
         }
 
         long falsePositiveCount = 0;
@@ -68,7 +68,7 @@ public class BloomFilterTest {
         HashSet<Long> values = new HashSet<>(20);
 
         BloomFilter bloomFilter1 = BloomFilter.createEmpty(1000, 0.03);
-        TddlHasher hasher1 = bloomFilter1.newHasher();
+        IStreamingHasher hasher1 = bloomFilter1.newHasher();
 
         for (int i = 0; i < 10; i++) {
             long value = random.nextLong();
@@ -77,7 +77,7 @@ public class BloomFilterTest {
         }
 
         BloomFilter bloomFilter2 = BloomFilter.createEmpty(1000, 0.03);
-        TddlHasher hasher2 = bloomFilter2.newHasher();
+        IStreamingHasher hasher2 = bloomFilter2.newHasher();
 
         for (int i = 0; i < 10; i++) {
             long value = random.nextLong();
@@ -95,7 +95,7 @@ public class BloomFilterTest {
     @Test
     public void testDifferentObjectTypes() {
         BloomFilter bloomFilter = BloomFilter.createEmpty(1000, 0.03);
-        TddlHasher hasher = bloomFilter.newHasher();
+        IStreamingHasher hasher = bloomFilter.newHasher();
 
         bloomFilter.put(hasher.putLong(1234).hash());
         bloomFilter.put(hasher.putString("abcd").hash());

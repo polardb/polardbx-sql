@@ -16,8 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.chunk;
 
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import org.openjdk.jol.info.ClassLayout;
 
 import java.math.BigInteger;
@@ -30,7 +31,7 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
  *
  */
 public class BigIntegerBlock extends AbstractCommonBlock {
-
+    private static final long NULL_VALUE = 0L;
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(BigIntegerBlock.class).instanceSize();
 
     /**
@@ -93,9 +94,9 @@ public class BigIntegerBlock extends AbstractCommonBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putLong(0);
+            sink.putLong(NULL_VALUE);
         } else {
             sink.putLong(getBigInteger(position).longValue());
         }

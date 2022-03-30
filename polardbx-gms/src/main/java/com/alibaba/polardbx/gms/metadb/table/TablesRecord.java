@@ -26,6 +26,8 @@ import java.util.Map;
 
 public class TablesRecord extends TablesInfoSchemaRecord {
 
+    public static final long FLAG_LOGICAL_COLUMN_ORDER = 0x1;
+
     public String newTableName;
     public int status;
     public long flag;
@@ -57,4 +59,13 @@ public class TablesRecord extends TablesInfoSchemaRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setInt, this.status);
         return params;
     }
+
+    public boolean isLogicalColumnOrder() {
+        return (flag & FLAG_LOGICAL_COLUMN_ORDER) != 0L;
+    }
+
+    public void setLogicalColumnOrder() {
+        flag |= FLAG_LOGICAL_COLUMN_ORDER;
+    }
+
 }

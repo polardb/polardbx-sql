@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,8 +27,6 @@ public interface SystemTableNDVSketchStatistic {
     void createTableIfNotExist();
 
     void updateTableName(String schemaName, String oldLogicalTableName, String newLogicalTableName);
-
-    void deleteByTableNameAndColumnNames(String schemaName, String logicalTableName, String columnNames);
 
     void deleteByTableName(String schemaName, String logicalTableName);
 
@@ -77,9 +76,6 @@ public interface SystemTableNDVSketchStatistic {
             this.dnCardinality = dnCardinality;
             this.compositeCardinality = compositeCardinality;
             this.sketchType = sketchType;
-//            this.sketchBytes = sketchBytes;
-//            this.gmtCreate = gmtCreate;
-//            this.gmtUpdate = gmtUpdate;
         }
 
         public SketchRow(String schemaName, String tableName, String columnNames, String shardPart,

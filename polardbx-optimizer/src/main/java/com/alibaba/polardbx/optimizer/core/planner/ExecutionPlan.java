@@ -42,6 +42,27 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class ExecutionPlan {
 
+    public Pair<String, String> getDbIndexAndTableName() {
+        return dbIndexAndTableName;
+    }
+
+    public void setDbIndexAndTableName(
+        Pair<String, String> dbIndexAndTableName) {
+        this.dbIndexAndTableName = dbIndexAndTableName;
+    }
+
+    public enum DirectMode {
+        // 访问的表都是在同一个库的单表的转发
+        TABLE_DIRECT,
+        // 根据分片键点查的转发
+        SHARDING_KEY_DIRECT,
+        NONE;
+
+        public boolean isDirect() {
+            return this == TABLE_DIRECT || this == SHARDING_KEY_DIRECT;
+        }
+    }
+
     private RelNode plan;
     private CursorMeta cursorMeta;
     private SqlNode ast;
@@ -83,6 +104,15 @@ public class ExecutionPlan {
     private MemoryPool planMemCachePool = null;
     // the mem estimation of plan
     private PlanMemEstimation planMemEstimation = null;
+
+    /**
+     * 是否为分片键点查
+     */
+    private boolean isDirectShardingKey;
+    /**
+     * For DirectShardingKeyTableOperation
+     */
+    private Pair<String, String> dbIndexAndTableName = null;
 
     public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta, BitSet planProperties) {
         this.ast = ast;
@@ -153,6 +183,8 @@ public class ExecutionPlan {
         newExecutionPlan.planShardInfo = this.planShardInfo;
         newExecutionPlan.htapFeedCount = this.htapFeedCount;
         newExecutionPlan.hitCount = this.hitCount;
+        newExecutionPlan.isDirectShardingKey = this.isDirectShardingKey;
+        newExecutionPlan.dbIndexAndTableName = this.dbIndexAndTableName;
         return newExecutionPlan;
     }
 
@@ -280,6 +312,14 @@ public class ExecutionPlan {
 
     public AtomicLong getHitCount() {
         return hitCount;
+    }
+
+    public boolean isDirectShardingKey() {
+        return isDirectShardingKey;
+    }
+
+    public void setDirectShardingKey(boolean directShardingKey) {
+        isDirectShardingKey = directShardingKey;
     }
 }
 

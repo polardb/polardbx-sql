@@ -16,15 +16,23 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepOp;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -33,22 +41,55 @@ import java.util.Map;
  */
 public class PartTableQueryShardProcessor extends ShardProcessor {
 
+    private static final Logger logger = LoggerFactory.getLogger(PartTableQueryShardProcessor.class);
+
     protected PartitionPruneStep pruneStepInfo;
+    protected PartitionTupleRouteInfo tupleRouteInfo;
 
     protected PartTableQueryShardProcessor(PartitionPruneStep pruneStepInfo) {
         super(null);
         this.pruneStepInfo = pruneStepInfo;
+        /**
+         * When a plan do sharding by using PartTableQueryShardProcessor,
+         * the query must be a point-query that all the predicates of all partition columns is equal-expr.
+         * so the query can be converted into tuple route for tow purpose:
+         * 1. tuple route has better performance on routing;
+         * 2. tuple route can make sure that only return one partition
+         *     even if the expr-value has been truncated ( such datetime_col='9999-99-99 99:99:99').
+         */
+        this.tupleRouteInfo = tryConvertPruneStepToTupleRouteIfNeed();
+    }
+
+    protected PartitionTupleRouteInfo tryConvertPruneStepToTupleRouteIfNeed() {
+        if (this.pruneStepInfo != null && this.pruneStepInfo instanceof PartitionPruneStepOp) {
+            try {
+                PartitionTupleRouteInfo tupleRouteInfo =
+                    PartitionTupleRouteInfoBuilder.generateTupleRoutingInfoFromPruneStepOp(
+                        (PartitionPruneStepOp) pruneStepInfo);
+                return tupleRouteInfo;
+            } catch (Throwable ex) {
+                logger.warn("Failed to convert point query to tuple route, exception is " + ex.getMessage(), ex);
+            }
+        }
+        return null;
     }
 
     @Override
     Pair<String, String> shard(Map<Integer, ParameterContext> param,
                                ExecutionContext executionContext) {
-        PartPrunedResult prunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, executionContext);
-        List<PhysicalPartitionInfo> phyPartInfos = prunedResult.getPrunedParttions();
+        List<PhysicalPartitionInfo> phyPartInfos = null;
+        PartPrunedResult prunedResult = null;
+        if (tupleRouteInfo != null) {
+            prunedResult = PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0, executionContext);
+            phyPartInfos = prunedResult.getPrunedParttions();
+        } else {
+            prunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, executionContext);
+            phyPartInfos = prunedResult.getPrunedParttions();
+        }
 
         String grpKey = null;
         String phyTbl = null;
-        if (prunedResult.isEmpty()) {
+        if (phyPartInfos.isEmpty()) {
             /**
              * When no found any partitions in SingleTableOperation, use last partition as default.
              * It can be optimized to zero scan later
@@ -58,9 +99,15 @@ public class PartTableQueryShardProcessor extends ShardProcessor {
                 prunedResult.getPartInfo().getPartitionBy().getPartitions().get(partCnt - 1).getLocation();
             grpKey = location.getGroupKey();
             phyTbl = location.getPhyTableName();
-        } else {
+        } else if (phyPartInfos.size() == 1) {
+            /**
+             * PartTableQueryShardProcessor must return only one partition after pruning
+             */
             grpKey = phyPartInfos.get(0).getGroupKey();
             phyTbl = phyPartInfos.get(0).getPhyTable();
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                "ShardProcessor is NOT allow to return more than one partitions after pruning");
         }
 
         Pair<String, String> grpAndPhy = new Pair<>(grpKey, phyTbl);

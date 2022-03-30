@@ -59,6 +59,18 @@ public class GeneralUtil {
         return coll == null ? Collections.emptyList() : coll;
     }
 
+    public static <E> void addAllIfNotEmpty(Collection<E> from, Collection<E> to) {
+        if (isNotEmpty(from)) {
+            to.addAll(from);
+        }
+    }
+
+    public static <K, V> void addAllIfNotEmpty(Map<K, V> from, Map<K, V> to) {
+        if (isNotEmpty(from)) {
+            to.putAll(from);
+        }
+    }
+
     public static String getTab(int count) {
         StringBuffer tab = new StringBuffer();
         for (int i = 0; i < count; i++) {

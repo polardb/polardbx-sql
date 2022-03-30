@@ -757,6 +757,7 @@ public final class FnvHash {
         long LOCATION = fnv1a_64_lower("LOCATION");
         long LOCALITY = fnv1a_64_lower("LOCALITY");
         long PARTITION_MODE = fnv1a_64_lower("PARTITION_MODE");
+        long MODE = fnv1a_64_lower("MODE");
         long PARTITIONS = fnv1a_64_lower("PARTITIONS");
         long FORMAT = fnv1a_64_lower("FORMAT");
         long ENCODE = fnv1a_64_lower("ENCODE");

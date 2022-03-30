@@ -48,7 +48,7 @@ import com.alibaba.polardbx.executor.mpp.planner.PlanFragmenter;
 import com.alibaba.polardbx.executor.mpp.planner.StageExecutionPlan;
 import com.alibaba.polardbx.executor.mpp.planner.SubPlan;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.units.Duration;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataTypeField;

@@ -32,10 +32,10 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
 
-import java.math.BigInteger;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -165,25 +165,21 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                         Collectors.toList());
                 Map<String, List<Object>> tableStatInfo =
                     tablesStatInfo.get(context.getLogTbRec().tableName.toLowerCase());
+                Objects.requireNonNull(tableStatInfo,
+                    String.format("table meta corrupted: %s.%s", schemaName, context.getTableName()));
                 Long totalRows = 0L;
                 for (Map.Entry<String, List<Object>> phyEntry : tableStatInfo.entrySet()) {
-                    // FIXME the value could be either BigInteger or Long
-                    if (phyEntry.getValue().get(3) instanceof BigInteger) {
-                        totalRows += ((BigInteger) phyEntry.getValue().get(3)).longValue();
-                    } else if (phyEntry.getValue().get(3) instanceof Long) {
-                        totalRows += (Long) phyEntry.getValue().get(3);
-                    }
+                    totalRows += DataTypes.LongType.convertFrom(phyEntry.getValue().get(3));
                 }
                 for (int i = 0; i < tablePartitionRecords.size(); i++) {
                     TablePartitionRecord record = tablePartitionRecords.get(i);
-                    // The value could be either BigInteger, BigDecimal or Long
-                    Object obj = tableStatInfo.get(record.phyTable.toLowerCase()).get(3);
-                    Long tableRow = DataTypes.LongType.convertFrom(obj);
-                    double percent = tableRow.doubleValue() / Math.max(totalRows.doubleValue(), 1);
+                    List<Object> tableStatRow = tableStatInfo.get(record.phyTable.toLowerCase());
+                    Objects.requireNonNull(tableStatRow,
+                        String.format("physical table meta corrupted: %s.%s.%s",
+                            schemaName, record.tableName, record.phyTable));
+                    long tableRow = DataTypes.LongType.convertFrom(tableStatRow.get(3));
+                    double percent = Math.min(100.0, tableRow / Math.max(totalRows.doubleValue(), 1));
 
-                    List<Object> statInfo = tableStatInfo.get(record.getPhyTable().toLowerCase());
-
-                    // TODO(moyi) refactor it
                     Object[] row = new Object[15];
                     cursor.addRow(row);
                     row[0] = DataTypes.StringType.convertFrom(schemaName);
@@ -194,18 +190,15 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                     row[4] = DataTypes.ULongType.convertFrom(i);
                     row[5] = DataTypes.StringType.convertFrom(record.partName);
                     row[6] = DataTypes.ULongType.convertFrom(tableRow);
-                    row[7] =
-                        DataTypes.ULongType.convertFrom(tableStatInfo.get(record.phyTable.toLowerCase()).get(4));
-                    row[8] =
-                        DataTypes.ULongType.convertFrom(tableStatInfo.get(record.phyTable.toLowerCase()).get(5));
-                    row[9] =
-                        DataTypes.StringType.convertFrom(tableStatInfo.get(record.phyTable.toLowerCase()).get(0));
+                    row[7] = DataTypes.ULongType.convertFrom(tableStatRow.get(4));
+                    row[8] = DataTypes.ULongType.convertFrom(tableStatRow.get(5));
+                    row[9] = DataTypes.StringType.convertFrom(tableStatRow.get(0));
                     row[10] = DataTypes.StringType.convertFrom(getPercentString(percent));
 
-                    if (statInfo.size() > 6) {
+                    if (tableStatRow.size() > 6) {
                         for (int k = 6; k < 10; k++) {
-                            if (statInfo.get(k) != null) {
-                                row[k + 5] = DataTypes.ULongType.convertFrom(statInfo.get(k));
+                            if (tableStatRow.get(k) != null) {
+                                row[k + 5] = DataTypes.ULongType.convertFrom(tableStatRow.get(k));
                             }
                         }
                     }

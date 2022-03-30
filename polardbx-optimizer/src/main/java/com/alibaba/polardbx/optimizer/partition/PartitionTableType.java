@@ -25,7 +25,9 @@ public enum PartitionTableType {
     PARTITION_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_PARTITION_TABLE),
     GSI_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_TABLE),
     SINGLE_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_SINGLE_TABLE),
-    BROADCAST_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_BROADCAST_TABLE);
+    BROADCAST_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_BROADCAST_TABLE),
+    GSI_BROADCAST_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_BROADCAST_TABLE),
+    GSI_SINGLE_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_SINGLE_TABLE);
 
     private int tblTypeVal;
     private String tableTypeName;
@@ -44,6 +46,10 @@ public enum PartitionTableType {
             return SINGLE_TABLE;
         } else if (tblTypeVal == TablePartitionRecord.PARTITION_TABLE_TYPE_BROADCAST_TABLE) {
             return BROADCAST_TABLE;
+        } else if (tblTypeVal == TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_SINGLE_TABLE) {
+            return GSI_SINGLE_TABLE;
+        } else if (tblTypeVal == TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_BROADCAST_TABLE) {
+            return GSI_BROADCAST_TABLE;
         }
         return null;
     }

@@ -52,9 +52,25 @@ public class SQLCharacterDataType extends SQLDataTypeImpl {
     }
 
     public void setCharSetName(String charSetName) {
+        charSetName = trim(charSetName);
         this.charSetName = charSetName;
     }
-    
+
+    private String trim(String str) {
+        if (str.charAt(0) == '`' || str.charAt(str.length() - 1) == '`') {
+            // trim
+            StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < str.length(); i++) {
+                if (str.charAt(i) == '`') {
+                    continue;
+                }
+                builder.append(str.charAt(i));
+            }
+            str = builder.toString();
+        }
+        return str;
+    }
+
     public boolean isHasBinary() {
         return hasBinary;
     }
@@ -68,6 +84,7 @@ public class SQLCharacterDataType extends SQLDataTypeImpl {
     }
 
     public void setCollate(String collate) {
+        collate = trim(collate);
         this.collate = collate;
     }
 

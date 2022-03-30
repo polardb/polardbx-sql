@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.balancer.stats;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -29,6 +31,8 @@ import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
@@ -42,15 +46,19 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Like;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import lombok.Data;
 import org.apache.calcite.jdbc.JavaTypeFactoryImpl;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
+import org.apache.commons.collections.CollectionUtils;
 
+import javax.annotation.Nullable;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -63,6 +71,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -87,12 +96,7 @@ public class StatsUtils {
 
             List<String> schemaNames = tableGroupAccessor.getDistinctSchemaNames();
             for (String schemaName : schemaNames) {
-                TableGroupInfoManager tableGroupInfoManager =
-                    OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-                Map<Long, TableGroupConfig> tableGroupConfigMap =
-                    tableGroupInfoManager.getTableGroupConfigInfoCache();
-
-                res.addAll(tableGroupConfigMap.values());
+                res.addAll(TableGroupUtils.getAllTableGroupInfoByDb(schemaName));
             }
         } catch (SQLException e) {
             MetaDbLogUtil.META_DB_LOG.error(e);
@@ -141,13 +145,25 @@ public class StatsUtils {
     }
 
     /**
-     * Query stats of all table-groups
+     * Query stats of all table-groups in the `targetSchema`
      *
+     * @param targetTable query stats of this table if it's not null
      * @return stats
      */
-    public static List<TableGroupStat> getTableGroupsStats(String targetSchema, String targetTable) {
-        List<TableGroupConfig> tableGroupConfigs = StatsUtils.getTableGroupConfigs();
+    public static List<TableGroupStat> getTableGroupsStats(String targetSchema, @Nullable String targetTable) {
+        List<TableGroupConfig> tableGroupConfigs = TableGroupUtils.getAllTableGroupInfoByDb(targetSchema);
         List<TableGroupStat> res = new ArrayList<>();
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(targetSchema), targetSchema + " not exists");
+        PartitionInfoManager pm = oc.getPartitionInfoManager();
+
+        // execute physical sdl
+        long startMilli = System.currentTimeMillis();
+        Map<String, Map<String, MySQLTablesRowVO>> tablesStatInfo =
+            queryTableGroupStats(targetSchema, tableGroupConfigs);
+        long elapsed = System.currentTimeMillis() - startMilli;
+        SQLRecorderLogger.ddlLogger.info(
+            String.format("got table-group stats for schema(%s) cost %dms: %s", targetSchema, elapsed, tablesStatInfo));
 
         // iterate all table-groups
         for (TableGroupConfig tableGroupConfig : tableGroupConfigs) {
@@ -155,9 +171,7 @@ public class StatsUtils {
             if (targetSchema != null && !targetSchema.equalsIgnoreCase(schema)) {
                 continue;
             }
-            PartitionInfoManager pm = OptimizerContext.getContext(schema).getPartitionInfoManager();
             TableGroupStat tableGroupStat = new TableGroupStat(tableGroupConfig);
-            Map<String, Map<String, List<Object>>> tablesStatInfo = queryTableGroupStats(tableGroupConfig, null, null);
 
             // iterate all tables in a table-group
             for (TablePartRecordInfoContext tableContext : tableGroupConfig.getAllTables()) {
@@ -169,17 +183,27 @@ public class StatsUtils {
                 List<TablePartitionRecord> tablePartitionRecords =
                     tableContext
                         .filterPartitions(x -> x.partLevel != TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
-                Map<String, List<Object>> tableStatInfo = tablesStatInfo.get(table);
+                Map<String, MySQLTablesRowVO> tableStatInfo = tablesStatInfo.get(table);
+
+                // TODO: use lock to avoid meta too old exception
+                if (tableStatInfo == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_TABLE_META_TOO_OLD, targetSchema, table);
+                }
 
                 // iterate all partitions in a table
                 for (TablePartitionRecord record : tablePartitionRecords) {
                     PartitionInfo info = pm.getPartitionInfo(table);
                     PartitionStat pgStat = new PartitionStat(tableGroupConfig, record, info);
+                    MySQLTablesRowVO phyTableInfo = tableStatInfo.get(record.phyTable.toLowerCase());
 
-                    String phyTable = record.phyTable.toLowerCase();
-                    pgStat.setDataLength(DataTypes.LongType.convertFrom(tableStatInfo.get(phyTable).get(4)));
-                    pgStat.setIndexLength(DataTypes.LongType.convertFrom(tableStatInfo.get(phyTable).get(5)));
-                    pgStat.setDataRows(DataTypes.LongType.convertFrom(tableStatInfo.get(phyTable).get(3)));
+                    // TODO: use lock to avoid meta too old exception
+                    if (phyTableInfo == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_TABLE_META_TOO_OLD, targetSchema, table);
+                    }
+
+                    pgStat.setDataLength(phyTableInfo.dataLength);
+                    pgStat.setIndexLength(phyTableInfo.indexLength);
+                    pgStat.setDataRows(phyTableInfo.dataRows);
 
                     tableGroupStat.addPartition(pgStat);
                 }
@@ -246,9 +270,15 @@ public class StatsUtils {
      */
     public static List<List<Object>> queryGroupByGroupName(String schema, String groupName, String sql) {
         final int queryTimeout = 600;
-        ExecutorContext ec = ExecutorContext.getContext(schema);
-        IGroupExecutor ge = ec.getTopologyExecutor().getGroupExecutor(groupName);
         List<List<Object>> result = new ArrayList<>();
+        IGroupExecutor ge = null;
+        try {
+            ExecutorContext ec = ExecutorContext.getContext(schema);
+            ge = ec.getTopologyExecutor().getGroupExecutor(groupName);
+        } catch (Throwable e) {
+            throw GeneralUtil.nestedException(
+                String.format("query group %s with sql %s failed: %s", groupName, sql, e.getMessage()), e);
+        }
 
         try (Connection conn = ge.getDataSource().getConnection();
             Statement stmt = conn.createStatement()) {
@@ -284,49 +314,70 @@ public class StatsUtils {
 
     /**
      * Query statistics of a table-group
+     * <p>
+     * Hierarchy:
+     * TableGroup
+     * | PartitionGroup pg1
+     * | PhysicalTable pt1
+     * | PhysicalTable pt2
+     * | PartitionGroup pg2
+     * | PartitionGroup pg...
+     *
+     * @return <LogicalTable, <PhysicalTable, MySQLTablesRow>>
      */
-    public static Map<String, Map<String, List<Object>>> queryTableGroupStats(TableGroupConfig tableGroupConfig,
-                                                                              Set<String> indexTableNames,
-                                                                              String tableLike) {
-        String schema = tableGroupConfig.getTableGroupRecord().schema;
-        Map<String, Map<String, List<Object>>> result = new HashMap<>();
+    public static Map<String, Map<String, MySQLTablesRowVO>> queryTableGroupStats(String schema,
+                                                                                  List<TableGroupConfig> tableGroups) {
+        Map<String, Map<String, MySQLTablesRowVO>> result = new HashMap<>();
 
-        for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
-            String physicalDb = partitionGroupRecord.phy_db;
-            String sql = generateQueryPartitionGroupStatsSQL(tableGroupConfig, partitionGroupRecord, indexTableNames,
-                tableLike);
-            // TODO(moyi) it should not happen
-            if (TStringUtil.isBlank(sql)) {
-                continue;
-            }
-
-            List<List<Object>> rows = queryGroupByPhyDb(schema, physicalDb, sql);
-            for (List<Object> row : rows) {
-                String logicalTable = (String) row.get(1);
-                String physicalTable = (String) row.get(2);
-                Map<String, List<Object>> table =
-                    result.computeIfAbsent(logicalTable.toLowerCase(), x -> new HashMap<>());
-                table.put(physicalTable.toLowerCase(), row);
-            }
-
-            String statisticSql =
-                genQueryPartitionStatisticsSQL(tableGroupConfig, partitionGroupRecord, indexTableNames, tableLike);
-            List<List<Object>> statisticRows = queryGroupByPhyDb(schema, physicalDb, statisticSql);
-            for (List<Object> row : statisticRows) {
-                String logicalTable = (String) row.get(0);
-                String physicalTable = (String) row.get(1);
-
-                // append to existed row
-                Map<String, List<Object>> table =
-                    result.computeIfAbsent(logicalTable.toLowerCase(), x -> new HashMap<>());
-                List<Object> existedRow = table.get(physicalTable.toLowerCase());
-                for (int i = 2; i < row.size(); i++) {
-                    existedRow.add(row.get(i));
-                }
-            }
-
+        Map<String, String> phyTable2LogicalTableMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (TableGroupConfig tg : tableGroups) {
+            phyTable2LogicalTableMap.putAll(tg.phyToLogicalTables());
         }
+
+        List<PartitionGroupRecord> allPgList =
+            tableGroups.stream().flatMap(x -> x.getPartitionGroupRecords().stream())
+                .collect(Collectors.toList());
+
+        // Group all partition-groups by physical database, to avoid iterate all partitions
+        allPgList.stream()
+            .collect(Collectors.groupingBy(x -> x.phy_db))
+            .forEach((physicalDb, pgList) -> {
+                String sql = genQueryPartitionGroupStatsSQL(physicalDb);
+
+                List<List<Object>> rows = queryGroupByPhyDb(schema, physicalDb, sql);
+                for (List<Object> row : rows) {
+                    MySQLTablesRowVO rowVO = MySQLTablesRowVO.fromRow(row);
+                    String physicalTable = rowVO.getPhyTable();
+                    String logicalTable = phyTable2LogicalTableMap.get(physicalTable);
+                    // table not in the target table-group
+                    if (logicalTable == null) {
+                        continue;
+                    }
+
+                    result.computeIfAbsent(logicalTable.toLowerCase(), x -> new HashMap<>())
+                        .put(physicalTable.toLowerCase(), rowVO);
+                }
+            });
+
         return result;
+    }
+
+    /**
+     * Build a SQL to query information_schema.table_statistics
+     */
+    private static String genQueryPartitionStatisticsSQL(String phyDb) {
+
+        return MySQLTableStatisticRowVO.genSelectClause()
+            + String.format(" WHERE table_schema = '%s' ", phyDb);
+    }
+
+    /**
+     * Build a SQL to collect stats of mysql information_schema.tables
+     */
+    private static String genQueryPartitionGroupStatsSQL(String phyDb) {
+
+        return MySQLTablesRowVO.genSelectClause()
+            + String.format(" WHERE table_schema = '%s'", phyDb);
     }
 
     /**
@@ -379,8 +430,8 @@ public class StatsUtils {
             return phyDbTablesInfo;
         }
 
-        Map<String, Set<String>> dbPhyDbNames = new HashMap<>();
-        Map<String, Set<String>> dbAllPhyDbNames = new HashMap<>();
+        Map<String, Set<String>> dbPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, Set<String>> dbAllPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         queryPhyDbNames(schemaNames, dbPhyDbNames, dbAllPhyDbNames);
 
         // build sql and exec
@@ -443,6 +494,10 @@ public class StatsUtils {
                                                                               String tableLike,
                                                                               Map<String, Map<String, List<Object>>> phyDbTablesInfo) {
         Map<String, Map<String, List<Object>>> result = new HashMap<>();
+        int tableGroupType =
+            tableGroupConfig.getTableGroupRecord() != null ? tableGroupConfig.getTableGroupRecord().tg_type :
+                TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
+        boolean isBroadCastTg = (tableGroupType == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG);
 
         for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
             for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
@@ -456,31 +511,75 @@ public class StatsUtils {
                 List<TablePartitionRecord> tablePartitionRecords =
                     tablePartRecordInfoContext.getPartitionRecListByGroupId(partitionGroupId);
                 assert GeneralUtil.isNotEmpty(tablePartitionRecords);
+                int partCols = GeneralUtil.isNotEmpty(tablePartitionRecords) ?
+                    countPartitionColumns(tablePartitionRecords.get(0)) : 1;
+                boolean multiDatum = (partCols > 1) && !isHashPartitionStrategy(tablePartitionRecords.get(0));
+                boolean isList = GeneralUtil.isNotEmpty(tablePartitionRecords) ?
+                    isListPartitionStrategy(tablePartitionRecords.get(0)) : false;
                 for (TablePartitionRecord tablePartitionRecord : tablePartitionRecords) {
                     String phyDbName = partitionGroupRecord.phy_db.toLowerCase();
                     String phyTbName = tablePartitionRecord.phyTable.toLowerCase();
                     List<Object> row;
                     try {
                         row = phyDbTablesInfo.get(phyDbName).get(phyTbName);
+                        if (row == null) {
+                            throw GeneralUtil.nestedException(
+                                String.format("Failed to get physical table info:[%s].[%s]", phyDbName, phyTbName));
+                        }
                     } catch (Exception ex) {
                         throw GeneralUtil.nestedException("Failed to get physical table info ", ex);
                     }
 
                     StringBuilder partDesc = new StringBuilder();
-                    if (tablePartitionRecord.partPosition > 1) {
-                        TablePartitionRecord lastPart =
-                            tablePartRecordInfoContext
-                                .getPartitionByPosition((int) (tablePartitionRecord.partPosition - 1));
-                        partDesc.append("[");
-                        if (lastPart != null) {
-                            partDesc.append(lastPart.partDesc.replaceAll("'", ""));
-                            partDesc.append(", ");
+                    if (!isBroadCastTg) {
+                        if (tablePartitionRecord.partPosition > 1) {
+                            TablePartitionRecord lastPart =
+                                tablePartRecordInfoContext
+                                    .getPartitionByPosition((int) (tablePartitionRecord.partPosition - 1));
+                            if (isList) {
+                                partDesc.append("(");
+                            } else {
+                                partDesc.append("[");
+                            }
+                            if (lastPart != null && !isList) {
+                                if (multiDatum) {
+                                    partDesc.append("(");
+                                }
+                                partDesc.append(lastPart.partDesc.replaceAll("'", ""));
+                                if (multiDatum) {
+                                    partDesc.append(")");
+                                }
+                                partDesc.append(", ");
+                            }
+                        } else {
+                            if (!isList) {
+                                if (multiDatum) {
+                                    for (int i = 0; i < partCols; i++) {
+                                        if (i == 0) {
+                                            partDesc.append("[(MINVALUE");
+                                        } else {
+                                            partDesc.append(",MINVALUE");
+                                        }
+                                    }
+                                    partDesc.append("),");
+                                } else {
+                                    partDesc.append("[MINVALUE, ");
+                                }
+                            } else {
+                                partDesc.append("(");
+                            }
                         }
+                        if (multiDatum) {
+                            partDesc.append("(");
+                        }
+                        partDesc.append(tablePartitionRecord.partDesc.replaceAll("'", ""));
+                        if (multiDatum) {
+                            partDesc.append(")");
+                        }
+                        partDesc.append(")");
                     } else {
-                        partDesc.append("[MINVALUE, ");
+                        partDesc.append("[MINVALUE, MAXVALUE)");
                     }
-                    partDesc.append(tablePartitionRecord.partDesc.replaceAll("'", ""));
-                    partDesc.append(")");
                     row.set(0, partDesc.toString());
                     row.set(1, logicalTableName);
                     row.remove(3);
@@ -508,55 +607,71 @@ public class StatsUtils {
         return true;
     }
 
-    /**
-     * Build a SQL to query information_schema.table_statistics
-     * <p>
-     * SELECT LOGICAL_TABLENAME, PHYSICAL_TABLEANME, ROWS_READ, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED
-     * FROM xxx
-     */
-    private static String genQueryPartitionStatisticsSQL(TableGroupConfig tableGroupConfig,
-                                                         PartitionGroupRecord partitionGroupRecord,
-                                                         Set<String> indexTableNames,
-                                                         String tableLike) {
-        StringBuilder sb = new StringBuilder();
-        int tableIndex = 0;
+    @Data
+    static class MySQLTablesRowVO {
+        private String phyTable;
+        private long dataLength;
+        private long indexLength;
+        private long dataRows;
 
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            if (tablePartRecordInfoContext == null) {
-                continue;
-            }
-
-            String logicalTableName = tablePartRecordInfoContext.getTableName().toLowerCase();
-            if (!isFilterTable(indexTableNames, tableLike, logicalTableName)) {
-                continue;
-            }
-
-            long partitionGroupId = partitionGroupRecord.id;
-            List<TablePartitionRecord> tablePartitionRecords =
-                tablePartRecordInfoContext.getPartitionRecListByGroupId(partitionGroupId);
-            assert GeneralUtil.isNotEmpty(tablePartitionRecords);
-
-            for (TablePartitionRecord tablePartitionRecord : tablePartitionRecords) {
-                // select
-                sb.append(tableIndex == 0 ? "SELECT " : " UNION ALL SELECT ");
-                sb.append(TStringUtil.quoteString(tablePartitionRecord.tableName)).append(" LOGICAL_TABLE_NAME, ");
-                sb.append(" TABLE_NAME as PHYSICAL_TABLE, ");
-                sb.append(" ROWS_READ, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED ");
-
-                // from
-                sb.append(" FROM ");
-                sb.append(" information_schema.table_statistics ");
-
-                // where
-                sb.append(" WHERE ");
-                sb.append(String.format(" table_schema = '%s' AND table_name = '%s' ",
-                    partitionGroupRecord.phy_db, tablePartitionRecord.phyTable));
-
-                tableIndex++;
-            }
+        public static String genSelectClause() {
+            StringBuilder sb = new StringBuilder();
+            sb.append(" SELECT ");
+            sb.append(" TABLE_NAME as PHYSICAL_TABLE");
+            sb.append(", TABLE_ROWS, DATA_LENGTH, INDEX_LENGTH ");
+            sb.append("FROM information_schema.tables ");
+            return sb.toString();
         }
 
-        return sb.toString();
+        public static MySQLTablesRowVO fromRow(List<Object> row) {
+            if (CollectionUtils.isEmpty(row)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Empty row");
+            }
+            if (row.size() != 4) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Corrupted row: " + row);
+            }
+            MySQLTablesRowVO res = new MySQLTablesRowVO();
+            res.setPhyTable(DataTypes.StringType.convertFrom(row.get(0)).toLowerCase());
+            res.setDataLength(DataTypes.LongType.convertFrom(row.get(1)));
+            res.setIndexLength(DataTypes.LongType.convertFrom(row.get(2)));
+            res.setDataRows(DataTypes.LongType.convertFrom(row.get(3)));
+            return res;
+        }
+    }
+
+    @Data
+    static class MySQLTableStatisticRowVO {
+        private String phyTable;
+        private long rowsRead;
+        private long rowsInsert;
+        private long rowsUpdate;
+        private long rowsDelete;
+
+        public static String genSelectClause() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("SELECT ");
+            sb.append(" TABLE_NAME as PHYSICAL_TABLE, ");
+            sb.append(" ROWS_READ, ROWS_INSERTED, ROWS_UPDATED, ROWS_DELETED ");
+
+            sb.append(" FROM information_schema.table_statistics ");
+            return sb.toString();
+        }
+
+        public static MySQLTableStatisticRowVO fromRow(List<Object> row) {
+            if (CollectionUtils.isEmpty(row)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Empty row");
+            }
+            if (row.size() != 5) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Corrupted row: " + row);
+            }
+            MySQLTableStatisticRowVO res = new MySQLTableStatisticRowVO();
+            res.setPhyTable(DataTypes.StringType.convertFrom(row.get(0)));
+            res.setRowsRead(DataTypes.LongType.convertFrom(row.get(1)));
+            res.setRowsInsert(DataTypes.LongType.convertFrom(row.get(2)));
+            res.setRowsUpdate(DataTypes.LongType.convertFrom(row.get(3)));
+            res.setRowsDelete(DataTypes.LongType.convertFrom(row.get(3)));
+            return res;
+        }
     }
 
     public static Map<String, Long> queryDbGroupDataSize(String schema, List<GroupDetailInfoExRecord> groupRecords) {
@@ -590,70 +705,6 @@ public class StatsUtils {
             "WHERE table_schema in (%s) " +
             "GROUP BY table_schema ", phyDbStr);
         return sql;
-    }
-
-    /**
-     * Build a SQL to collect stats of mysql table
-     */
-    private static String generateQueryPartitionGroupStatsSQL(TableGroupConfig tableGroupConfig,
-                                                              PartitionGroupRecord partitionGroupRecord,
-                                                              Set<String> indexTableNames,
-                                                              String tableLike) {
-        int tableCount = 0;
-        StringBuilder sb = new StringBuilder();
-
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            if (tablePartRecordInfoContext == null) {
-                continue;
-            }
-
-            String logicalTableName = tablePartRecordInfoContext.getTableName().toLowerCase();
-            if (!isFilterTable(indexTableNames, tableLike, logicalTableName)) {
-                continue;
-            }
-
-            long partitionGroupId = partitionGroupRecord.id;
-            List<TablePartitionRecord> tablePartitionRecords =
-                tablePartRecordInfoContext.getPartitionRecListByGroupId(partitionGroupId);
-            assert GeneralUtil.isNotEmpty(tablePartitionRecords);
-
-            for (TablePartitionRecord tablePartitionRecord : tablePartitionRecords) {
-                if (tableCount > 0) {
-                    sb.append(" union all select ");
-                } else {
-                    sb.append(" select ");
-                }
-                if (tablePartitionRecord.partPosition > 1) {
-                    TablePartitionRecord lastPart =
-                        tablePartRecordInfoContext
-                            .getPartitionByPosition((int) (tablePartitionRecord.partPosition - 1));
-                    sb.append("'[");
-                    if (lastPart != null) {
-                        sb.append(lastPart.partDesc.replaceAll("'", ""));
-                        sb.append(", ");
-                    }
-                } else {
-                    sb.append("'[MINVALUE, ");
-                }
-
-                sb.append(tablePartitionRecord.partDesc.replaceAll("'", ""));
-                sb.append(")' as PART_DESC, ");
-                sb.append("'");
-                sb.append(tablePartitionRecord.tableName);
-                sb.append("'");
-                sb.append(" LOGICAL_TABLE_NAME,");
-                sb.append(
-                    " TABLE_NAME as PHYSICAL_TABLE" +
-                        ", IFNULL(TABLE_ROWS,0) as TABLE_ROWS" +
-                        ", IFNULL(DATA_LENGTH,0) as DATA_LENGTH" +
-                        ", IFNULL(INDEX_LENGTH,0) as INDEX_LENGTH  " +
-                        "FROM information_schema.TABLES where ");
-                sb.append(String.format("table_schema = '%s'", partitionGroupRecord.phy_db));
-                sb.append(String.format(" and table_name = '%s'", tablePartitionRecord.phyTable));
-                tableCount++;
-            }
-        }
-        return sb.toString();
     }
 
     /**
@@ -750,6 +801,29 @@ public class StatsUtils {
             schemaIndex++;
         }
         return sb.toString();
+    }
+
+    private static int countPartitionColumns(TablePartitionRecord tablePartitionRecord) {
+        assert tablePartitionRecord.partLevel > 0;
+        int partCols = tablePartitionRecord.partExpr.split(",").length;
+
+        return partCols;
+    }
+
+    private static boolean isListPartitionStrategy(TablePartitionRecord tablePartitionRecord) {
+
+        String method = tablePartitionRecord.partMethod;
+        PartitionStrategy strategy = PartitionStrategy.valueOf(method);
+
+        return strategy.isList();
+    }
+
+    private static boolean isHashPartitionStrategy(TablePartitionRecord tablePartitionRecord) {
+
+        String method = tablePartitionRecord.partMethod;
+        PartitionStrategy strategy = PartitionStrategy.valueOf(method);
+
+        return strategy.isHashed();
     }
 }
 

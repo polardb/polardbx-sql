@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.gms.ha.impl;
 
-import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import lombok.val;
 import org.apache.commons.lang.StringUtils;
@@ -251,7 +250,11 @@ public class StorageInstHaContext {
         List<StorageNodeHaInfo> replicas = allStorageNodeHaInfoMap.values().stream()
             .sorted(Comparator.comparing(StorageNodeHaInfo::getRole)).collect(Collectors.toList());
         for (val replica : replicas) {
-            String zone = storageNodeInfos.get(replica.getAddr()).getAzoneId();
+            StorageInfoRecord dnNodeRec = storageNodeInfos.get(replica.getAddr());
+            String zone = "unknown";
+            if (dnNodeRec != null) {
+                zone = dnNodeRec.getAzoneId();
+            }
             String str = String.format("%s/%s/%s", replica.getRole(), replica.getAddr(), zone);
             replicaList.add(str);
         }
@@ -278,11 +281,6 @@ public class StorageInstHaContext {
         return getStorageInfo().stream().allMatch(StorageInfoRecord::isStatusReady);
     }
 
-    public boolean isInstanceDeletable() {
-        return getStorageKind() != StorageInfoRecord.INST_KIND_META_DB &&
-            !DbTopologyManager.singleGroupStorageInstList.contains(storageInstId);
-    }
-
     public boolean containsReplicaAtAzone(String primaryZone) {
         Objects.requireNonNull(primaryZone);
 
@@ -293,6 +291,16 @@ public class StorageInstHaContext {
         }
         return false;
     }
+
+
+    public String getStorageVipAddr() {
+        return storageVipAddr;
+    }
+
+    public void setStorageVipAddr(String storageVipAddr) {
+        this.storageVipAddr = storageVipAddr;
+    }
+
 
     public ReentrantReadWriteLock getHaLock() {
         return haLock;

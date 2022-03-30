@@ -24,7 +24,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import java.util.List;
 
 /**
- * ﻿A bound specification for one (sub)partition
+ * bound specification for one (sub)partition
  *
  *  This represents the portion of the partition key space assigned to a
  * particular partition
@@ -204,13 +204,13 @@ public abstract class PartitionBoundSpec {
 
     public abstract PartitionBoundSpec copy();
 
-    public String getPartitionBoundDescription() {
+    public String getPartitionBoundDescription(int prefixPartColCnt) {
         throw new NotSupportException();
     }
     
     @Override
     public String toString() {
-        return getPartitionBoundDescription();
+        return getPartitionBoundDescription(PartitionInfoUtil.FULL_PART_COL_COUNT);
     }
 
     public static PartitionBoundSpec createByStrategy(PartitionStrategy strategy) {
@@ -239,5 +239,9 @@ public abstract class PartitionBoundSpec {
         }
         result.strategy = strategy;
         return result;
+    }
+
+    public boolean equals(Object obj, int prefixPartColCnt ) {
+        throw new NotSupportException();
     }
 }

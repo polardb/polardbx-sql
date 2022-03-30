@@ -20,6 +20,7 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -29,17 +30,22 @@ public class DropIndexValidateTask extends BaseValidateTask {
 
     private String logicalTableName;
     private String indexName;
+    private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public DropIndexValidateTask(String schemaName, String logicalTableName, String indexName) {
+    public DropIndexValidateTask(String schemaName, String logicalTableName, String indexName, TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.indexName = indexName;
+        this.tableGroupConfig = tableGroupConfig;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
+        if (tableGroupConfig != null) {
+            TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
+        }
     }
 
     @Override

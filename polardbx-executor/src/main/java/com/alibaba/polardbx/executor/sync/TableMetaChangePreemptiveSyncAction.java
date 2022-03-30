@@ -53,7 +53,8 @@ public class TableMetaChangePreemptiveSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        ((GmsTableMetaManager) oldSchemaManager).tonewversion(primaryTableName, true, initWait, interval, timeUnit);
+        ((GmsTableMetaManager) oldSchemaManager).tonewversion(primaryTableName, true, initWait, interval, timeUnit,
+            true);
         return null;
     }
 

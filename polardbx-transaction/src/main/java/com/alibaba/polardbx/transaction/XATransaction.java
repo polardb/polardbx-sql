@@ -83,7 +83,7 @@ public class XATransaction extends ShareReadViewTransaction {
         if (inventoryMode != null) {
             // 共享readview不支持inventory hint
             throw new UnsupportedOperationException("Don't support the Inventory Hint on XA with readview! "
-                + "Try with setting share_read_view=\"false\".");
+                + "Try with setting share_read_view=off.");
         } else {
             conn.executeLater(TURN_ON_TXN_GROUP_SQL);
             conn.executeLater("XA START " + getXid(group, conn, true));

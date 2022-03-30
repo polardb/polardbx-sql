@@ -47,7 +47,7 @@ public class PartitionPruner {
                                                                    RelNode relPlan,
                                                                    RexNode partPredInfo,
                                                                    ExecutionContext ec) {
-        return PartitionPruneStepBuilder.generatePartitionPrueStepInfo(partInfo, relPlan, partPredInfo, ec);
+        return PartitionPruneStepBuilder.generatePartitionPruneStepInfo(partInfo, relPlan == null ? null : relPlan.getRowType(), partPredInfo, ec);
     }
 
     /**
@@ -74,14 +74,18 @@ public class PartitionPruner {
     //========== Pruning Phase =============
 
     /**
-     * Methods for pruning by stepInfo
+     * Methods for pruning by stepInfo ( for query with condition )
+     * 
+     * @param stepInfo
+     * @param context
+     * @return
      */
     public static PartPrunedResult doPruningByStepInfo(PartitionPruneStep stepInfo, ExecutionContext context) {
         PartPruneStepPruningContext pruningCtx = PartPruneStepPruningContext.initPruningContext(context);
         boolean enablePartPruning = context.getParamManager().getBoolean(ConnectionParams.ENABLE_PARTITION_PRUNING);
         if (!enablePartPruning) {
             PartitionPruneStep fullScanStep =
-                PartitionPruneStepBuilder.generateFullScanPrueStepInfo(stepInfo.getPartitionInfo());
+                PartitionPruneStepBuilder.generateFullScanPruneStepInfo(stepInfo.getPartitionInfo());
             return fullScanStep.prunePartitions(context, pruningCtx);
         }
         return stepInfo.prunePartitions(context, pruningCtx);
@@ -143,7 +147,7 @@ public class PartitionPruner {
                     List<PartPrunedResult> fullScanResults = new ArrayList<>();
                     for (int i = 0; i < logicalView.getTableNames().size(); i++) {
                         PartitionPruneStep partitionPruneStep =
-                            PartitionPruneStepBuilder.generateFullScanPrueStepInfo(logicalView.getSchemaName(),
+                            PartitionPruneStepBuilder.generateFullScanPruneStepInfo(logicalView.getSchemaName(),
                                 logicalView.getTableNames().get(i), context);
                         PartPrunedResult tbPrunedResult =
                             PartitionPruner.doPruningByStepInfo(partitionPruneStep, context);

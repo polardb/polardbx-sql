@@ -24,10 +24,15 @@ import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.matrix.config.MatrixConfigHolder;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext.ErrorMessage;
+
+import java.util.List;
 
 public class ServerConfigManager implements IServerConfigManager {
 
@@ -91,9 +96,27 @@ public class ServerConfigManager implements IServerConfigManager {
     }
 
     @Override
-    public void restoreDDL(String schemaName, Long jobId) {
+    public DdlContext restoreDDL(String schemaName, Long jobId) {
         MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schemaName);
-        matrixConfigHolder.restoreDDL(schemaName, jobId);
+        return matrixConfigHolder.restoreDDL(schemaName, jobId);
+    }
+
+    @Override
+    public long submitRebalanceDDL(String schemaName, String sql) {
+        MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schemaName);
+        return matrixConfigHolder.submitRebalanceDDL(schemaName, sql);
+    }
+
+    @Override
+    public long submitSubDDL(String schemaName, long parentJobId, long parentTaskId, boolean forRollback, String sql) {
+        MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schemaName);
+        return matrixConfigHolder.submitSubDDL(schemaName, parentJobId, parentTaskId, forRollback, sql);
+    }
+
+    @Override
+    public void executeBackgroundSql(String sql, String schema, InternalTimeZone timeZone) {
+        MatrixConfigHolder matrixConfigHolder = getMatrixConfigHolder(schema);
+        matrixConfigHolder.executeBackgroundSql(sql, schema, timeZone);
     }
 
     private MatrixConfigHolder getMatrixConfigHolder(String schemaName) {

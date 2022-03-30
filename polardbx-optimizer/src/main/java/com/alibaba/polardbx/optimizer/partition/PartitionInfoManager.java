@@ -20,27 +20,38 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
 import com.alibaba.polardbx.gms.partition.TablePartitionConfigUtil;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
+import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import lombok.val;
 import org.apache.commons.lang.StringUtils;
 
+import java.sql.Connection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collectors;
 
 /**
@@ -96,106 +107,6 @@ public class PartitionInfoManager extends AbstractLifecycle {
         return defaultDbIndex;
     }
 
-    /**
-     * The partition info loading context
-     */
-    public static class PartInfoCtx {
-        protected PartitionInfoManager manager;
-        protected String tbName;
-        protected volatile Long partGrpId;
-        protected volatile PartitionInfo partInfo;
-        protected volatile boolean includeNonPublic;
-
-        public Long getPartGrpId() {
-            return partGrpId;
-        }
-
-        public PartInfoCtx(PartitionInfoManager manager, String tbName, Long partGrpId, PartitionInfo partitionInfo) {
-            this.manager = manager;
-            this.tbName = tbName;
-            this.partGrpId = partGrpId;
-            this.partInfo = partitionInfo;
-        }
-
-        public PartInfoCtx(PartitionInfoManager manager, String tbName, Long partGrpId) {
-            this.manager = manager;
-            this.tbName = tbName;
-            this.partGrpId = partGrpId;
-        }
-
-        public PartitionInfo getPartInfo() {
-            if (partInfo == null) {
-                synchronized (this) {
-                    if (partInfo == null) {
-                        loadPartInfo(false);
-                    }
-                }
-            }
-            return partInfo;
-        }
-
-        public PartitionInfo reload(boolean fromDeltaTable) {
-            loadPartInfo(fromDeltaTable);
-            return partInfo;
-        }
-
-        public void setPartInfo(PartitionInfo partInfo) {
-            this.partInfo = partInfo;
-        }
-
-        public String getTbName() {
-            return tbName;
-        }
-
-        public void setTbName(String tbName) {
-            this.tbName = tbName;
-        }
-
-        public boolean isIncludeNonPublic() {
-            return includeNonPublic;
-        }
-
-        public void setIncludeNonPublic(boolean includeNonPublic) {
-            this.includeNonPublic = includeNonPublic;
-        }
-
-        private synchronized void loadPartInfo(boolean fromDeltaTable) {
-            try {
-                TablePartitionConfig tbPartConf =
-                    TablePartitionConfigUtil.getTablePartitionConfig(manager.schemaName, tbName, fromDeltaTable);
-                if (tbPartConf.getTableConfig().partStatus
-                    != TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC && !includeNonPublic) {
-                    return;
-                }
-                List<ColumnMeta> allColumnMetas = null;
-                if (manager.tableMetaFetcher != null) {
-                    try {
-                        TableMeta meta =
-                            manager.tableMetaFetcher.getTableMeta(manager.schemaName, manager.appName, tbName);
-                        if (meta != null) {
-                            allColumnMetas = meta.getPhysicalColumns();
-                        }
-                    } catch (Throwable ex) {
-                        // do log here
-                        logger.error(ex);
-                        throw GeneralUtil.nestedException("Failed to fetch the partition table meta from meta db", ex);
-                    }
-                }
-                PartitionInfo partInfo =
-                    PartitionInfoBuilder.buildPartitionInfoByMetaDbConfig(tbPartConf, allColumnMetas);
-                this.partInfo = partInfo;
-                this.partGrpId = partInfo.getTableGroupId();
-                return;
-            } catch (Throwable ex) {
-                String msg =
-                    String.format("Failed to load partitionInfo[%s.%s] from metadb", manager.schemaName, tbName);
-                logger.error(msg, ex);
-                throw GeneralUtil.nestedException(msg, ex);
-            }
-
-        }
-    }
-
     public PartitionInfoManager(String schemaName, String appName) {
         this(schemaName, appName, false);
     }
@@ -203,7 +114,7 @@ public class PartitionInfoManager extends AbstractLifecycle {
     public PartitionInfoManager(String schemaName, String appName, boolean isMock) {
         this.schemaName = schemaName;
         this.appName = appName;
-        this.partInfoCtxCache = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        this.partInfoCtxCache = new ConcurrentSkipListMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         this.tablePartitionAccessor = new TablePartitionAccessor();
         this.isMock = isMock;
     }
@@ -268,7 +179,8 @@ public class PartitionInfoManager extends AbstractLifecycle {
         if (partInfoCtx == null) {
             return false;
         }
-        return partInfoCtx.getPartInfo().getTableType() == PartitionTableType.BROADCAST_TABLE;
+        return partInfoCtx.getPartInfo().getTableType() == PartitionTableType.BROADCAST_TABLE
+            || partInfoCtx.getPartInfo().getTableType() == PartitionTableType.GSI_BROADCAST_TABLE;
     }
 
     public boolean isSingleTable(String tbName) {
@@ -276,7 +188,8 @@ public class PartitionInfoManager extends AbstractLifecycle {
         if (partInfoCtx == null) {
             return false;
         }
-        return partInfoCtx.getPartInfo().getTableType() == PartitionTableType.SINGLE_TABLE;
+        return partInfoCtx.getPartInfo().getTableType() == PartitionTableType.SINGLE_TABLE
+            || partInfoCtx.getPartInfo().getTableType() == PartitionTableType.GSI_SINGLE_TABLE;
     }
 
     public PhysicalPartitionInfo getFirstPhysicalPartition(String tbName) {
@@ -303,28 +216,103 @@ public class PartitionInfoManager extends AbstractLifecycle {
         }
     }
 
+    /**
+     * Batch load all tables in a tablegroup
+     * NOTE: tableNames must in the same tablegroup
+     */
+    public synchronized void reloadPartitionInfoTrx(String schemaName, List<String> tableNames) {
+
+        Map<String, Pair<TablePartitionConfig, Map<Long, PartitionGroupRecord>>> tableConfigs = new HashMap<>();
+
+        // Load all configs from metadb in a transaction
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            Map<String, TablePartitionConfig> tmpTableConfigs =
+                TablePartitionConfigUtil.getPublicTablePartitionConfigs(schemaName, tableNames, false);
+            for (TablePartitionConfig tableConfig : tmpTableConfigs.values()) {
+                Map<Long, PartitionGroupRecord> pgMap =
+                    TableGroupUtils.getPartitionGroupsMapByGroupId(conn, tableConfig.getTableConfig().getGroupId());
+
+                tableConfigs.put(tableConfig.getTableConfig().getTableName(), Pair.of(tableConfig, pgMap));
+            }
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+
+        if (GeneralUtil.isEmpty(tableConfigs)) {
+            for (String tableName : tableNames) {
+                invalidatePartitionInfo(schemaName, tableName);
+            }
+            return;
+        }
+        for (val entry : tableConfigs.entrySet()) {
+            String tableName = entry.getKey();
+            TablePartitionConfig tablePartitionConfig = entry.getValue().getKey();
+            Map<Long, PartitionGroupRecord> pgMap = entry.getValue().getValue();
+            long tableGroupId = tablePartitionConfig.getTableConfig().getGroupId();
+            PartInfoCtx partCtx = this.partInfoCtxCache.computeIfAbsent(tableName,
+                (k) -> new PartInfoCtx(this, k, tableGroupId));
+            partCtx.rebuild(tablePartitionConfig, pgMap);
+
+            rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(tableGroupId, schemaName, tableName);
+            Long oldTableGrpId = partCtx.getTableGroupId();
+            if (!Objects.equals(oldTableGrpId, tableGroupId)) {
+                rule.getTableGroupInfoManager().invalidate(oldTableGrpId, tableName);
+            }
+        }
+    }
+
     public synchronized void reloadPartitionInfo(String schemaName, String tbName) {
+        reloadPartitionInfo(null, schemaName, tbName);
+    }
+
+    public synchronized void reloadPartitionInfo(Connection conn, String schemaName, String tbName) {
 
         if (!StringUtils.isEmpty(tbName)) {
             tbName = tbName.toLowerCase();
         }
 
         TablePartitionConfig tbPartConf =
-            TablePartitionConfigUtil.getPublicTablePartitionConfig(schemaName, tbName, false);
+            TablePartitionConfigUtil.getPublicTablePartitionConfig(conn, schemaName, tbName, false);
         if (tbPartConf == null) {
             invalidatePartitionInfo(schemaName, tbName);
             return;
         }
 
-        PartInfoCtx partCtx = this.partInfoCtxCache.get(tbName);
         Long tableGrpId = tbPartConf.getTableConfig().groupId;
-        if (partCtx == null) {
-            partCtx = new PartInfoCtx(this, tbName, tableGrpId);
-            this.partInfoCtxCache.put(tbName, partCtx);
+        PartInfoCtx partCtx = this.partInfoCtxCache.computeIfAbsent(tbName,
+            (name) -> new PartInfoCtx(this, name, tableGrpId));
+        Long oldTableGrpId = partCtx.getTableGroupId();
+        partCtx.reload(conn, false);
+        rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(conn, tableGrpId, schemaName, tbName);
+        // remove tables in old table group
+        if (!Objects.equals(oldTableGrpId, tableGrpId)) {
+            rule.getTableGroupInfoManager().invalidate(oldTableGrpId, tbName);
         }
-        partCtx.reload(false);
+    }
+
+    public synchronized void reloadPartitionInfo(String schemaName, String tbName,
+                                                 TableMeta tableMeta,
+                                                 List<TablePartitionRecord> tablePartitionRecords,
+                                                 List<TablePartitionRecord> tablePartitionRecordsFromDelta) {
+
+        if (!StringUtils.isEmpty(tbName)) {
+            tbName = tbName.toLowerCase();
+        }
+
+        Optional<TablePartitionRecord> tablePartitionRecord = tablePartitionRecords.stream()
+            .filter(o -> (o.partLevel == TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE
+                && o.partStatus == TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC)).findFirst();
+        if (!tablePartitionRecord.isPresent()) {
+            invalidatePartitionInfo(schemaName, tbName);
+            return;
+        }
+
+        Long tableGrpId = tablePartitionRecord.get().groupId;
+        PartInfoCtx partCtx = this.partInfoCtxCache.computeIfAbsent(tbName,
+            (name) -> new PartInfoCtx(this, name, tableGrpId));
+        partCtx.reload(tableMeta, tablePartitionRecords, tablePartitionRecordsFromDelta, false);
         rule.getTableGroupInfoManager().reloadTableGroupByGroupIdAndTableName(tableGrpId, schemaName, tbName);
-        return;
     }
 
     protected void loadAllPartInfoCtx() {
@@ -347,9 +335,13 @@ public class PartitionInfoManager extends AbstractLifecycle {
         }
         PartInfoCtx partInfoCtx = this.partInfoCtxCache.get(tbName);
         if (partInfoCtx != null) {
-            rule.getTableGroupInfoManager().reloadTableGroupByGroupId(partInfoCtx.getPartGrpId());
+            rule.getTableGroupInfoManager().invalidate(partInfoCtx.getTableGroupId(), tbName);
         }
         this.partInfoCtxCache.remove(tbName);
+    }
+
+    public String getSchemaName() {
+        return schemaName;
     }
 
     public static void reload(String schemaName, String tableName) {
@@ -366,12 +358,17 @@ public class PartitionInfoManager extends AbstractLifecycle {
     }
 
     public PartitionInfo getPartitionInfoFromDeltaTable(String tbName) {
+        return getPartitionInfoFromDeltaTable(null, tbName);
+    }
+
+    public PartitionInfo getPartitionInfoFromDeltaTable(Connection conn, String tbName) {
 
         if (!StringUtils.isEmpty(tbName)) {
             tbName = tbName.toLowerCase();
         }
 
-        TablePartitionConfig tbPartConf = TablePartitionConfigUtil.getTablePartitionConfig(schemaName, tbName, true);
+        TablePartitionConfig tbPartConf = TablePartitionConfigUtil.getTablePartitionConfig(conn, schemaName, tbName,
+            true);
         if (tbPartConf == null) {
             return null;
         }
@@ -379,7 +376,7 @@ public class PartitionInfoManager extends AbstractLifecycle {
         Long tableGrpId = tbPartConf.getTableConfig().groupId;
         PartInfoCtx partCtx = new PartInfoCtx(this, tbName, tableGrpId);
 
-        partCtx.reload(true);
+        partCtx.reload(conn, true);
         return partCtx.partInfo;
     }
 
@@ -395,12 +392,204 @@ public class PartitionInfoManager extends AbstractLifecycle {
         partInfoCtxCache.put(tableName, partInfoCtx);
     }
 
-    public String getSchemaName() {
-        return schemaName;
+    /**
+     * The partition info loading context
+     */
+    public static class PartInfoCtx {
+        protected PartitionInfoManager manager;
+        protected String tbName;
+        protected volatile Long tableGroupId;
+        protected volatile PartitionInfo partInfo;
+        protected volatile boolean includeNonPublic;
+
+        public PartInfoCtx(PartitionInfoManager manager, String tbName, Long tableGroupId,
+                           PartitionInfo partitionInfo) {
+            this.manager = manager;
+            this.tbName = tbName;
+            this.tableGroupId = tableGroupId;
+            this.partInfo = partitionInfo;
+        }
+
+        public PartInfoCtx(PartitionInfoManager manager, String tbName, Long tableGroupId) {
+            this.manager = manager;
+            this.tbName = tbName;
+            this.tableGroupId = tableGroupId;
+        }
+
+        public Long getTableGroupId() {
+            return tableGroupId;
+        }
+
+        public PartitionInfo getPartInfo() {
+            if (partInfo == null) {
+                synchronized (this) {
+                    if (partInfo == null) {
+                        reload(false);
+                    }
+                }
+            }
+            return partInfo;
+        }
+
+        /**
+         * Rebuild partition info from table config and pg config
+         */
+        public PartitionInfo rebuild(TablePartitionConfig tbPartConf, Map<Long, PartitionGroupRecord> pgMap) {
+            loadPartInfo(tbPartConf, pgMap);
+            return this.partInfo;
+        }
+
+        public PartitionInfo reload(boolean fromDeltaTable) {
+            TablePartitionConfig tbPartConf =
+                TablePartitionConfigUtil.getTablePartitionConfig(manager.schemaName, tbName, fromDeltaTable);
+            Map<Long, PartitionGroupRecord> pgMap =
+                TableGroupUtils.getPartitionGroupsMapByGroupId(tbPartConf.getTableConfig().getGroupId());
+            loadPartInfo(tbPartConf, pgMap);
+            return partInfo;
+        }
+
+        public PartitionInfo reload(Connection conn, boolean fromDeltaTable) {
+            TablePartitionConfig tbPartConf =
+                TablePartitionConfigUtil.getTablePartitionConfig(conn, manager.schemaName, tbName, fromDeltaTable);
+            Map<Long, PartitionGroupRecord> pgMap =
+                TableGroupUtils.getPartitionGroupsMapByGroupId(conn, tbPartConf.getTableConfig().getGroupId());
+
+            loadPartInfo(tbPartConf, pgMap);
+            return partInfo;
+        }
+
+        public PartitionInfo reload(TableMeta tableMeta, List<TablePartitionRecord> tablePartitionRecords,
+                                    List<TablePartitionRecord> tablePartitionRecordsFromDelta,
+                                    boolean fromDeltaTable) {
+            loadPartInfo(tableMeta, tablePartitionRecords, tablePartitionRecordsFromDelta, fromDeltaTable);
+            return partInfo;
+        }
+
+        public void setPartInfo(PartitionInfo partInfo) {
+            this.partInfo = partInfo;
+        }
+
+        public String getTbName() {
+            return tbName;
+        }
+
+        public void setTbName(String tbName) {
+            this.tbName = tbName;
+        }
+
+        public boolean isIncludeNonPublic() {
+            return includeNonPublic;
+        }
+
+        public void setIncludeNonPublic(boolean includeNonPublic) {
+            this.includeNonPublic = includeNonPublic;
+        }
+
+        private synchronized void loadPartInfo(TablePartitionConfig tbPartConf,
+                                               Map<Long, PartitionGroupRecord> pgMap) {
+            try {
+                if (tbPartConf.getTableConfig().partStatus != TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC
+                    && !includeNonPublic) {
+                    return;
+                }
+                List<ColumnMeta> allColumnMetas = null;
+                if (manager.tableMetaFetcher != null) {
+                    try {
+                        TableMeta meta =
+                            manager.tableMetaFetcher.getTableMeta(manager.schemaName, manager.appName, tbName);
+                        if (meta != null) {
+                            allColumnMetas = meta.getPhysicalColumns();
+                        }
+                    } catch (Throwable ex) {
+                        // do log here
+                        logger.error(ex);
+                        throw GeneralUtil.nestedException("Failed to fetch the partition table meta from meta db", ex);
+                    }
+                }
+                PartitionInfo partInfo =
+                    PartitionInfoBuilder.buildPartitionInfoByMetaDbConfig(tbPartConf, allColumnMetas,
+                        pgMap);
+                this.partInfo = partInfo;
+                this.tableGroupId = partInfo.getTableGroupId();
+                return;
+            } catch (Throwable ex) {
+                String msg =
+                    String.format("Failed to load partitionInfo[%s.%s] from metadb", manager.schemaName, tbName);
+                logger.error(msg, ex);
+                throw GeneralUtil.nestedException(msg, ex);
+            }
+
+        }
+
+        private synchronized void loadPartInfo(TableMeta tableMeta, List<TablePartitionRecord> tablePartitionRecords,
+                                               List<TablePartitionRecord> tablePartitionRecordsFromDelta,
+                                               boolean fromDeltaTable) {
+            try {
+
+                TablePartitionConfig tbPartConf = null;
+
+                // Fetch logical config
+                TablePartitionRecord logTbRec = fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
+                    .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE).findFirst().get() :
+                    tablePartitionRecords.stream()
+                        .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE).findFirst()
+                        .get();
+
+                // Fetch partition configs
+                List<TablePartitionRecord> partitionRecList = fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
+                    .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_PARTITION)
+                    .collect(Collectors.toList()) :
+                    tablePartitionRecords.stream()
+                        .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_PARTITION)
+                        .collect(Collectors.toList());
+
+                // Fetch subpartition configs
+                List<TablePartitionRecord> subPartitionRecList =
+                    fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
+                        .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION)
+                        .collect(Collectors.toList()) :
+                        tablePartitionRecords.stream()
+                            .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION)
+                            .collect(Collectors.toList());
+
+                TablePartRecordInfoContext confCtx = new TablePartRecordInfoContext();
+                confCtx.setLogTbRec(logTbRec);
+                confCtx.setPartitionRecList(partitionRecList);
+                confCtx.setSubPartitionRecList(subPartitionRecList);
+                tbPartConf = TablePartitionAccessor.buildPartitionConfByPartitionRecords(confCtx);
+
+                if (tbPartConf.getTableConfig().partStatus
+                    != TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC && !includeNonPublic) {
+                    return;
+                }
+                List<ColumnMeta> allColumnMetas = tableMeta.getPhysicalColumns();
+                Map<Long, PartitionGroupRecord> partitionGroupRecordsMap =
+                    TableGroupUtils.getPartitionGroupsMapByGroupId(tbPartConf.getTableConfig().getGroupId());
+                PartitionInfo partInfo =
+                    PartitionInfoBuilder.buildPartitionInfoByMetaDbConfig(tbPartConf, allColumnMetas,
+                        partitionGroupRecordsMap);
+                this.partInfo = partInfo;
+                this.tableGroupId = partInfo.getTableGroupId();
+                return;
+            } catch (Throwable ex) {
+                String msg =
+                    String.format("Failed to load partitionInfo[%s.%s] from metadb", manager.schemaName, tbName);
+                logger.error(msg, ex);
+                throw GeneralUtil.nestedException(msg, ex);
+            }
+
+        }
     }
 
     public String getAppName() {
         return appName;
+    }
+
+    public PartInfoCtx getPartInfoCtx(String table) {
+        if (partInfoCtxCache.containsKey(table)) {
+            return partInfoCtxCache.get(table);
+        }
+        return null;
     }
 
     public Map<String, PartInfoCtx> getPartInfoCtxCache() {

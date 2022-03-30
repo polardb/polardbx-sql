@@ -57,6 +57,16 @@ public abstract class StatisticCollector implements Runnable {
     public abstract boolean analyzeColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
                                            ParamManager userParamManager);
 
+    /**
+     * just sample
+     * @param logicalTableName
+     * @param columnMetaList
+     * @param userParamManager
+     * @return
+     */
+    public abstract boolean sampleColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
+                                           ParamManager userParamManager);
+
     public abstract boolean forceAnalyzeColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
                                                 ParamManager userParamManager);
 

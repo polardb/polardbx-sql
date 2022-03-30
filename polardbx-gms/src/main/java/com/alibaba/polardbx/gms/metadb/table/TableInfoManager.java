@@ -16,9 +16,11 @@
 
 package com.alibaba.polardbx.gms.metadb.table;
 
+import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -29,9 +31,14 @@ import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.metadb.record.RecordConverter;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
+import com.alibaba.polardbx.gms.partition.TableLocalPartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.scheduler.FiredScheduledJobsAccessor;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobsAccessor;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
@@ -42,18 +49,23 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
+import com.google.common.base.Preconditions;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 public class TableInfoManager extends AbstractAccessor {
 
@@ -68,6 +80,9 @@ public class TableInfoManager extends AbstractAccessor {
     private final TablePartitionAccessor tablePartitionAccessor;
     private final TableGroupAccessor tableGroupAccessor;
     private final PartitionGroupAccessor partitionGroupAccessor;
+    private final TableLocalPartitionAccessor localPartitionAccessor;
+    private final ScheduledJobsAccessor scheduledJobsAccessor;
+    private final FiredScheduledJobsAccessor firedScheduledJobsAccessor;
 
     public TableInfoManager() {
         schemataAccessor = new SchemataAccessor();
@@ -79,6 +94,9 @@ public class TableInfoManager extends AbstractAccessor {
         tablePartitionAccessor = new TablePartitionAccessor();
         tableGroupAccessor = new TableGroupAccessor();
         partitionGroupAccessor = new PartitionGroupAccessor();
+        localPartitionAccessor = new TableLocalPartitionAccessor();
+        scheduledJobsAccessor = new ScheduledJobsAccessor();
+        firedScheduledJobsAccessor = new FiredScheduledJobsAccessor();
     }
 
     private static final String SQL_UPDATE_TABLE_VERSION = "UPDATE "
@@ -137,11 +155,34 @@ public class TableInfoManager extends AbstractAccessor {
         tablePartitionAccessor.setConnection(connection);
         tableGroupAccessor.setConnection(connection);
         partitionGroupAccessor.setConnection(connection);
+        localPartitionAccessor.setConnection(connection);
+        scheduledJobsAccessor.setConnection(connection);
+        firedScheduledJobsAccessor.setConnection(connection);
     }
 
     public String getDefaultDbIndex(String schemaName) {
         SchemataRecord record = schemataAccessor.query(schemaName);
         return record != null ? record.defaultDbIndex : null;
+    }
+
+    /**
+     * Retrieve default group for all schema
+     *
+     * @return map of schema and group_name
+     */
+    public static Map<String, String> getAllDefaultDbIndex() {
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            metaDbConn.setAutoCommit(true);
+            return getAllDefaultDbIndex(metaDbConn);
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
+        }
+    }
+
+    public static Map<String, String> getAllDefaultDbIndex(Connection metaDbConn) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.getAllSchemaDefaultDbIndex();
     }
 
     public List<TablesExtRecord> queryVisibleTableExts(String tableSchema) {
@@ -260,8 +301,12 @@ public class TableInfoManager extends AbstractAccessor {
         return indexesAccessor.query(tableSchema, tableName);
     }
 
-    public List<TablePartitionRecord> queryTablePartitions(String tableSchema, String tableName) {
-        return tablePartitionAccessor.getTablePartitionsByDbNameTbName(tableSchema, tableName);
+    public List<TablePartitionRecord> queryTablePartitions(String tableSchema, String tableName, boolean fromDelta) {
+        return tablePartitionAccessor.getTablePartitionsByDbNameTbName(tableSchema, tableName, fromDelta);
+    }
+
+    public List<TablePartitionRecord> queryTablePartitions(String tableSchema, boolean fromDelta) {
+        return tablePartitionAccessor.getTablePartitionsByDbNameTbName(tableSchema, null, fromDelta);
     }
 
     public void alterTablePartitionName(String tableSchema, String originName, String newName) {
@@ -284,7 +329,7 @@ public class TableInfoManager extends AbstractAccessor {
             return true;
         }
         List<TablePartitionRecord> tablePartitionsRows =
-            tablePartitionAccessor.getTablePartitionsByDbNameTbName(tableSchema, tableName);
+            tablePartitionAccessor.getTablePartitionsByDbNameTbName(tableSchema, tableName, false);
         if (tablesRecord != null && tablePartitionsRows.size() > 0) {
             return true;
         }
@@ -317,9 +362,19 @@ public class TableInfoManager extends AbstractAccessor {
         return tablesExtAccessor.alterName(tableSchema, originName, newName);
     }
 
+    public void addShardColumns4RepartitionKey(String tableSchema, String tableName, List<String> changeShardColumns) {
+        tablePartitionAccessor.addColumnForPartExprAndPartDesc(tableSchema, tableName, changeShardColumns);
+    }
+
     public int alterTableExtNameAndTypeAndFlag(String tableSchema, String originName, String newName, int tableType,
                                                long flag) {
+        indexesAccessor.renameLocalIndexes(tableSchema, originName, newName);
         return tablesExtAccessor.alterNameAndTypeAndFlag(tableSchema, originName, newName, tableType, flag);
+    }
+
+    public void alterTablePartitionsCurOver(String tableSchema, String originName, String newName, int tableType) {
+        tablePartitionAccessor.alterNameAndType(tableSchema, originName, newName, tableType);
+        indexesAccessor.renameLocalIndexes(tableSchema, originName, newName);
     }
 
     public int alterTableExtFlag(String tableSchema, String tableName, long flag) {
@@ -376,11 +431,6 @@ public class TableInfoManager extends AbstractAccessor {
             TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_ABSENT);
     }
 
-    public void hidePartition(String tableSchema, String tableName, String partitionName) {
-        tablePartitionAccessor.updateStatusForOnePartition(tableSchema, tableName, partitionName,
-            TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_ABSENT);
-    }
-
     public void updatePartitionBoundDesc(String tableSchema, String tableName, String partitionName, String boundDesc) {
         tablePartitionAccessor.updatePartBoundDescForOnePartition(tableSchema, tableName, partitionName, boundDesc);
 
@@ -414,6 +464,8 @@ public class TableInfoManager extends AbstractAccessor {
         }
         if (withTablesExtOrPartition && DbInfoManager.getInstance().isNewPartitionDb(tableSchema)) {
             this.deletePartitionInfo(tableSchema, tableName);
+            this.removeLocalPartitionRecord(tableSchema, tableName);
+            this.removeScheduledJobRecord(tableSchema, tableName);
         }
     }
 
@@ -447,6 +499,13 @@ public class TableInfoManager extends AbstractAccessor {
         tablePartitionAccessor.updateGroupId(oldTableGroupId, newTableGroupID);
 
         String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(newTableGroupID, tableGroupRecord.tg_type);
+        List<TableGroupRecord> tableGroupRecords =
+            tableGroupAccessor
+                .getTableGroupsBySchemaAndName(tableGroupRecord.getSchema(),
+                    finalTgName, false);
+        if (GeneralUtil.isNotEmpty(tableGroupRecords)) {
+            finalTgName = "tg" + tableGroupRecord.tg_name;
+        }
         tableGroupAccessor.updateTableGroupName(newTableGroupID, finalTgName);
         tablePartitionAccessor.deletePartitionConfigs(tableSchema, tableName, partitionName);
         return oldTableGroupId;
@@ -461,7 +520,7 @@ public class TableInfoManager extends AbstractAccessor {
      * <p>
      * Notice: caller must make sure the value of auto_commit of connection is false
      */
-    public long updateVersion(String tableSchema, String tableName) {
+    public long updateVersionAndNotify(String tableSchema, String tableName) {
         // Update version for all related objects.
         long tableMetaVersion = getVersionForUpdate(tableSchema, tableName);
         long newVersion = tableMetaVersion + 1;
@@ -479,6 +538,10 @@ public class TableInfoManager extends AbstractAccessor {
         tablesExtAccessor.updateVersion(tableSchema, tableName, newVersion);
     }
 
+    public void updateTablePartitionsVersion(String tableSchema, String tableName, long newVersion) {
+        tablePartitionAccessor.updateVersion(tableSchema, tableName, newVersion);
+    }
+
     public void addNewTableName(String tableSchema, String tableName, String newTableName) {
         tablesAccessor.updateNewName(tableSchema, tableName, newTableName);
         tablesExtAccessor.updateNewName(tableSchema, tableName, newTableName);
@@ -486,6 +549,10 @@ public class TableInfoManager extends AbstractAccessor {
 
     public void updateTableComment(String tableSchema, String tableName, String comment) {
         tablesAccessor.updateComment(tableSchema, tableName, comment);
+    }
+
+    public void updateTableRowFormat(String tableSchema, String tableName, String rowFormat) {
+        tablesAccessor.updateRowFormat(tableSchema, tableName, rowFormat);
     }
 
     public void renameTable(String tableSchema, String tableName, String newTableName, String newTbNamePattern,
@@ -533,7 +600,15 @@ public class TableInfoManager extends AbstractAccessor {
             RecordConverter.convertColumn(columnsInfoSchemaRecords, columnsJdbcExtInfo, context.tableSchema,
                 context.tableName);
 
+        long maxColumnPosition = columnsAccessor.queryMaxColumnPosition(context.tableSchema, context.tableName);
+
         columnsAccessor.insert(columnsRecords, context.tableSchema, context.tableName);
+
+        // Reset logical column position
+        for (ColumnsRecord record : columnsRecords) {
+            columnsAccessor.updateNewColumnPosition(context.tableSchema, context.tableName, record.columnName,
+                ++maxColumnPosition);
+        }
     }
 
     public void updateColumns(PhyInfoSchemaContext context, Map<String, Map<String, Object>> columnsJdbcExtInfo,
@@ -564,8 +639,8 @@ public class TableInfoManager extends AbstractAccessor {
 
         columnsAccessor.change(columnsRecords, columnNamePairs);
 
-        // Must change the corresponding column names in indexes.
         for (String newColumnName : newColumnNames) {
+            // Must change the corresponding column names in indexes.
             indexesAccessor.updateColumnName(context.tableSchema, context.tableName, newColumnName,
                 columnNamePairs.get(newColumnName));
         }
@@ -584,6 +659,81 @@ public class TableInfoManager extends AbstractAccessor {
         columnsAccessor.update(columnsRecords);
     }
 
+    public void reorgColumnOrder(String tableSchema, String tableName, List<Pair<String, String>> columnAfterAnother) {
+        for (Pair<String, String> pair : columnAfterAnother) {
+            columnsAccessor.adjustColumnPosition(tableSchema, tableName, pair.getKey(), pair.getValue());
+        }
+    }
+
+    public void updateLogicalColumnOrderFlag(String tableSchema, String tableName) {
+        TablesRecord record = tablesAccessor.query(tableSchema, tableName, false);
+        if (record != null) {
+            record.setLogicalColumnOrder();
+            tablesAccessor.updateFlag(tableSchema, tableName, record.flag);
+        }
+    }
+
+    public void resetColumnOrder(String tableSchema, String tableName) {
+        List<ColumnsRecord> columnsRecords = columnsAccessor.query(tableSchema, tableName);
+        int position = 1;
+        for (ColumnsRecord record : columnsRecords) {
+            columnsAccessor.updateNewColumnPosition(tableSchema, tableName, record.columnName, position++);
+        }
+    }
+
+    public void resetColumnDefaults(String tableSchema, String tableName, List<String> columnNames,
+                                    Map<String, String> convertedColumnDefaults) {
+        if (GeneralUtil.isEmpty(convertedColumnDefaults)) {
+            return;
+        }
+
+        List<ColumnsRecord> columnsToUpdate = new ArrayList<>();
+        List<ColumnsRecord> columnsRecords;
+
+        if (GeneralUtil.isNotEmpty(columnNames)) {
+            columnsRecords = columnsAccessor.query(tableSchema, tableName, columnNames);
+        } else {
+            columnsRecords = columnsAccessor.query(tableSchema, tableName);
+        }
+
+        for (ColumnsRecord record : columnsRecords) {
+            String convertedColumnDefault = convertedColumnDefaults.get(record.columnName);
+            if (TStringUtil.isNotBlank(convertedColumnDefault)) {
+                record.columnDefault = convertedColumnDefault;
+                columnsToUpdate.add(record);
+            }
+        }
+
+        if (GeneralUtil.isNotEmpty(columnsToUpdate)) {
+            columnsAccessor.update(columnsToUpdate);
+        }
+    }
+
+    public void updateBinaryColumnDefaults(String tableSchema, String tableName,
+                                           Map<String, String> binaryColumnDefaults) {
+        if (GeneralUtil.isEmpty(binaryColumnDefaults)) {
+            return;
+        }
+
+        List<ColumnsRecord> columnsToUpdate = new ArrayList<>();
+        List<ColumnsRecord> columnsRecords;
+        columnsRecords = columnsAccessor.query(tableSchema, tableName);
+
+        // binaryColumnDefaults may include columns that do not exist in table
+        for (ColumnsRecord record : columnsRecords) {
+            String convertedColumnDefault = binaryColumnDefaults.get(record.columnName);
+            if (TStringUtil.isNotBlank(convertedColumnDefault)) {
+                record.columnDefault = convertedColumnDefault;
+                columnsToUpdate.add(record);
+                setColumnBinaryDefaultFlag(tableSchema, tableName, record.columnName);
+            }
+        }
+
+        if (GeneralUtil.isNotEmpty(columnsToUpdate)) {
+            columnsAccessor.update(columnsToUpdate);
+        }
+    }
+
     public void updateAllIndexColumn(String tableSchema, String tableName, String indexName, Integer indexColumnType,
                                      Integer indexStatus) {
         indexesAccessor.updateAllColumnType(tableSchema, tableName, indexName, indexColumnType, indexStatus);
@@ -598,6 +748,14 @@ public class TableInfoManager extends AbstractAccessor {
     public void updateColumnsStatus(String tableSchema, List<String> tableNames, List<String> columnNames,
                                     int oldStatus, int newStatus) {
         columnsAccessor.updateStatus(tableSchema, tableNames, columnNames, oldStatus, newStatus);
+    }
+
+    public void setColumnBinaryDefaultFlag(String tableSchema, String tableName, String columnName) {
+        columnsAccessor.setColumnFlag(tableSchema, tableName, columnName, ColumnsRecord.FLAG_BINARY_DEFAULT);
+    }
+
+    public void resetColumnBinaryDefaultFlag(String tableSchema, String tableName, String columnName) {
+        columnsAccessor.resetColumnFlag(tableSchema, tableName, columnName, ColumnsRecord.FLAG_BINARY_DEFAULT);
     }
 
     public void beginUpdateColumnDefaultVal(String tableSchema, String tableName, String columnName) {
@@ -723,6 +881,11 @@ public class TableInfoManager extends AbstractAccessor {
         return columnsAccessor.queryColumnJdbcExtInfo(phyTableSchema, phyTableName, dataSource);
     }
 
+    public List<ColumnsInfoSchemaRecord> fetchColumnInfoSchema(String phyTableSchema, String phyTableName,
+                                                               List<String> columnNames, Connection phyDbConn) {
+        return columnsAccessor.queryInfoSchema(phyTableSchema, phyTableName, columnNames, phyDbConn);
+    }
+
     private TablesInfoSchemaRecord fetchTableMetaFromInfoSchema(String phyTableSchema, String phyTableName,
                                                                 DataSource dataSource) {
         TablesInfoSchemaRecord infoSchemaRecord =
@@ -835,6 +998,66 @@ public class TableInfoManager extends AbstractAccessor {
         return false;
     }
 
+    private static final String SHOW_VARIABLE = "show variables like '%s'";
+    private static final String CHECK_XDB_VARIABLE =
+        String.format(SHOW_VARIABLE, Attribute.XDB_VARIABLE_INSTANT_ADD_COLUMN);
+    private static final String CHECK_MYSQL_VERSION = String.format(SHOW_VARIABLE, Attribute.MYSQL_VARIABLE_VERSION);
+
+    public static boolean isInstantAddColumnSupportedByPhyDb(DataSource dataSource, String dbIndex) {
+        try (Connection phyDbConn = dataSource.getConnection();
+            Statement stmt = phyDbConn.createStatement()) {
+
+            try (ResultSet rs = stmt.executeQuery(CHECK_XDB_VARIABLE)) {
+                if (rs.next()) {
+                    String value = rs.getString("Value");
+                    return TStringUtil.equalsIgnoreCase(value, "ON");
+                }
+            }
+
+            try (ResultSet rs = stmt.executeQuery(CHECK_MYSQL_VERSION)) {
+                if (rs.next()) {
+                    String version = rs.getString("Value");
+                    int majorVersion = extractMajorVersion(version);
+                    if (majorVersion >= 8) {
+                        // MySQL 8.0 starts support Instant Add Column by default.
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            LOGGER.error(
+                "Failed to check if Instant Add Column is supported in '" + dbIndex + "'. Caused by: " + t.getMessage(),
+                t);
+        }
+
+        return false;
+    }
+
+    public static boolean isXdbInstantAddColumnSupported() {
+        try (Connection metaDbConn = MetaDbUtil.getConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery(CHECK_XDB_VARIABLE)) {
+            if (rs.next()) {
+                return true;
+            }
+        } catch (Throwable t) {
+            LOGGER.error("Failed to check if the 'XDB Instant Add Column' variable exists in MetaDB");
+        }
+        return false;
+    }
+
+    private static int extractMajorVersion(String version) {
+        int dotIndex = TStringUtil.indexOf(version, ".");
+        if (dotIndex > 0) {
+            String majorVersion = TStringUtil.substring(version, 0, dotIndex);
+            try {
+                return Integer.valueOf(majorVersion);
+            } catch (Exception ignored) {
+            }
+        }
+        return 0;
+    }
+
     private List<IndexesInfoSchemaRecord> fetchIndexMetaByFirstColumnFromInfoSchema(String phyTableSchema,
                                                                                     String phyTableName,
                                                                                     String firstColumnName,
@@ -880,6 +1103,7 @@ public class TableInfoManager extends AbstractAccessor {
         indexesAccessor.delete(schemaName);
         sequencesAccessor.deleteAll(schemaName);
         tablePartitionAccessor.deleteTablePartitionConfigsByDbName(schemaName);
+        localPartitionAccessor.deleteAll(schemaName);
     }
 
     public void addTablePartitionInfos(TableGroupConfig tableGroupConfig, boolean isUpsert) {
@@ -887,6 +1111,8 @@ public class TableInfoManager extends AbstractAccessor {
         try {
             TablePartRecordInfoContext tablePartRecordInfoContext =
                 tableGroupConfig.getTables().get(0);
+            boolean mayEmptyTableGroup = false;
+            boolean isEmptyTableGroup = false;
             if (tableGroupConfig.getTableGroupRecord() != null) {
                 Long lastInsertId = tableGroupAccessor.addNewTableGroup(tableGroupConfig.getTableGroupRecord());
                 int i = 0;
@@ -904,7 +1130,10 @@ public class TableInfoManager extends AbstractAccessor {
                         .autoBuildTableGroupName(lastInsertId, tableGroupConfig.getTableGroupRecord().tg_type);
                     tableGroupAccessor.updateTableGroupName(lastInsertId, finalTgName);
                 }
+            } else {
+                mayEmptyTableGroup = tableGroupConfig.getTables().size() == 1;
             }
+
             for (int i = 0; i < GeneralUtil.emptyIfNull(tablePartRecordInfoContext.getPartitionRecList()).size(); i++) {
                 TablePartitionRecord partition = tablePartRecordInfoContext.getPartitionRecList().get(i);
                 if (partition.groupId == null || partition.groupId == -1) {
@@ -912,9 +1141,18 @@ public class TableInfoManager extends AbstractAccessor {
                     pgRecord.tg_id = tablePartRecordInfoContext.getLogTbRec().groupId;
                     Long pgId = partitionGroupAccessor.addNewPartitionGroup(pgRecord, false);
                     tablePartRecordInfoContext.getPartitionRecList().get(i).groupId = pgId;
+                    isEmptyTableGroup = mayEmptyTableGroup;
                 }
             }
 
+            if (isEmptyTableGroup) {
+                int tableType = tablePartRecordInfoContext.getLogTbRec().getTblType();
+                if (tableType == TablePartitionRecord.PARTITION_TABLE_TYPE_SINGLE_TABLE) {
+                    int tableGroupType = TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
+                    tableGroupAccessor
+                        .updateTableGroupType(tablePartRecordInfoContext.getLogTbRec().groupId, tableGroupType);
+                }
+            }
             tablePartitionAccessor.addNewTablePartitionConfigs(tablePartRecordInfoContext.getLogTbRec(),
                 tablePartRecordInfoContext.getPartitionRecList(), tablePartRecordInfoContext.getSubPartitionRecMap(),
                 isUpsert, false);
@@ -955,6 +1193,14 @@ public class TableInfoManager extends AbstractAccessor {
         return defaultDbIndexGroup;
     }
 
+    public Map<String, String> getAllSchemaDefaultDbIndex() {
+        List<SchemataRecord> records = schemataAccessor.queryAll();
+        if (CollectionUtils.isEmpty(records)) {
+            return MapUtils.EMPTY_MAP;
+        }
+        return records.stream().collect(Collectors.toMap(x -> x.schemaName, x -> x.defaultDbIndex));
+    }
+
     public void deletePartitionInfo(String tableSchema, String tableName) {
         List<TablePartitionRecord> tablePartitionRecords =
             tablePartitionAccessor.getTablePartitionsByDbNameTbNameLevel(tableSchema, tableName,
@@ -969,5 +1215,48 @@ public class TableInfoManager extends AbstractAccessor {
                     .deleteEmptyTableGroupInfo(tableSchema, tablePartitionRecords.get(0).groupId, getConnection());
             }
         }
+    }
+
+    public List<TableLocalPartitionRecord> getLocalPartitionRecordBySchema(String schemaName) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(schemaName));
+        List<TableLocalPartitionRecord> recordList = localPartitionAccessor.queryBySchema(schemaName);
+        return recordList;
+    }
+
+    public TableLocalPartitionRecord getLocalPartitionRecord(String schemaName, String tableName) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(schemaName));
+        TableLocalPartitionRecord record = localPartitionAccessor.queryByTableName(schemaName, tableName);
+        return record;
+    }
+
+    public int addLocalPartitionRecord(TableLocalPartitionRecord tableLocalPartitionRecord) {
+        Preconditions.checkNotNull(tableLocalPartitionRecord);
+        return localPartitionAccessor.insert(tableLocalPartitionRecord);
+    }
+
+    public int addScheduledJob(ScheduledJobsRecord scheduledJobsRecord) {
+        Preconditions.checkNotNull(scheduledJobsRecord);
+        return scheduledJobsAccessor.insert(scheduledJobsRecord);
+    }
+
+    public int removeLocalPartitionRecord(String schemaName, String tableName) {
+        Preconditions.checkNotNull(schemaName);
+        Preconditions.checkNotNull(tableName);
+        return localPartitionAccessor.delete(schemaName, tableName);
+    }
+
+    public int removeScheduledJobRecord(String schemaName, String tableName) {
+        Preconditions.checkNotNull(schemaName);
+        Preconditions.checkNotNull(tableName);
+        List<ScheduledJobsRecord> recordList = scheduledJobsAccessor.query(schemaName, tableName);
+        int count = 0;
+        if (CollectionUtils.isEmpty(recordList)) {
+            return count;
+        }
+        for (ScheduledJobsRecord record : recordList) {
+            count += scheduledJobsAccessor.deleteById(record.getScheduleId());
+            firedScheduledJobsAccessor.deleteById(record.getScheduleId());
+        }
+        return count;
     }
 }

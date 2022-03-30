@@ -33,6 +33,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Lists;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -44,19 +45,25 @@ public class CreateTableJobFactory extends DdlJobFactory {
     public static final String CREATE_TABLE_SYNC_TASK = "CREATE_TABLE_SYNC_TASK";
 
     protected final boolean autoPartition;
+    protected final boolean hasTimestampColumnDefault;
     protected final PhysicalPlanData physicalPlanData;
     protected final String schemaName;
     protected final String logicalTableName;
     protected final ExecutionContext executionContext;
+    protected final Map<String, String> binaryColumnDefaultValues;
 
     public CreateTableJobFactory(boolean autoPartition,
+                                 boolean hasTimestampColumnDefault,
+                                 Map<String, String> binaryColumnDefaultValues,
                                  PhysicalPlanData physicalPlanData,
                                  ExecutionContext executionContext) {
         this.autoPartition = autoPartition;
+        this.hasTimestampColumnDefault = hasTimestampColumnDefault;
         this.physicalPlanData = physicalPlanData;
         this.schemaName = physicalPlanData.getSchemaName();
         this.logicalTableName = physicalPlanData.getLogicalTableName();
         this.executionContext = executionContext;
+        this.binaryColumnDefaultValues = binaryColumnDefaultValues;
     }
 
     @Override
@@ -80,7 +87,8 @@ public class CreateTableJobFactory extends DdlJobFactory {
             new CreateTableAddTablesMetaTask(schemaName, logicalTableName, physicalPlanData.getDefaultDbIndex(),
                 physicalPlanData.getDefaultPhyTableName(), physicalPlanData.getSequence(),
                 physicalPlanData.getTablesExtRecord(), physicalPlanData.isPartitioned(),
-                physicalPlanData.isIfNotExists(), physicalPlanData.getKind());
+                physicalPlanData.isIfNotExists(), physicalPlanData.getKind(), hasTimestampColumnDefault,
+                binaryColumnDefaultValues);
 
         LocalityDesc locality = physicalPlanData.getLocalityDesc();
         StoreTableLocalityTask storeLocalityTask = locality == null ?

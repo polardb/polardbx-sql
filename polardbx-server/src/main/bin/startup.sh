@@ -15,7 +15,7 @@ function usage() {
         echo "  -F              Force cleanup before initialize "
         echo "  -h              Show Help"
         echo "  -D				      DRDS mode"
-        echo "  -d port			    enable debug port"
+        echo "  -b port			    enable debug port"
         echo "  -q mock         fast mock mode"
         echo "  -p port			    server port"
         echo "  -m port			    manage port"
@@ -26,7 +26,7 @@ function usage() {
         echo "  -f conf			    conf file, Default conf file is $BASE/conf/server.properties"
         echo "  -a key=value[;] args config, Example: -a k1=v1;k2=v2"
         echo "Examples:"
-        echo "1. startup.sh -d 8080"
+        echo "1. startup.sh -b 8080"
         echo "      startup with debug port 8080"
         echo "2. startup.sh -p 8507 -c cluster"
         echo "      startup with serverport 8507 and cluster"
@@ -76,6 +76,7 @@ logback_configurationFile=$base/conf/logback.xml
 base_log=$base/logs/tddl
 pidfile=$base/bin/tddl.pid
 KERNEL_VERSION=`uname -r`
+enable_bianque=true
 
 checkuser=`whoami`
 if [ x"$checkuser" = x"root" ];then
@@ -83,7 +84,7 @@ if [ x"$checkuser" = x"root" ];then
    exit 1;
 fi
 
-TEMP=`getopt -o q:d:p:l:m:c:a:f:i:w:s:r:u:S:A:P:hDMIF -- "$@"`
+TEMP=`getopt -o q:d:b:p:l:m:c:a:f:i:w:s:r:u:S:A:P:hDMIF -- "$@"`
 eval set -- "$TEMP"
 while true ; do
   case "$1" in
@@ -101,7 +102,7 @@ while true ; do
         -p) serverPort=$2; shift 2;;
         -l) loggerRoot=$2; shift 2;;
         -m) managerPort=$2; shift 2 ;;
-        -d) debugPort=$2; shift 2;;
+        -b) debugPort=$2; shift 2;;
         -q) fast_mock=$2; shift 2;;
         -i) idc=`echo $2|sed "s/'//g"`; shift 2 ;;
         -w) wisp=`echo $2|sed "s/'//g"`; shift 2 ;;
@@ -154,7 +155,6 @@ if [ x"$debugPort" != "x" ]; then
 	JAVA_DEBUG_OPT="-Xdebug -Xnoagent -Djava.compiler=NONE -Xrunjdwp:transport=dt_socket,address=$debugPort,server=y,suspend=$DEBUG_SUSPEND"
 fi
 
-TDDL_OPTS=
 if [ x"$initializeGms" != "x" ]; then
   TDDL_OPTS="$TDDL_OPTS -DinitializeGms=$initializeGms"
 fi
@@ -267,6 +267,16 @@ if [ x"$idc" != "x" ]; then
 	TDDL_OPTS=" $TDDL_OPTS -Didc=$idc"
 fi
 
+if [ x"$enable_bianque" == "xtrue" ]; then
+  BIANQUE_LIB_FILEPATH="/home/admin/bianquejavaagent/output/lib/libjava_bianque_agent.so"
+  BIANQUE_SERVER_PORT=9874
+  timeout 1 bash -c "nc -vw 1 127.0.0.1 $BIANQUE_SERVER_PORT 2>/tmp/bianquenc.log 1>/dev/null"
+  connectedCnt=`cat /tmp/bianquenc.log | grep Connected | wc -l`
+  if [ -f $BIANQUE_LIB_FILEPATH ] && [ $connectedCnt -gt 0 ] ; then
+	  BIANQUE_AGENT_OPTS=" -agentpath:$BIANQUE_LIB_FILEPATH=local_path=/home/admin/bianquejavaagent/output"
+  fi
+fi
+
 
 if [ ! -d $base_log ] ; then
 	mkdir -p $base_log
@@ -338,6 +348,9 @@ if [ x"$cpu_cores" != "x" ]; then
     JAVA_OPTS="$JAVA_OPTS -XX:ActiveProcessorCount=$cpu_cores"
 fi
 
+#https://workitem.aone.alibaba-inc.com/req/33334239
+JAVA_OPTS="$JAVA_OPTS -Dtxc.vip.skip=true "
+
 JAVA_OPTS="$JAVA_OPTS -XX:PermSize=96m -Xss4m -XX:+AggressiveOpts -XX:-UseBiasedLocking -XX:+UseFastAccessorMethods -XX:-OmitStackTraceInFastThrow"
 
 # For CMS and ParNew
@@ -392,7 +405,7 @@ fi
     -classpath .:$CLASSPATH com.alibaba.polardbx.server.TddlLauncher
   else
     echo "start polardb-x"
-    $TASKSET $JAVA $JAVA_OPTS $JAVA_DEBUG_OPT $TDDL_OPTS -classpath .:$CLASSPATH com.alibaba.polardbx.server.TddlLauncher 1>>$base_log/tddl-console.log 2>&1 &
+    $TASKSET $JAVA $BIANQUE_AGENT_OPTS $JAVA_OPTS $JAVA_DEBUG_OPT $TDDL_OPTS -classpath .:$CLASSPATH com.alibaba.polardbx.server.TddlLauncher --port=$serverPort 1>>$base_log/tddl-console.log 2>&1 &
     echo "$! #@# $args" > $pidfile
     echo "cd to $current_path for continue"
     cd $current_path

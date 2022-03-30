@@ -24,17 +24,22 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.PostPlanner;
+import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.hint.HintPlanner;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.visitor.DrdsParameterizeSqlVisitor;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.commons.lang.StringUtils;
 import org.junit.runner.RunWith;
 
@@ -52,6 +57,15 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum);
     }
 
+    public void setExplainCost(boolean explainCost) {
+        this.explainCost = explainCost;
+    }
+
+    /**
+     * show the cost of plan
+     */
+    boolean explainCost = false;
+
     @Override
     protected String getPlan(String testSql) {
         Map<Integer, ParameterContext> currentParameter = new HashMap<>();
@@ -67,19 +81,26 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         executionContext.setServerVariables(new HashMap<>());
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setParams(new Parameters(param, false));
+        executionContext.getExtraCmds().putAll(configMaps);
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName,
-            executionContext.getExtraCmds(),
-            executionContext.getGroupHint());
+                executionContext.getExtraCmds(),
+                executionContext.getGroupHint());
+        if (explainCost) {
+            CalcitePlanOptimizerTrace.setSqlExplainLevel(SqlExplainLevel.ALL_ATTRIBUTES);
+        }
 
         hintPlanner.collectAndPreExecute(ast, cmdBean, false, executionContext);
         processParameter(sqlParameterized, executionContext);
         PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
+        plannerContext.setSchemaName(appName);
+
         ExecutionPlan executionPlan = Planner.getInstance().getPlan(ast, plannerContext);
         executionPlan = PostPlanner.getInstance().optimize(executionPlan, executionContext);
         String planStr = RelUtils
             .toString(executionPlan.getPlan(), param, RexUtils.getEvalFunc(executionContext), executionContext);
 
-        return removeSubqueryHashCode(planStr, executionPlan.getPlan(), param);
+        String code = removeSubqueryHashCode(planStr, executionPlan.getPlan(), null);
+        return code;
     }
 
     private void processParameter(SqlParameterized sqlParameterized, ExecutionContext executionContext) {

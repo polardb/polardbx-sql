@@ -63,6 +63,7 @@ public final class ServerParse {
     public static final int FLUSH = 37;
     public static final int LOAD_DATA_INFILE_SQL = 99;
     public static final int TABLE = 100;
+    public static final int START_SLAVE = 101;
 
     private static final Pattern CREATE_USER_PATTERN = Pattern.compile("^\\s*create\\s+user\\s+.*$",
         Pattern.CASE_INSENSITIVE);
@@ -918,7 +919,12 @@ public final class ServerParse {
             char c4 = stmt.charAt(++offset);
             if ((c1 == 'A' || c1 == 'a') && (c2 == 'R' || c2 == 'r') && (c3 == 'T' || c3 == 't')
                 && (c4 == ' ' || c4 == '\t' || c4 == '\r' || c4 == '\n')) {
-                return (offset << 8) | START;
+                String stmtStr = stmt.toString().toLowerCase();
+                if (stmtStr.contains("slave") || stmtStr.contains("replica")) {
+                    return START_SLAVE;
+                } else {
+                    return (offset << 8) | START;
+                }
             }
         }
         return OTHER;

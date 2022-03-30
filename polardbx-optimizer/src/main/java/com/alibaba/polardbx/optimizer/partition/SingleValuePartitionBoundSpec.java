@@ -29,7 +29,6 @@ import java.util.List;
  */
 public class SingleValuePartitionBoundSpec extends PartitionBoundSpec {
     protected SearchDatumInfo datum;
-    static final String MAXVALUE = "maxValue";
 
     SingleValuePartitionBoundSpec() {
     }
@@ -92,8 +91,8 @@ public class SingleValuePartitionBoundSpec extends PartitionBoundSpec {
     }
 
     @Override
-    public String getPartitionBoundDescription() {
-        return this.datum.getDesc(false);
+    public String getPartitionBoundDescription(int prefixPartColCnt) {
+        return this.datum.getDesc(false, prefixPartColCnt);
     }
 
     public PartitionBoundVal getBoundValue() {
@@ -124,15 +123,37 @@ public class SingleValuePartitionBoundSpec extends PartitionBoundSpec {
         return this.datum.hashCode();
     }
 
+//    @Override
+//    public boolean equals(Object obj) {
+//        if (this == obj) {
+//            return true;
+//        }
+//        if (obj != null && obj.getClass() == this.getClass() && this.datum != null) {
+//            return this.datum.equals(((SingleValuePartitionBoundSpec) obj).getSingleDatum());
+//        }
+//        return false;
+//    }
+
     @Override
     public boolean equals(Object obj) {
+        return equals(obj, -1);
+    }
+
+    @Override
+    public boolean equals(Object obj, int prefixPartColCnt ) {
+
         if (this == obj) {
             return true;
         }
         if (obj != null && obj.getClass() == this.getClass() && this.datum != null) {
-            return this.datum.equals(((SingleValuePartitionBoundSpec) obj).getSingleDatum());
+            if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
+                return this.datum.equals(((SingleValuePartitionBoundSpec) obj).getSingleDatum());
+            } else {
+                return this.datum.equals(((SingleValuePartitionBoundSpec) obj).getSingleDatum(), prefixPartColCnt);
+            }
         }
         return false;
-    }
 
+
+    }
 }

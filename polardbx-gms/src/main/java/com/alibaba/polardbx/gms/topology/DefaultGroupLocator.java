@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.gms.topology;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
+import com.google.common.collect.Lists;
 
 import java.util.Collections;
 import java.util.List;
@@ -29,12 +29,15 @@ import java.util.Random;
  */
 public class DefaultGroupLocator implements GroupLocator {
 
+    protected final int dbType;
     protected final Map<String, String> groupPhyDbMap;
     protected final List<String> storageInstList;
     protected final List<String> singleGroupStorageInstList;
 
-    public DefaultGroupLocator(Map<String, String> groupPhyDbMap, List<String> storageInstList,
+    public DefaultGroupLocator(int dbType,
+                               Map<String, String> groupPhyDbMap, List<String> storageInstList,
                                List<String> singleGroupStorageInstList) {
+        this.dbType = dbType;
         this.groupPhyDbMap = groupPhyDbMap;
         this.storageInstList = storageInstList;
         this.singleGroupStorageInstList = singleGroupStorageInstList;
@@ -63,8 +66,21 @@ public class DefaultGroupLocator implements GroupLocator {
             String grpVal = groupKeyList.get(i);
 
             boolean isSingleGrp = GroupInfoUtil.isSingleGroup(grpVal);
+            boolean isFirstPartGroup = i == 0 && this.dbType == DbInfoRecord.DB_TYPE_NEW_PART_DB;
             String storageInstId = null;
-            if (!isSingleGrp || singleInstCnt == 0) {
+
+            if (isFirstPartGroup) {
+                int singeInstIdx = Math.abs(Math.abs(rand.nextInt()) % singleInstCnt);
+                storageInstId = singleGroupStorageInstList.get(singeInstIdx);
+
+                // Adjust next normal group location to make sure uniform distribution
+                int idx = storageInstList.indexOf(storageInstId);
+                if (idx != -1) {
+                    curInstIdx = (idx + 1) % instCount;
+                }
+
+                outputNormalGroupMap.computeIfAbsent(storageInstId, x -> Lists.newArrayList()).add(grpVal);
+            } else if (!isSingleGrp || singleInstCnt == 0) {
                 // Get Storage Inst id for non-single group
                 storageInstId = storageInstList.get(curInstIdx);
                 ++curInstIdx;

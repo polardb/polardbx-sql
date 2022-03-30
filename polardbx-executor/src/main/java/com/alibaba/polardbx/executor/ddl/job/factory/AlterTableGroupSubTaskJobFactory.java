@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -30,23 +33,23 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
-import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
 
@@ -61,6 +64,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
     private final boolean skipBackfill;
     protected final ExecutionContext executionContext;
     private final String targetPartition;
+    private DdlTask cdcTableGroupDdlMarkTask;
 
     public AlterTableGroupSubTaskJobFactory(DDL ddl, AlterTableGroupItemPreparedData preparedData,
                                             List<PhyDdlTableOperation> phyDdlTableOperations,
@@ -129,35 +133,61 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
                 new CreateTablePhyDdlTask(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData);
             taskList.add(phyDdlTask);
         }
+
+        final String finalStatus =
+            executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
+        boolean stayAtPublic = true;
+        if (StringUtils.isNotEmpty(finalStatus)) {
+            stayAtPublic =
+                StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC.name(), finalStatus);
+        }
+        final boolean stayAtCreating =
+            StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.CREATING.name(), finalStatus);
+        final boolean stayAtDeleteOnly =
+            StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY.name(), finalStatus);
+        final boolean stayAtWriteOnly =
+            StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY.name(), finalStatus);
+        final boolean stayAtWriteReOrg =
+            StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG.name(), finalStatus);
+
+        DdlTask mayBeTailTask = taskList.get(taskList.size() - 1);
         List<DdlTask> bringUpNewPartitions = ComplexTaskFactory
             .addPartitionTasks(schemaName, tableName, sourceTableTopology, targetTableTopology,
+                stayAtCreating, stayAtDeleteOnly, stayAtWriteOnly, stayAtWriteReOrg,
                 skipBackfill || tableTopology.isEmpty(), executionContext);
         //3.2 status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> READY_TO_PUBLIC
         taskList.addAll(bringUpNewPartitions);
 
         //cdc ddl mark task
         SqlKind sqlKind = ddl.kind();
-        Map<String, Set<String>> newTopology =
-            newPartitionInfo.getPhysicalPartitionTopology(null).entrySet().stream().collect(
-                Collectors.toMap(Map.Entry::getKey,
-                    v -> v.getValue().stream().map(PhysicalPartitionInfo::getPhyTable).collect(Collectors.toSet())));
-        DdlTask cdcDdlMarkTask = new CdcTableGroupDdlMarkTask(schemaName, tableName, sqlKind, newTopology);
-        taskList.add(cdcDdlMarkTask);
+        DdlContext dc = executionContext.getDdlContext();
+
+        Map<String, Set<String>> newTopology = newPartitionInfo.getTopology();
+        DdlTask cdcDdlMarkTask =
+            new CdcTableGroupDdlMarkTask(schemaName, tableName, sqlKind, newTopology, dc.getDdlStmt());
+        if (stayAtPublic) {
+            cdcTableGroupDdlMarkTask = cdcDdlMarkTask;
+        }
 
         final ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(taskList);
         executableDdlJob.labelAsHead(addMetaTask);
-        executableDdlJob.labelAsTail(bringUpNewPartitions.get(bringUpNewPartitions.size() - 1));
+        if (!stayAtCreating) {
+            executableDdlJob.labelAsTail(taskList.get(taskList.size() - 1));
+        } else {
+            executableDdlJob.labelAsTail(mayBeTailTask);
+        }
         return executableDdlJob;
     }
 
     @Override
     protected void excludeResources(Set<String> resources) {
-        for (String partName : preparedData.getOldPartitionNames()) {
-            resources.add(concatWithDot(
-                concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()), partName),
-                preparedData.getTableName()));
+        for (String phyTableName : preparedData.getNewPhyTables()) {
+            resources.add(
+                concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableName()), phyTableName));
         }
+        //todo luoyanxin when
+        resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableName()));
     }
 
     @Override
@@ -187,4 +217,22 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         return newPartInfo;
     }
 
+    protected void checkPartitionCount(PartitionInfo newPartInfo) {
+        Integer maxPhysicalPartitions = Integer.valueOf(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT.getDefault());
+        if (executionContext != null) {
+            maxPhysicalPartitions =
+                executionContext.getParamManager().getInt(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT);
+        }
+
+        if (newPartInfo.getPartitionBy().getPartitions().size() > maxPhysicalPartitions) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
+                String
+                    .format("Too many partitions [%s] (including subpartitions) after alter tablegroup",
+                        newPartInfo.getPartitionBy().getPartitions().size()));
+        }
+    }
+
+    public DdlTask getCdcTableGroupDdlMarkTask() {
+        return cdcTableGroupDdlMarkTask;
+    }
 }

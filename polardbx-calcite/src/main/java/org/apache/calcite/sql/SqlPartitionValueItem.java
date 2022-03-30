@@ -16,6 +16,8 @@
 
 package org.apache.calcite.sql;
 
+import org.apache.calcite.util.Litmus;
+
 /**
  * Created by luoyanxin.
  *
@@ -57,6 +59,25 @@ public class SqlPartitionValueItem {
 
     public SqlPartitionValueItem(SqlNode value) {
         this.value = value;
+    }
+
+    public boolean equalsDeep(Object obj, Litmus litmus) {
+        if (this == obj) {
+            return true;
+        }
+
+        if (this.getClass() != obj.getClass()) {
+            return false;
+        }
+
+        SqlPartitionValueItem sqlPartValueItem = (SqlPartitionValueItem) obj;
+
+        if (isNull != sqlPartValueItem.isNull || isMaxValue != sqlPartValueItem.isMaxValue
+            || isMinValue != sqlPartValueItem.isMinValue) {
+            return false;
+        }
+
+        return value.equalsDeep(sqlPartValueItem.value, litmus);
     }
 
 }

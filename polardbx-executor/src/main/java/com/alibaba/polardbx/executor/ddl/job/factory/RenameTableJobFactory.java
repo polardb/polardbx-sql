@@ -80,7 +80,7 @@ public class RenameTableJobFactory extends DdlJobFactory {
             updateMetaTask,
             syncTask
         ));
-
+        executableDdlJob.labelAsHead(validateTask);
         return executableDdlJob;
     }
 

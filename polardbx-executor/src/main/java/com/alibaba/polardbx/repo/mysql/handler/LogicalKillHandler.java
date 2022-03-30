@@ -30,7 +30,9 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.group.config.Weight;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -152,6 +154,9 @@ public class LogicalKillHandler extends HandlerCommon {
         for (Group group : OptimizerContext.getContext(schemaName).getMatrix().getGroups()) {
 
             if (!group.getType().equals(GroupType.MYSQL_JDBC)) {
+                continue;
+            }
+            if (!DbGroupInfoManager.isVisibleGroup(schemaName, group.getName())) {
                 continue;
             }
 

@@ -125,12 +125,6 @@ public class GsiValidator {
                                                     String tableName,
                                                     ExecutionContext executionContext) {
         boolean isGsi = TableValidator.checkTableIsGsi(schemaName, tableName);
-        boolean hasGsi = TableValidator.checkTableWithGsi(schemaName, tableName);
-
-        if (hasGsi && !executionContext.getParamManager().getBoolean(ConnectionParams.TRUNCATE_TABLE_WITH_GSI)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_TRUNCATE_PRIMARY_TABLE,
-                tableName);
-        }
 
         if (isGsi && !executionContext.getParamManager().getBoolean(ConnectionParams.DDL_ON_GSI)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_WITH_DDL,

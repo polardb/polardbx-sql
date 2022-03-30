@@ -16,12 +16,15 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.visitor;
 
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntervalExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowColumnsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateTableStatement;
@@ -62,8 +65,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearSeqCa
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsContinueDDLJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectDDLJobCache;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectGroupSeqRangeStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectRuleVersionStatement;
@@ -79,9 +84,12 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRul
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDDLJobs;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDDLResults;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalDeadlocks;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowGlobalIndex;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowLocalDeadlocks;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMetadataLock;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMoveDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowScheduleResultStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTableGroup;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSlowSqlCclStatement;
@@ -307,7 +315,7 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     @Override
     public boolean visit(MysqlDeallocatePrepareStatement x) {
-    	return true;
+        return true;
     }
 
     @Override
@@ -429,6 +437,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     }
 
     @Override
+    public void endVisit(DrdsShowScheduleResultStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowScheduleResultStatement x) {
+        return true;
+    }
+
+    @Override
     public void endVisit(DrdsCancelDDLJob x) {
 
     }
@@ -539,6 +557,26 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     }
 
     @Override
+    public void endVisit(DrdsShowGlobalDeadlocks x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowGlobalDeadlocks x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsShowLocalDeadlocks x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowLocalDeadlocks x) {
+        return true;
+    }
+
+    @Override
     public void endVisit(DrdsShowMetadataLock x) {
 
     }
@@ -565,6 +603,26 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     @Override
     public boolean visit(DrdsCreateCclRuleStatement x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsCreateScheduleStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCreateScheduleStatement x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsDropScheduleStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsDropScheduleStatement x) {
         return false;
     }
 
@@ -766,43 +824,53 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
         return true;
     }
 
-    @Override public void endVisit(MySqlUpdatePlanCacheStatement x) {
+    @Override
+    public void endVisit(MySqlUpdatePlanCacheStatement x) {
 
     }
 
-    @Override public boolean visit(MySqlUpdatePlanCacheStatement x) {
+    @Override
+    public boolean visit(MySqlUpdatePlanCacheStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MySqlShowPlanCacheStatusStatement x) {
+    @Override
+    public void endVisit(MySqlShowPlanCacheStatusStatement x) {
 
     }
 
-    @Override public boolean visit(MySqlShowPlanCacheStatusStatement x) {
+    @Override
+    public boolean visit(MySqlShowPlanCacheStatusStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MySqlClearPlanCacheStatement x) {
+    @Override
+    public void endVisit(MySqlClearPlanCacheStatement x) {
 
     }
 
-    @Override public boolean visit(MySqlClearPlanCacheStatement x) {
+    @Override
+    public boolean visit(MySqlClearPlanCacheStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MySqlDisabledPlanCacheStatement x) {
+    @Override
+    public void endVisit(MySqlDisabledPlanCacheStatement x) {
 
     }
 
-    @Override public boolean visit(MySqlDisabledPlanCacheStatement x) {
+    @Override
+    public boolean visit(MySqlDisabledPlanCacheStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MySqlExplainPlanCacheStatement x) {
+    @Override
+    public void endVisit(MySqlExplainPlanCacheStatement x) {
 
     }
 
-    @Override public boolean visit(MySqlExplainPlanCacheStatement x) {
+    @Override
+    public boolean visit(MySqlExplainPlanCacheStatement x) {
         return false;
     }
 
@@ -856,11 +924,13 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     }
 
-    @Override public boolean visit(MySqlShowHMSMetaStatement x) {
+    @Override
+    public boolean visit(MySqlShowHMSMetaStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MySqlShowHMSMetaStatement x) {
+    @Override
+    public void endVisit(MySqlShowHMSMetaStatement x) {
 
     }
 
@@ -1813,35 +1883,35 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     public void endVisit(MySqlSubPartitionByList x) {
     }
 
-	@Override
-	public boolean visit(MySqlDeclareHandlerStatement x) {
-		return false;
-	}
+    @Override
+    public boolean visit(MySqlDeclareHandlerStatement x) {
+        return false;
+    }
 
-	@Override
-	public void endVisit(MySqlDeclareHandlerStatement x) {
+    @Override
+    public void endVisit(MySqlDeclareHandlerStatement x) {
 
-	}
+    }
 
-	@Override
-	public boolean visit(MySqlDeclareConditionStatement x) {
-		return false;
-	}
+    @Override
+    public boolean visit(MySqlDeclareConditionStatement x) {
+        return false;
+    }
 
-	@Override
-	public void endVisit(MySqlDeclareConditionStatement x) {
+    @Override
+    public void endVisit(MySqlDeclareConditionStatement x) {
 
-	}
+    }
 
-	@Override
-	public boolean visit(MySqlFlushStatement x) {
-		return false;
-	}
+    @Override
+    public boolean visit(MySqlFlushStatement x) {
+        return false;
+    }
 
-	@Override
-	public void endVisit(MySqlFlushStatement x) {
+    @Override
+    public void endVisit(MySqlFlushStatement x) {
 
-	}
+    }
 
     @Override
     public boolean visit(MySqlEventSchedule x) {
@@ -2023,82 +2093,102 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     }
 
-    @Override public boolean visit(MysqlCreateFullTextCharFilterStatement x) {
+    @Override
+    public boolean visit(MysqlCreateFullTextCharFilterStatement x) {
         return true;
     }
 
-    @Override public void endVisit(MysqlCreateFullTextCharFilterStatement x) {
+    @Override
+    public void endVisit(MysqlCreateFullTextCharFilterStatement x) {
     }
 
-    @Override public boolean visit(MysqlShowFullTextStatement x) {
+    @Override
+    public boolean visit(MysqlShowFullTextStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlShowFullTextStatement x) {
+    @Override
+    public void endVisit(MysqlShowFullTextStatement x) {
 
     }
 
-    @Override public boolean visit(MysqlShowCreateFullTextStatement x) {
+    @Override
+    public boolean visit(MysqlShowCreateFullTextStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlShowCreateFullTextStatement x) {
+    @Override
+    public void endVisit(MysqlShowCreateFullTextStatement x) {
 
     }
 
-    @Override public boolean visit(MysqlAlterFullTextStatement x) {
+    @Override
+    public boolean visit(MysqlAlterFullTextStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlAlterFullTextStatement x) {
+    @Override
+    public void endVisit(MysqlAlterFullTextStatement x) {
 
     }
 
-    @Override public boolean visit(MysqlDropFullTextStatement x) {
+    @Override
+    public boolean visit(MysqlDropFullTextStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlDropFullTextStatement x) {
+    @Override
+    public void endVisit(MysqlDropFullTextStatement x) {
 
     }
 
-    @Override public boolean visit(MysqlCreateFullTextTokenizerStatement x) {
+    @Override
+    public boolean visit(MysqlCreateFullTextTokenizerStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlCreateFullTextTokenizerStatement x) {
+    @Override
+    public void endVisit(MysqlCreateFullTextTokenizerStatement x) {
 
     }
 
-    @Override public boolean visit(MysqlCreateFullTextTokenFilterStatement x) {
+    @Override
+    public boolean visit(MysqlCreateFullTextTokenFilterStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlCreateFullTextTokenFilterStatement x) {
+    @Override
+    public void endVisit(MysqlCreateFullTextTokenFilterStatement x) {
 
     }
 
-    @Override public boolean visit(MysqlCreateFullTextAnalyzerStatement x) {
+    @Override
+    public boolean visit(MysqlCreateFullTextAnalyzerStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlCreateFullTextAnalyzerStatement x) {
+    @Override
+    public void endVisit(MysqlCreateFullTextAnalyzerStatement x) {
 
     }
 
-    @Override public boolean visit(MysqlCreateFullTextDictionaryStatement x) {
+    @Override
+    public boolean visit(MysqlCreateFullTextDictionaryStatement x) {
         return false;
     }
 
-    @Override public void endVisit(MysqlCreateFullTextDictionaryStatement x) {
+    @Override
+    public void endVisit(MysqlCreateFullTextDictionaryStatement x) {
 
     }
 
-    @Override public boolean visit(MySqlAlterTableAlterFullTextIndex x) {
+    @Override
+    public boolean visit(MySqlAlterTableAlterFullTextIndex x) {
         return false;
     }
 
-    @Override public void endVisit(MySqlAlterTableAlterFullTextIndex x) {
+    @Override
+    public void endVisit(MySqlAlterTableAlterFullTextIndex x) {
 
     }
 
@@ -2322,27 +2412,33 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     }
 
-    @Override public boolean visit(DrdsAlterTableSingle x) {
+    @Override
+    public boolean visit(DrdsAlterTableSingle x) {
         return false;
     }
 
-    @Override public void endVisit(DrdsAlterTableSingle x) {
+    @Override
+    public void endVisit(DrdsAlterTableSingle x) {
 
     }
 
-    @Override public boolean visit(DrdsAlterTableBroadcast x) {
+    @Override
+    public boolean visit(DrdsAlterTableBroadcast x) {
         return false;
     }
 
-    @Override public void endVisit(DrdsAlterTableBroadcast x) {
+    @Override
+    public void endVisit(DrdsAlterTableBroadcast x) {
 
     }
 
-    @Override public boolean visit(DrdsAlterTablePartition x) {
+    @Override
+    public boolean visit(DrdsAlterTablePartition x) {
         return false;
     }
 
-    @Override public void endVisit(DrdsAlterTablePartition x) {
+    @Override
+    public void endVisit(DrdsAlterTablePartition x) {
 
     }
 
@@ -2405,6 +2501,17 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     public void endVisit(DrdsAlterTableGroupExtractHotKey x) {
 
     }
+
+    @Override
+    public boolean visit(DrdsSplitHotKey x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsSplitHotKey x) {
+
+    }
+
     @Override
     public boolean visit(DrdsAlterTableGroupReorgPartition x) {
         return false;
@@ -2416,7 +2523,9 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupRenamePartition x) { return false; }
+    public boolean visit(DrdsAlterTableGroupRenamePartition x) {
+        return false;
+    }
 
     @Override
     public void endVisit(DrdsAlterTableGroupRenamePartition x) {
@@ -2431,4 +2540,26 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     @Override
     public void endVisit(DrdsRefreshTopology x) {
     }
+
+    @Override
+    public boolean visit(DrdsAlterTableAllocateLocalPartition x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableAllocateLocalPartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableExpireLocalPartition x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableExpireLocalPartition x) {
+
+    }
+
+
 } //

@@ -30,6 +30,7 @@ public class DrdsShowTableGroup extends MySqlStatementImpl implements MySqlShowS
     private SQLOrderBy orderBy;
     private SQLExpr where;
     private SQLLimit limit;
+    private boolean full = false;
 
     public SQLLimit getLimit() {
         return limit;
@@ -63,5 +64,13 @@ public class DrdsShowTableGroup extends MySqlStatementImpl implements MySqlShowS
             acceptChild(visitor, limit);
         }
         visitor.endVisit(this);
+    }
+
+    public boolean isFull() {
+        return full;
+    }
+
+    public void setFull(boolean full) {
+        this.full = full;
     }
 }

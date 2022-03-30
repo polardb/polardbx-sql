@@ -97,6 +97,7 @@ public class SqlRebalance extends SqlDdl {
     private boolean debug = false;
     private String diskInfo;
     private String drainNode;
+    private boolean logicalDdl = false;
 
     public SqlRebalance(SqlParserPos pos, SqlNode tableName) {
         super(OPERATOR, pos);
@@ -111,29 +112,55 @@ public class SqlRebalance extends SqlDdl {
 
     public void addOption(String name, SqlNode value) {
         if (name.equalsIgnoreCase(OPTION_MAX_ACTIONS)) {
+            validateValue(1, value);
             this.maxActions = ((SqlLiteral) value).intValue(false);
         } else if (name.equalsIgnoreCase(OPTION_POLICY)) {
+            validateValue(3, value);
             String policy = ((SqlCharStringLiteral) value).getNlsString().getValue();
-            if (TStringUtil.isNotBlank(this.policy)) {
+            if (TStringUtil.isNotBlank(this.policy) && !this.policy.equalsIgnoreCase(policy)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
                     String.format("policy conflicted: %s with %s", policy, this.policy));
             }
             this.policy = policy;
         } else if (name.equalsIgnoreCase(OPTION_MAX_SIZE)) {
+            validateValue(1, value);
             this.maxPartitionSize = ((SqlLiteral) value).intValue(false);
         } else if (name.equalsIgnoreCase(OPTION_EXPLAIN)) {
+            validateValue(2, value);
             this.explain = ((SqlLiteral) value).booleanValue();
         } else if (OPTION_ASYNC.equalsIgnoreCase(name)) {
+            validateValue(2, value);
             this.async = ((SqlLiteral) value).booleanValue();
         } else if (OPTION_DEBUG.equalsIgnoreCase(name)) {
+            validateValue(2, value);
             this.debug = ((SqlLiteral) value).booleanValue();
         } else if (OPTION_DISK_INFO.equalsIgnoreCase(name)) {
+            validateValue(3, value);
             this.diskInfo = ((SqlCharStringLiteral) value).getNlsString().getValue();
         } else if (name.equalsIgnoreCase(OPTION_DRAIN_NODE)) {
+            validateValue(3, value);
             this.drainNode = ((SqlCharStringLiteral) value).getNlsString().getValue();
             this.policy = POLICY_DRAIN_NODE;
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, name + " not supported");
+        }
+    }
+
+    private void validateValue(int type, SqlNode value) {
+        try {
+            switch (type) {
+            case 1: // int
+                ((SqlLiteral) value).intValue(false);
+                break;
+            case 2: // bool
+                ((SqlLiteral) value).booleanValue();
+                break;
+            case 3: // string
+                ((SqlCharStringLiteral) value).getNlsString().getValue();
+                break;
+            }
+        } catch (Exception ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG,  " not supported value " + value.toString());
         }
     }
 

@@ -260,6 +260,7 @@ public class ServerVariables {
         variables.add("innodb_stats_sample_pages");
         variables.add("innodb_stats_transient_sample_pages");
         variables.add("innodb_strict_mode");
+        variables.add("innodb_support_instant_add_column");
         variables.add("innodb_support_xa");
         variables.add("innodb_sync_array_size");
         variables.add("innodb_sync_spin_loops");
@@ -1510,6 +1511,7 @@ public class ServerVariables {
         mysqlGlobalVariables.add("innodb_stats_transient_sample_pages");
         mysqlGlobalVariables.add("innodb_status_output");
         mysqlGlobalVariables.add("innodb_status_output_locks");
+        mysqlGlobalVariables.add("innodb_support_instant_add_column");
         mysqlGlobalVariables.add("innodb_sync_array_size");
         mysqlGlobalVariables.add("innodb_sync_debug");
         mysqlGlobalVariables.add("innodb_sync_spin_loops");
@@ -2287,6 +2289,7 @@ public class ServerVariables {
         mysqlDynamicVariables.add("innodb_status_output");
         mysqlDynamicVariables.add("innodb_status_output_locks");
         mysqlDynamicVariables.add("innodb_strict_mode");
+        mysqlDynamicVariables.add("innodb_support_instant_add_column");
         mysqlDynamicVariables.add("innodb_sync_spin_loops");
         mysqlDynamicVariables.add("innodb_table_locks");
         mysqlDynamicVariables.add("innodb_thread_concurrency");

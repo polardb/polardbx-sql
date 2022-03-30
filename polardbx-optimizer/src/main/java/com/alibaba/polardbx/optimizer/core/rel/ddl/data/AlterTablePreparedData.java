@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.calcite.sql.SqlEnableKeys;
@@ -24,6 +25,7 @@ import org.apache.calcite.sql.SqlEnableKeys;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -38,7 +40,8 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private Map<String, String> changedColumns;
     private List<String> alterDefaultColumns;
 
-    private boolean columnReorder;
+    private boolean timestampColumnDefault;
+    Map<String, String> binaryColumnDefaultValues;
 
     /**
      * Index modifications
@@ -54,7 +57,11 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private boolean primaryKeyDropped = false;
     private List<String> addedPrimaryKeyColumns;
 
+    private List<Pair<String, String>> columnAfterAnother;
+    private boolean logicalColumnOrder;
+
     private String tableComment;
+    private String tableRowFormat;
 
     /**
      * Partition modifications

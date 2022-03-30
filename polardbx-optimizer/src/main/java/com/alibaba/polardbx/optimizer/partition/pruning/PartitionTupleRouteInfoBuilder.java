@@ -47,6 +47,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 
 /**
@@ -55,7 +56,7 @@ import java.util.List;
 public class PartitionTupleRouteInfoBuilder {
 
     protected static PartitionTupleRouteInfo generatePartitionTupleRoutingInfo(LogicalInsert insert,
-                                                                            PartitionInfo partitionInfo) {
+                                                                               PartitionInfo partitionInfo) {
 
         String schemaName = insert.getSchemaName();
         String logTbName = insert.getLogicalTableName();
@@ -77,15 +78,38 @@ public class PartitionTupleRouteInfoBuilder {
         }
     }
 
+    public static PartitionTupleRouteInfo generateTupleRoutingInfoFromPruneStepOp(PartitionPruneStepOp op) {
+        PartitionInfo partInfo = op.getPartInfo();
+        PartPredicateRouteFunction partPredRouteFunc = (PartPredicateRouteFunction) op.getPredRouteFunc();
+        ComparisonKind comparisonKind = partPredRouteFunc.getCmpKind();
+        if (comparisonKind != ComparisonKind.EQUAL) {
+            return null;
+        }
+        PartClauseExprExec[] epxrExecArr = partPredRouteFunc.getSearchExprInfo().getExprExecArr();
+        List<PartClauseInfo> partClauseInfos = new ArrayList<>();
+        for (int i = 0; i < epxrExecArr.length; i++) {
+            if (epxrExecArr[i].getValueKind() != PartitionBoundValueKind.DATUM_NORMAL_VALUE ) {
+                return null;
+            }
+            partClauseInfos.add(epxrExecArr[i].getClauseInfo());
+        }
+        String schemaName = partInfo.getTableSchema();
+        String logTbName = partInfo.getTableName();
+        List<List<PartClauseInfo>> partClauseInfosOfAllTuples = new ArrayList<>();
+        partClauseInfosOfAllTuples.add(partClauseInfos);
+        PartitionTupleRouteInfo tupleRouteInfo = genPartTupleRoutingInfoByPartClauseInfos(schemaName, logTbName, partClauseInfosOfAllTuples, partInfo);
+        return tupleRouteInfo;
+    }
+
     /**
-     * Generate the a TupleRouteInfo by the insert value astNodes that are all SqlLiteral or SqlDynamic, NOT any SqlCall.
+     * Generate a TupleRouteInfo by the insert value astNodes that are all SqlLiteral or SqlDynamic, NOT any SqlCall.
      */
     protected static PartitionTupleRouteInfo generatePartitionTupleRoutingInfo(String schemaName,
-                                                                            String logTbName,
-                                                                            PartitionInfo specificPartInfo,
-                                                                            RelDataType valueRowType,
-                                                                            List<List<SqlNode>> astValues,
-                                                                            ExecutionContext ec) {
+                                                                               String logTbName,
+                                                                               PartitionInfo specificPartInfo,
+                                                                               RelDataType valueRowType,
+                                                                               List<List<SqlNode>> astValues,
+                                                                               ExecutionContext ec) {
 
         PartitionTupleRouteInfo tupleRouteInfo = new PartitionTupleRouteInfo();
 
@@ -262,13 +286,14 @@ public class PartitionTupleRouteInfoBuilder {
     /**
      * Compute the hashcode of a const expressions
      */
-    public static long computeExprValuesHashCode(PartitionInfo partInfo,
-                                                 List<RexNode> exprValRexNodes,
-                                                 ExecutionContext executionContext) {
+    public static Long[] computeExprValuesHashCode(PartitionInfo partInfo,
+                                                   List<RexNode> exprValRexNodes,
+                                                   ExecutionContext executionContext) {
 
         String schemaName = partInfo.getTableSchema();
         String logTbName = partInfo.getTableName();
-
+        assert partInfo.getPartitionBy().getStrategy() == PartitionStrategy.HASH
+            || partInfo.getPartitionBy().getStrategy() == PartitionStrategy.KEY;
         List<PartClauseInfo> partClauseInfos =
             matchPartClauseInfoByRexInfos(partInfo, exprValRexNodes, PartKeyLevel.PARTITION_KEY);
 
@@ -282,8 +307,16 @@ public class PartitionTupleRouteInfoBuilder {
         SearchDatumInfo searchDatumInfo = tupleRouteInfo.getTupleDispatchFuncInfos().get(0).getPartDispatchFunc()
             .buildTupleSearchDatumInfo(executionContext, null);
         SearchDatumHasher hasher = partInfo.getPartitionBy().getHasher();
-        long hashCode = hasher.calcHashCode(executionContext, searchDatumInfo);
-        return hashCode;
+        Long[] hashCodes = null;
+        if (partInfo.getPartitionBy().getStrategy() == PartitionStrategy.HASH) {
+            long hashCode = hasher.calcHashCodeForHashStrategy(executionContext, searchDatumInfo);
+            hashCodes = new Long[1];
+            hashCodes[0] = hashCode;
+            return hashCodes;
+        } else if (partInfo.getPartitionBy().getStrategy() == PartitionStrategy.KEY) {
+            hashCodes = hasher.calcHashCodeForKeyStrategy(searchDatumInfo);
+        }
+        return hashCodes;
     }
 
     protected static List<PartClauseInfo> matchPartClauseInfoByRexInfos(PartitionInfo partInfo,
@@ -382,7 +415,7 @@ public class PartitionTupleRouteInfoBuilder {
         for (int i = 0; i < partClauseInfoList.size(); i++) {
             PartClauseInfo partClauseInfo = partClauseInfoList.get(i);
             int keyIdx = partClauseInfo.getPartKeyIndex();
-            
+
             // Get the drds return type for partColumn
             DataType partColDataType = querySpaceComp.getDatumDrdsDataTypes()[keyIdx];
 
@@ -427,6 +460,45 @@ public class PartitionTupleRouteInfoBuilder {
         partTupleRouteFunction.setPartCount(partCount);
         partTupleRouteFunction.setSubPartCount(subPartCount);
         return partTupleRouteFunction;
+    }
+
+    public static PartitionSpec getPartitionSpecByHashCode(Long[] hashCode,
+                                                           PartitionInfo partInfo,
+                                                           ExecutionContext ec) {
+        assert partInfo.getPartitionBy().getStrategy() == PartitionStrategy.KEY;
+        // Route and build bitset by tuple value
+        BitSet partBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSet(partInfo);
+        KeyPartRouter router = (KeyPartRouter) partInfo.getPartitionBy().getRouter();
+
+        PartitionRouter.RouterResult result = router
+            .routePartitionsFromHashCode(ec, ComparisonKind.EQUAL, partInfo.getPartitionColumns().size(), hashCode);
+
+        PartKeyLevel matchLevel = PartKeyLevel.PARTITION_KEY;
+        Integer partCount = partInfo.getPartitionBy().getPartitions().size();
+        Integer subPartCount = 0;
+        // Put the pruned result into the partition bitset
+        if (result.strategy != PartitionStrategy.LIST && result.strategy != PartitionStrategy.LIST_COLUMNS) {
+            PartitionPrunerUtils
+                .setPartBitSetByStartEnd(partBitSet, result.partStartPosi, result.pasrEndPosi, matchLevel, partCount,
+                    subPartCount, true);
+        } else {
+            PartitionPrunerUtils
+                .setPartBitSetForPartList(partBitSet, result.partPosiSet, matchLevel, partCount, subPartCount, true);
+        }
+        PartPrunedResult partPrunedResult = new PartPrunedResult();
+        partPrunedResult.partBitSet = partBitSet;
+        partPrunedResult.partInfo = partInfo;
+        List<PhysicalPartitionInfo> prunedPartInfos = partPrunedResult.getPrunedParttions();
+        PartitionSpec partitionSpec = null;
+        if (prunedPartInfos.size() == 0) {
+            return partitionSpec;
+        }
+
+        PhysicalPartitionInfo prunedPartInfo = prunedPartInfos.get(0);
+        String partName = prunedPartInfo.getPartName();
+        partitionSpec = partInfo.getPartitionBy().getPartitionByPartName(partName);
+
+        return partitionSpec;
     }
 
 }

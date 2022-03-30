@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.planmanager.parametric;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -40,6 +41,7 @@ import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,17 +54,18 @@ import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.isToler
  */
 public class MyParametricQueryAdvisor implements ParametricQueryAdvisor {
 
-    public static final double INFLATION_FACTOR = 1.3;
     public static final double INFLATION_NARROW_MAX = 10;
     public static final double STEADY_CHOOSE_TIME = 100;
-    public static final double UNUSE_ELIMITE_TIME = 10;
     public static final double UNUSE_ELIMITE_SECONDS = 60 * 60 * 24 * 7;
     public static final double RECENTLY_CHOOSE_RATE_SCOPE = 100;
     private Map<String, Set<Point>> parameterSqlMap = Maps.newConcurrentMap();
     private SimilarityAlgo similarityAlgo;
+    private String schemaName;
     private Map<Point, Long> pointUnuseTime = Maps.newHashMap();
+    private Map<String, Boolean> isSteady = Maps.newConcurrentMap();
 
-    public MyParametricQueryAdvisor(SimilarityAlgo similarityAlgo) {
+    public MyParametricQueryAdvisor(String schemaName, SimilarityAlgo similarityAlgo) {
+        this.schemaName = schemaName;
         this.similarityAlgo = similarityAlgo;
     }
 
@@ -84,7 +87,7 @@ public class MyParametricQueryAdvisor implements ParametricQueryAdvisor {
          * check the need of adding candidate point
          */
         if (plannerContext.getExprMap() != null &&
-            !PlanManagerUtil.isSteady(p) &&
+            !p.isSteady() &&
             !isTolerated(p.getRowcountExpected(),
                 runtimeRowCount[0],
                 executionContext.getParamManager().getInt(MINOR_TOLERANCE_VALUE)) &&
@@ -142,26 +145,42 @@ public class MyParametricQueryAdvisor implements ParametricQueryAdvisor {
     @Override
     public void load(Map<String, Set<Point>> points) {
         parameterSqlMap = points;
+
+        // init steady status
+        updateSteadyStatus();
+    }
+
+    private void updateSteadyStatus() {
+        int steadyTime =
+            OptimizerContext.getContext(schemaName).getParamManager()
+                .getInt(ConnectionParams.SPM_PQO_STEADY_CHOOSE_TIME);
+        for (Map.Entry<String, Set<Point>> entry : parameterSqlMap.entrySet()) {
+            Set<Point> points = entry.getValue();
+            if (points == null) {
+                continue;
+            }
+            long sum = 0;
+            for (Iterator<Point> ks = points.iterator(); ks.hasNext(); ) {
+                Point next = ks.next();
+                if (next != null && next.getChooseTime() != -1) {
+                    sum += next.getChooseTime();
+                }
+            }
+            if (sum > steadyTime) {
+                for (Iterator<Point> ks = points.iterator(); ks.hasNext(); ) {
+                    Point next = ks.next();
+                    next.setSteady(true);
+                }
+            }
+        }
     }
 
     @Override
     public void checkPlanRedundant(int minorTolerance) {
+        updateSteadyStatus();
         for (String sql : parameterSqlMap.keySet()) {
             mergePoint(parameterSqlMap.get(sql));
             List<Point> toRemove = Lists.newArrayList();
-            for (Point p : parameterSqlMap.get(sql)) {
-                if (p.getUnuseTermTime() >= UNUSE_ELIMITE_TIME) {
-                    toRemove.add(p);
-                }
-                if (!(isTolerated(p.getRowcountExpected(), p.getMaxRowcountExpected(), minorTolerance) && isTolerated(
-                    p.getRowcountExpected(), p.getMinRowcountExpected(), minorTolerance))) {
-                    if (!PlanManagerUtil.isSteady(p)) {
-                        p.setInflationNarrow(p.getInflationNarrow() * INFLATION_FACTOR);
-                        p.setMaxRowcountExpected(p.getRowcountExpected());
-                        p.setMinRowcountExpected(p.getRowcountExpected());
-                    }
-                }
-            }
 
             /**
              * cal choose rate

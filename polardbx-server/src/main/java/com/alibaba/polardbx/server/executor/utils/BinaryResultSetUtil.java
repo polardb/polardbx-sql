@@ -63,14 +63,14 @@ public class BinaryResultSetUtil {
         boolean existNext = rs.next();
 
         java.sql.ResultSetMetaData metaData = rs.getMetaData();
-        int colunmCount = metaData.getColumnCount();
+        int columnCount = metaData.getColumnCount();
         boolean existUndecidedType = false;
         Set<Integer> undecidedTypeIndexs = new HashSet<Integer>();
 
         synchronized (packet) {
             if (packet.resulthead == null) {
                 packet.resulthead = new BinaryResultSetHeaderPacket();
-                packet.resulthead.column_count = colunmCount;
+                packet.resulthead.column_count = columnCount;
             }
 
             int charsetIndex = CharsetMapping.getCollationIndexForJavaEncoding(charset, null);
@@ -78,10 +78,10 @@ public class BinaryResultSetUtil {
             // CharsetMapping.getCharsetIndexForMysqlEncodingName(charset);
             String javaCharset = CharsetUtil.getJavaCharset(charset);
 
-            if (colunmCount > 0) {
+            if (columnCount > 0) {
                 if (packet.fieldPackets == null) {
-                    packet.fieldPackets = new FieldPacket[colunmCount];
-                    for (int i = 0; i < colunmCount; i++) {
+                    packet.fieldPackets = new FieldPacket[columnCount];
+                    for (int i = 0; i < columnCount; i++) {
                         int j = i + 1;
                         packet.fieldPackets[i] = new FieldPacket();
                         while (metaData instanceof ResultSetMetaDataProxy) {
@@ -160,8 +160,8 @@ public class BinaryResultSetUtil {
         List<BinaryRowDataPacket> lazyRaws = new ArrayList<BinaryRowDataPacket>();
         if (existNext) {
             do {
-                BinaryRowDataPacket row = new BinaryRowDataMultiPacket(colunmCount);
-                for (int i = 0; i < colunmCount; i++) {
+                BinaryRowDataPacket row = new BinaryRowDataMultiPacket(columnCount);
+                for (int i = 0; i < columnCount; i++) {
                     int j = i + 1;
                     if (existUndecidedType && undecidedTypeIndexs.contains(i)) {
                         // 根据数据的类型，重新设置下type

@@ -16,11 +16,19 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
@@ -30,6 +38,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
 
+import java.sql.Connection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +59,7 @@ public class AlterTableGroupBaseBuilder {
         new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected Map<String, Map<String, Set<String>>> sourceTablesTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected Map<String, Map<String, Set<String>>> targetTablesTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    protected Map<String, List<String>> newPhysicalTables = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     /**
      * orderedTargetTablesLocations is used to store all the locations of target new added phy tables
@@ -79,7 +89,9 @@ public class AlterTableGroupBaseBuilder {
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
         List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getTargetGroupDetailInfoExRecords();
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
+        List<TablePartRecordInfoContext> allTables = tableGroupConfig.getAllTables();
+        generateNewPhysicalTableNames(allTables);
+        for (TablePartRecordInfoContext tablePartRecordInfoContext : allTables) {
             String tableName = tablePartRecordInfoContext.getTableName();
             AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
                 createAlterTableGroupItemPreparedData(tableName, groupDetailInfoExRecords);
@@ -131,11 +143,25 @@ public class AlterTableGroupBaseBuilder {
         alterTableGroupItemPreparedData.setDefaultPartitionSpec(partitionSpec);
         alterTableGroupItemPreparedData.setGroupDetailInfoExRecords(groupDetailInfoExRecords);
         alterTableGroupItemPreparedData.setTableGroupName(preparedData.getTableGroupName());
-        alterTableGroupItemPreparedData.setNewPhyTables(getNewPhyTables(partitionInfo));
+        alterTableGroupItemPreparedData.setNewPhyTables(getNewPhyTables(tableName));
         alterTableGroupItemPreparedData.setOldPartitionNames(preparedData.getOldPartitionNames());
         alterTableGroupItemPreparedData.setNewPartitionNames(preparedData.getNewPartitionNames());
         alterTableGroupItemPreparedData.setInvisiblePartitionGroups(preparedData.getInvisiblePartitionGroups());
         alterTableGroupItemPreparedData.setTaskType(preparedData.getTaskType());
+        String primaryTableName;
+        TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
+        if (tableMeta.isGsi()) {
+            //all the gsi table version change will be behavior by primary table
+            assert
+                tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+            primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+        } else {
+            primaryTableName = tableName;
+        }
+        alterTableGroupItemPreparedData.setPrimaryTableName(primaryTableName);
+        alterTableGroupItemPreparedData
+            .setTableVersion(
+                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName).getVersion());
 
         return alterTableGroupItemPreparedData;
     }
@@ -152,7 +178,42 @@ public class AlterTableGroupBaseBuilder {
         return executionContext;
     }
 
-    public List<String> getNewPhyTables(PartitionInfo partitionInfo) {
-        return PartitionInfoUtil.getNextNPhyTableNames(partitionInfo, preparedData.getNewPartitionNames().size());
+    public List<String> getNewPhyTables(String tableName) {
+        return newPhysicalTables.get(tableName);
+    }
+
+    protected void generateNewPhysicalTableNames(List<TablePartRecordInfoContext> allLogicalTables) {
+        final String schemaName = preparedData.getSchemaName();
+        TableGroupRecord tableGroupRecord;
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            try {
+                conn.setAutoCommit(false);
+                TableGroupAccessor accessor = new TableGroupAccessor();
+                accessor.setConnection(conn);
+                List<TableGroupRecord> tableGroupRecords = accessor
+                    .getTableGroupsBySchemaAndName(schemaName, preparedData.getTableGroupName(), true);
+                assert tableGroupRecords.size() == 1;
+                tableGroupRecord = tableGroupRecords.get(0);
+
+                int[] minPostfix = new int[1];
+                int maxPostfix = 1;
+                for (TablePartRecordInfoContext tablePartRecordInfoContext : allLogicalTables) {
+                    minPostfix[0] = tableGroupRecord.getInited();
+                    String tableName = tablePartRecordInfoContext.getTableName();
+                    PartitionInfo partitionInfo =
+                        OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
+                    List<String> physicalTables = PartitionInfoUtil
+                        .getNextNPhyTableNames(partitionInfo, preparedData.getNewPartitionNames().size(), minPostfix);
+                    maxPostfix = Math.max(minPostfix[0], maxPostfix);
+                    newPhysicalTables.put(tableName, physicalTables);
+                }
+                accessor.updateInitedById(tableGroupRecord.getId(), maxPostfix);
+                conn.commit();
+            } finally {
+                MetaDbUtil.endTransaction(conn, PartitionNameUtil.LOGGER);
+            }
+        } catch (Throwable e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
+        }
     }
 }

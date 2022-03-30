@@ -49,10 +49,15 @@ public class TableGroupRecord implements SystemTableRecord {
     public String tg_name;
     public String locality;
     public String primary_zone;
-    public int inited;
     public Long meta_version;
     public int manual_create;
     public int tg_type = TG_TYPE_PARTITION_TBL_TG;
+
+    /*
+    use as the partition postfix when auto-genetate the partition_name or physical
+    table_name, we use the select...for update to exclusively access/update this filed
+    */
+    private int inited;
 
     @Override
     public TableGroupRecord fill(ResultSet rs) throws SQLException {
@@ -65,6 +70,7 @@ public class TableGroupRecord implements SystemTableRecord {
         this.manual_create = rs.getInt("manual_create");
         this.tg_type = rs.getInt("tg_type");
         this.locality = rs.getString("locality");
+        this.inited = rs.getInt("inited");
         return this;
     }
 
@@ -150,6 +156,10 @@ public class TableGroupRecord implements SystemTableRecord {
 
     public int getTg_type() {
         return tg_type;
+    }
+
+    public boolean isBroadCastTableGroup() {
+        return tg_type==TG_TYPE_BROADCAST_TBL_TG;
     }
 
     public void setTg_type(int tg_type) {

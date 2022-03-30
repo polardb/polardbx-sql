@@ -213,6 +213,6 @@
 
   plan: |
     BKAJoin(condition="k2 = k1", type="inner")
-      LogicalView(tables="test_index[p3]", sql="SELECT `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (`id` = 1)")
+      LogicalView(tables="test_index[p4]", sql="SELECT `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (`id` = 1)")
       Gather(concurrent=true)
         LogicalView(tables="test_index[p1,p2,p3,p4]", shardCount=4, sql="SELECT `k2`, `value` FROM `test_index` AS `test_index` WHERE (`k2` IN (...))")

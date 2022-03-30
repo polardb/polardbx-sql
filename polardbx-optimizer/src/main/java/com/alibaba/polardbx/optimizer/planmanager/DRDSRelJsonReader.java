@@ -21,6 +21,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
@@ -37,6 +38,7 @@ import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.AggregateCall;
+import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.core.GroupConcatAggregateCall;
 import org.apache.calcite.rel.core.Window;
 import org.apache.calcite.rel.type.RelDataType;
@@ -61,11 +63,13 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -474,6 +478,18 @@ public class DRDSRelJsonReader {
                 }
                 return builder.build();
             }
+
+            public ImmutableSet<CorrelationId> getVariablesSet() {
+                if (jsonRel.get("variablesSet") != null) {
+                    Set<CorrelationId> correlationIdSet = new HashSet<>();
+                    for (Object id : (List)jsonRel.get("variablesSet")) {
+                        correlationIdSet.add(new CorrelationId(((Number)id).intValue()));
+                    }
+                    return ImmutableSet.copyOf(correlationIdSet);
+                } else {
+                    return ImmutableSet.of();
+                }
+            }
         };
         try {
             final RelNode rel = (RelNode) constructor.newInstance(input);
@@ -759,6 +775,18 @@ public class DRDSRelJsonReader {
                     builder.add((RexDynamicParam) relJson.toRex(this, jsonValue));
                 }
                 return builder.build();
+            }
+
+            public ImmutableSet<CorrelationId> getVariablesSet() {
+                if (jsonRel.get("variablesSet") != null) {
+                    Set<CorrelationId> correlationIdSet = new HashSet<>();
+                    for (Object id : (List)jsonRel.get("variablesSet")) {
+                        correlationIdSet.add(new CorrelationId(((Number)id).intValue()));
+                    }
+                    return ImmutableSet.copyOf(correlationIdSet);
+                } else {
+                    return ImmutableSet.of();
+                }
             }
         };
     }

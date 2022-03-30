@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.index;
 
 import org.apache.calcite.plan.RelOptCost;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -29,9 +31,19 @@ public class Configuration {
 
     private RelOptCost afterCost;
 
+    private Map<String, Set<String>> broadcastTable;
+
+    public Configuration(Set<CandidateIndex> candidateIndexSet, RelOptCost afterCost,
+                         Map<String, Set<String>> broadcastTable) {
+        this.candidateIndexSet = candidateIndexSet;
+        this.afterCost = afterCost;
+        this.broadcastTable = broadcastTable;
+    }
+
     public Configuration(Set<CandidateIndex> candidateIndexSet, RelOptCost afterCost) {
         this.candidateIndexSet = candidateIndexSet;
         this.afterCost = afterCost;
+        this.broadcastTable = new HashMap<>();
     }
 
     public Set<CandidateIndex> getCandidateIndexSet() {
@@ -40,6 +52,25 @@ public class Configuration {
 
     public RelOptCost getAfterCost() {
         return afterCost;
+    }
+
+    public void setAfterCost(RelOptCost afterCost) {
+        this.afterCost = afterCost;
+    }
+
+    public Map<String, Set<String>> getBroadcastTable() {
+        return broadcastTable;
+    }
+
+    public String broadcastSql() {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, Set<String>> entry : broadcastTable.entrySet()) {
+            String schema = entry.getKey();
+            for (String table : entry.getValue()) {
+                sb.append("ALTER TABLE ").append(schema).append(".").append(table).append(" BROADCAST; ");
+            }
+        }
+        return sb.toString();
     }
 
     public int totalIndexLength() {

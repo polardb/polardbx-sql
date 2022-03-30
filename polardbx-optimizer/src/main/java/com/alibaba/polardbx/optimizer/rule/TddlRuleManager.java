@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.rule;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -41,7 +38,6 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.biv.MockDataManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -50,6 +46,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -59,6 +56,9 @@ import com.alibaba.polardbx.rule.exception.RouteCompareDiffException;
 import com.alibaba.polardbx.rule.model.MatcherResult;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -280,6 +280,19 @@ public class TddlRuleManager extends AbstractLifecycle {
         return table != null ? table.isBroadcast() : false;// 没找到表规则，默认为单库，所以不是广播表
     }
 
+    public List<String> getActualSharedColumns(String logicTable) {
+        if (partitionInfoManager.isNewPartDbTable(logicTable)) {
+            if (partitionInfoManager.isPartitionedTable(logicTable)) {
+                PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(logicTable);
+                return PartitionInfoUtil.getActualPartitionColumns(partInfo);
+            } else {
+                return new ArrayList<>();
+            }
+        } else {
+            return getSharedColumns(logicTable);
+        }
+    }
+
     public List<String> getSharedColumns(String logicTable) {
 
         if (partitionInfoManager.isNewPartDbTable(logicTable)) {
@@ -301,6 +314,24 @@ public class TddlRuleManager extends AbstractLifecycle {
         }
         return shardColumns;
         //return table != null ? table.getShardColumns() : new ArrayList<String>();// 没找到表规则，默认为单库
+    }
+
+    public List<String> getSharedColumnsForGsi(String logicTable) {
+
+        if (partitionInfoManager.isNewPartDbTable(logicTable)) {
+            PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(logicTable);
+            return partInfo.getPartitionColumns();
+        }
+
+        TableRule tableRule = getTableRule(logicTable);
+
+        List<String> shardColumns;
+        if (!(TddlRuleManager.isSingleTable(tableRule) || tableRule.isBroadcast())) {
+            shardColumns = tableRule.getShardColumns();
+        } else {
+            shardColumns = new ArrayList<>();
+        }
+        return shardColumns;
     }
 
     public TableRule getTableRule(String logicTable) {
@@ -777,19 +808,20 @@ public class TddlRuleManager extends AbstractLifecycle {
             if (c == null) {
                 return null;
             }
-            Object paramVal = c.getValue();
+            Comparative clone = (Comparative) c.clone();
+            Object paramVal = clone.getValue();
             DataType dataType = dataTypeMap.get(colName);
             // Only TIMESTAMP/DATETIME type need correct timezone.
             if (dataType instanceof TimestampType) {
                 paramVal = correctTimeZoneForParamVal(tableRule, colName, dataType, calcParams, paramVal);
             }
             if (paramVal instanceof RexDynamicParam) {
-                c.setValue(dataType.convertJavaFrom(((RexDynamicParam) paramVal).getValue()));
+                clone.setValue(dataType.convertJavaFrom(((RexDynamicParam) paramVal).getValue()));
             } else {
-                c.setValue(dataType.convertJavaFrom(paramVal));
+                clone.setValue(dataType.convertJavaFrom(paramVal));
             }
 
-            return c;
+            return clone;
         } else {
             /**
              * 用实际值替换参数

@@ -16,7 +16,10 @@
 
 package com.alibaba.polardbx.common.ddl.newengine;
 
+import com.google.common.collect.ImmutableMap;
+
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 
 public enum DdlState {
@@ -39,4 +42,46 @@ public enum DdlState {
 
     public static final Set<DdlState> ROLLBACK_PAUSED_POLICY_VALUES = EnumSet.of(ROLLBACK_PAUSED, ROLLBACK_RUNNING);
 
+    /**
+     * State transition that run a job
+     */
+    public static final Map<DdlState, DdlState> RECOVER_JOB_STATE_TRANSFER =
+        new ImmutableMap.Builder<DdlState, DdlState>()
+            .put(DdlState.QUEUED, DdlState.RUNNING)
+            .put(DdlState.PAUSED, DdlState.RUNNING)
+            .put(DdlState.RUNNING, DdlState.RUNNING)
+            .put(DdlState.COMPLETED, DdlState.COMPLETED)
+            .put(DdlState.ROLLBACK_PAUSED, DdlState.ROLLBACK_RUNNING)
+            .put(DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_RUNNING)
+            .put(DdlState.ROLLBACK_COMPLETED, DdlState.ROLLBACK_COMPLETED)
+            .build();
+
+    /**
+     * State transition that rollback a job
+     */
+    public static final Map<DdlState, DdlState> ROLLBACK_JOB_STATE_TRANSFER =
+        new ImmutableMap.Builder<DdlState, DdlState>()
+            .put(DdlState.QUEUED, DdlState.ROLLBACK_COMPLETED)
+            .put(DdlState.RUNNING, DdlState.ROLLBACK_RUNNING)
+            .put(DdlState.PAUSED, DdlState.ROLLBACK_RUNNING)
+            .put(DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_RUNNING)
+            .put(DdlState.ROLLBACK_PAUSED, DdlState.ROLLBACK_RUNNING)
+            .build();
+
+    /**
+     * State transition that pause a job
+     */
+    public static final Map<DdlState, DdlState> PAUSE_JOB_STATE_TRANSFER =
+        new ImmutableMap.Builder<DdlState, DdlState>()
+            .put(DdlState.RUNNING, DdlState.PAUSED)
+            .put(DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_PAUSED)
+            .build();
+
+    public static DdlState tryParse(String str, DdlState defaultState){
+        try {
+            return valueOf(str);
+        }catch (Exception e){
+            return defaultState;
+        }
+    }
 }

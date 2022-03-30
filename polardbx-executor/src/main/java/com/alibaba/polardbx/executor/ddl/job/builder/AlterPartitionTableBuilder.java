@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.builder;
 
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.rel.core.DDL;
@@ -26,6 +27,12 @@ public class AlterPartitionTableBuilder extends AlterTableBuilder {
 
     public AlterPartitionTableBuilder(DDL ddl, AlterTablePreparedData preparedData, ExecutionContext executionContext) {
         super(ddl, preparedData, executionContext);
+    }
+
+    public AlterPartitionTableBuilder(DDL ddl, AlterTablePreparedData preparedData,
+                                      LogicalAlterTable logicalAlterTable,
+                                      ExecutionContext executionContext) {
+        super(ddl, preparedData, logicalAlterTable, executionContext);
     }
 
     @Override

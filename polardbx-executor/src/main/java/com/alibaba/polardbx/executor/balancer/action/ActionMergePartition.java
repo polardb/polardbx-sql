@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.balancer.action;
 
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
@@ -81,12 +82,12 @@ public class ActionMergePartition implements BalanceAction {
     @Override
     public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
         String sql = genSQL();
-        return ActionUtils.convertToDDLJob(ec, sql);
+        return ActionUtils.convertToDelegatorJob(ec, schema, sql);
     }
 
     private String genSQL() {
-        String sourcePartitions = StringUtils.join(sourceNames, ",");
-        return String.format(SQL, tableGroupName, sourcePartitions, this.target);
+        String sourcePartitions = sourceNames.stream().map(TStringUtil::backQuote).collect(Collectors.joining(","));
+        return String.format(SQL, TStringUtil.backQuote(tableGroupName), sourcePartitions, this.target);
     }
 
     @Override

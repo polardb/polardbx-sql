@@ -28,8 +28,9 @@ import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 
 /**
+ * Implement `show ddl status` command
+ *
  * @author chenmo.cm
- * @date 2018/6/12 下午2:04
  */
 public class SqlShowDdlStatus extends SqlShow {
 
@@ -65,15 +66,8 @@ public class SqlShowDdlStatus extends SqlShow {
         public RelDataType deriveType(SqlValidator validator, SqlValidatorScope scope, SqlCall call) {
             final RelDataTypeFactory typeFactory = validator.getTypeFactory();
             List<RelDataTypeFieldImpl> columns = new LinkedList<>();
-            columns.add(new RelDataTypeFieldImpl("SOURCE", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("SOURCE_IP", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("PHASE", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("STATE", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("DRDS_NODE", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("RDS_DB", 5, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("DDL_STMT", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("START_TIME", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("ELAPSED_TIME", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("METRIC", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("VALUE", 0, typeFactory.createSqlType(SqlTypeName.INTEGER)));
 
             return typeFactory.createStructType(columns);
         }

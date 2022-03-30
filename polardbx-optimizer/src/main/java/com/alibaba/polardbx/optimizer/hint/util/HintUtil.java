@@ -16,21 +16,23 @@
 
 package com.alibaba.polardbx.optimizer.hint.util;
 
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdQueryBlockName;
 import com.alibaba.polardbx.optimizer.hint.operator.HintPushdownOperator;
 import com.alibaba.polardbx.optimizer.parse.HintParser;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.sharding.DataNodeChooser;
 import com.alibaba.polardbx.rule.model.TargetDB;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 
@@ -273,6 +275,25 @@ public class HintUtil {
                 result.add(group.getName());
             }
         }
+        return result;
+    }
+
+    /**
+     * Get all groups contains broadcast table, except scale-in and scale-out groups
+     */
+    public static List<String> allGroupsWithBroadcastTable(String schema) {
+        final List<Group> allGroups = OptimizerContext.getContext(schema).getMatrix().getGroups();
+        final DbGroupInfoManager dbGroupInfoManager = DbGroupInfoManager.getInstance();
+
+        List<String> result = new LinkedList<>();
+        for (Group group : allGroups) {
+            DbGroupInfoRecord info = dbGroupInfoManager.queryGroupInfo(schema, group.getName());
+
+            if (GroupType.MYSQL_JDBC == group.getType() && info != null && info.isNormal()) {
+                result.add(group.getName());
+            }
+        }
+
         return result;
     }
 

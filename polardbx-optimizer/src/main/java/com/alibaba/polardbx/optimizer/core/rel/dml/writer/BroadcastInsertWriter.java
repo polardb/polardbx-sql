@@ -147,9 +147,4 @@ public class BroadcastInsertWriter extends InsertWriter implements DistinctWrite
         return getInput(ec);
     }
 
-    @Override
-    public TableRule getTableRule() {
-        return tableRule;
-    }
-
 }

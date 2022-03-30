@@ -82,8 +82,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
         .newSingleThreadScheduledExecutor(new NamedThreadFactory("DataId-Scanner-Executor", true));
     protected final ScheduledExecutorService dataIdNotifyTaskExecutor = Executors
         .newSingleThreadScheduledExecutor(new NamedThreadFactory("DataId-Notifier-Executor", true));
-    protected BlockingQueue<DataIdContext> completeListenTaskQueue =
-        new ArrayBlockingQueue<DataIdContext>(MAX_QUEUE_LEN);
+    protected BlockingQueue<DataIdContext> completeListenTaskQueue = new ArrayBlockingQueue<DataIdContext>(MAX_QUEUE_LEN * 10);
     protected final ScheduledExecutorService cleanTaskExecutor = Executors
         .newSingleThreadScheduledExecutor(new NamedThreadFactory("DataId-Scanner-Executor", true));
 
@@ -182,13 +181,25 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
                             if (dataIdContext.currOpVersion < newOpVersion) {
                                 if (dataIdContext.dataIdListener != null) {
                                     OpVersionChangeEvent lastChangeEvent = dataIdContext.changeEventQueue.peekLast();
+                                    int queueSize = dataIdContext.changeEventQueue.size();
                                     boolean needAddNewEvent = true;
-                                    if (lastChangeEvent != null && lastChangeEvent.opVersion >= newOpVersion) {
+                                    boolean lastEventOpVerHigherNewOpVer = lastChangeEvent == null ? false : lastChangeEvent.opVersion >= newOpVersion;
+                                    if (lastChangeEvent != null && lastEventOpVerHigherNewOpVer) {
                                         needAddNewEvent = false;
                                     }
                                     if (needAddNewEvent) {
+                                        boolean needRemoveLastChangeEvent = false;
+                                        if (queueSize > 1 && !lastEventOpVerHigherNewOpVer) {
+                                            needRemoveLastChangeEvent = true;
+                                        }
+                                        if (needRemoveLastChangeEvent) {
+                                            /**
+                                             * remove the last event because new opVer is higher
+                                             */
+                                            dataIdContext.changeEventQueue.removeLast();
+                                        }
                                         dataIdContext.changeEventQueue
-                                            .add(new OpVersionChangeEvent(dataId, newOpVersion, gmtModified));
+                                            .offerLast(new OpVersionChangeEvent(dataId, newOpVersion, gmtModified));
                                     }
                                 }
                             }
@@ -276,8 +287,11 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
                 boolean result = handleListenerAndRefreshOpVersion(dataId, opVersionToBeRefresh, false);
                 if (result) {
                     // clear op event
-                    dataIdContext.changeEventQueue.poll();
+                    synchronized (dataIdContext) {
+                        dataIdContext.changeEventQueue.pollFirst();
+                    }
                     completeListenTaskQueue.add(dataIdContext);
+
                 }
                 return result;
             } catch (Throwable ex) {

@@ -38,8 +38,8 @@ public class SearchDatumHasher {
 
     protected static final long INIT_HASH_VALUE_1 = 1L;
     protected static final long INIT_HASH_VALUE_2 = 4L;
-    protected static final long MAX_HASH_VALUE = Long.MAX_VALUE - 1;
-    protected static final long MIN_HASH_VALUE = Long.MIN_VALUE;
+    public static final long MAX_HASH_VALUE = Long.MAX_VALUE - 1;
+    public static final long MIN_HASH_VALUE = Long.MIN_VALUE + 1;
 
     /**
      * The return type of predicate expr of part key i
@@ -109,16 +109,16 @@ public class SearchDatumHasher {
         }
     }
 
-    public long calcHashCode(SearchDatumInfo datum) {
-        return calcHashCode(null, datum);
+    public long calcHashCodeForHashStrategy(SearchDatumInfo datum) {
+        return calcHashCodeForHashStrategy(null, datum);
     }
 
-    public long calcHashCode(ExecutionContext ec, SearchDatumInfo searchValDatum) {
+    public long calcHashCodeForHashStrategy(ExecutionContext ec, SearchDatumInfo searchValDatum) {
 
         /**
          * Generate the hashcode according to original value
          */
-        long multiFiledHashCode = calcMultiFieldsHashCode(searchValDatum);
+        long multiFiledHashCode = calcMultiFiledHashCodeForKey(searchValDatum);
 
         /**
          * Use the hashcode generated above to build the hash value in search space
@@ -127,7 +127,13 @@ public class SearchDatumHasher {
         return finalHashVal;
     }
 
-    public Long[] calcHashCodeForKey(SearchDatumInfo searchValDatum) {
+    /**
+     * The hashCode of each col will be in the range [Long.MIN+1, Long.MAX-1]
+     *
+     * @param searchValDatum
+     * @return
+     */
+    public Long[] calcHashCodeForKeyStrategy(SearchDatumInfo searchValDatum) {
         Long[] finalHashCodeArr = new Long[searchValDatum.datumInfo.length];
         long[] seeds = new long[2];
         for (int i = 0; i < searchValDatum.datumInfo.length; i++) {
@@ -166,7 +172,7 @@ public class SearchDatumHasher {
         long finalHashVal = MurmurHashUtils.murmurHashWithZeroSeed(multiFiledHashCode);
 
         /**
-         * Make sure that all the hashCode are less than Long.MAX_VALUE because 
+         * Make sure that all the hashCode are in the ragne [Long.MIN_VALUE+1,Long.MAX_VALUE-1] because
          * the upBound of  the last partition in consistency hash must be Long.MAX_VALUE ,
          * and all the hash value must be less than Long.MAX_VALUE.
          *
@@ -184,14 +190,17 @@ public class SearchDatumHasher {
         if (finalHashVal == Long.MAX_VALUE) {
             finalHashVal = MAX_HASH_VALUE;
         }
+        if (finalHashVal == Long.MIN_VALUE) {
+            finalHashVal = MIN_HASH_VALUE;
+        }
         return finalHashVal;
     }
 
-    protected long calcHashCodeForHash(SearchDatumInfo searchValDatum) {
-        PartitionBoundVal bndVal = searchValDatum.datumInfo[0];
-        PartitionField field = bndVal.getValue();
-        return field.longValue();
-    }
+//    protected long calcHashCodeForHash(SearchDatumInfo searchValDatum) {
+//        PartitionBoundVal bndVal = searchValDatum.datumInfo[0];
+//        PartitionField field = bndVal.getValue();
+//        return field.longValue();
+//    }
 
     protected long calcOneFiledHashCodeForKey(long[] seeds, PartitionBoundVal bndVal) {
         PartitionField field = bndVal.getValue();
@@ -213,13 +222,5 @@ public class SearchDatumHasher {
         long outputHashCode = seeds[0];
         return outputHashCode;
 
-    }
-
-    protected long calcMultiFieldsHashCode(SearchDatumInfo searchValDatum) {
-        if (!isKeyPartition) {
-            return calcHashCodeForHash(searchValDatum);
-        } else {
-            return calcMultiFiledHashCodeForKey(searchValDatum);
-        }
     }
 }

@@ -68,6 +68,12 @@ public class PolarPrivilegeUtils {
         }
     }
 
+    public static void checkPrivilege(String db, String tb, PrivilegePoint priv, ExecutionContext executionContext){
+        if (executionContext.isPrivilegeMode()) {
+            verifyPrivilege(db, tb, priv, executionContext);
+        }
+    }
+
     private static void verifyPrivilege(ExecutionPlan executionPlan, ExecutionContext executionContext) {
         // verify privilege
         if (executionPlan.getPrivilegeVerifyItems() != null) {

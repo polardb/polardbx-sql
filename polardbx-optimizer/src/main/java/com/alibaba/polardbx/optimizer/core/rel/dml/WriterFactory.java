@@ -47,6 +47,9 @@ import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicateBroadcastInse
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicateBroadcastInsertWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicateBroadcastModifyWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicateDistinctInsertWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicateSingleInsertGsiWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicateSingleInsertWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicateSingleModifyWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicationInsertGsiWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicationInsertWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplicationShardingModifyWriter;
@@ -195,7 +198,7 @@ public class WriterFactory {
         final List<ColumnMeta> updateSkMetas = skNames.stream().map(targetMeta::getColumn).collect(Collectors.toList());
 
         final List<String> conditionColumns = new ArrayList<>();
-        final String indexName = getUniqueConditionColumns(targetMeta, conditionColumns, () -> {
+        final String indexName = getUniqueConditionColumns(targetMeta, conditionColumns, ec, () -> {
             throw new TddlRuntimeException(ERR_PK_WRITER_ON_TABLE_WITHOUT_PK, "Update", targetMeta.getTableName());
         });
 
@@ -300,7 +303,7 @@ public class WriterFactory {
         final List<ColumnMeta> deleteSkMetas = skNames.stream().map(targetMeta::getColumn).collect(Collectors.toList());
 
         final List<String> conditionColumns = new ArrayList<>();
-        final String indexName = getUniqueConditionColumns(targetMeta, conditionColumns, () -> {
+        final String indexName = getUniqueConditionColumns(targetMeta, conditionColumns, ec, () -> {
             throw new TddlRuntimeException(ERR_PK_WRITER_ON_TABLE_WITHOUT_PK, "Delete", targetMeta.getTableName());
         });
 
@@ -482,10 +485,10 @@ public class WriterFactory {
 
         if (isBroadcast) {
             return createBroadcastModifyWriter(update, pkNames, mappingBuilder, updateSourceMapping, offset,
-                updateSourceSize, tableRule, ec);
+                updateSourceSize, ec);
         } else if (isSingle) {
             return createSingleModifyWriter(update, pkNames, mappingBuilder, updateSourceMapping, offset,
-                updateSourceSize, tableRule);
+                updateSourceSize, ec);
         }
         throw new TddlNestableRuntimeException("unknown table type");
     }
@@ -597,10 +600,10 @@ public class WriterFactory {
 
         if (isBroadcast) {
             return createBroadcastModifyWriter(delete, pkNames, mappingBuilder, ImmutableList.of(), 0,
-                mappingBuilder.getTargetSize(), tableRule, ec);
+                mappingBuilder.getTargetSize(), ec);
         } else if (isSingle) {
             return createSingleModifyWriter(delete, pkNames, mappingBuilder, ImmutableList.of(), 0,
-                mappingBuilder.getTargetSize(), tableRule);
+                mappingBuilder.getTargetSize(), ec);
         }
         throw new TddlNestableRuntimeException("unknown table type");
     }
@@ -824,7 +827,7 @@ public class WriterFactory {
                                                                      MappingBuilder mappingBuilder,
                                                                      List<Integer> updateSourceMapping,
                                                                      int updateSourceOffset, int updateSourceSize,
-                                                                     TableRule tableRule, ExecutionContext ec) {
+                                                                     ExecutionContext ec) {
         // Build column mapping
         final Mapping pkMapping = mappingBuilder.source(pkNames).buildMapping();
         final Mapping deduplicateMapping = pkMapping;
@@ -843,16 +846,15 @@ public class WriterFactory {
         return isNeedGenReplicaPlan ?
             new ReplicateBroadcastModifyWriter(modify.getTable(), modify, pkMapping, updateSetMapping,
                 deduplicateMapping,
-                tableRule, tableMeta) :
-            new BroadcastModifyWriter(modify.getTable(), modify, pkMapping, updateSetMapping, deduplicateMapping,
-                tableRule);
+                tableMeta) :
+            new BroadcastModifyWriter(modify.getTable(), modify, pkMapping, updateSetMapping, deduplicateMapping);
     }
 
     private static SingleModifyWriter createSingleModifyWriter(LogicalModify modify, List<String> pkNames,
                                                                MappingBuilder mappingBuilder,
                                                                List<Integer> updateSourceMapping,
                                                                int updateSourceOffset, int updateSourceSize,
-                                                               TableRule tableRule) {
+                                                               ExecutionContext ec) {
         // Build column mapping
         final Mapping pkMapping = mappingBuilder.source(pkNames).buildMapping();
         final Mapping deduplicateMapping = pkMapping;
@@ -863,9 +865,17 @@ public class WriterFactory {
                 updateSourceMapping.stream().map(i -> updateSourceOffset + i).collect(Collectors.toList());
             updateSetMapping = Mappings.source(withOffset, updateSourceSize);
         }
+        final Pair<String, String> targetSchemaTable = RelUtils.getQualifiedTableName(modify.getTable());
+        final String targetSchema = targetSchemaTable.left;
+        final String targetTableName = targetSchemaTable.right;
+        TableMeta tableMeta = ec.getSchemaManager(targetSchema).getTable(targetTableName);
 
-        return new SingleModifyWriter(modify.getTable(), modify, pkMapping, updateSetMapping, deduplicateMapping,
-            tableRule);
+        boolean isNeedGenReplicaPlan = ComplexTaskPlanUtils.canWrite(tableMeta);
+
+        return isNeedGenReplicaPlan ?
+            new ReplicateSingleModifyWriter(modify.getTable(), modify, pkMapping, updateSetMapping, deduplicateMapping,
+                tableMeta) :
+            new SingleModifyWriter(modify.getTable(), modify, pkMapping, updateSetMapping, deduplicateMapping);
     }
 
     private static ShardingModifyWriter createShardingModifyWriter(LogicalModify modify, List<String> pkNames,
@@ -1285,8 +1295,12 @@ public class WriterFactory {
                 new BroadcastInsertWriter(targetTable, insertOrReplace, null, tableRule));
         } else if (isSingle) {
             insertWriter = isGsi ?
-                new SingleInsertGsiWriter(targetTable, insertOrReplace, tableMeta, tableRule) :
-                new SingleInsertWriter(targetTable, insertOrReplace, tableMeta, tableRule);
+                (isNeedGenReplicaPlan ?
+                    new ReplicateSingleInsertGsiWriter(targetTable, insertOrReplace, tableMeta, tableRule) :
+                    new SingleInsertGsiWriter(targetTable, insertOrReplace, tableMeta, tableRule)) :
+                (isNeedGenReplicaPlan ?
+                    new ReplicateSingleInsertWriter(targetTable, insertOrReplace, tableMeta, tableRule) :
+                    new SingleInsertWriter(targetTable, insertOrReplace, tableMeta, tableRule));
         } else {
             insertWriter = isGsi ?
                 (isNeedGenReplicaPlan ? new ReplicationInsertGsiWriter(targetTable, insertOrReplace, tableMeta) :
@@ -1390,18 +1404,34 @@ public class WriterFactory {
      * Get index columns of primary key or unique key(if pk not exists)
      *
      * @param targetMeta Table meta
+     * @param ec
      * @return Primary/Unique keys
      */
-    public static String getUniqueConditionColumns(TableMeta
-                                                       targetMeta, List<String> outColumnNames,
-                                                   Supplier errorHandler) {
+    public static String getUniqueConditionColumns(TableMeta targetMeta, List<String> outColumnNames,
+                                                   ExecutionContext ec, Supplier errorHandler) {
         final AtomicReference<String> indexName = new AtomicReference<>("");
+
+        boolean pkCondition = false;
         if (targetMeta.isHasPrimaryKey()) {
             // Pk condition
             targetMeta.getPrimaryKey().stream().map(ColumnMeta::getName)
                 .forEach(outColumnNames::add);
             indexName.set("PRIMARY");
-        } else {
+            pkCondition = true;
+        } else if (targetMeta.isGsi()) {
+            // For GSI
+            final String primarySchemaName = targetMeta.getGsiTableMetaBean().gsiMetaBean.tableSchema;
+            final String primaryTableName = targetMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+            final TableMeta primaryTableMeta = ec.getSchemaManager(primarySchemaName).getTable(primaryTableName);
+            if (primaryTableMeta.isHasPrimaryKey()) {
+                // Pk condition without force index primary
+                primaryTableMeta.getPrimaryKey().stream().map(ColumnMeta::getName)
+                    .forEach(outColumnNames::add);
+                pkCondition = true;
+            }
+        }
+
+        if (!pkCondition) {
             // Uk condition
             targetMeta.getSecondaryIndexes().stream().filter(IndexMeta::isUniqueIndex).findFirst()
                 .ifPresent(im -> {

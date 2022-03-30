@@ -46,7 +46,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.units.Duration;
 import org.apache.calcite.rel.RelNode;
 

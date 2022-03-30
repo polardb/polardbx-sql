@@ -17,8 +17,11 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
+
+import java.util.List;
 
 /**
  * Created by luoyanxin.
@@ -26,14 +29,23 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
  * @author luoyanxin
  */
 public class DrdsAlterTableGroupExtractHotKey extends SQLObjectImpl implements SQLAlterTableGroupItem {
-    private SQLExpr hotKey;
+    private List<SQLExpr> hotKeys;
+    private SQLName hotKeyPartitionName;
 
-    public SQLExpr getHotKey() {
-        return hotKey;
+    public List<SQLExpr> getHotKeys() {
+        return hotKeys;
     }
 
-    public void setHotKey(SQLExpr hotKey) {
-        this.hotKey = hotKey;
+    public void setHotKeys(List<SQLExpr> hotKeys) {
+        this.hotKeys = hotKeys;
+    }
+
+    public SQLName getHotKeyPartitionName() {
+        return hotKeyPartitionName;
+    }
+
+    public void setHotKeyPartitionName(SQLName hotKeyPartitionName) {
+        this.hotKeyPartitionName = hotKeyPartitionName;
     }
 
     @Override

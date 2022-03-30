@@ -761,7 +761,6 @@ public class CBOUtil {
         builder.addGroupBegin();
         builder.addRuleInstance(MysqlJoinRule.INSTANCE);
         builder.addRuleInstance(MysqlSemiJoinRule.INSTANCE);
-        builder.addRuleInstance(MysqlSemiJoinRule.INSTANCE);
         builder.addRuleInstance(MysqlSortRule.INSTANCE);
         builder.addRuleInstance(MysqlAggRule.INSTANCE);
         builder.addRuleInstance(MysqlCorrelateRule.INSTANCE);

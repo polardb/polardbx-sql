@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.server.conn;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.config.SchemaConfig;
-import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
@@ -27,6 +25,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
@@ -43,6 +42,7 @@ import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.server.ServerConnection;
 
 import java.sql.Array;
 import java.sql.Blob;
@@ -84,6 +84,9 @@ public class InnerConnection implements Connection {
     private final Object mdlContextLock;
 
     private volatile Long txId = 0L;
+    private Long sqlId = 0L;
+    private Long phySqlId = 0L;
+    private String traceId = null;
     private volatile boolean autoCommit = true;
 
     public InnerConnection() throws SQLException {
@@ -125,17 +128,19 @@ public class InnerConnection implements Connection {
     }
 
     protected Object executeSql(String sql, List<Pair<Integer, ParameterContext>> params) throws SQLException {
-        genTxId();
+        genTxIdAndTraceId();
+        CobarServer.getInstance().getServerExecutor().initTraceStats(traceId);
 
         // 设置TrxPolicy & ExecutionContext信息
         connection.setTrxPolicy(ITransactionPolicy.TSO);
         connection.getExecutionContext().setClientIp("127.0.0.1");
         connection.getExecutionContext().setConnId(connection.getId());
         connection.getExecutionContext().setTxId(txId);
-        connection.getExecutionContext().setTraceId(null);
-        connection.getExecutionContext().setPhySqlId(0L);
+        connection.getExecutionContext().setTraceId(traceId);
+        connection.getExecutionContext().setPhySqlId(phySqlId);
         connection.getExecutionContext().setSchemaName(schemaName);
         connection.getExecutionContext().renewMemoryPoolHolder();
+        connection.getExecutionContext().setInternalSystemSql(false);
 
         // 变量定义
         Object result = null;
@@ -189,6 +194,13 @@ public class InnerConnection implements Connection {
             }
         }
 
+        try {
+            CobarServer.getInstance().getServerExecutor().closeByTraceId(traceId);
+            CobarServer.getInstance().getServerExecutor().waitByTraceId(traceId);
+        } catch (Throwable ex) {
+            logger.error("Interrupted unexpectedly for " + ec.getTraceId(), ex);
+        }
+
         // Checking the current trans obj, If it's changing, A DDL
         // maybe execute and committing the previous trans.
         if (!autoCommit && trx != null) {
@@ -223,15 +235,26 @@ public class InnerConnection implements Connection {
         }
     }
 
-    private void genTxId() {
+    private void genTxIdAndTraceId() {
         IdGenerator traceIdGen = TrxIdGenerator.getInstance().getIdGenerator();
+        StringBuilder sb = new StringBuilder();
+
         if (this.autoCommit) {
             this.txId = traceIdGen.nextId();
+            this.sqlId = 0L;
+            sb.append(Long.toHexString(txId));
         } else {
             if (this.txId == null) {
                 this.txId = traceIdGen.nextId();
+                this.sqlId = 0L;
             }
+
+            this.sqlId++;
+            sb.append(Long.toHexString(txId)).append("-").append(this.sqlId);
         }
+
+        this.phySqlId = 0L;
+        this.traceId = sb.toString();
     }
 
     private TResultSet buildResultSet(TResultSet resultSet) {

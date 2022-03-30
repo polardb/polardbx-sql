@@ -22,25 +22,17 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
-import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -50,13 +42,12 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.optimizer.partition.ListBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.MultiValuePartitionBoundSpec;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.RangeBoundSpec;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
@@ -64,6 +55,7 @@ import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFu
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.utils.KeyWordsUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
@@ -74,25 +66,23 @@ import org.apache.calcite.sql.SqlAlterTableGroupMergePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
+import org.apache.calcite.sql.SqlAlterTableGroupSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
 
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -115,7 +105,7 @@ public class AlterTableGroupUtils {
             TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
             if (tableGroupConfig == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_EXISTS,
-                    "tablegroup:" + tableGroupName + " is not exists");
+                    "tablegroup:" + tableGroupName + " doesn't exists");
             }
             if (tableGroupConfig.getTableCount() == 0) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
@@ -143,12 +133,11 @@ public class AlterTableGroupUtils {
                 alterTableGroupExtractPartitionCheck(sqlAlterTableGroup, tableGroupConfig, executionContext);
 
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableAddPartition) {
-                // TODO @chengbi
+                alterTableGroupAddPartitionCheck(tableGroupConfig, executionContext, (SqlAlterTableAddPartition) alterSpecifications.get(0));
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableDropPartition) {
                 alterTableGroupDropPartitionCheck(sqlAlterTableGroup, tableGroupConfig, executionContext);
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableTruncatePartition) {
-                // TODO @chengbi
-                
+                // ignore
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableModifyPartitionValues) {
 
                 final SqlAlterTableModifyPartitionValues sqlModifyListPartitionValues =
@@ -164,24 +153,38 @@ public class AlterTableGroupUtils {
                 sqlAlterTableGroupRenamePartition.setParent(sqlAlterTableGroup);
                 alterTableGroupRenamePartitionCheck(sqlAlterTableGroupRenamePartition, tableGroupConfig,
                     executionContext);
+            } else if (alterSpecifications.get(0) instanceof SqlAlterTableGroupSplitPartitionByHotValue) {
+                final SqlAlterTableGroupSplitPartitionByHotValue sqlAlterTableGroupSplitPartitionByHotValue =
+                    (SqlAlterTableGroupSplitPartitionByHotValue) alterSpecifications.get(0);
+                sqlAlterTableGroupSplitPartitionByHotValue.setParent(sqlAlterTableGroup);
+                alterTableGroupSplitPartitionByHotValueCheck(sqlAlterTableGroup,
+                    tableGroupConfig,
+                    executionContext);
             } else {
                 throw new UnsupportedOperationException(alterSpecifications.get(0).getClass().toString());
             }
-            
-            
+
         }
     }
 
     private static void alterTableGroupSplitPartitionCheck(SqlAlterTableGroup sqlAlterTableGroup,
                                                            TableGroupConfig tableGroupConfig,
                                                            ExecutionContext executionContext) {
-        final SchemaManager schemaManager = executionContext.getSchemaManager();
 
+        String schemaName = executionContext.getSchemaName();
+        final SchemaManager schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         List<SqlAlterSpecification> alterSpecifications = sqlAlterTableGroup.getAlters();
-
         String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
         TableMeta tableMeta = schemaManager.getTable(tableInCurrentGroup);
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+        String tgName = tableGroupRecord.getTg_name();
+
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+
+        if (partitionInfo.isSingleTable() || partitionInfo.isBroadcastTable()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "can't split the partition group for single/broadcast tables");
+        }
 
         final SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition =
             (SqlAlterTableGroupSplitPartition) (alterSpecifications.get(0));
@@ -236,7 +239,19 @@ public class AlterTableGroupUtils {
             SearchDatumComparator comparator = partitionInfo.getPartitionBy().getPruningSpaceComparator();
             PartitionIntFunction partIntFunc = partitionInfo.getPartitionBy().getPartIntFunc();
             int pos = 0;
+            List<SqlPartition> newPartitions = sqlAlterTableGroupSplitPartition.getNewPartitions();
             List<PartitionSpec> newPartitionSpecs = new ArrayList<>();
+            int actualPartColCnt = PartitionInfoUtil.getActualPartColumnMetasInfoForTableGroup(schemaName, tgName).size();
+            int newPrefixPartColCnt = PartitionInfoUtil.getNewPrefixPartColCntBySqlPartitionAst(Integer.MAX_VALUE/*ignore*/, actualPartColCnt, strategy, newPartitions);
+            if (strategy == PartitionStrategy.RANGE_COLUMNS || strategy == PartitionStrategy.KEY) {
+                /**
+                 * Check if is allowed to use newPrefixPartColCnt as neew partColCnt for all tables in table group
+                 */
+                if (!newPartitions.isEmpty()) {
+                    alterTableGroupCheckPartitionColumn(schemaName, tgName, newPrefixPartColCnt);
+                }
+            }
+
             for (SqlPartition sqlPartition : sqlAlterTableGroupSplitPartition.getNewPartitions()) {
                 if (sqlPartition.getValues() == null) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
@@ -252,10 +267,13 @@ public class AlterTableGroupUtils {
                         null,
                         sqlPartition,
                         partitionInfo.getPartitionBy().getStrategy(),
-                        pos++);
+                        pos++,
+                        newPrefixPartColCnt);
+
                 newPartitionSpecs.add(newSpec);
             }
             if (strategy == PartitionStrategy.RANGE || strategy == PartitionStrategy.RANGE_COLUMNS) {
+
                 SearchDatumInfo maxVal = splitPartitionSpec.getBoundSpec().getSingleDatum();
                 SearchDatumInfo minVal = SearchDatumInfo
                     .createMinValDatumInfo(partitionInfo.getPartitionBy().getPartitionFieldList().size());
@@ -294,61 +312,40 @@ public class AlterTableGroupUtils {
                     minVal = curPartitionVal;
                 }
             } else if (strategy == PartitionStrategy.LIST || strategy == PartitionStrategy.LIST_COLUMNS) {
-                Set<PartitionField> newPartsValSet = new TreeSet<>();
-                Set<PartitionField> oldPartsValSet = new TreeSet<>();
-                boolean oldPartHasNull = false;
-                boolean newPartHasNull = false;
+                Set<String> newPartsValSet = new HashSet<>();
+                Set<String> oldPartsValSet = new HashSet<>();
 
                 for (PartitionSpec partitionSpec : newPartitionSpecs) {
-                    Set<PartitionField> newPartValSet = new TreeSet<>();
+                    Set<String> newPartValSet = new HashSet<>();
 
                     for (SearchDatumInfo datum : partitionSpec.getBoundSpec().getMultiDatums()) {
-                        PartitionField partitionField = datum.getSingletonValue().getValue();
-                        if (partitionField.isNull()) {
-                            if (!newPartHasNull) {
-                                newPartHasNull = true;
-                            } else {
-                                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                                    "duplicate values:NULL");
-                            }
-                        } else {
-                            if (newPartValSet.contains(partitionField)) {
-                                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                                    "duplicate values:" + partitionField.toString());
-                            }
-                            newPartValSet.add(partitionField);
-                            if (newPartsValSet.contains(partitionField)) {
-                                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                                    "duplicate values:" + partitionField.toString());
-                            } else {
-                                newPartsValSet.add(partitionField);
-                            }
-                        }
-                    }
-                }
-                ListBoundSpec newListBoundSpec = (ListBoundSpec) splitPartitionSpec.getBoundSpec();
-                for (SearchDatumInfo oldDatum : newListBoundSpec.getMultiDatums()) {
-                    PartitionField oldVal = oldDatum.getSingletonValue().getValue();
-                    if (oldVal.isNull()) {
-                        oldPartHasNull = true;
-                    } else {
-                        oldPartsValSet.add(oldVal);
-                        if (!newPartsValSet.contains(oldVal)) {
+                        if (newPartValSet.contains(datum.toString())) {
                             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                                "missing " + oldVal.toString() + " in the new Partition spec");
+                                "duplicate values:" + datum.toString());
+                        }
+                        newPartValSet.add(datum.toString());
+                        if (newPartsValSet.contains(datum.toString())) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                                "duplicate values:" + datum.toString());
+                        } else {
+                            newPartsValSet.add(datum.toString());
                         }
                     }
                 }
-                for (PartitionField val : newPartsValSet) {
+                MultiValuePartitionBoundSpec newListBoundSpec =
+                    (MultiValuePartitionBoundSpec) splitPartitionSpec.getBoundSpec();
+                for (SearchDatumInfo oldDatum : newListBoundSpec.getMultiDatums()) {
+                    oldPartsValSet.add(oldDatum.toString());
+                    if (!newPartsValSet.contains(oldDatum.toString())) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                            "missing " + oldDatum.toString() + " in the new Partition spec");
+                    }
+                }
+                for (String val : newPartsValSet) {
                     if (!oldPartsValSet.contains(val)) {
                         throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                             "orphan " + val.toString() + " in the new Partition spec");
                     }
-                }
-                if (oldPartHasNull != newPartHasNull) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                        oldPartHasNull ? "missing NULL value in the new Partition spec" :
-                            "orphan NULL value in the new Partition spec");
                 }
             }
         } else {
@@ -359,6 +356,7 @@ public class AlterTableGroupUtils {
             }
         }
     }
+
 
     /**
      * Calculate split-at value, if not specified
@@ -425,12 +423,18 @@ public class AlterTableGroupUtils {
                 "merge single partition is meaningless");
         }
 
+        if (partitionInfo.isBroadcastTable()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "can't merge the partition group for broadcast tables");
+        }
+
         if (partRecord != null && !partitionsToBeMerged.contains(partRecord.partition_name)) {
             throw new TddlRuntimeException(ErrorCode.ERR_DUPLICATED_PARTITION_NAME,
                 "the partition group:" + targetPartitionName + " is exists");
         }
 
-        if (partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.LIST) {
+        if (partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.LIST
+            && partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.LIST_COLUMNS) {
             // check whether partitions to be merged are contiguous
             List<PartitionGroupRecord> mergeRecords = tableGroupConfig.getPartitionGroupRecords().stream()
                 .filter(o -> partitionsToBeMerged.contains(o.partition_name.toLowerCase()))
@@ -468,11 +472,19 @@ public class AlterTableGroupUtils {
         boolean oldPartitionsChange = false;
         List<SqlNode> oldPartitions = new ArrayList<>();
         String targetInstId = ((SqlIdentifier) sqlAlterTableGroupMovePartition.getTargetStorageId()).getSimple();
-        if (!ScaleOutPlanUtil.checkStorageIdExistence(targetInstId)) {
+        if (!ScaleOutPlanUtil.storageInstIsReady(targetInstId)) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 sqlAlterTableGroupMovePartition.getTargetStorageId().toString()
                     + " is not a valid storage instance id");
         }
+
+        final String metadbStorageInstId = ScaleOutPlanUtil.getMetaDbStorageInstId();
+        if (targetInstId.equalsIgnoreCase(metadbStorageInstId)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                " it's not allow to move normal partitions to the storage instance:" + metadbStorageInstId
+                    + ", which is only for hosting the metaDb");
+        }
+
         for (String partitionToBeMoved : partitionsToBeMoved) {
             PartitionGroupRecord partitionGroupRecord = tableGroupConfig.getPartitionGroupRecords().stream()
                 .filter(o -> partitionToBeMoved.equalsIgnoreCase(o.partition_name)).findFirst().orElse(null);
@@ -507,10 +519,55 @@ public class AlterTableGroupUtils {
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
         assert GeneralUtil.isNotEmpty(sqlAlterTableGroup.getPartRexInfoCtx());
 
-        if (partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.HASH) {
+        if (partitionInfo.isSingleTable() || partitionInfo.isBroadcastTable()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "can't execute the extract partition command for single/broadcast tables");
+        }
+
+        if (partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.HASH
+            && partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.KEY) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 "it's not allow to extract to partition by hot value for non-hash partition table");
         }
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+        alterTableGroupCheckPartitionColumn(tableGroupRecord.getSchema(), tableGroupRecord.getTg_name(), PartitionInfoUtil.FULL_PART_COL_COUNT);
+    }
+
+    private static void alterTableGroupSplitPartitionByHotValueCheck(SqlAlterTableGroup sqlAlterTableGroup,
+                                                                     TableGroupConfig tableGroupConfig,
+                                                                     ExecutionContext executionContext) {
+        final SchemaManager schemaManager = executionContext.getSchemaManager();
+
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        TableMeta tableMeta = schemaManager.getTable(tableInCurrentGroup);
+        PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+        assert GeneralUtil.isNotEmpty(sqlAlterTableGroup.getPartRexInfoCtx());
+
+        if (partitionInfo.isSingleTable() || partitionInfo.isBroadcastTable()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "can't split the partition group for single/broadcast tables");
+        }
+
+        if (partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.KEY) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "it's not allow to split partition by hot value for non-key partition table");
+        }
+
+        SqlAlterTableGroupSplitPartitionByHotValue sqlAlterTableSplitPartitionByHotValue =
+            (SqlAlterTableGroupSplitPartitionByHotValue) sqlAlterTableGroup.getAlters().get(0);
+        SqlNode partitions = sqlAlterTableSplitPartitionByHotValue.getPartitions();
+        int splitIntoParts = ((SqlNumericLiteral) (partitions)).intValue(true);
+        if (splitIntoParts <= 0) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "partitions must greater than 0");
+        }
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+        int newPrefixPartColCnt = sqlAlterTableSplitPartitionByHotValue.getHotKeys().size();
+        if (splitIntoParts > 1) {
+            newPrefixPartColCnt += 1;
+        }
+        alterTableGroupCheckPartitionColumn(tableGroupRecord.getSchema(), tableGroupRecord.getTg_name(),newPrefixPartColCnt);
+
     }
 
     private static void alterTableGroupDropPartitionCheck(SqlAlterTableGroup sqlAlterTableGroup,
@@ -542,6 +599,13 @@ public class AlterTableGroupUtils {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 "it's not allow to drop partition for tables only has one partition");
         }
+        for (TablePartRecordInfoContext record : tableGroupConfig.getAllTables()) {
+            TableMeta tbMeta = schemaManager.getTable(record.getTableName());
+            if (tbMeta.withGsi()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                    String.format("it's not support to drop partition when table[%s] with GSI", record.getTableName()));
+            }
+        }
     }
 
     private static void alterTableModifyListPartitionValuesCheck(SqlAlterTableGroup sqlAlterTableGroup,
@@ -550,6 +614,7 @@ public class AlterTableGroupUtils {
                                                                  ExecutionContext executionContext) {
 
         TablePartitionRecord tablePartitionRecord = tableGroupConfig.getAllTables().get(0).getLogTbRec();
+        SchemaManager schemaManager = OptimizerContext.getContext(tablePartitionRecord.getTableSchema()).getLatestSchemaManager();
         PartitionInfo partitionInfo =
             OptimizerContext.getContext(tablePartitionRecord.getTableSchema()).getPartitionInfoManager()
                 .getPartitionInfo(tablePartitionRecord.getTableName());
@@ -580,6 +645,13 @@ public class AlterTableGroupUtils {
                         "the number of drop values should less than the number of values contain by partition[%s]",
                         partName));
             }
+            for (TablePartRecordInfoContext record : tableGroupConfig.getAllTables()) {
+                TableMeta tbMeta = schemaManager.getTable(record.getTableName());
+                if (tbMeta.withGsi()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        String.format("it's not support to drop value when table[%s] with GSI", record.getTableName()));
+                }
+            }
         }
         //TODO @chengbi
     }
@@ -593,269 +665,82 @@ public class AlterTableGroupUtils {
         Set<String> partitionGroupNames =
             tableGroupConfig.getPartitionGroupRecords().stream().map(o -> o.partition_name.toLowerCase())
                 .collect(Collectors.toSet());
-        List<org.apache.calcite.util.Pair<String, String>> partitionNamesPair =
+        List<Pair<String, String>> partitionNamesPair =
             sqlAlterTableGroupRenamePartition.getChangePartitionsPair();
-        for (org.apache.calcite.util.Pair<String, String> pair : partitionNamesPair) {
-            if (oldPartitionNames.contains(pair.left)) {
+        for (Pair<String, String> pair : partitionNamesPair) {
+            if (oldPartitionNames.contains(pair.getKey().toLowerCase())) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                    "reChange partition:" + pair.left + " is not allow");
+                    "reChange partition:" + pair.getKey() + " in the same statement is not allow");
             } else {
-                oldPartitionNames.add(pair.left.toLowerCase());
+                oldPartitionNames.add(pair.getKey().toLowerCase());
             }
-            if (newPartitionNames.contains(pair.right.toLowerCase())) {
+            if (newPartitionNames.contains(pair.getValue().toLowerCase())) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                    "duplicate partition name:" + pair.right);
+                    "duplicate partition name:" + pair.getValue());
             } else {
-                oldPartitionNames.add(pair.right.toLowerCase());
+                newPartitionNames.add(pair.getValue().toLowerCase());
             }
-            if (!partitionGroupNames.contains(pair.left.toLowerCase())) {
+            if (!partitionGroupNames.contains(pair.getKey().toLowerCase())) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                    "partition name:" + pair.left + " is not exists");
+                    "partition name:" + pair.getKey() + " is not exists");
             }
-            if (partitionGroupNames.contains(pair.right.toLowerCase())) {
+            if (partitionGroupNames.contains(pair.getValue().toLowerCase())) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                    "partition name:" + pair.right + " is exists");
+                    "partition name:" + pair.getValue() + " is exists");
             }
+            PartitionNameUtil.validatePartName(pair.getValue(), KeyWordsUtil.isKeyWord(pair.getValue()));
         }
 
     }
 
-    /**
-     * Allocate the locations ( a phy tbl should be located on which group key ) for all the physical tables,
-     * and save the result into allTargetTableLocations
-     */
-    public static void generateSourceAndTargetTablesForAlterTableGroup(ExecutionContext executionContext,
-                                                                       TableGroupConfig tableGroupConfig,
-                                                                       List<GroupDetailInfoExRecord> groupDetailInfoExRecords,
-                                                                       SqlNode sqlAlterTableGroupSpec,
-                                                                       List<PartitionGroupRecord> outDatedPartRecords,
-                                                                       int newPartitionCount,
-                                                                       Map<String, Map<String, Set<String>>> allSourceTableLocations,
-                                                                       Map<String, List<Pair<String, String>>> allTargetTableLocations,
-                                                                       Map<String, Map<String, List<List<String>>>> allTargetTables) {
-        final SchemaManager schemaManager = executionContext.getSchemaManager();
-        boolean isMovePartition = (sqlAlterTableGroupSpec instanceof SqlAlterTableGroupMovePartition);
-        boolean isModifyPartition = (sqlAlterTableGroupSpec instanceof SqlAlterTableModifyPartitionValues);
-        boolean isDropPartition = (sqlAlterTableGroupSpec instanceof SqlAlterTableDropPartition);
-
-        /**
-         * Find phy db from the group detail info of the target partition group by partition_name
-         *
-         */
-        GroupDetailInfoExRecord grpInfoOfNewPhyTblForModifyPartition = null;
-        if (isModifyPartition) {
-
-            String targetPartName;
-            SqlAlterTableModifyPartitionValues modifyPartition =
-                (SqlAlterTableModifyPartitionValues) sqlAlterTableGroupSpec;
-            targetPartName = ((SqlIdentifier) modifyPartition.getPartition().getName()).getLastName();
-            PartitionGroupRecord targetPartRecord = tableGroupConfig.getPartitionGroupByName(targetPartName);
-            String phyDb = targetPartRecord.phy_db;
-            grpInfoOfNewPhyTblForModifyPartition =
-                groupDetailInfoExRecords.stream().filter(g -> g.getPhyDbName().equalsIgnoreCase(phyDb)).findFirst()
-                    .orElse(null);
-
+    private static void alterTableGroupAddPartitionCheck(TableGroupConfig tableGroupConfig,
+                                                         ExecutionContext executionContext,
+                                                         SqlAlterTableAddPartition sqlAlterTableAddPartition) {
+        String schemaName = executionContext.getSchemaName();
+        final SchemaManager schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+        String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
+        String firstTableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        TableMeta tableMeta = schemaManager.getTable(firstTableInCurrentGroup);
+        PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+        if (partitionInfo.isSingleTable() || partitionInfo.isBroadcastTable()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "can't add the partition group for single/broadcast tables");
         }
+        PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
 
-        /**
-         * For each logical table, build new phyTable names for added phy tbl
-         */
-        for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
-            String tableName = infoContext.getLogTbRec().tableName;
-            TableMeta meta = schemaManager.getTable(tableName);
-            PartitionInfo partitionInfo = meta.getPartitionInfo();
-
-            Map<String, List<List<String>>> targetTables = new HashMap<>();
-            List<Pair<String, String>> locations = new ArrayList<>();
-
-            int index = 0;
-            List<String> newPhyTables;
-            if (isMovePartition) {
-                newPhyTables = new ArrayList<>();
-                for (PartitionGroupRecord partitionGroupRecord : outDatedPartRecords) {
-                    TablePartitionRecord tablePartitionRecord = infoContext.getPartitionRecList().stream()
-                        .filter(o -> o.groupId.longValue() == partitionGroupRecord.id.longValue()).findFirst()
-                        .orElse(null);
-                    assert tablePartitionRecord != null;
-                    newPhyTables.add(tablePartitionRecord.phyTable);
-                }
-            } else {
-                newPhyTables = PartitionInfoUtil
-                    .getNextNPhyTableNames(partitionInfo, newPartitionCount);
-            }
-
+        List<SqlPartition> newPartitions = new ArrayList<>();
+        List<SqlNode> newPartAst = sqlAlterTableAddPartition.getPartitions();
+        for (int i = 0; i < newPartAst.size(); i++) {
+            newPartitions.add((SqlPartition) newPartAst.get(i));
+        }
+        int actualPartColCnt = PartitionInfoUtil.getActualPartColumnMetasInfoForTableGroup(schemaName, tgName).size();
+        int newPrefixPartColCnt = PartitionInfoUtil.getNewPrefixPartColCntBySqlPartitionAst(Integer.MAX_VALUE/*ignore*/, actualPartColCnt, strategy, newPartitions);
+        if (strategy == PartitionStrategy.RANGE_COLUMNS || strategy == PartitionStrategy.KEY) {
             /**
-             * Build a location for each new added phy tables by a pair [phyTbl, grpKey]
+             * Check if is allowed to use newPrefixPartColCnt as new partColCnt for all tables in table group
              */
-            for (int i = 0; i < newPhyTables.size(); i++) {
-                String groupName;
-                if (isModifyPartition || isDropPartition) {
-                    /**
-                     * For DropPartition/ModifyPartition, keep the phy_db of new added partition the same as the target partition 
-                     */
-                    groupName = grpInfoOfNewPhyTblForModifyPartition.getGroupName();
-                } else {
-                    groupName = groupDetailInfoExRecords.get(index).getGroupName();
-                }
+            alterTableGroupCheckPartitionColumn(schemaName, tgName, newPrefixPartColCnt);
+        } else {
+            alterTableGroupCheckPartitionColumn(schemaName, tgName, PartitionInfoUtil.FULL_PART_COL_COUNT);
+        }
 
-                List<String> phyTables = new ArrayList<>();
-                phyTables.add(newPhyTables.get(i));
-                if (targetTables.containsKey(groupName)) {
-                    targetTables.get(groupName).add(phyTables);
-                } else {
-                    List<List<String>> tables = new ArrayList<>();
-                    tables.add(phyTables);
-                    targetTables.put(groupName, tables);
-                }
-                index++;
-                if (index >= groupDetailInfoExRecords.size()) {
-                    index = 0;
-                }
-                locations.add(new Pair<>(newPhyTables.get(i), groupName));
-            }
+    }
 
-            allTargetTableLocations.put(tableName, locations);
-            Map<String, Set<String>> sourceLocation = PartitionUtils
-                .getSourcePhyTables(sqlAlterTableGroupSpec, executionContext.getSchemaName(), tableName,
-                    executionContext, false);
-            allSourceTableLocations.put(tableName, sourceLocation);
-            allTargetTables.put(tableName, targetTables);
+    private static void alterTableGroupCheckPartitionColumn(String schemaName, String tableGroup,
+                                                            int actualPartitionCols) {
+        boolean identical =
+            PartitionInfoUtil.allTablesWithIdenticalPartitionColumns(schemaName, tableGroup, actualPartitionCols);
+        if (!identical) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                String.format("not all the tables in tablegroup[%s] has identical partition columns",
+                    tableGroup));
         }
     }
 
-    public static void generateSourceAndTargetTablesForSetTableGroup(PartitionInfo sourcePartitionInfo,
-                                                                     PartitionInfo targetPartitionInfo,
-                                                                     Map<String, Set<String>> allSourceTableLocations,
-                                                                     Map<String, List<List<String>>> allTargetTables) {
-        for (PartitionSpec targetPartitionSpec : targetPartitionInfo.getPartitionBy().getPartitions()) {
-            PartitionSpec sourcePartitionSpec = sourcePartitionInfo.getPartitionBy().getPartitions().stream()
-                .filter(o -> o.getName().equalsIgnoreCase(targetPartitionSpec.getName())).findFirst().orElse(null);
-            if (sourcePartitionSpec == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                    "can't find the partition:" + targetPartitionSpec.getName());
-            }
-            if (!sourcePartitionSpec.getLocation().getGroupKey()
-                .equalsIgnoreCase(targetPartitionSpec.getLocation().getGroupKey())) {
-                String targetGroupName = targetPartitionSpec.getLocation().getGroupKey();
-                String sourceGroupName = sourcePartitionSpec.getLocation().getGroupKey();
-                String phyTable = sourcePartitionSpec.getLocation().getPhyTableName();
-                allSourceTableLocations.computeIfAbsent(sourceGroupName, k -> new HashSet<String>())
-                    .add(sourcePartitionSpec.getLocation().getPhyTableName());
-
-                List<String> phyTables = new ArrayList<>();
-                phyTables.add(phyTable);
-                allTargetTables.computeIfAbsent(targetGroupName, k -> new ArrayList<>()).add(phyTables);
-
-            }
-        }
-    }
-
-    public static void addNewPartitionGroupFromPartitionInfo(PartitionInfo partitionInfo,
-                                                             List<PartitionGroupRecord> partitionGroupRecords,
-                                                             Long tableGroupId,
-                                                             boolean tableGroupExists,
-                                                             boolean reCreatePartitionGroups) {
-        try (Connection connection = MetaDbUtil.getConnection()) {
-            PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
-            TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
-            TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
-            partitionGroupAccessor.setConnection(connection);
-            tablePartitionAccessor.setConnection(connection);
-            tableGroupAccessor.setConnection(connection);
-            connection.setAutoCommit(false);
-            boolean firstPart = true;
-            boolean isSuccess = false;
-            try {
-                if (reCreatePartitionGroups) {
-                    if (!tableGroupExists) {
-                        TableGroupRecord tableGroupRecord = new TableGroupRecord();
-                        tableGroupRecord.schema = partitionInfo.getTableSchema();
-                        tableGroupRecord.tg_name = String.valueOf(System.currentTimeMillis());
-                        tableGroupRecord.meta_version = 0L;
-                        if (partitionInfo.getTableType() == PartitionTableType.SINGLE_TABLE) {
-                            if (partitionInfo.getTableGroupId() != TableGroupRecord.INVALID_TABLE_GROUP_ID) {
-                                // Come here is alter table group id for a single table 
-                                tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
-                            } else {
-                                tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG;
-                            }
-                        } else if (partitionInfo.getTableType() == PartitionTableType.BROADCAST_TABLE) {
-                            tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG;
-                        } else {
-                            tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
-                        }
-                        tableGroupId = tableGroupAccessor.addNewTableGroup(tableGroupRecord);
-                        int tgType = tableGroupRecord.tg_type;
-                        String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(tableGroupId, tgType);
-                        tableGroupAccessor.updateTableGroupName(tableGroupId, finalTgName);
-                    } else {
-                        int tableGroupType = TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
-                        if (partitionInfo.getTableType() == PartitionTableType.SINGLE_TABLE) {
-                            if (partitionInfo.getTableGroupId() != TableGroupRecord.INVALID_TABLE_GROUP_ID) {
-                                // Come here is alter table group id for a single table
-                                tableGroupType = TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
-                            } else {
-                                tableGroupType = TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG;
-                            }
-                        } else if (partitionInfo.getTableType() == PartitionTableType.BROADCAST_TABLE) {
-                            tableGroupType = TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG;
-                        }
-                        tableGroupAccessor.updateTableGroupType(tableGroupId, tableGroupType);
-                        partitionGroupAccessor.deletePartitionGroupsByTableGroupId(tableGroupId, false);
-                    }
-                    for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-                        PartitionGroupRecord partitionGroupRecord = new PartitionGroupRecord();
-                        partitionGroupRecord.visible = 1;
-                        partitionGroupRecord.partition_name = partitionSpec.getName();
-                        partitionGroupRecord.tg_id = tableGroupId;
-                        partitionGroupRecord.phy_db =
-                            GroupInfoUtil.buildPhysicalDbNameFromGroupName(partitionSpec.getLocation().getGroupKey());
-                        partitionGroupRecord.locality = "";
-                        partitionGroupRecord.pax_group_id = 0L;
-                        Long newPartitionGroupId =
-                            partitionGroupAccessor.addNewPartitionGroup(partitionGroupRecord, false);
-                        tablePartitionAccessor.updateGroupIdById(newPartitionGroupId, partitionSpec.getId());
-                        if (firstPart) {
-                            tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
-                        }
-                        firstPart = false;
-                    }
-                } else {
-                    assert partitionGroupRecords.size() == partitionInfo.getPartitionBy().getPartitions().size();
-                    for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
-                        PartitionGroupRecord partitionGroupRecord = partitionGroupRecords.stream()
-                            .filter(o -> o.partition_name.equalsIgnoreCase(partitionSpec.getName())).findFirst()
-                            .orElse(null);
-                        tablePartitionAccessor.updateGroupIdById(partitionGroupRecord.id, partitionSpec.getId());
-                        if (firstPart) {
-                            tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
-                        }
-                        firstPart = false;
-                    }
-
-                }
-                GsiMetaManager
-                    .updateTableVersion(partitionInfo.getTableSchema(), partitionInfo.getTableName(), connection);
-                connection.commit();
-                isSuccess = true;
-            } finally {
-                if (!isSuccess) {
-                    connection.rollback();
-                }
-            }
-        } catch (Exception ex) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT, ex);
-        }
-        TableGroupInfoManager tableGroupInfoManager =
-            OptimizerContext.getContext(partitionInfo.getTableSchema()).getTableGroupInfoManager();
-        tableGroupInfoManager.reloadTableGroupByGroupId(tableGroupId);
-        tableGroupInfoManager.reloadTableGroupByGroupId(partitionInfo.getTableGroupId());
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(partitionInfo.getTableSchema(),
-            partitionInfo.getTableName()), partitionInfo.getTableSchema());
-    }
-
-    public static SqlNode getSqlTemplate(String sqlTemplateStr, ExecutionContext executionContext) {
-        return PartitionUtils.getSqlTemplate(sqlTemplateStr, executionContext);
+    public static SqlNode getSqlTemplate(String schemaName, String logicalTableName, String sqlTemplateStr,
+                                         ExecutionContext executionContext) {
+        return PartitionUtils.getSqlTemplate(schemaName, logicalTableName, sqlTemplateStr, executionContext);
     }
 
     public static String fetchCreateTableDefinition(RelNode relNode,

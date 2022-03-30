@@ -34,6 +34,7 @@ import lombok.Getter;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Getter
@@ -68,34 +69,58 @@ public class AlterTableGroupAddMetaTask extends BaseDdlTask {
     }
 
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        ComplexTaskOutlineRecord complexTaskOutlineRecord = new ComplexTaskOutlineRecord();
-        complexTaskOutlineRecord.setObjectName("-");
-        complexTaskOutlineRecord.setJob_id(getJobId());
-        complexTaskOutlineRecord.setTableSchema(getSchemaName());
-        complexTaskOutlineRecord.setTableGroupName(tableGroupName);
-        complexTaskOutlineRecord.setSubTask(0);
-        complexTaskOutlineRecord.setType(type);
-        complexTaskOutlineRecord.setStatus(status);
-        ComplexTaskMetaManager.insertComplexTask(complexTaskOutlineRecord, metaDbConnection);
-        TableGroupConfig tableGroupConfig =
-            OptimizerContext.getContext(schemaName).getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
+        List<String> relatedParts = new ArrayList<>();
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+        TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
         List<PartitionGroupRecord> outDataPartitionGroups = new ArrayList<>();
         if (GeneralUtil.isNotEmpty(outDataPartitionGroupIds)) {
             for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
                 if (outDataPartitionGroupIds.contains(partitionGroupRecord.getId())) {
                     outDataPartitionGroups.add(partitionGroupRecord);
+                    relatedParts.add(partitionGroupRecord.partition_name);
                 }
             }
             assert GeneralUtil.isNotEmpty(outDataPartitionGroups);
             TableGroupUtils.insertOldDatedPartitionGroupToDeltaTable(outDataPartitionGroups, metaDbConnection);
         }
+        relatedParts.addAll(newPartitions);
+        for (String relatedPart : relatedParts) {
+            ComplexTaskOutlineRecord complexTaskOutlineRecord = new ComplexTaskOutlineRecord();
+            complexTaskOutlineRecord.setObjectName(relatedPart);
+            complexTaskOutlineRecord.setJob_id(getJobId());
+            complexTaskOutlineRecord.setTableSchema(getSchemaName());
+            complexTaskOutlineRecord.setTableGroupName(tableGroupName);
+            complexTaskOutlineRecord.setSubTask(0);
+            complexTaskOutlineRecord.setType(type);
+            complexTaskOutlineRecord.setStatus(status);
+            ComplexTaskMetaManager.insertComplexTask(complexTaskOutlineRecord, metaDbConnection);
+        }
+
         addNewPartitionGroup(metaDbConnection);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
     }
 
     public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        ComplexTaskMetaManager.deleteComplexTaskByJobIdAndObjName(getJobId(), schemaName, "-", metaDbConnection);
+        List<String> relatedParts = new ArrayList<>();
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+        TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
+        List<PartitionGroupRecord> outDataPartitionGroups = new ArrayList<>();
+        if (GeneralUtil.isNotEmpty(outDataPartitionGroupIds)) {
+            for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
+                if (outDataPartitionGroupIds.contains(partitionGroupRecord.getId())) {
+                    relatedParts.add(partitionGroupRecord.partition_name);
+                }
+            }
+            assert GeneralUtil.isNotEmpty(outDataPartitionGroups);
+        }
+        relatedParts.addAll(newPartitions);
+        for (String relatedPart : relatedParts) {
+            ComplexTaskMetaManager
+                .deleteComplexTaskByJobIdAndObjName(getJobId(), schemaName, relatedPart, metaDbConnection);
+        }
         if (GeneralUtil.isNotEmpty(outDataPartitionGroupIds)) {
             TableGroupUtils.deleteOldDatedPartitionGroupFromDeltaTableByIds(new ArrayList<>(outDataPartitionGroupIds),
                 metaDbConnection);

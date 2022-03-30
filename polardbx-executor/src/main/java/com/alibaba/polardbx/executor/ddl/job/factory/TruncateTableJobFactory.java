@@ -23,6 +23,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.google.common.collect.Lists;
 
 import java.util.Set;
@@ -46,7 +48,9 @@ public class TruncateTableJobFactory extends DdlJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName);
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        TableGroupConfig tableGroupConfig = isNewPart ? physicalPlanData.getTableGroupConfig() : null;
+        DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName, tableGroupConfig);
         DdlTask phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
         DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
 

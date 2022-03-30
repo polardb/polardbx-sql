@@ -53,6 +53,7 @@ import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.rpc.XConfig;
+import com.alibaba.polardbx.rpc.packet.XPacket;
 import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import com.alibaba.polardbx.server.util.StringUtil;
 import org.apache.commons.io.FileUtils;
@@ -705,11 +706,10 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
             DbTopologyManager.resetShardDbCountEachStorageInst(this.system.getShardDbCountEachStorageInst());
         }
 
-        String enablePartitionManagement = serverProps.getProperty("enablePartitionManagement");
+        String defaultPartitionMode = serverProps.getProperty("defaultPartitionMode");
         if (!StringUtil.isEmpty(shardDbCountEachStorageInst)) {
-            Boolean enablePartMgr = Boolean.valueOf(enablePartitionManagement);
-            this.system.setEnablePartitionManagement(enablePartMgr);
-            DbTopologyManager.setEnablePartitionManagement(enablePartMgr);
+            this.system.setDefaultPartitionMode(defaultPartitionMode);
+            DbTopologyManager.setDefaultPartitionMode(defaultPartitionMode);
         }
 
         String enableForbidPushDmlWithHint = serverProps.getProperty("enableForbidPushDmlWithHint");
@@ -764,6 +764,11 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
             this.system.setProcessCclTriggerPeriod(Integer.parseInt(processCclTriggerPeriod));
         }
         System.setProperty("processCclTriggerPeriod", String.valueOf(this.system.getProcessCclTriggerPeriod()));
+
+        String enableLogicalDbWarmmingUpStr = serverProps.getProperty("enableLogicalDbWarmmingUp");
+        if (!StringUtil.isEmpty(enableLogicalDbWarmmingUpStr)) {
+            this.system.setEnableLogicalDbWarmmingUp(Boolean.valueOf(enableLogicalDbWarmmingUpStr));
+        }
 
     }
 

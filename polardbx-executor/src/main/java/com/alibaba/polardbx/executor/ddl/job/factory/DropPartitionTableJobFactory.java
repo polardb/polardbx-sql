@@ -18,19 +18,28 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemoveMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.StoreTableLocalityTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionTable;
-import com.google.common.collect.Lists;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public class DropPartitionTableJobFactory extends DropTableJobFactory {
+
+    private List<Long> tableGroupIds = new ArrayList<>();
 
     public DropPartitionTableJobFactory(PhysicalPlanData physicalPlanData) {
         super(physicalPlanData);
@@ -43,13 +52,33 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        DropTableValidateTask validateTask = new DropTableValidateTask(schemaName, logicalTableName);
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+        Long tableGroupId = -1L;
+        TableGroupConfig tableGroupConfig = null;
+        if (partitionInfo != null) {
+            tableGroupId = partitionInfo.getTableGroupId();
+            tableGroupConfig = physicalPlanData.getTableGroupConfig();
+        }
+        List<DdlTask> tasks = new ArrayList<>();
+        DropPartitionTableValidateTask validateTask =
+            new DropPartitionTableValidateTask(schemaName, logicalTableName, tableGroupIds, tableGroupConfig);
         DropTableHideTableMetaTask dropTableHideTableMetaTask =
             new DropTableHideTableMetaTask(schemaName, logicalTableName);
         DropTablePhyDdlTask phyDdlTask = new DropTablePhyDdlTask(schemaName, physicalPlanData);
         CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
         DropPartitionTableRemoveMetaTask removeMetaTask =
             new DropPartitionTableRemoveMetaTask(schemaName, logicalTableName);
+
+        DdlTask syncTableGroup = null;
+        if (tableGroupId != -1) {
+            //tableGroupConfig from physicalPlanData is not set tableGroup record
+            tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+                .getTableGroupConfigById(tableGroupId);
+            syncTableGroup =
+                new TableGroupSyncTask(schemaName, tableGroupConfig.getTableGroupRecord().getTg_name());
+        }
+
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
         StoreTableLocalityTask dropLocality =
             StoreTableLocalityTask.buildDropLocalityTask(schemaName, logicalTableName);
@@ -60,20 +89,23 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
          * DropTableJobFactory中已经把元数据操作都合并到一个Task中了
          * 考虑将DropTableHideTableMetaTask、DropPartitionTableRemoveMetaTask也合并一下？
          */
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(
-            validateTask,
-            dropLocality,
-            dropTableHideTableMetaTask,
-            phyDdlTask,
-            cdcDdlMarkTask,
-            removeMetaTask,
-            tableSyncTask
-        ));
+        tasks.add(validateTask);
+        tasks.add(dropLocality);
+        tasks.add(dropTableHideTableMetaTask);
+        tasks.add(phyDdlTask);
+        tasks.add(cdcDdlMarkTask);
+        tasks.add(removeMetaTask);
+        if (syncTableGroup != null) {
+            tasks.add(syncTableGroup);
+        }
+        tasks.add(tableSyncTask);
+        executableDdlJob.addSequentialTasks(tasks);
         //labels should be replaced by fields in ExecutableDdlJob4DropTable
         executableDdlJob.labelAsHead(validateTask);
         executableDdlJob.labelAsTail(tableSyncTask);
 
         executableDdlJob.setValidateTask(validateTask);
+        executableDdlJob.setStoreTableLocalityTask(dropLocality);
         executableDdlJob.setDropTableHideTableMetaTask(dropTableHideTableMetaTask);
         executableDdlJob.setPhyDdlTask(phyDdlTask);
         executableDdlJob.setCdcDdlMarkTask(cdcDdlMarkTask);
@@ -86,6 +118,19 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(physicalPlanData.getSchemaName(), logicalTableName));
+
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+
+        if (partitionInfo != null && partitionInfo.getTableGroupId() != -1) {
+            tableGroupIds.add(partitionInfo.getTableGroupId());
+            OptimizerContext oc =
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+            TableGroupConfig tableGroupConfig =
+                oc.getTableGroupInfoManager().getTableGroupConfigById(partitionInfo.getTableGroupId());
+            String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
+            resources.add(concatWithDot(schemaName, tgName));
+        }
     }
 
 }

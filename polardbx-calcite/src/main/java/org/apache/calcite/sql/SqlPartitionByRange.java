@@ -17,6 +17,7 @@
 package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.util.Litmus;
 
 /**
  * Created by luoyanxin.
@@ -25,19 +26,73 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  */
 public class SqlPartitionByRange extends SqlPartitionBy {
 
-    protected SqlNode interval;
+    protected SqlBasicCall interval;
+    protected SqlCharStringLiteral startWith;
+    protected SqlNumericLiteral lifeCycleNum;
+    protected SqlNumericLiteral expireAfter;
+    protected SqlNumericLiteral preAllocate;
+    protected SqlNode pivotDateExpr;
     protected boolean isColumns;
+    protected boolean disableSchedule;
 
     public SqlPartitionByRange(SqlParserPos pos){
         super(pos);
     }
 
-    public void setInterval(SqlNode interval) {
+    public SqlBasicCall getInterval() {
+        return this.interval;
+    }
+
+    public void setInterval(final SqlBasicCall interval) {
         this.interval = interval;
     }
 
-    public SqlNode getInterval() {
-        return this.interval;
+    public SqlCharStringLiteral getStartWith() {
+        return this.startWith;
+    }
+
+    public void setStartWith(final SqlCharStringLiteral startWith) {
+        this.startWith = startWith;
+    }
+
+    public SqlNumericLiteral getLifeCycleNum() {
+        return this.lifeCycleNum;
+    }
+
+    public void setLifeCycleNum(final SqlNumericLiteral lifeCycleNum) {
+        this.lifeCycleNum = lifeCycleNum;
+    }
+
+    public SqlNumericLiteral getExpireAfter() {
+        return this.expireAfter;
+    }
+
+    public void setExpireAfter(final SqlNumericLiteral expireAfter) {
+        this.expireAfter = expireAfter;
+    }
+
+    public SqlNumericLiteral getPreAllocate() {
+        return this.preAllocate;
+    }
+
+    public void setPreAllocate(final SqlNumericLiteral preAllocate) {
+        this.preAllocate = preAllocate;
+    }
+
+    public SqlNode getPivotDateExpr() {
+        return this.pivotDateExpr;
+    }
+
+    public void setPivotDateExpr(final SqlNode pivotDateExpr) {
+        this.pivotDateExpr = pivotDateExpr;
+    }
+
+    public SqlNumericLiteral getIntervalNum(){
+        return (SqlNumericLiteral) interval.getOperands()[0];
+    }
+
+    public SqlIntervalQualifier getIntervalQualifier(){
+        return (SqlIntervalQualifier) interval.getOperands()[1];
     }
 
     @Override
@@ -51,5 +106,23 @@ public class SqlPartitionByRange extends SqlPartitionBy {
 
     public void setColumns(boolean columns) {
         isColumns = columns;
+    }
+
+    @Override
+    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+        if (!super.equalsDeep(node, litmus)) {
+            return false;
+        }
+        SqlPartitionByRange objPartBy = (SqlPartitionByRange) node;
+
+        return isColumns == objPartBy.isColumns && equalDeep(interval, objPartBy.interval, litmus);
+    }
+
+    public boolean isDisableSchedule() {
+        return this.disableSchedule;
+    }
+
+    public void setDisableSchedule(final boolean disableSchedule) {
+        this.disableSchedule = disableSchedule;
     }
 }

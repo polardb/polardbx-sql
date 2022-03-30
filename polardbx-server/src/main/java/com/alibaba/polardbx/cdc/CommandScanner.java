@@ -28,6 +28,10 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.druid.DbType;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -64,6 +68,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.cdc.SQLHelper.FEATURES;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_FAIL;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_SUCCESS;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_TYPE.CDC_START;
@@ -185,9 +190,9 @@ public class CommandScanner extends AbstractLifecycle {
         logicMeta.setLogicDbMetas(new ArrayList<>());
         Set<String> databases = getDatabases();
 
-        try (Connection connection = new InnerConnection()) {
-            try (Statement stmt = connection.createStatement()) {
-                for (String db : databases) {
+        for (String db : databases) {
+            try (Connection connection = new InnerConnection(db)) {
+                try (Statement stmt = connection.createStatement()) {
                     Set<String> tables = getTables(connection, db);
 
                     Map<String, List<TargetDB>> tableParams = new HashMap<>();
@@ -196,7 +201,9 @@ public class CommandScanner extends AbstractLifecycle {
                     }
                     LogicMeta.LogicDbMeta logicDbMeta = MetaBuilder.buildLogicDbMeta(db, tableParams);
                     for (LogicMeta.LogicTableMeta tableMeta : logicDbMeta.getLogicTableMetas()) {
-                        tableMeta.setCreateSql(getCreateTableSql(stmt, db, tableMeta.getTableName()));
+                        String logicTableCreateSql = getCreateTableSql(stmt, db, tableMeta.getTableName());
+                        tableMeta.setCreateSql(logicTableCreateSql);
+                        trySetCreateSql4Phy(logicDbMeta, tableMeta, logicTableCreateSql);
                     }
 
                     logicMeta.getLogicDbMetas().add(logicDbMeta);
@@ -229,7 +236,7 @@ public class CommandScanner extends AbstractLifecycle {
                 String tableName = resultSet.getString(1);
                 String tableType = resultSet.getString(2);
                 if (InfoSchemaCommon.DEFAULT_TABLE_TYPE.equals(tableType)) {
-                    tables.add(tableName);
+                    tables.add(tableName.toLowerCase());
                 }
             }
         }
@@ -238,7 +245,8 @@ public class CommandScanner extends AbstractLifecycle {
 
     private String getCreateTableSql(Statement stmt, String db, String table) throws SQLException {
         try (ResultSet resultSet = stmt.executeQuery(String
-            .format("/* +TDDL:cmd_extra(SHOW_IMPLICIT_ID=true) */show create table `%s`.`%s`", db, table))) {
+            .format("/* +TDDL:cmd_extra(SHOW_IMPLICIT_ID=true) */show create table `%s`.`%s`", db,
+                MetaBuilder.escape(table)))) {
             if (resultSet.next()) {
                 return resultSet.getString(2);
             }
@@ -281,6 +289,45 @@ public class CommandScanner extends AbstractLifecycle {
         } catch (Throwable t) {
             logger.error("check for test error.", t);
         }
+    }
+
+    private void trySetCreateSql4Phy(LogicMeta.LogicDbMeta logicDbMeta, LogicMeta.LogicTableMeta tableMeta,
+                                     String logicCreateSql) {
+        String logicSchema = logicDbMeta.getSchema();
+        String phyCreateSql = MetaBuilder.getPhyCreateSql(logicSchema, tableMeta);
+        String createSql4Phy = tryBuildPhyCreateSql(logicCreateSql, phyCreateSql);
+        tableMeta.setCreateSql4Phy(createSql4Phy);
+    }
+
+    private String tryBuildPhyCreateSql(String logicCreateSql, String phyCreateSql) {
+        if (logger.isDebugEnabled()) {
+            logger.debug(String.format("try build phyCreateSql, logicCreateSql is {%s}, phyCreateSql is {%s}.",
+                logicCreateSql, phyCreateSql));
+        }
+
+        List<SQLStatement> logicStatementList =
+            SQLParserUtils.createSQLStatementParser(logicCreateSql, DbType.mysql, FEATURES).parseStatementList();
+        MySqlCreateTableStatement logicCreateStmt = (MySqlCreateTableStatement) logicStatementList.get(0);
+        List<String> logicColumns =
+            logicCreateStmt.getColumnDefinitions().stream().map(c -> c.getColumnName().toLowerCase())
+                .collect(Collectors.toList());
+
+        List<SQLStatement> phyStatementList =
+            SQLParserUtils.createSQLStatementParser(phyCreateSql, DbType.mysql, FEATURES).parseStatementList();
+        MySqlCreateTableStatement phyCreateStmt = (MySqlCreateTableStatement) phyStatementList.get(0);
+        List<String> phyColumns =
+            phyCreateStmt.getColumnDefinitions().stream().map(c -> c.getColumnName().toLowerCase())
+                .collect(Collectors.toList());
+
+        //如果逻辑表和物理表的列序不一致，则需要额外提供以物理表列序为依据的建表sql
+        if (!logicColumns.equals(phyColumns)) {
+            logger.warn(
+                "logic table`s columns is different from phy tables`, table name : " + logicCreateStmt.getTableName());
+            phyCreateStmt.setTableName(logicCreateStmt.getTableName());
+            return phyCreateStmt.toUnformattedString();
+        }
+
+        return null;
     }
 
     private Set<String> getAllDbs() {

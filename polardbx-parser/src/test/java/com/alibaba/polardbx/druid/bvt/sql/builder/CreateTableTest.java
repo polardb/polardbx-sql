@@ -27,7 +27,7 @@ public class CreateTableTest extends TestCase {
         stmt.setExternal(true);
 
         assertEquals("CREATE EXTERNAL TABLE t1 (\n" +
-                "\tfid int\n" +
-                ")", stmt.toString());
+            "\tfid int\n" +
+            ")", stmt.toString());
     }
 }

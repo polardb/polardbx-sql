@@ -32,6 +32,8 @@ import com.alibaba.polardbx.executor.ddl.job.factory.DropIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.DropGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.RepartitionJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.ColumnValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ConstraintValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
@@ -40,6 +42,10 @@ import com.alibaba.polardbx.executor.ddl.job.validator.ddl.RepartitionValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableAllocateLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableExpireLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableRemoveLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableRepartitionLocalPartitionHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -49,13 +55,16 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.AlterTableWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateIndexWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropIndexWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlAddIndex;
+import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlBasicCall;
@@ -64,14 +73,17 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlModifyColumn;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -87,6 +99,26 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         final LogicalAlterTable logicalAlterTable = (LogicalAlterTable) logicalDdlPlan;
+
+        if (logicalAlterTable.isAllocateLocalPartition()) {
+            return new LogicalAlterTableAllocateLocalPartitionHandler(repo)
+                .buildDdlJob(logicalDdlPlan, executionContext);
+        }
+
+        if (logicalAlterTable.isExpireLocalPartition()) {
+            return new LogicalAlterTableExpireLocalPartitionHandler(repo)
+                .buildDdlJob(logicalDdlPlan, executionContext);
+        }
+
+        if (logicalAlterTable.isRepartitionLocalPartition()) {
+            return new LogicalAlterTableRepartitionLocalPartitionHandler(repo)
+                .buildDdlJob(logicalDdlPlan, executionContext);
+        }
+
+        if (logicalAlterTable.isRemoveLocalPartition()) {
+            return new LogicalAlterTableRemoveLocalPartitionHandler(repo)
+                .buildDdlJob(logicalDdlPlan, executionContext);
+        }
 
         if (logicalAlterTable.needRewriteToGsi(false)) {
             logicalAlterTable.needRewriteToGsi(true);
@@ -128,6 +160,17 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 sqlAlterTable.getTableOptions().getComment().toValue());
         }
 
+        // check collation in column definitions.
+        if (sqlAlterTable.getAlters() != null) {
+            for (SqlAlterSpecification spec : sqlAlterTable.getAlters()) {
+                if (spec instanceof SqlModifyColumn) {
+                    TableValidator.validateCollationImplemented((SqlModifyColumn) spec);
+                }
+            }
+        }
+
+        String schemaName = logicalDdlPlan.getSchemaName();
+
         TableValidator.validateTableName(logicalTableName);
 
         ColumnValidator.validateColumnLimits(logicalDdlPlan.getSchemaName(), logicalTableName, sqlAlterTable);
@@ -135,6 +178,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         IndexValidator.validateIndexNameLengths(sqlAlterTable);
 
         ConstraintValidator.validateConstraintLimits(sqlAlterTable);
+
+        TableValidator.validateTruncatePartition(logicalDdlPlan.getSchemaName(), logicalTableName, sqlAlterTable);
 
         return false;
     }
@@ -149,6 +194,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         ExecutableDdlJob alterTableJob =
             new AlterTableJobFactory(physicalPlanData, alterTablePreparedData, logicalAlterTable, executionContext)
                 .create();
+
+        Map<String, Long> tableVersions = new HashMap<>();
 
         // Apply local index modification to clustered-index table
         AlterTableWithGsiPreparedData gsiData = logicalAlterTable.getAlterTableWithGsiPreparedData();
@@ -210,6 +257,14 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             }
         }
 
+        tableVersions.put(alterTablePreparedData.getTableName(),
+            alterTablePreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(alterTablePreparedData.getSchemaName(), tableVersions);
+
+        alterTableJob.addTask(validateTableVersionTask);
+        alterTableJob.addTaskRelationship(validateTableVersionTask, alterTableJob.getHead());
+
         return alterTableJob;
     }
 
@@ -227,11 +282,18 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         CreateGlobalIndexPreparedData globalIndexPreparedData =
             createIndexWithGsiPreparedData.getGlobalIndexPreparedData();
 
+        logicalAlterTable.prepareLocalIndexData();
+        RepartitionPrepareData repartitionPrepareData = logicalAlterTable.getRepartitionPrepareData();
+        globalIndexPreparedData.setRepartitionPrepareData(repartitionPrepareData);
+
         DdlPhyPlanBuilder builder = new CreateGlobalIndexBuilder(
             logicalAlterTable.relDdl,
             globalIndexPreparedData,
             executionContext
         ).build();
+
+        // GSI table prepareData
+        logicalAlterTable.prepareRepartitionData(globalIndexPreparedData.getIndexTableRule());
 
         boolean isPartitionRuleUnchanged = RepartitionValidator.checkPartitionRuleUnchanged(
             globalIndexPreparedData.getSchemaName(),
@@ -258,14 +320,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         );
 
         return new RepartitionJobFactory(
-            ast,
-            globalIndexPreparedData.getSchemaName(),
-            globalIndexPreparedData.getPrimaryTableName(),
-            globalIndexPreparedData.getIndexTableName(),
-            globalIndexPreparedData.isSingle(),
-            globalIndexPreparedData.isBroadcast(),
-            globalIndexPreparedData.getColumns(),
-            globalIndexPreparedData.getCoverings(),
+            globalIndexPreparedData,
+            repartitionPrepareData,
             physicalPlanData,
             executionContext
         ).create();
@@ -278,9 +334,17 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             alterTableWithGsiPreparedData.getCreateIndexWithGsiPreparedData();
         CreateGlobalIndexPreparedData globalIndexPreparedData = indexPreparedData.getGlobalIndexPreparedData();
 
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(globalIndexPreparedData.getPrimaryTableName(),
+            globalIndexPreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(globalIndexPreparedData.getSchemaName(), tableVersions);
         // global index
         ExecutableDdlJob gsiJob =
             CreatePartitionGsiJobFactory.create(logicalAlterTable.relDdl, globalIndexPreparedData, executionContext);
+
+        gsiJob.addTask(validateTableVersionTask);
+        gsiJob.addTaskRelationship(validateTableVersionTask, gsiJob.getHead());
 
         // local index
         ExecutableDdlJob localIndexJob = CreateIndexJobFactory.createLocalIndex(
@@ -291,6 +355,10 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         if (localIndexJob != null) {
             gsiJob.appendJob(localIndexJob);
         }
+        gsiJob.addSequentialTasksAfter(gsiJob.getTail(), Lists.newArrayList(new StatisticSampleTask(
+            globalIndexPreparedData.getSchemaName(),
+            globalIndexPreparedData.getIndexTableName()
+        )));
         return gsiJob;
     }
 
@@ -302,10 +370,21 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         DropGlobalIndexPreparedData dropGlobalIndexPreparedData =
             dropIndexWithGsiPreparedData.getGlobalIndexPreparedData();
 
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(alterTableWithGsiPreparedData.getTableName(),
+            alterTableWithGsiPreparedData.getTableVersion());
+        tableVersions.put(dropGlobalIndexPreparedData.getIndexTableName(),
+            dropGlobalIndexPreparedData.getTableVersion());
+
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(dropGlobalIndexPreparedData.getSchemaName(), tableVersions);
+
         ExecutableDdlJob baseJob = new ExecutableDdlJob();
 
         ExecutableDdlJob ddlJob = DropGsiJobFactory.create(dropGlobalIndexPreparedData, executionContext, false, true);
         if (ddlJob != null) {
+            ddlJob.addTask(validateTableVersionTask);
+            ddlJob.addTaskRelationship(validateTableVersionTask, ddlJob.getHead());
             baseJob.appendJob(ddlJob);
         }
 
@@ -342,6 +421,15 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         ExecutableDdlJob alterTableJob =
             new AlterTableJobFactory(physicalPlanData, alterTablePreparedData, logicalAlterTable, executionContext)
                 .create();
+
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(alterTablePreparedData.getTableName(),
+            alterTablePreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(alterTablePreparedData.getSchemaName(), tableVersions);
+
+        alterTableJob.addTask(validateTableVersionTask);
+        alterTableJob.addTaskRelationship(validateTableVersionTask, alterTableJob.getHead());
 
         return alterTableJob;
     }

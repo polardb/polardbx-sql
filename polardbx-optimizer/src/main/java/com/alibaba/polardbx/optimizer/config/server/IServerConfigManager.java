@@ -16,8 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.config.server;
 
+import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.druid.util.FnvHash;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+
+import java.util.List;
 
 /**
  * interfaces for the Optimizer/Execoutr of TDataSource to notify CobarServer to
@@ -42,9 +48,27 @@ public interface IServerConfigManager {
     Pair<String, String> findGroupByUniqueId(long uniqueId);
 
     /**
+     * Perform a DDL job
+     *
+     * @param job a DDL job
+     * @return warnings
+     */
+    default List<ExecutionContext.ErrorMessage> performAsyncDDLJob(Job job, String schemaName, Object jobRequest) {
+        throw new UnsupportedOperationException("TODO");
+    }
+
+    default void executeBackgroundSql(String sql, String schema, InternalTimeZone timeZone) {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    /**
      * Restore a DDL from GMS then execute it
      */
-    void restoreDDL(String schemaName, Long jobId);
+    DdlContext restoreDDL(String schemaName, Long jobId);
+
+    long submitRebalanceDDL(String schemaName, String sql);
+
+    long submitSubDDL(String schemaName, long parentJobId, long parentTaskId, boolean forRollback, String sql);
 
     static long getGroupUniqueId(String schema, String group) {
         // normalization is included in this method

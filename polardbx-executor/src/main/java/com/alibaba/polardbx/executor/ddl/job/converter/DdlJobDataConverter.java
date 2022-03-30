@@ -192,6 +192,7 @@ public class DdlJobDataConverter {
 
         partitionGroupRecords =
             PartitionInfoUtil.prepareRecordForPartitionGroups(partitionInfo.getPartitionBy().getPartitions());
+        partitionGroupRecords.forEach(o -> o.tg_id = partitionInfo.getTableGroupId());
 
         TablePartRecordInfoContext tablePartRecordInfoContext = new TablePartRecordInfoContext();
         tablePartRecordInfoContext.setLogTbRec(logTableRec);

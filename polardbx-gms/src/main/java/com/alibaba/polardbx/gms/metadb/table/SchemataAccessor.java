@@ -16,11 +16,22 @@
 
 package com.alibaba.polardbx.gms.metadb.table;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 
 public class SchemataAccessor extends AbstractAccessor {
 
@@ -40,6 +51,8 @@ public class SchemataAccessor extends AbstractAccessor {
 
     private static final String SELECT_TABLES = SELECT_CLAUSE + SCHEMATA_TABLE;
 
+    private static final String SELECT_ALL = SELECT_CLAUSE + SCHEMATA_TABLE;
+
     private static final String DELETE_TABLES = "delete from " + SCHEMATA_TABLE + WHERE_CLAUSE;
 
     public int insert(SchemataRecord record) {
@@ -47,18 +60,34 @@ public class SchemataAccessor extends AbstractAccessor {
     }
 
     public static List<SchemataRecord> getAllSchemata() {
-        List<SchemataRecord> records =
-            AbstractAccessor.query(SELECT_TABLES, SCHEMATA_TABLE, SchemataRecord.class, null,
-                null, MetaDbUtil.getConnection());
-        return records;
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            return AbstractAccessor.query(SELECT_TABLES, SCHEMATA_TABLE, SchemataRecord.class, null,
+                null, metaDbConn);
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                SCHEMATA_TABLE, e.getMessage());
+        }
     }
 
     public SchemataRecord query(String schemaName) {
-        List<SchemataRecord> records = query(SELECT_TABLES_WITH_WHERE, SCHEMATA_TABLE, SchemataRecord.class, schemaName);
+        List<SchemataRecord> records =
+            query(SELECT_TABLES_WITH_WHERE, SCHEMATA_TABLE, SchemataRecord.class, schemaName);
         if (records != null && records.size() > 0) {
             return records.get(0);
         }
         return null;
+    }
+
+    public List<SchemataRecord> queryAll() {
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        List<SchemataRecord> records = null;
+        try {
+            records = MetaDbUtil.query(SELECT_ALL, params, SchemataRecord.class, connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                SCHEMATA_TABLE, e.getMessage());
+        }
+        return records;
     }
 
     public int delete(String schemaName) {

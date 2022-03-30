@@ -154,9 +154,8 @@
     delete a from test_broadcast a join (select name, id from test_hash_ta b where b.name = "c" and b.id = 1) b where a.id = b.id;
 
   plan: |
-
-    LogicalModify(TYPE="DELETE", TABLES="optest.test_broadcast")
-      LogicalView(tables="optest_0001.test_hash_ta,test_broadcast", sql="SELECT `test_broadcast`.`id` AS `id0`, `test_broadcast`.`name` AS `name0`, `test_broadcast`.`create_time`, `t`.`name`, `t`.`id` FROM (SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` WHERE ((`name` = ?) AND (`id` = ?))) AS `t` INNER JOIN `test_broadcast` AS `test_broadcast` ON (`t`.`id` = `test_broadcast`.`id`) FOR UPDATE")
+    logicalmodify(type="delete", tables="optest.test_broadcast")
+      logicalview(tables="optest_0001.test_hash_ta,test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time`, `test_hash_ta`.`name`, `test_hash_ta`.`id` from `test_hash_ta` as `test_hash_ta` inner join `test_broadcast` as `test_broadcast` on (`test_hash_ta`.`id` = `test_broadcast`.`id`) where ((`test_hash_ta`.`name` = ?) and (`test_hash_ta`.`id` = ?)) for update")
 
 - sql: |
     /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta;

@@ -23,7 +23,7 @@ import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
-import com.alibaba.polardbx.util.IntBloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.List;
@@ -43,7 +43,7 @@ public abstract class AbstractHashJoinExec extends AbstractBufferedJoinExec impl
 
     ConcurrentRawHashTable hashTable;
     int[] positionLinks;
-    IntBloomFilter bloomFilter;
+    FastIntBloomFilter bloomFilter;
 
     public AbstractHashJoinExec(Executor outerInput,
                                 Executor innerInput,

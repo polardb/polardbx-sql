@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreatePartitionTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableValidateTask;
@@ -31,6 +32,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTableValidateTas
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateTableWithGsiMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateCutOverTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateTableWithGsiValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
@@ -46,7 +49,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropTableWithGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4TruncateTableWithGsiCutOver;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TruncateUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
@@ -54,10 +59,13 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.TruncateTableWithGsiPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.Lists;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
@@ -92,6 +100,15 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
     protected ExecutableDdlJob doCreate() {
         ExecutableDdlJob result = new ExecutableDdlJob();
 
+        // validate task
+        List<String> tableNames = new ArrayList<>();
+        tableNames.add(logicalTableName);
+        tableNames.addAll(tmpIndexTableMap.keySet());
+        List<TableGroupConfig> tableGroupConfigs = new ArrayList<>();
+        TruncateTableWithGsiValidateTask truncateTableWithGsiValidateTask =
+            new TruncateTableWithGsiValidateTask(schemaName, logicalTableName,
+                new ArrayList<>(tmpIndexTableMap.keySet()), tableGroupConfigs);
+
         // Some tasks are different from Create/DropTableWithGsiJobFactory because no one will use tmp table
         // For example, we remove physical table without hiding table meta first
         ExecutableDdlJob4CreateTableWithGsi createTmpTableJob =
@@ -107,8 +124,9 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         result.addTaskRelationship(createTmpTableJob.getTableSyncTask(), cutOverJob.getCdcMarkTask());
         result.addTaskRelationship(cutOverJob.getTruncateSyncTask(), dropTmpTableJob.getValidateTask());
 
-        DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName);
-        result.addTaskRelationship(validateTask, createTmpTableJob.getTableValidateTask());
+        // DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName, null);
+        // result.addTaskRelationship(validateTask, createTmpTableJob.getTableValidateTask());
+        result.addTaskRelationship(truncateTableWithGsiValidateTask, createTmpTableJob.getTableValidateTask());
 
         result
             .setExceptionActionForAllSuccessor(cutOverJob.getCdcMarkTask(), DdlExceptionAction.TRY_RECOVERY_THEN_PAUSE);
@@ -120,6 +138,11 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(schemaName, logicalTableName));
         resources.add(concatWithDot(schemaName, tmpPrimaryTableName));
+
+        String tgName = FactoryUtils.getTableGroupNameByTableName(schemaName, logicalTableName);
+        if (tgName != null) {
+            resources.add(concatWithDot(schemaName, tgName));
+        }
     }
 
     @Override
@@ -159,28 +182,35 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
         boolean isAutoPartition = createTablePreparedData.getPrimaryTablePreparedData().isAutoPartition();
+        boolean hasTimestampColumnDefault =
+            createTablePreparedData.getPrimaryTablePreparedData().isTimestampColumnDefault();
+        Map<String, String> binaryColumnDefaultValues =
+            createTablePreparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues();
         PhysicalPlanData physicalPlanData = DdlJobDataConverter
             .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition);
 
         // Create Primary Table
         ExecutableDdlJob4CreateTable createTableJob = (ExecutableDdlJob4CreateTable) new CreateTableJobFactory(
             false,
+            hasTimestampColumnDefault,
+            binaryColumnDefaultValues,
             physicalPlanData,
             executionContext).create();
 
         result.addSequentialTasks(Lists.newArrayList(
-            createTableJob.getCreateTableValidateTask(),
-            createTableJob.getCreateTableAddTablesExtMetaTask(),
-            createTableJob.getCreateTablePhyDdlTask(),
-            createTableJob.getCreateTableAddTablesMetaTask(),
-            createTableJob.getCreateTableShowTableMetaTask(),
-            createTableJob.getTableSyncTask()
+                createTableJob.getCreateTableValidateTask(),
+                createTableJob.getCreateTableAddTablesExtMetaTask(),
+                createTableJob.getCreateTablePhyDdlTask(),
+                createTableJob.getCreateTableAddTablesMetaTask(),
+                createTableJob.getCreateTableShowTableMetaTask(),
+                createTableJob.getTableSyncTask()
             )
         );
         result.removeTaskRelationship(
             createTableJob.getCreateTableShowTableMetaTask(),
             createTableJob.getTableSyncTask()
         );
+        result.addExcludeResources(createTableJob.getExcludeResources());
 
         // Create Index Table
         Map<String, CreateGlobalIndexPreparedData> gsiPreparedDataMap =
@@ -191,19 +221,21 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
                 CreateGsiJobFactory
                     .create4CreateTableWithGsi(logicalCreateTable.relDdl, gsiPreparedData, executionContext);
             result.addSequentialTasks(Lists.newArrayList(
-                gsiJob.getCreateGsiValidateTask(),
-                gsiJob.getCreateTableAddTablesExtMetaTask(),
-                gsiJob.getCreateGsiPhyDdlTask(),
-                gsiJob.getCreateTableAddTablesMetaTask(),
-                gsiJob.getCreateTableShowTableMetaTask(),
-                gsiJob.getGsiInsertIndexMetaTask(),
-                gsiJob.getLastUpdateGsiStatusTask()
+                    gsiJob.getCreateGsiValidateTask(),
+                    gsiJob.getCreateTableAddTablesExtMetaTask(),
+                    gsiJob.getCreateGsiPhyDdlTask(),
+                    gsiJob.getCreateTableAddTablesMetaTask(),
+                    gsiJob.getCreateTableShowTableMetaTask(),
+                    gsiJob.getGsiInsertIndexMetaTask(),
+                    gsiJob.getLastUpdateGsiStatusTask()
                 )
             );
             result.addTaskRelationship(
                 createTableJob.getCreateTableShowTableMetaTask(), gsiJob.getCreateGsiValidateTask());
             result.addTaskRelationship(
                 gsiJob.getLastUpdateGsiStatusTask(), createTableJob.getTableSyncTask());
+
+            result.addExcludeResources(gsiJob.getExcludeResources());
         }
 
         result.setExceptionActionForAllSuccessor(createTableJob.getCreateTableAddTablesMetaTask(),
@@ -229,21 +261,25 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
         boolean isAutoPartition = createTablePreparedData.getPrimaryTablePreparedData().isAutoPartition();
+        boolean hasTimestampColumnDefault =
+            createTablePreparedData.getPrimaryTablePreparedData().isTimestampColumnDefault();
+        Map<String, String> binaryColumnDefaultValues =
+            createTablePreparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues();
         PhysicalPlanData physicalPlanData = DdlJobDataConverter
             .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition);
 
         // Create Primary Table
         ExecutableDdlJob4CreatePartitionTable createTableJob = (ExecutableDdlJob4CreatePartitionTable)
-            new CreatePartitionTableJobFactory(isAutoPartition, physicalPlanData, executionContext,
-                createTablePreparedData.getPrimaryTablePreparedData()).create();
+            new CreatePartitionTableJobFactory(isAutoPartition, hasTimestampColumnDefault, binaryColumnDefaultValues,
+                physicalPlanData, executionContext, createTablePreparedData.getPrimaryTablePreparedData(), null).create();
 
         result.addSequentialTasks(Lists.newArrayList(
-            createTableJob.getCreatePartitionTableValidateTask(),
-            createTableJob.getCreateTableAddTablesPartitionInfoMetaTask(),
-            createTableJob.getCreateTablePhyDdlTask(),
-            createTableJob.getCreateTableAddTablesMetaTask(),
-            createTableJob.getCreateTableShowTableMetaTask(),
-            createTableJob.getTableSyncTask()
+                createTableJob.getCreatePartitionTableValidateTask(),
+                createTableJob.getCreateTableAddTablesPartitionInfoMetaTask(),
+                createTableJob.getCreateTablePhyDdlTask(),
+                createTableJob.getCreateTableAddTablesMetaTask(),
+                createTableJob.getCreateTableShowTableMetaTask(),
+                createTableJob.getTableSyncTask()
             )
         );
         result.removeTaskRelationship(
@@ -260,13 +296,13 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
                 (ExecutableDdlJob4CreatePartitionGsi) CreatePartitionGsiJobFactory
                     .create4CreateTableWithGsi(logicalCreateTable.relDdl, gsiPreparedData, executionContext);
             result.addSequentialTasks(Lists.newArrayList(
-                gsiJob.getCreateGsiValidateTask(),
-                gsiJob.getCreateTableAddTablesPartitionInfoMetaTask(),
-                gsiJob.getCreateGsiPhyDdlTask(),
-                gsiJob.getCreateTableAddTablesMetaTask(),
-                gsiJob.getCreateTableShowTableMetaTask(),
-                gsiJob.getGsiInsertIndexMetaTask(),
-                gsiJob.getLastUpdateGsiStatusTask()
+                    gsiJob.getCreateGsiValidateTask(),
+                    gsiJob.getCreateTableAddTablesPartitionInfoMetaTask(),
+                    gsiJob.getCreateGsiPhyDdlTask(),
+                    gsiJob.getCreateTableAddTablesMetaTask(),
+                    gsiJob.getCreateTableShowTableMetaTask(),
+                    gsiJob.getGsiInsertIndexMetaTask(),
+                    gsiJob.getLastUpdateGsiStatusTask()
                 )
             );
             result.addTaskRelationship(
@@ -329,17 +365,36 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
     private ExecutableDdlJob4DropTableWithGsi generateDropTmpPartitionTableJob() {
         // Drop primary Table
 
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tmpPrimaryTableName);
+        Long tableGroupId = -1L;
+        if (partitionInfo != null) {
+            tableGroupId = partitionInfo.getTableGroupId();
+        }
+        List<DdlTask> tasks = new ArrayList<>();
         ExecutableDdlJob dropTmpPrimaryTableJob = new ExecutableDdlJob();
         DropTableValidateTask validateTask = new DropTableValidateTask(schemaName, tmpPrimaryTableName);
         DdlTask phyDdlTask = new DropTruncateTmpPrimaryTablePhyDdlTask(schemaName, tmpPrimaryTableName);
         DdlTask removeMetaTask = new DropPartitionTableRemoveMetaTask(schemaName, tmpPrimaryTableName);
+        DdlTask syncTableGroup = null;
+        if (tableGroupId != -1) {
+            OptimizerContext oc =
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+            TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
+            syncTableGroup =
+                new TableGroupSyncTask(schemaName, tableGroupConfig.getTableGroupRecord().getTg_name());
+        }
         DdlTask tableSyncTask = new TableSyncTask(schemaName, tmpPrimaryTableName);
-        dropTmpPrimaryTableJob.addSequentialTasks(Lists.newArrayList(
-            validateTask,
-            phyDdlTask,
-            removeMetaTask,
-            tableSyncTask
-        ));
+
+        tasks.add(validateTask);
+        tasks.add(phyDdlTask);
+        tasks.add(removeMetaTask);
+        if (syncTableGroup != null) {
+            tasks.add(syncTableGroup);
+        }
+        tasks.add(tableSyncTask);
+
+        dropTmpPrimaryTableJob.addSequentialTasks(tasks);
         dropTmpPrimaryTableJob.removeTaskRelationship(validateTask, phyDdlTask);
 
         // Drop GSI Tables

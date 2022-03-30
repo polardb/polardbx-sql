@@ -37,6 +37,10 @@ public class SqlCheckTable extends SqlDal {
 
     private List<SqlNode> tableNames;
 
+    private boolean withLocalPartitions;
+
+    private String displayMode;
+
     public SqlCheckTable(SqlParserPos pos, List<SqlNode> tableNames){
         super(pos);
         this.tableNames = tableNames;
@@ -55,17 +59,34 @@ public class SqlCheckTable extends SqlDal {
         this.tableNames = tableNames;
     }
 
+    public boolean isWithLocalPartitions() {
+        return this.withLocalPartitions;
+    }
+
+    public void setWithLocalPartitions(final boolean withLocalPartitions) {
+        this.withLocalPartitions = withLocalPartitions;
+    }
+
+    public void setDisplayMode(final String mode){
+        this.displayMode = mode;
+    }
+
+    public String getDisplayMode(){
+        return this.displayMode;
+    }
+
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         final SqlWriter.Frame selectFrame = writer.startList(SqlWriter.FrameTypeEnum.SELECT);
         writer.sep("CHECK TABLE");
 
-        tableNames.get(0).unparse(writer, leftPrec, rightPrec);
-        for (int index = 1; index < tableNames.size(); index++) {
-            writer.print(", ");
-            tableNames.get(index).unparse(writer, leftPrec, rightPrec);
+        if(tableNames.size() > 0) {
+            tableNames.get(0).unparse(writer, leftPrec, rightPrec);
+            for (int index = 1; index < tableNames.size(); index++) {
+                writer.print(", ");
+                tableNames.get(index).unparse(writer, leftPrec, rightPrec);
+            }
         }
-
         writer.endList(selectFrame);
     }
 

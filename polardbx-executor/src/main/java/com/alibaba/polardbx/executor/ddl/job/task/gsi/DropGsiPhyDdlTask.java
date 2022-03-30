@@ -24,7 +24,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
-//todo guxu physicalPlanData提前生成
 @Getter
 @TaskName(name = "DropGsiPhyDdlTask")
 public class DropGsiPhyDdlTask extends BasePhyDdlTask {

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.cdc;
 
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.cdc.entity.DDLExtInfo;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -71,6 +73,8 @@ public class SysTableUtil {
             + "  KEY idx_job_id(`JOB_ID`)"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 BROADCAST\n", CDC_DDL_RECORD_TABLE);
 
+    private final static String CDC_ADD_INDEX = "alter table %s add index KEY idx_job_id(`JOB_ID`)";
+
     /**
      * CDC通用指令表
      */
@@ -115,9 +119,6 @@ public class SysTableUtil {
         String
             .format("SELECT COUNT(ID) FROM %s WHERE INSTRUCTION_TYPE =? and INSTRUCTION_ID =?", CDC_INSTRUCTION_TABLE);
 
-    /**
-     * FIXME(ziyang): may need to migrate to new DDL engine.
-     */
     private static final String SHOW_DDL = "show ddl";
     private static final String RECOVER_JOB = "recover ddl %s";
     private static final String JOB_STATE_RUNNING = "RUNNING";
@@ -147,9 +148,10 @@ public class SysTableUtil {
                 }
 
                 if (!allReady) {
-                    logger.info("cdc system tables are not ready yet ,will sleep and retry.");
+                    logger.warn("cdc system tables are not ready yet ,will sleep and retry.");
                     Thread.sleep(500);
                 }
+                alterTable();
             } catch (Throwable t) {
                 errorTime++;
                 if (errorTime > 2) {
@@ -211,13 +213,21 @@ public class SysTableUtil {
      * 老ddl引擎的幂等，直接通过jobId判断即可
      * 新ddl引擎的幂等，需要通过jobId和TaskId共同判断
      */
-    public boolean isDdlRecordExistForJobId(Connection connection, Long jobId)
+    public boolean isDdlRecordExistForJobId(Connection connection, Long jobId, Long taskId)
         throws SQLException {
         try (Statement stmt = connection.createStatement()) {
             try (ResultSet rs = stmt.executeQuery(String.format(QUERY_CDC_DDL_RECORD_BY_JOBID, jobId))) {
                 while (rs.next()) {
                     long jobIdTemp = rs.getLong(1);
-                    return jobId == jobIdTemp;
+                    String extStr = rs.getString(2);
+                    DDLExtInfo extInfo = StringUtils.isBlank(extStr) ? null :
+                        JSONObject.parseObject(extStr, DDLExtInfo.class);
+
+                    if (extInfo != null && extInfo.getTaskId() != null && extInfo.getTaskId() != 0L) {
+                        return jobId == jobIdTemp && extInfo.getTaskId().equals(taskId);
+                    } else {
+                        return jobId == jobIdTemp;
+                    }
                 }
             }
         }
@@ -272,6 +282,18 @@ public class SysTableUtil {
         }
     }
 
+    private void alterTable() {
+        // old version maybe not the index.
+        try (Connection connection = new InnerConnection(SystemDbHelper.CDC_DB_NAME)) {
+            try (Statement stmt = connection.createStatement()) {
+                stmt.execute(String
+                    .format(CDC_ADD_INDEX, SysTableUtil.CDC_DDL_RECORD_TABLE));
+            }
+        } catch (Throwable t) {
+            //ignore
+        }
+    }
+
     private List<String> queryReadyTables() throws SQLException {
         List<String> list = new ArrayList<>();
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
@@ -304,13 +326,13 @@ public class SysTableUtil {
                     if (objectSchema.equals(CDC_TABLE_SCHEMA)) {
                         // CDC系统表Job任务残留，使用recover ddl语句恢复
                         if (jobState.equals(JOB_STATE_PENDING)) {
-                            logger.info("DDL job is pending, try to recover ddl job");
+                            logger.warn("DDL job is pending, try to recover ddl job");
                             String recoverDDL = String.format(RECOVER_JOB, jobId);
                             stmt.executeQuery(recoverDDL);
                         } else if (jobState.equals(JOB_STATE_RUNNING)) {
-                            logger.info("DDL job is running, wait for the ddl job to complete");
+                            logger.warn("DDL job is running, wait for the ddl job to complete");
                         } else {
-                            logger.info("DDL job state: " + jobState + ", will sleep and retry");
+                            logger.warn("DDL job state: " + jobState + ", will sleep and retry");
                         }
                     } else {
                         logger.error("Unexpected DDL job, objectSchema: " + objectSchema);

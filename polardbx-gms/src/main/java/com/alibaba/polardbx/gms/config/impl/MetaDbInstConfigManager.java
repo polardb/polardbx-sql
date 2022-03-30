@@ -26,6 +26,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.gms.topology.InstConfigRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.util.List;
@@ -188,5 +189,13 @@ public class MetaDbInstConfigManager extends AbstractLifecycle implements InstCo
     public String getInstProperty(String propKey) {
         String propVal = this.propertiesInfoMap.getProperty(propKey);
         return propVal;
+    }
+
+    public String getInstProperty(String propKey, String defaultValue){
+        String value = this.propertiesInfoMap.getProperty(propKey);
+        if (StringUtils.isNotEmpty(value)) {
+            return value;
+        }
+        return defaultValue;
     }
 }

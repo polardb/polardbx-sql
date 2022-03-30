@@ -36,6 +36,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.dal.BaseDalOperation;
@@ -136,9 +137,25 @@ public class ExecutorHelper {
             }
         }
 
-        initQueryContext(context);
+        if (plan instanceof DirectShardingKeyTableOperation) {
+            // 点查不分配内存池
+        } else {
+            initQueryContext(context);
+        }
+        Cursor cursor = null;
+        try {
+            cursor = ExecutorContext.getContext(schema).getTopologyExecutor().execByExecPlanNode(plan, context);
+        } finally {
+            if (cursor == null) {
+                try {
+                    log.warn(RelUtils.toString(plan));
+                } catch (Throwable t) {
+                    //ignore
+                }
 
-        Cursor cursor = ExecutorContext.getContext(schema).getTopologyExecutor().execByExecPlanNode(plan, context);
+            }
+        }
+
         if (cacheOutput) {
             long estimateRowSize = MemoryEstimator.estimateRowSize(plan.getRowType());
             return new CacheCursor(

@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -1400,7 +1405,7 @@ public class LocalExecutionPlanner {
     private ExecutorFactory visitProject(Project project, PipelineFragment pipelineFragment) {
 
         boolean canConvertToVectorizedExpression =
-            RexUtils.canConvertToVectorizedExpression(context, project.getProjects());
+            VectorizedExpressionBuilder.canConvertToVectorizedExpression(context, project.getProjects());
         List<RexNode> projectExprs = project.getProjects();
         ExecutorFactory childExecutorFactory = visit(project, project.getInput(), pipelineFragment);
         return new ProjectExecFactory(
@@ -1464,7 +1469,7 @@ public class LocalExecutionPlanner {
     }
 
     private ExecutorFactory visitFilter(Filter filter, PipelineFragment pipelineFragment) {
-        boolean canConvertToVectorizedExpression = RexUtils
+        boolean canConvertToVectorizedExpression = VectorizedExpressionBuilder
             .canConvertToVectorizedExpression(context, filter.getCondition());
         ExecutorFactory childExecutorFactory = visit(filter, filter.getInput(), pipelineFragment);
         return new FilterExecFactory(filter, filter.getCondition(), childExecutorFactory,

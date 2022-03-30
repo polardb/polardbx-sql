@@ -45,7 +45,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
 
     Map<String, List<List<String>>> primaryTableTopology;
     List<PhyDdlTableOperation> primaryTablePhysicalPlans;
-    Map<String, Map<String, List<List<String>>>> indexTableTopologyMap;
+    Map<String, List<PhyDdlTableOperation>> indexTablePhysicalPlansMap;
 
     private final String schemaName;
     private final String primaryTableName;
@@ -63,14 +63,11 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
         Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
 
-        Map<String, Map<String, List<List<String>>>> indexTableTopologyMap =
-            createTableWithGsiBuilder.getIndexTableTopologyMap();
-
         this.ddl = ddl;
         this.preparedData = preparedData;
         this.primaryTableTopology = primaryTableTopology;
         this.primaryTablePhysicalPlans = primaryTablePhysicalPlans;
-        this.indexTableTopologyMap = indexTableTopologyMap;
+        this.indexTablePhysicalPlansMap = createTableWithGsiBuilder.getIndexTablePhysicalPlansMap();
         this.executionContext = executionContext;
 
         this.schemaName = preparedData.getPrimaryTablePreparedData().getSchemaName();
@@ -97,12 +94,15 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
                 isAutoPartition);
         ExecutableDdlJob4CreatePartitionTable createTableJob = (ExecutableDdlJob4CreatePartitionTable)
             new CreatePartitionTableJobFactory(preparedData.getPrimaryTablePreparedData().isAutoPartition(),
-                physicalPlanData, executionContext, preparedData.getPrimaryTablePreparedData()).create();
+                preparedData.getPrimaryTablePreparedData().isTimestampColumnDefault(),
+                preparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues(),
+                physicalPlanData, executionContext, preparedData.getPrimaryTablePreparedData(), null).create();
         createTableJob.removeTaskRelationship(
-            createTableJob.getCdcDdlMarkTask(),
-            createTableJob.getCreateTableShowTableMetaTask()
+                createTableJob.getCreateTableAddTablesMetaTask(),
+                createTableJob.getCdcDdlMarkTask()
         );
         result.combineTasks(createTableJob);
+        result.addExcludeResources(createTableJob.getExcludeResources());
 
         Map<String, CreateGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
         for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
@@ -110,12 +110,17 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             ExecutableDdlJob4CreatePartitionGsi gsiJob = (ExecutableDdlJob4CreatePartitionGsi)
                 CreatePartitionGsiJobFactory.create4CreateTableWithGsi(ddl, gsiPreparedData, executionContext);
             result.combineTasks(gsiJob);
-            //todo guxu 还可以再优化一下
             result.addTaskRelationship(
-                createTableJob.getCdcDdlMarkTask(),
-                gsiJob.getCreateGsiValidateTask()
+                    createTableJob.getCreateTableAddTablesMetaTask(),
+                    gsiJob.getCreateGsiValidateTask()
             );
-            result.addTaskRelationship(gsiJob.getLastTask(), createTableJob.getCreateTableShowTableMetaTask());
+            result.addTaskRelationship(gsiJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
+            result.addExcludeResources(gsiJob.getExcludeResources());
+            result.addTask(gsiJob.getCreateGsiPreCheckTask());
+            result.addTaskRelationship(createTableJob.getCreatePartitionTableValidateTask(),
+                gsiJob.getCreateGsiPreCheckTask());
+            result.addTaskRelationship(gsiJob.getCreateGsiPreCheckTask(),
+                createTableJob.getCreateTableAddTablesPartitionInfoMetaTask());
         }
 
         return result;
@@ -124,8 +129,8 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(schemaName, primaryTableName));
-        if (indexTableTopologyMap != null) {
-            indexTableTopologyMap.keySet().forEach(indexTableName -> {
+        if (indexTablePhysicalPlansMap != null) {
+            indexTablePhysicalPlansMap.keySet().forEach(indexTableName -> {
                 resources.add(concatWithDot(schemaName, indexTableName));
             });
         }

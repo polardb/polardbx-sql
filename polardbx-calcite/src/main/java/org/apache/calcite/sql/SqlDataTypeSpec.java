@@ -292,6 +292,10 @@ public class SqlDataTypeSpec extends SqlNode {
         return charSetName;
     }
 
+    public String getCollationName() {
+        return collationName;
+    }
+
     public TimeZone getTimeZone() {
         return timeZone;
     }

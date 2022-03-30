@@ -65,6 +65,10 @@ public class DynamicConfig {
                 break;
             }
 
+            case ConnectionProperties.MAX_PARTITION_COLUMN_COUNT:
+                maxPartitionColumnCount = parseValue(value, Integer.class, maxPartitionColumnCountDefault);
+                break;
+
             default:
                 break;
             }
@@ -135,6 +139,14 @@ public class DynamicConfig {
 
     public long getPurgeHistoryMs() {
         return purgeHistoryMs;
+    }
+
+    private static final int maxPartitionColumnCountDefault =
+        parseValue(ConnectionParams.MAX_PARTITION_COLUMN_COUNT.getDefault(), Integer.class, 3);
+    private volatile int maxPartitionColumnCount = maxPartitionColumnCountDefault;
+
+    public int getMaxPartitionColumnCount() {
+        return maxPartitionColumnCount;
     }
 
     public static <T> T parseValue(String value, Class<T> type, T defaultValue) {

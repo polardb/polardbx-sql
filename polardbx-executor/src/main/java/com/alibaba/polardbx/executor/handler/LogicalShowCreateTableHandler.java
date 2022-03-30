@@ -16,14 +16,24 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.repo.mysql.common.ResultSetHelper;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.sql.SqlShowCreateTable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author mengshi
@@ -54,6 +64,45 @@ public class LogicalShowCreateTableHandler extends HandlerCommon {
         } else {
             return shardingDatabaseHandler.handle(logicalPlan, executionContext);
         }
+    }
+
+    public static String reorgLogicalColumnOrder(String schemaName, String logicalTableName, String sql) {
+        // Always show columns in logical column order no matter what the mode.
+        List<ColumnsRecord> logicalColumnsInOrder =
+            ResultSetHelper.fetchLogicalColumnsInOrder(schemaName, logicalTableName);
+
+        if (GeneralUtil.isEmpty(logicalColumnsInOrder)) {
+            return sql;
+        }
+
+        List<SQLTableElement> newTableElements = new ArrayList<>();
+
+        final MySqlCreateTableStatement createTableStmt =
+            (MySqlCreateTableStatement) SQLUtils.parseStatements(sql, JdbcConstants.MYSQL).get(0).clone();
+
+        for (ColumnsRecord logicalColumn : logicalColumnsInOrder) {
+            for (SQLTableElement tableElement : createTableStmt.getTableElementList()) {
+                if (tableElement instanceof SQLColumnDefinition) {
+                    String physicalColumnName = ((SQLColumnDefinition) tableElement).getColumnName();
+                    if (TStringUtil
+                        .equalsIgnoreCase(physicalColumnName, TStringUtil.addBacktick(logicalColumn.columnName))) {
+                        newTableElements.add(tableElement);
+                        break;
+                    }
+                }
+            }
+        }
+
+        for (SQLTableElement tableElement : createTableStmt.getTableElementList()) {
+            if (!(tableElement instanceof SQLColumnDefinition)) {
+                newTableElements.add(tableElement);
+            }
+        }
+
+        createTableStmt.getTableElementList().clear();
+        createTableStmt.getTableElementList().addAll(newTableElements);
+
+        return createTableStmt.toString();
     }
 
 }

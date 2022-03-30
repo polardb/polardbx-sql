@@ -16,7 +16,12 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.meta;
 
+import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -24,7 +29,9 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -32,9 +39,15 @@ import com.google.common.collect.Sets;
 import org.apache.commons.collections.CollectionUtils;
 
 import javax.validation.constraints.NotNull;
+import java.sql.Connection;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 /**
  * For the purpose of avoiding deadlock
@@ -48,6 +61,9 @@ public class DdlEngineResourceManager {
 
     private static final String OWNER_PREFIX = "DDL_";
     private static final long RETRY_INTERVAL = 1000L;
+
+    private static final Map<String, List<DdlContext>> allLocksTryingToAcquire =
+        new ConcurrentHashMap<>(DdlConstants.DEFAULT_LOGICAL_DDL_PARALLELISM * 16);
 
     /**
      * Check whether the resource is available
@@ -65,17 +81,34 @@ public class DdlEngineResourceManager {
                                 @NotNull long jobId,
                                 @NotNull Set<String> shared,
                                 @NotNull Set<String> exclusive) {
+        acquireResource(schemaName, jobId, __->false, shared, exclusive, (Connection conn) -> true);
+    }
+
+    public void acquireResource(@NotNull String schemaName,
+                                @NotNull long jobId,
+                                @NotNull Predicate shouldInterrupt,
+                                @NotNull Set<String> shared,
+                                @NotNull Set<String> exclusive,
+                                @NotNull Function<Connection, Boolean> func) {
         Preconditions.checkNotNull(schemaName, "schemaName can't be null");
         Preconditions.checkNotNull(shared, "shared resource can't be null");
         Preconditions.checkNotNull(exclusive, "exclusive resource can't be null");
         Pair<Set<String>, Set<String>> rwLocks = inferRwLocks(shared, exclusive);
         Set<String> readLocks = rwLocks.getKey();
         Set<String> writeLocks = rwLocks.getValue();
-        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        String owner = OWNER_PREFIX + jobId;
+
+        final LocalDateTime beginTs = LocalDateTime.now();
+        int retryCount = 0;
 
         try {
-            while (!lockManager.tryReadWriteLockBatch(schemaName, owner, readLocks, writeLocks)) {
-                if (Thread.interrupted()) {
+            while (!lockManager.tryReadWriteLockBatch(schemaName, owner, readLocks, writeLocks, func)) {
+                LocalDateTime now = LocalDateTime.now();
+                if (now.minusHours(1L).isAfter(beginTs)){
+                    throw new TddlNestableRuntimeException("GET DDL LOCK TIMEOUT");
+                }
+
+                if (Thread.interrupted() || shouldInterrupt.test(null)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_QUERY_CANCLED);
                 }
 
@@ -90,6 +123,10 @@ public class DdlEngineResourceManager {
                 //check if there's any failed Job holds the lock
                 //if true, don't wait anymore
                 Set<String> blockers = lockManager.queryBlocker(Sets.union(shared, exclusive));
+                LOGGER.info(String.format(
+                    "tryReadWriteLockBatch failed, schemaName:[%s], jobId:[%s], retryCount:[%d], shared:[%s], exclusive:[%s], blockers:[%s]",
+                    schemaName, jobId, retryCount++, setToString(shared), setToString(exclusive), setToString(blockers))
+                );
                 if (CollectionUtils.isNotEmpty(blockers)) {
                     List<DdlEngineRecord> blockerJobRecords = getBlockerJobRecords(schemaName, blockers);
                     if (CollectionUtils.isEmpty(blockerJobRecords)) {
@@ -102,10 +139,10 @@ public class DdlEngineResourceManager {
                             Joiner.on(",").join(blockers)
                         );
                         LOGGER.error(errMsg);
+                        EventLogger.log(EventType.DDL_WARN, errMsg);
                         for (String blocker : blockers) {
                             lockManager.unlockReadWriteByOwner(blocker);
                         }
-                        //throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNEXPECTED, errMsg);
                     } else {
                         for (DdlEngineRecord record : blockerJobRecords) {
                             DdlState ddlState = DdlState.valueOf(record.state);
@@ -134,21 +171,36 @@ public class DdlEngineResourceManager {
                     }
                 }
             }
-
             //exceed the attempt times, still unable to acquire all the locks
-        } catch (TddlRuntimeException e) {
-            releaseResource(jobId);
-            throw e;
         } catch (Exception e) {
-            releaseResource(jobId);
-            throw new RuntimeException(e);
+            throw new TddlNestableRuntimeException(e);
         }
     }
 
-    public void releaseResource(long jobId) {
+    public boolean downGradeWriteLock(Connection connection, long jobId, String writeLock){
+        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        return lockManager.downGradeWriteLock(connection, owner, writeLock);
+    }
+
+    public int releaseResource(long jobId) {
         String owner = OWNER_PREFIX + String.valueOf(jobId);
         FailPoint.injectCrash("fp_ddl_engine_release_write_lock_crash");
-        lockManager.unlockReadWriteByOwner(owner);
+        return lockManager.unlockReadWriteByOwner(owner);
+    }
+
+    public int releaseResource(Connection connection, long jobId) {
+        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        FailPoint.injectCrash("fp_ddl_engine_release_write_lock_crash");
+        return lockManager.unlockReadWriteByOwner(connection, owner);
+    }
+
+    public int releaseResource(Connection connection, long jobId, Set<String> resouceSet) {
+        if(CollectionUtils.isEmpty(resouceSet)){
+            return 0;
+        }
+        String owner = OWNER_PREFIX + String.valueOf(jobId);
+        FailPoint.injectCrash("fp_ddl_engine_release_write_lock_crash");
+        return lockManager.unlockReadWriteByOwner(connection, owner, resouceSet);
     }
 
     /**
@@ -186,6 +238,44 @@ public class DdlEngineResourceManager {
             }
         });
         return result;
+    }
+
+    private String setToString(Set<String> lockSet){
+        if(CollectionUtils.isEmpty(lockSet)){
+            return "";
+        }
+        return Joiner.on(",").join(lockSet);
+    }
+
+    public static void startAcquiringLock(String schemaName, DdlContext ddlContext){
+        synchronized (allLocksTryingToAcquire){
+            if(!allLocksTryingToAcquire.containsKey(schemaName)){
+                allLocksTryingToAcquire.put(schemaName, new ArrayList<>());
+            }
+            allLocksTryingToAcquire.get(schemaName).add(ddlContext);
+        }
+    }
+
+    public static void finishAcquiringLock(String schemaName, DdlContext ddlContext){
+        synchronized (allLocksTryingToAcquire){
+            if(allLocksTryingToAcquire.containsKey(schemaName)){
+                allLocksTryingToAcquire.get(schemaName).remove(ddlContext);
+                if(CollectionUtils.isEmpty(allLocksTryingToAcquire.get(schemaName))){
+                    allLocksTryingToAcquire.remove(schemaName);
+                }
+            }
+        }
+    }
+
+    public static List<DdlContext> getAllDdlAcquiringLocks(String schemaName){
+        List<DdlContext> result = new ArrayList<>();
+        synchronized (allLocksTryingToAcquire){
+            if(CollectionUtils.isEmpty(allLocksTryingToAcquire.get(schemaName))){
+                return result;
+            }
+            result.addAll(allLocksTryingToAcquire.get(schemaName));
+            return result;
+        }
     }
 
 }

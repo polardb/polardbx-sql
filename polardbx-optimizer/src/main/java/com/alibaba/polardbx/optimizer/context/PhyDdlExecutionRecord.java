@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.context;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.encrypt.MD5Utils;
 
 import java.util.Set;
@@ -38,7 +39,7 @@ public class PhyDdlExecutionRecord {
 
     private Set<String> phyObjectsDone = ConcurrentHashMap.newKeySet();
 
-    private int numPhyObjectsTotal = 0;
+    private int numPhyObjectsTotal;
     private AtomicInteger numPhyObjectsDone = new AtomicInteger(0);
 
     private Set<String> errorHashesIgnored = null;
@@ -71,8 +72,17 @@ public class PhyDdlExecutionRecord {
         this.phyObjectsDone = phyObjectsDone;
     }
 
+    public void clearPhyObjectsDone() {
+        this.phyObjectsDone.clear();
+        this.numPhyObjectsDone.set(0);
+    }
+
     public void addPhyObjectDone(String phyObjectDone) {
         this.phyObjectsDone.add(phyObjectDone);
+    }
+
+    public void removePhyObjectDone(String phyObjectDone) {
+        this.phyObjectsDone.remove(phyObjectDone);
     }
 
     public int getNumPhyObjectsTotal() {
@@ -81,10 +91,6 @@ public class PhyDdlExecutionRecord {
 
     public void setNumPhyObjectsTotal(int numPhyObjectsTotal) {
         this.numPhyObjectsTotal = numPhyObjectsTotal;
-    }
-
-    public void setNumPhyObjectsDone(AtomicInteger numPhyObjectsDone) {
-        this.numPhyObjectsDone = numPhyObjectsDone;
     }
 
     public int getNumPhyObjectsDone() {
@@ -101,13 +107,6 @@ public class PhyDdlExecutionRecord {
 
     public void decreasePhyObjsDone() {
         this.numPhyObjectsDone.decrementAndGet();
-    }
-
-    public boolean checkIfErrorIgnored(ExecutionContext.ErrorMessage errorMessage) {
-        String errorHashIgnored = MD5Utils.getInstance().getMD5String(errorMessage.getGroupName()
-            + errorMessage.getCode()
-            + errorMessage.getMessage());
-        return errorHashesIgnored != null && errorHashesIgnored.contains(errorHashIgnored);
     }
 
     public void addErrorIgnored(ExecutionContext.ErrorMessage errorMessage) {
@@ -131,4 +130,23 @@ public class PhyDdlExecutionRecord {
     public void setErrorHashesIgnored(Set<String> errorHashesIgnored) {
         this.errorHashesIgnored = errorHashesIgnored;
     }
+
+    @Override
+    public String toString() {
+        StringBuilder info = new StringBuilder();
+
+        info.append("Job ID: ").append(jobId).append("\n");
+        info.append("Task ID: ").append(taskId).append("\n\n");
+
+        info.append("Total Number of Physical Objects: ").append(numPhyObjectsTotal).append("\n");
+        info.append("Number of Physical Objects Done: ").append(numPhyObjectsDone.get()).append("\n\n");
+
+        info.append("Physical Objects Done:").append("\n");
+        if (GeneralUtil.isNotEmpty(phyObjectsDone)) {
+            phyObjectsDone.forEach(phyObjectDone -> info.append(phyObjectDone).append("\n"));
+        }
+
+        return info.toString();
+    }
+
 }

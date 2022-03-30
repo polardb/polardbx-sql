@@ -111,7 +111,8 @@ public class GsiChecker extends Checker {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
-            .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(), true);
+            .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(),
+                indexTableMeta.hasGsiImplicitPrimaryKey() ? null : "PRIMARY");
 
         final List<DataType> columnTypes = indexTableMeta.getAllColumns()
             .stream()
@@ -137,13 +138,17 @@ public class GsiChecker extends Checker {
             params,
             primaryLock,
             gsiLock,
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 false, true, primaryLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 false, true, gsiLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 true, true, primaryLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 true, true, gsiLock),
             selectWithIn.getKey(),
             selectWithIn.getValue(),

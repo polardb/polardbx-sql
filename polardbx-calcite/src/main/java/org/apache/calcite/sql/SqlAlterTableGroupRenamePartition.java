@@ -16,8 +16,8 @@
 
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.util.Pair;
 
 import java.util.List;
 
@@ -28,7 +28,8 @@ import java.util.List;
  */
 public class SqlAlterTableGroupRenamePartition extends SqlAlterSpecification {
 
-    private static final SqlOperator OPERATOR = new SqlSpecialOperator("RENAME PARTITION", SqlKind.ALTER_TABLEGROUP_RENAME_PARTITION);
+    private static final SqlOperator OPERATOR =
+        new SqlSpecialOperator("RENAME PARTITION", SqlKind.ALTER_TABLEGROUP_RENAME_PARTITION);
 
     private final List<Pair<String, String>> changePartitionsPair;
 

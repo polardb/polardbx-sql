@@ -27,38 +27,40 @@ import java.util.List;
 import java.util.Set;
 
 public interface StatisticService {
-    public StatisticResult getRowCount(String logicalTableName);
+    StatisticResult getRowCount(String logicalTableName);
 
-    public void setRowCount(String logicalTableName, long rowCount);
+    void setRowCount(String logicalTableName, long rowCount);
 
-    public StatisticResult getCardinality(String logicalTableName, String columnName);
+    StatisticResult getCardinality(String logicalTableName, String columnName);
 
-    public StatisticResult getFrequency(String logicalTableName, String columnName, String value);
+    StatisticResult getFrequency(String logicalTableName, String columnName, String value);
 
     /**
      * get frequency with row value.
      */
-    public StatisticResult getFrequency(String logicalTableName, String columnName, Row.RowValue value);
+    StatisticResult getFrequency(String logicalTableName, String columnName, Row.RowValue value);
 
-    public StatisticResult getNullCount(String logicalTableName, String columnName);
+    StatisticResult getNullCount(String logicalTableName, String columnName);
 
-    public List<Histogram> getHistograms(String logicalTableName, List<String> columnNames);
-
-    public StatisticResult getRangeCount(String logicalTableName, String columnName, Object lower,
+    StatisticResult getRangeCount(String logicalTableName, String columnName, Object lower,
                                          boolean lowerInclusive,
                                          Object upper, boolean upperInclusive);
 
-    public void addUpdateRowCount(String logicalTableName, long affectRow);
+    void addUpdateRowCount(String logicalTableName, long affectRow);
 
-    DataType getDataType(String tableName, String name);
+    DataType getDataType(String tableName, String columnName);
 
+    @Deprecated
     StatisticLogInfo getStatisticLogInfo();
 
+    @Deprecated
     AutoAnalyzeTask getAutoAnalyzeTask();
 
     void renameTable(String oldLogicalTableName, String newLogicalTableName);
 
-    public void removeLogicalColumnList(String logicalTableName, List<String> columnNameList);
+    void removeLogicalColumnList(String logicalTableName, List<String> columnNameList);
 
     Set<String> getTableNamesCollected();
+
+    void sampleTable(String logicalTableName);
 }

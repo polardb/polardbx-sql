@@ -60,6 +60,15 @@ public class DirectedAcyclicGraph {
         }
     }
 
+    public synchronized Pair<Vertex, Boolean> addVertex(Vertex newVertex) {
+        if (vertexes.contains(newVertex)) {
+            return new Pair<>(newVertex, false);
+        } else {
+            vertexes.add(newVertex);
+            return new Pair<>(newVertex, true);
+        }
+    }
+
     /**
      * Add an edge that may connect new or exists vertexes.
      *
@@ -78,6 +87,17 @@ public class DirectedAcyclicGraph {
         return new Pair<>(sourceVertex.getValue(), targetVertex.getValue());
     }
 
+    public synchronized Pair<Boolean, Boolean> addEdge(Vertex source, Vertex target) {
+        Pair<Vertex, Boolean> sourceVertex = addVertex(source);
+        Pair<Vertex, Boolean> targetVertex = addVertex(target);
+        final Edge newEdge = Edge.create(sourceVertex.getKey(), targetVertex.getKey());
+        if (edges.add(newEdge)) {
+            sourceVertex.getKey().outgoingEdges.add(newEdge);
+            newEdge.target.inDegree++;
+        }
+        return new Pair<>(sourceVertex.getValue(), targetVertex.getValue());
+    }
+
     /**
      * add another DAG into current DAG
      */
@@ -85,6 +105,67 @@ public class DirectedAcyclicGraph {
         this.vertexes.addAll(graph.vertexes);
         this.edges.addAll(graph.edges);
     }
+
+    /**
+     * append another DAG into current DAG
+     * @param graph
+     */
+    public synchronized void appendGraph(DirectedAcyclicGraph graph) {
+        synchronized (graph){
+            Set<Vertex> outSet = getAllZeroOutDegreeVertexes();
+            Set<Vertex> inSet = graph.getAllZeroInDegreeVertexes();
+
+            addGraph(graph);
+            for(Vertex out: outSet){
+                for(Vertex in: inSet){
+                    addEdge(out, in);
+                }
+            }
+        }
+    }
+
+    public synchronized void appendGraphAfter(Vertex vertex, DirectedAcyclicGraph graph){
+        if(vertex == null || !vertexes.contains(vertex)){
+            throw new IllegalArgumentException("DdlTask not found");
+        }
+        synchronized (graph){
+            Set<Vertex> inSet = graph.getAllZeroInDegreeVertexes();
+
+            addGraph(graph);
+            for(Vertex in: inSet){
+                addEdge(vertex, in);
+            }
+        }
+    }
+
+    public synchronized Set<Vertex> getAllZeroInDegreeVertexes(){
+        Set<Vertex> result = ConcurrentHashMap.newKeySet();
+        if(CollectionUtils.isEmpty(vertexes)){
+            return result;
+        }
+        result.addAll(vertexes);
+        for(Edge e: edges){
+            if(result.contains(e.target)){
+                result.remove(e.target);
+            }
+        }
+        return result;
+    }
+
+    public synchronized Set<Vertex> getAllZeroOutDegreeVertexes(){
+        Set<Vertex> result = ConcurrentHashMap.newKeySet();
+        if(CollectionUtils.isEmpty(vertexes)){
+            return result;
+        }
+        result.addAll(vertexes);
+        for(Edge e: edges){
+            if(result.contains(e.source)){
+                result.remove(e.source);
+            }
+        }
+        return result;
+    }
+
 
     /**
      * reverse all edges
@@ -169,7 +250,7 @@ public class DirectedAcyclicGraph {
         }
     }
 
-    private synchronized Vertex findVertex(DdlTask object) {
+    public synchronized Vertex findVertex(DdlTask object) {
         for (Vertex vertex : vertexes) {
             if (vertex.object == object || vertex.object.equals(object)) {
                 return vertex;
@@ -229,6 +310,20 @@ public class DirectedAcyclicGraph {
         }
         for (Edge e : edges) {
             dag.append(String.format("%s -> %s\n", e.source, e.target));
+        }
+        dag.append("}");
+        return dag.toString();
+    }
+
+    public synchronized String visualizeGraph() {
+        StringBuilder dag = new StringBuilder();
+        dag.append("digraph G {\n");
+        for (Vertex v : vertexes) {
+            dag.append(String.format("%s [shape=record  label=\"{taskId:%s|name:%s}\"];",
+            v.object.hashCode(), v.object.getTaskId(), v.object.getName()) + "\n");
+        }
+        for (Edge e : edges) {
+            dag.append(String.format("%s -> %s\n", e.source.hashCode(), e.target.hashCode()));
         }
         dag.append("}");
         return dag.toString();

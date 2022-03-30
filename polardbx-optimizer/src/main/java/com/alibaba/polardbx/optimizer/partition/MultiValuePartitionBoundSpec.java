@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 
 import java.util.ArrayList;
@@ -108,9 +109,9 @@ public class MultiValuePartitionBoundSpec extends PartitionBoundSpec {
      * Multi-Column datum need be surrounded with brace, which single-column datum not.
      */
     @Override
-    public String getPartitionBoundDescription() {
+    public String getPartitionBoundDescription(int prefixPartColCnt) {
         return this.datums.stream()
-            .map(datum -> datum.getDesc(datum.size() > 1))
+            .map(datum -> datum.getDesc(datum.size() > 1, prefixPartColCnt))
             .collect(Collectors.joining(","));
     }
 
@@ -129,6 +130,11 @@ public class MultiValuePartitionBoundSpec extends PartitionBoundSpec {
             return true;
         }
         return false;
+    }
+
+    @Override
+    public boolean equals(Object obj, int prefixPartColCnt) {
+        return equals(obj);
     }
 
     public boolean isDefault() {

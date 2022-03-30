@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -51,9 +54,8 @@ public class InformationSchemaInnodbLocksHandler extends BaseVirtualViewSubClass
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
-        InformationSchemaInnodbTrxHandler.TransInfo transInfo =
-            new InformationSchemaInnodbTrxHandler.TransInfo(schemaNames);
-        Map<String, List<TGroupDataSource>> instId2GroupList = virtualViewHandler.getInstId2GroupList(schemaNames);
+        TrxLookupSet lookupSet = TransactionUtils.getTrxLookupSet(schemaNames);
+        Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(schemaNames);
 
         for (List<TGroupDataSource> groupDataSourceList : instId2GroupList.values()) {
 
@@ -82,10 +84,7 @@ public class InformationSchemaInnodbLocksHandler extends BaseVirtualViewSubClass
                     String lock_data = rs.getString("lock_data");
                     long trx_mysql_thread_id = rs.getLong("trx_mysql_thread_id");
 
-                    Long tranId = transInfo.mysqlConnId2PolarDbXTranId(groupNameList, trx_mysql_thread_id);
-                    if (tranId == null) {
-                        continue;
-                    }
+                    Long tranId = lookupSet.getTransactionId(groupNameList, trx_mysql_thread_id);
 
                     if (tranId == null) {
                         continue;

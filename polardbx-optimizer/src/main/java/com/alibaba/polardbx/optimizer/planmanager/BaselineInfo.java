@@ -166,6 +166,11 @@ public class BaselineInfo {
         return baselineInfoJson.toJSONString();
     }
 
+    /**
+     * base info , just for log
+     * @param baselineInfo
+     * @return
+     */
     public static String serializeBaseInfoToJson(BaselineInfo baselineInfo) {
         JSONObject baselineInfoJson = new JSONObject();
         baselineInfoJson.put("id", baselineInfo.getId());

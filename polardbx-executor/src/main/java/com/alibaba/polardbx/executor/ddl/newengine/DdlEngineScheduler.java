@@ -16,17 +16,18 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine;
 
-import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.async.AsyncCallableTask;
 import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.logger.MDC;
+import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
+import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequest;
@@ -35,31 +36,35 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Sets;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_ARCHIVE_CLEANER_NAME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_DISPATCHER_NAME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_SCHEDULER_NAME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_LOGICAL_DDL_PARALLELISM;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_RUNNING_DDL_RESCHEDULE_INTERVAL_IN_MINUTES;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MEDIAN_WAITING_TIME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MORE_WAITING_TIME;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.LOGICAL_DDL_PARALLELISM;
@@ -70,28 +75,20 @@ public class DdlEngineScheduler {
 
     private static final DdlEngineScheduler INSTANCE = new DdlEngineScheduler();
 
-    private final Set<String> activeSchemas = ConcurrentHashMap.newKeySet();
-
-    private final DdlJobManager schedulerManager = new DdlJobManager();
-
     /**
      * Instance-level DDL request dispatcher.
      */
-    private final ExecutorService ddlDispatcher = DdlHelper.createSingleThreadPool(DDL_DISPATCHER_NAME);
+    private final ExecutorService ddlDispatcherThread = DdlHelper.createSingleThreadPool(DDL_DISPATCHER_NAME);
     private final BlockingQueue<DdlRequest> ddlRequestTransitQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<DdlEngineRecord> ddlJobDeliveryQueue = new LinkedBlockingQueue<>();
 
     /**
      * Database-level DDL request schedulers.
      */
-    private final ExecutorService ddlSchedulers = DdlHelper.createThreadPool(DDL_SCHEDULER_NAME);
-    private final Map<String, Future> ddlFutures = new ConcurrentHashMap<>();
-    private final Map<String, DdlJobScheduler> ddlJobSchedulerMap = new ConcurrentHashMap<>();
-    private final Map<String, BlockingQueue<DdlEngineRecord>> ddlJobDeliveryQueues = new ConcurrentHashMap<>();
+    private final ExecutorService ddlSchedulerThread = DdlHelper.createSingleThreadPool(DDL_SCHEDULER_NAME);
 
-    /**
-     * DDL Job Executors
-     */
-    private final Map<String, ServerThreadPool> ddlExecutors = new ConcurrentHashMap<>();
+    private final DdlJobScheduler ddlJobScheduler = new DdlJobScheduler();
+    private Map<String, DdlJobSchedulerConfig> activeSchemaDdlConfig = new ConcurrentHashMap<>();
 
     /**
      * Job executing version number, increments version number by 1 for each Job executed
@@ -101,7 +98,17 @@ public class DdlEngineScheduler {
 
     private DdlEngineScheduler() {
         if (DdlHelper.isRunnable()) {
-            ddlDispatcher.submit(AsyncTask.build(new DdlJobDispatcher()));
+            ddlDispatcherThread.submit(AsyncTask.build(new DdlJobDispatcher()));
+            ddlSchedulerThread.submit(AsyncTask.build(ddlJobScheduler));
+            ScheduledExecutorService archiveCleanerThread = ExecutorUtil.createScheduler(1,
+                new NamedThreadFactory(DDL_ARCHIVE_CLEANER_NAME),
+                new ThreadPoolExecutor.DiscardPolicy());
+            archiveCleanerThread.scheduleAtFixedRate(
+                AsyncTask.build(new DdlArchiveCleaner()),
+                0L,
+                4L,
+                TimeUnit.HOURS
+            );
         }
     }
 
@@ -112,41 +119,20 @@ public class DdlEngineScheduler {
     public void register(String schemaName, ServerThreadPool executor) {
         if (DdlHelper.isRunnable(schemaName)) {
             String lowerCaseSchemaName = schemaName.toLowerCase();
-
-            ddlJobDeliveryQueues.put(lowerCaseSchemaName, new LinkedBlockingQueue<>());
-
-            ddlExecutors.put(lowerCaseSchemaName, executor);
-
-            activeSchemas.add(lowerCaseSchemaName);
-
             DdlEngineDagExecutorMap.register(lowerCaseSchemaName);
-
-            DdlJobScheduler ddlJobScheduler = new DdlJobScheduler(schemaName);
-            ddlJobSchedulerMap.put(lowerCaseSchemaName, ddlJobScheduler);
-            Future future = ddlSchedulers.submit(AsyncTask.build(ddlJobScheduler));
-            ddlFutures.put(lowerCaseSchemaName, future);
+            synchronized (activeSchemaDdlConfig){
+                activeSchemaDdlConfig.put(lowerCaseSchemaName, new DdlJobSchedulerConfig(lowerCaseSchemaName, executor));
+            }
         }
     }
 
     public void deregister(String schemaName) {
         if (DdlHelper.isRunnable(schemaName)) {
             String lowerCaseSchemaName = schemaName.toLowerCase();
-
             DdlEngineDagExecutorMap.deregister(lowerCaseSchemaName);
-
-            activeSchemas.remove(lowerCaseSchemaName);
-
-            ddlExecutors.remove(lowerCaseSchemaName);
-
-            ddlJobDeliveryQueues.remove(lowerCaseSchemaName);
-
-            Future future = ddlFutures.remove(lowerCaseSchemaName);
-            boolean cancelled = future.cancel(true);
-            if (!cancelled) {
-                // Wait a few seconds.
-                DdlHelper.waitToContinue(MORE_WAITING_TIME);
+            synchronized (activeSchemaDdlConfig){
+                activeSchemaDdlConfig.remove(lowerCaseSchemaName);
             }
-            ddlJobSchedulerMap.remove(schemaName.toLowerCase());
         }
     }
 
@@ -181,8 +167,7 @@ public class DdlEngineScheduler {
             suspending.set(true);
             long startTime = System.currentTimeMillis();
             while (true) {
-                boolean allIdle = ddlJobSchedulerMap.values().stream().map(DdlJobScheduler::isIdle)
-                    .reduce(true, (a, b) -> a && b);
+                boolean allIdle = ddlJobScheduler.isIdle();
 
                 if (allIdle) {
                     if (expectVersion == performVersion.get()) {
@@ -204,7 +189,28 @@ public class DdlEngineScheduler {
         }
     }
 
+    private class DdlArchiveCleaner implements Runnable {
+
+        private final DdlJobManager ddlJobManager = new DdlJobManager();
+
+        @Override
+        public void run() {
+            if (!DdlHelper.isRunnable()) {
+                return;
+            }
+            if (!ExecUtils.hasLeadership(null)){
+                return;
+            }
+            //15 days
+            long daysInMinuts = 15 * 24 * 60;
+            int count = ddlJobManager.cleanUpArchive(daysInMinuts);
+            SQLRecorderLogger.ddlEngineLogger.info(String.format("clean up DDL archive data, count:[%s]", count));
+        }
+    }
+
     private class DdlJobDispatcher implements Runnable {
+
+        private final DdlJobManager ddlJobManager = new DdlJobManager();
 
         @Override
         public void run() {
@@ -227,6 +233,7 @@ public class DdlEngineScheduler {
                         // No DDL request received before timeout, so
                         // try to fetch from the DDL job queue directly.
                         processQueue();
+                        processRunning();
                         processPaused();
                     }
                 } catch (InterruptedException e) {
@@ -246,7 +253,7 @@ public class DdlEngineScheduler {
         }
 
         private void processRequest(DdlRequest ddlRequest) {
-            List<DdlEngineRecord> records = schedulerManager.fetchRecords(ddlRequest.getJobIds());
+            List<DdlEngineRecord> records = ddlJobManager.fetchRecords(ddlRequest.getJobIds());
             dispatch(records);
         }
 
@@ -254,15 +261,23 @@ public class DdlEngineScheduler {
             // No job request came before timeout. Let's try to poll on the
             // job queue directly to see if any job was left to handle.
             List<DdlEngineRecord> records =
-                schedulerManager.fetchRecords(Sets.union(DdlState.RUNNABLE, DdlState.FINISHED));
+                ddlJobManager.fetchRecords(Sets.union(Sets.newHashSet(DdlState.QUEUED), DdlState.FINISHED));
+            dispatch(records);
+        }
+
+        private void processRunning() {
+            // No job request came before timeout. Let's try to poll on the
+            // job queue directly to see if any job was left to handle.
+            List<DdlEngineRecord> records =
+                ddlJobManager.fetchRecords(Sets.newHashSet(DdlState.RUNNING, DdlState.ROLLBACK_RUNNING),
+                    DEFAULT_RUNNING_DDL_RESCHEDULE_INTERVAL_IN_MINUTES);
             dispatch(records);
         }
 
         private void processPaused() {
             List<DdlEngineRecord> records =
-                schedulerManager.fetchRecords(DdlState.TERMINATED, DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES);
-
-            for (DdlEngineRecord record : records) {
+                ddlJobManager.fetchRecords(DdlState.TERMINATED, DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES);
+            for(DdlEngineRecord record: records){
                 try {
                     DdlState currentState = DdlState.valueOf(record.state);
                     if (currentState == DdlState.PAUSED) {
@@ -270,14 +285,14 @@ public class DdlEngineScheduler {
                         if (pausedPolicy == currentState) {
                             continue;
                         }
-                        schedulerManager.compareAndSetDdlState(record.jobId, currentState, pausedPolicy);
+                        ddlJobManager.compareAndSetDdlState(record.jobId, currentState, pausedPolicy);
                     }
                     if (currentState == DdlState.ROLLBACK_PAUSED) {
                         DdlState rollbackPausedPolicy = DdlState.valueOf(record.rollbackPausedPolicy);
                         if (rollbackPausedPolicy == currentState) {
                             continue;
                         }
-                        schedulerManager.compareAndSetDdlState(record.jobId, currentState, rollbackPausedPolicy);
+                        ddlJobManager.compareAndSetDdlState(record.jobId, currentState, rollbackPausedPolicy);
                     }
                 } catch (Throwable t) {
                     EventLogger.log(EventType.DDL_WARN, "reschedule paused ddl error: " + t.getMessage());
@@ -288,34 +303,50 @@ public class DdlEngineScheduler {
 
         private void dispatch(List<DdlEngineRecord> records) {
             for (DdlEngineRecord record : records) {
+                // Avoid schedule subjobs
+                if (record.isSubJob()) {
+                    continue;
+                }
                 try {
-                    BlockingQueue deliveryQueue = ddlJobDeliveryQueues.get(record.schemaName.toLowerCase());
-                    if (deliveryQueue == null) {
-                        deliveryQueue = new LinkedBlockingQueue();
-                        ddlJobDeliveryQueues.put(record.schemaName.toLowerCase(), deliveryQueue);
-                    }
-                    uniqueOffer(record.schemaName.toLowerCase(), deliveryQueue, record);
+                    uniqueOffer(record);
                 } catch (Throwable t) {
                     LOGGER.error("Failed to dispatch to queue. Caused by: " + t.getMessage(), t);
                 }
             }
         }
 
+        private void uniqueOffer(DdlEngineRecord record) {
+            if(record == null || record.isSubJob()){
+                return;
+            }
+            String schemaName = record.schemaName.toLowerCase();
+            try {
+                synchronized (ddlJobDeliveryQueue) {
+                    if (ddlJobDeliveryQueue.contains(record)) {
+                        return;
+                    }
+                    boolean success = ddlJobDeliveryQueue.offer(record);
+                    if (!success) {
+                        LOGGER.error(String.format(
+                            "No enough space in the queue. schemaName:%s, jobId:%s", schemaName, record.jobId));
+                    }
+                }
+            } catch (Throwable t) {
+                LOGGER.error(String.format(
+                    "Failed to put the object in the queue. schemaName:%s, jobId:%s", schemaName, record.jobId), t);
+            }
+        }
+
     }
 
-    private class DdlJobScheduler implements Runnable {
-
-        private final String schemaName;
-
-        private final BlockingQueue<DdlEngineRecord> ddlJobDeliveryQueue;
+    private class DdlJobSchedulerConfig{
+        private String schemaName;
         private int maxParallelism;
         private final Semaphore semaphore;
         private final ExecutorCompletionService completionService;
-        private volatile boolean scheduleSuspended;
 
-        DdlJobScheduler(String schemaName) {
+        public DdlJobSchedulerConfig(String schemaName, ServerThreadPool ddlExecutor) {
             this.schemaName = schemaName;
-            this.ddlJobDeliveryQueue = ddlJobDeliveryQueues.get(schemaName.toLowerCase());
             String parallelismStr = MetaDbInstConfigManager.getInstance().getInstProperty(LOGICAL_DDL_PARALLELISM);
             if (StringUtils.isNotEmpty(parallelismStr)) {
                 try {
@@ -330,7 +361,15 @@ public class DdlEngineScheduler {
             }
 
             this.semaphore = new Semaphore(maxParallelism);
-            this.completionService = new ExecutorCompletionService(ddlExecutors.get(schemaName.toLowerCase()));
+            this.completionService = new ExecutorCompletionService(ddlExecutor);
+        }
+    }
+
+    private class DdlJobScheduler implements Runnable {
+
+        private volatile boolean scheduleSuspended;
+
+        private DdlJobScheduler() {
         }
 
         @Override
@@ -339,30 +378,25 @@ public class DdlEngineScheduler {
                 return;
             }
 
-            // We need to know which schema the DDL job scheduler is being associated with.
-            DdlHelper.renameCurrentThread(DDL_SCHEDULER_NAME, schemaName);
+            Thread.currentThread().setName(DDL_SCHEDULER_NAME);
 
             while (true) {
-                if (!isSchemaAvailable(schemaName)) {
-                    return;
-                }
-
-                if (!ExecUtils.hasLeadership(null)) {
-                    // Let's wait for a while when no leadership or
-                    // queue failure occurred, then continue.
-                    DdlHelper.waitToContinue(MORE_WAITING_TIME);
-                    continue;
-                }
-
-                if (suspending.get()) {
-                    scheduleSuspended = true;
-                    DdlHelper.waitToContinue(MEDIAN_WAITING_TIME);
-                    continue;
-                } else {
-                    scheduleSuspended = false;
-                }
-
                 try {
+                    if (!ExecUtils.hasLeadership(null)) {
+                        // Let's wait for a while when no leadership or
+                        // queue failure occurred, then continue.
+                        DdlHelper.waitToContinue(MORE_WAITING_TIME);
+                        continue;
+                    }
+
+                    if (suspending.get()) {
+                        scheduleSuspended = true;
+                        DdlHelper.waitToContinue(MEDIAN_WAITING_TIME);
+                        continue;
+                    } else {
+                        scheduleSuspended = false;
+                    }
+
                     // Take current schema-specific DDL job.
                     DdlEngineRecord record = ddlJobDeliveryQueue.poll(1, TimeUnit.SECONDS);
                     if (record == null) {
@@ -375,33 +409,51 @@ public class DdlEngineScheduler {
                 } catch (Throwable t) {
                     try {
                         // Log it without throwing.
-                        LOGGER.error("Failed to process this round of DDL job in " + schemaName + ". Caused by: "
+                        LOGGER.error("Failed to schedule DDL job. Caused by: "
                             + (t instanceof InterruptedException ? "interrupted" : t.getMessage()), t);
+                        EventLogger.log(EventType.DDL_WARN, "Failed to schedule DDL job. Caused by: "
+                            + (t instanceof InterruptedException ? "interrupted" : t.getMessage()));
                     } catch (Throwable ignored) {
-                    }
-                    if (t instanceof InterruptedException && !isSchemaAvailable(schemaName)) {
-                        // The thread has been cancelled because the schema is already
-                        // unavailable, so we should exit to avoid multiple job schedulers
-                        // associated with the same schema when consecutively dropping
-                        // and creating a database with the same name.
-                        return;
                     }
                 }
             }
         }
 
         public boolean isIdle() {
-            return suspending.get() && scheduleSuspended && semaphore.availablePermits() == maxParallelism;
+            boolean idleFlag = suspending.get() && scheduleSuspended;
+            if(idleFlag == false){
+                return false;
+            }
+            synchronized (activeSchemaDdlConfig){
+                for(Map.Entry<String, DdlJobSchedulerConfig> entry: activeSchemaDdlConfig.entrySet()){
+                    DdlJobSchedulerConfig schedulerConfig = entry.getValue();
+                    if(schedulerConfig.semaphore.availablePermits() != schedulerConfig.maxParallelism){
+                        //there are executing DDLs
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
 
         private void schedule(DdlEngineRecord record) throws InterruptedException {
-            if (record == null || !ExecUtils.hasLeadership(null)) {
+            if (record == null || !ExecUtils.hasLeadership(null) || record.isSubJob()) {
                 return;
             }
             //current DDL JOB running
             if (DdlEngineDagExecutorMap.contains(record.schemaName, record.jobId)) {
                 return;
             }
+            final String schemaName = StringUtils.lowerCase(record.schemaName);
+            final DdlJobSchedulerConfig schedulerConfig = activeSchemaDdlConfig.get(schemaName);
+            if(schedulerConfig == null){
+                LOGGER.debug(String.format("schema:%s is not active for DDL JOB:%s", schemaName, record.jobId));
+                return;
+            }
+            final Semaphore semaphore = schedulerConfig.semaphore;
+            final ExecutorCompletionService completionService = schedulerConfig.completionService;
+            final int maxParallelism = schedulerConfig.maxParallelism;
+
             semaphore.acquire();
             try {
                 completionService.submit(AsyncCallableTask.build(
@@ -441,6 +493,7 @@ public class DdlEngineScheduler {
         @Override
         public Boolean call() {
             try {
+                LoggerUtil.buildMDC(schemaName);
                 if (!DdlHelper.isRunnable() || !ExecUtils.hasLeadership(null)) {
                     return null;
                 }
@@ -497,59 +550,4 @@ public class DdlEngineScheduler {
 
         return successful;
     }
-
-    private void uniqueOffer(String schemaName, BlockingQueue queue, DdlEngineRecord record) {
-        try {
-            if (queue == null) {
-                throw new TddlNestableRuntimeException("DDL Scheduler Queue is null");
-            }
-            synchronized (queue) {
-                if (queue.contains(record)) {
-                    return;
-                }
-                boolean success = queue.offer(record);
-                if (!success) {
-                    LOGGER.error(String.format(
-                        "No enough space in the queue. schemaName:%s, jobId:%s", schemaName, record.jobId));
-                }
-            }
-        } catch (Throwable t) {
-            LOGGER.error(String.format(
-                "Failed to put the object in the queue. schemaName:%s, jobId:%s", schemaName, record.jobId), t);
-        }
-    }
-
-    private boolean isSchemaAvailable(String schemaName) {
-        boolean available = activeSchemas.contains(schemaName.toLowerCase());
-        if (!available) {
-            // The schema activity was registered prior to the DDL job scheduler.
-            // If it's unavailable, then means that the schema has been unloaded
-            // or dropped, so we should release current DDL job scheduler thread.
-            DdlHelper.resetCurrentThreadName(DDL_SCHEDULER_NAME);
-            return false;
-        }
-        return true;
-    }
-
-    private void interruptDdlJobs(){
-        if(CollectionUtils.isEmpty(activeSchemas)){
-            return;
-        }
-        for(String schemaName: activeSchemas){
-            List<DdlEngineDagExecutorMap.DdlEngineDagExecutionInfo> executionInfoList =
-                DdlEngineDagExecutorMap.getAllDdlJobCaches(schemaName);
-            if(CollectionUtils.isEmpty(executionInfoList)){
-                return;
-            }
-            for(DdlEngineDagExecutorMap.DdlEngineDagExecutionInfo info: executionInfoList){
-                DdlEngineDagExecutor dagExecutor = DdlEngineDagExecutorMap.get(schemaName, info.jobId);
-                if(dagExecutor != null && !dagExecutor.isInterrupted()){
-                    dagExecutor.interrupt();
-                    EventLogger.log(EventType.DDL_INTERRUPT, String.format(
-                        "interrupt DDL JOB %s for losing CN leadership", dagExecutor.getJobId()));
-                }
-            }
-        }
-    }
-
 }

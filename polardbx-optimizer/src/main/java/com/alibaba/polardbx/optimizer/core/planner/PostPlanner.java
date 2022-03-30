@@ -31,6 +31,9 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
+import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
+import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
@@ -88,6 +91,7 @@ import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -156,7 +160,7 @@ public class PostPlanner {
 
         RelNode plan = executionPlan.getPlan();
         SqlNode ast = executionPlan.getAst();
-        if (!executionPlan.isUsePostPlanner() || skipPostPlanner(executionPlan)) {
+        if (!executionPlan.isUsePostPlanner() || skipPostPlanner(executionPlan, executionContext)) {
             if (plan instanceof LogicalRelocate) {
                 executionPlan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_CROSS_DB);
             }
@@ -176,7 +180,7 @@ public class PostPlanner {
               Choose a random group within current transaction, to avoid limited on the
               first group.
              */
-            if (isOnlyBroadcast(executionPlan)) {
+            if (isOnlyBroadcast(executionPlan, executionContext)) {
                 DirectTableOperation dto = (DirectTableOperation) plan;
                 String dbIndex = getBroadcastTableGroup(executionContext, dto.getSchemaName());
                 DirectTableOperation newDto = (DirectTableOperation) dto.copy(dto.getTraitSet(), dto.getInputs());
@@ -187,8 +191,8 @@ public class PostPlanner {
             if (ast == null || !ast.getKind().belongsTo(EnumSet.of(SqlKind.SELECT, SqlKind.DELETE, SqlKind.UPDATE))) {
                 return executionPlan;
             }
-            final boolean withForceIndex = executionPlan.checkProperty(ExecutionPlanProperties.WITH_FORCE_INDEX);
-            if (withForceIndex) {
+            final boolean withIndexHint = executionPlan.checkProperty(ExecutionPlanProperties.WITH_INDEX_HINT);
+            if (withIndexHint) {
                 final List<String> originTableNames = executionPlan.getOriginTableNames();
                 final List<String> resultTableNames = new ArrayList<>();
 
@@ -206,7 +210,7 @@ public class PostPlanner {
             }
 
             final ReplaceTableNameWithQuestionMarkVisitor visitor =
-                new ReplaceTableNameWithQuestionMarkVisitor(executionContext.getSchemaName(), withForceIndex,
+                new ReplaceTableNameWithQuestionMarkVisitor(executionContext.getSchemaName(), withIndexHint,
                     executionContext);
             final SqlNode sqlTemplate = ast.accept(visitor);
 
@@ -427,7 +431,7 @@ public class PostPlanner {
     /**
      * Whether is direct broadcast table plan
      */
-    private static boolean isOnlyBroadcast(final ExecutionPlan executionPlan) {
+    private static boolean isOnlyBroadcast(final ExecutionPlan executionPlan, final ExecutionContext executionContext) {
         RelNode plan = executionPlan.getPlan();
         if (!PlannerContext.getPlannerContext(plan).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_BROADCAST_RANDOM_READ)) {
@@ -435,6 +439,22 @@ public class PostPlanner {
         }
         if (!(plan instanceof DirectTableOperation)) {
             return false;
+        }
+        Set<Pair<String, String>> tables = executionPlan.getTableSet();
+        if (GeneralUtil.isNotEmpty(tables)) {
+            Pair<String, String> firstTableSet = tables.iterator().next();
+            String schemaName = firstTableSet.getKey();
+            String tableName = firstTableSet.getValue();
+            if (schemaName == null) {
+                schemaName = executionContext.getSchemaName();
+            }
+            // when scale-out in progress don't enable broadcast random read
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
+            if (tableMeta.getComplexTaskTableMetaBean() != null && GeneralUtil.isNotEmpty(
+                tableMeta.getComplexTaskTableMetaBean().getParentComplexTaskStatusInfoMap())) {
+                return false;
+            }
+
         }
         return executionPlan.getPlanProperties().get(ExecutionPlanProperties.ONLY_BROADCAST_TABLE);
     }
@@ -452,7 +472,7 @@ public class PostPlanner {
             candidateGroups = transaction.getConnectionHolder().getHeldGroupsOfSchema(schemaName);
         }
         if (candidateGroups == null || candidateGroups.isEmpty()) {
-            candidateGroups = HintUtil.allGroup(schemaName);
+            candidateGroups = HintUtil.allGroupsWithBroadcastTable(schemaName);
         }
 
         int allSingleCount = (int) candidateGroups.stream().filter(GroupInfoUtil::isSingleGroup).count();
@@ -465,14 +485,14 @@ public class PostPlanner {
         }
     }
 
-    public static boolean skipPostPlanner(final ExecutionPlan executionPlan) {
+    public static boolean skipPostPlanner(final ExecutionPlan executionPlan, final ExecutionContext executionContext) {
         SqlNode ast = executionPlan.getAst();
         RelNode plan = executionPlan.getPlan();
         if (!PlannerContext.getPlannerContext(plan).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_POST_PLANNER)) {
             return true;
         }
-        if (isOnlyBroadcast(executionPlan)) {
+        if (isOnlyBroadcast(executionPlan, executionContext)) {
             return false;
         }
 

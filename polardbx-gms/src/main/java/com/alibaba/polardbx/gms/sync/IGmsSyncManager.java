@@ -32,6 +32,8 @@ public interface IGmsSyncManager extends Lifecycle {
      */
     List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName);
 
+    List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, boolean throwExceptions);
+
     /**
      * Add sync scope support only.
      *
@@ -42,6 +44,9 @@ public interface IGmsSyncManager extends Lifecycle {
      */
     List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope);
 
+    List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope,
+                                         boolean throwExceptions);
+
     /**
      * Add sync result handler support only.
      *
@@ -50,6 +55,8 @@ public interface IGmsSyncManager extends Lifecycle {
      * @param handler sync result handler
      */
     void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler);
+
+    void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler, boolean throwExceptions);
 
     /**
      * Support both sync scope and result handler.
@@ -60,6 +67,9 @@ public interface IGmsSyncManager extends Lifecycle {
      * @param handler sync result handler
      */
     void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler);
+
+    void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler,
+              boolean throwExceptions);
 
     /**
      * Sync to a specific server node in current instance.

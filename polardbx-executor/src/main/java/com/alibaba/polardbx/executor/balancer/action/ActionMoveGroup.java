@@ -20,6 +20,7 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
@@ -35,7 +36,7 @@ import java.util.Objects;
  * @author moyi
  * @since 2021/05
  */
-public class ActionMoveGroup implements BalanceAction {
+public class ActionMoveGroup implements BalanceAction, Comparable<ActionMoveGroup> {
 
     private static final Logger LOG = SQLRecorderLogger.ddlLogger;
 
@@ -101,7 +102,7 @@ public class ActionMoveGroup implements BalanceAction {
             ParamManager.setVal(ec.getParamManager().getProps(),
                 ConnectionParams.SCALE_OUT_DEBUG, "true", false);
         }
-        return ActionUtils.convertToDDLJob(ec, sql);
+        return ActionUtils.convertToDelegatorJob(ec, schema, sql);
     }
 
     @Override
@@ -131,4 +132,22 @@ public class ActionMoveGroup implements BalanceAction {
             '}';
     }
 
+    @Override
+    public int compareTo(ActionMoveGroup o) {
+        int res = schema.compareTo(o.schema);
+        if (res != 0) {
+            return res;
+        }
+        res = target.compareTo(o.target);
+        if (res != 0) {
+            return res;
+        }
+        for (int i = 0; i < Math.min(sourceGroups.size(), o.sourceGroups.size()); i++) {
+            res = sourceGroups.get(i).compareTo(o.sourceGroups.get(i));
+            if (res != 0) {
+                return res;
+            }
+        }
+        return Integer.compare(sourceGroups.size(), o.sourceGroups.size());
+    }
 }

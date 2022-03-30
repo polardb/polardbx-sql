@@ -29,6 +29,7 @@ import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
+import java.util.Map;
 
 @Getter
 @TaskName(name = "CreateTableAddTablesMetaTask")
@@ -41,11 +42,15 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
     private boolean partitioned;
     private boolean ifNotExists;
     private SqlKind sqlKind;
+    private boolean hasTimestampColumnDefault;
+    private Map<String, String> binaryColumnDefaultValues;
 
     @JSONCreator
     public CreateTableAddTablesMetaTask(String schemaName, String logicalTableName, String dbIndex, String phyTableName,
                                         SequenceBean sequenceBean, TablesExtRecord tablesExtRecord,
-                                        boolean partitioned, boolean ifNotExists, SqlKind sqlKind) {
+                                        boolean partitioned, boolean ifNotExists, SqlKind sqlKind,
+                                        boolean hasTimestampColumnDefault,
+                                        Map<String, String> binaryColumnDefaultValues) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
         this.phyTableName = phyTableName;
@@ -54,6 +59,8 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
         this.partitioned = partitioned;
         this.ifNotExists = ifNotExists;
         this.sqlKind = sqlKind;
+        this.hasTimestampColumnDefault = hasTimestampColumnDefault;
+        this.binaryColumnDefaultValues = binaryColumnDefaultValues;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -64,7 +71,8 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
             executionContext);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        TableMetaChanger.addTableMeta(metaDbConnection, phyInfoSchemaContext);
+        TableMetaChanger.addTableMeta(metaDbConnection, phyInfoSchemaContext, hasTimestampColumnDefault,
+            executionContext, binaryColumnDefaultValues);
     }
 
     @Override

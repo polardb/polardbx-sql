@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.vectorized.build;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.config.table.Field;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import org.apache.calcite.rex.RexCall;
@@ -38,7 +37,6 @@ import org.apache.calcite.rex.RexTableInputRef;
 import org.apache.calcite.rex.RexVisitorImpl;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -47,7 +45,7 @@ import java.util.stream.Collectors;
 public class InputRefTypeChecker extends RexVisitorImpl<RexNode> {
     private final List<DataType<?>> inputTypes;
 
-    protected InputRefTypeChecker(List<DataType<?>> inputTypes) {
+    public InputRefTypeChecker(List<DataType<?>> inputTypes) {
         super(true);
         this.inputTypes = inputTypes;
     }
@@ -61,7 +59,7 @@ public class InputRefTypeChecker extends RexVisitorImpl<RexNode> {
         DataType<?> columnType = inputTypes.get(inputRefIndex);
         DataType<?> inputRefType = DataTypeUtil.calciteToDrdsType(inputRef.getType());
         // force the input ref and column to be consistent.
-        if (!Objects.equals(columnType, inputRefType)) {
+        if (!DataTypeUtil.equalsSemantically(columnType, inputRefType)) {
             // lossy transfer
             return new RexInputRef(inputRefIndex, new Field(columnType).getRelType());
         }
@@ -70,13 +68,10 @@ public class InputRefTypeChecker extends RexVisitorImpl<RexNode> {
 
     @Override
     public RexNode visitCall(RexCall call) {
-        // rewrite predicates
-        if (TddlOperatorTable.VECTORIZED_COMPARISON_OPERATORS.contains(call.op)) {
-            List<RexNode> operands = call.getOperands().stream()
-                .map(node -> node.accept(this))
-                .collect(Collectors.toList());
-            call = call.clone(call.type, operands);
-        }
+        List<RexNode> operands = call.getOperands().stream()
+            .map(node -> node.accept(this))
+            .collect(Collectors.toList());
+        call = call.clone(call.type, operands);
         return call;
     }
 

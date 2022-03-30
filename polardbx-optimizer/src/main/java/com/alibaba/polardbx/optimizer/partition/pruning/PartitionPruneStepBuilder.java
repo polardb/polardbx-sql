@@ -17,16 +17,32 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.TreeMaps;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.iterator.PartitionFieldIterator;
 import com.alibaba.polardbx.optimizer.partition.datatype.iterator.PartitionFieldIterators;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
-import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -39,23 +55,30 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * @author chenghui.lch
  */
 public class PartitionPruneStepBuilder {
 
+    private static final Logger log = LoggerFactory.getLogger(PartitionPruneStepBuilder.class);
+
     protected static final long DEFAULT_MAX_ENUMERABLE_INTERVAL_LENGTH = 32;
 
-    public static PartitionPruneStep generateFullScanPrueStepInfo(String dbName, String logTbName,
-                                                                  ExecutionContext executionContext) {
-        PartitionInfo partInfo =
-            executionContext.getSchemaManager(dbName).getTddlRuleManager().getPartitionInfoManager()
-                .getPartitionInfo(logTbName);
-        return generateFullScanPrueStepInfo(partInfo);
+    public static PartitionPruneStep generateFullScanPruneStepInfo(String dbName, String logTbName,
+                                                                   ExecutionContext executionContext) {
+        PartitionInfoManager partitionInfoManager =
+            executionContext.getSchemaManager(dbName).getTddlRuleManager().getPartitionInfoManager();
+        PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(logTbName);
+        if (partInfo == null) {
+            log.warn(String.format("db-%s logTbName %s %s", dbName, logTbName,
+                partitionInfoManager.getPartInfoCtxCache().size()));
+        }
+        return generateFullScanPruneStepInfo(partInfo);
     }
 
-    public static PartitionPruneStep generateZeroScanPrueStepInfo(PartitionInfo partInfo) {
+    public static PartitionPruneStep generateZeroScanPruneStepInfo(PartitionInfo partInfo) {
         /**
          * When conflict=true, fullScan step will became a zeroScan step
          */
@@ -67,7 +90,7 @@ public class PartitionPruneStepBuilder {
     /**
      * Only use for build prune step for single/broadcast table
      */
-    public static PartitionPruneStep generateFirstPartScanOnlyPrueStepInfo(PartitionInfo partInfo) {
+    public static PartitionPruneStep generateFirstPartScanOnlyPruneStepInfo(PartitionInfo partInfo) {
         /**
          * When scanFirstPartOnly=true, fullScan step will became a zeroScan step
          */
@@ -76,24 +99,146 @@ public class PartitionPruneStepBuilder {
         return finalStep;
     }
 
-    protected static PartitionPruneStep generateFullScanPrueStepInfo(PartitionInfo partInfo) {
+    public static PartitionPruneStep generatePointSelectPruneStepInfo(String dbName,
+                                                                      String tbName,
+                                                                      List<Object> pointValue,
+                                                                      List<DataType> pointValueOpTypes,
+                                                                      ExecutionContext ec,
+                                                                      ExecutionContext[] newEcOutput) {
+        OptimizerContext opCtx = OptimizerContext.getContext(dbName);
+        if (opCtx == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String.format("No found database %s", dbName));
+        }
+        String targetDbName = opCtx.getSchemaName();
+        if (!DbInfoManager.getInstance().isNewPartitionDb(targetDbName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                "Only support tables created by syntax 'partition by'", dbName);
+        }
+
+        TableMeta tableMeta = opCtx.getLatestSchemaManager().getTable(tbName);
+        if (tableMeta == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format("No found partition table %s", tbName));
+        }
+
+        PartitionInfo partInfo = tableMeta.getPartitionInfo();
+
+        RelDataType tbRelRowType = tableMeta.getRowType(PartitionPrunerUtils.getTypeFactory());
+        RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
+
+        List<ColumnMeta> partColFldList = partInfo.getPartitionBy().getPartitionFieldList();
+        List<RexNode> partColRexInputList = new ArrayList<>();
+        final Map<String, Integer> indexColRefMap = tbRelRowType.getFieldList()
+            .stream()
+            .collect(Collectors.toMap(RelDataTypeField::getName,
+                RelDataTypeField::getIndex,
+                (x, y) -> y,
+                TreeMaps::caseInsensitiveMap));
+        partColFldList.stream().forEach(
+            fld -> {
+                if (indexColRefMap.containsKey(fld.getName())) {
+                    final Integer ref = indexColRefMap.get(fld.getName());
+                    final RelDataType type = fld.getField().getRelType();
+                    partColRexInputList.add(rexBuilder.makeInputRef(type, ref));
+                }
+            }
+        );
+
+        List<String> pointValStr = new ArrayList<>();
+        boolean containStringType = false;
+        for (int i = 0; i < pointValue.size(); i++) {
+            Object pointValueObj = pointValue.get(i);
+            boolean isStringObj = false;
+            if (DataTypeUtil.isStringSqlType(partColFldList.get(i).getField().getDataType())) {
+                containStringType = true;
+                isStringObj = true;
+            }
+            if (isStringObj) {
+                // All string are convert to utf8Str
+                PartitionField pointValFld =
+                    PartitionPrunerUtils.buildPartField(pointValueObj, pointValueOpTypes.get(i), DataTypes.VarcharType,
+                        null, ec, PartFieldAccessType.QUERY_PRUNING);
+                if (!pointValFld.isNull()) {
+                    pointValStr.add(pointValFld.stringValue().toStringUtf8());
+                } else {
+                    pointValStr.add(null);
+                }
+            } else {
+                if (pointValueObj != null) {
+                    // All non-string are convert to utf8Str
+                    pointValStr.add(DataTypeUtil.convert(pointValueOpTypes.get(i), DataTypes.StringType, pointValueObj));
+                } else {
+                    pointValStr.add(null);
+                }
+            }
+
+        }
+        String encoding = ec.getEncoding();
+        ExecutionContext tmpEc = ec;
+        if (containStringType
+            && !("utf8".equalsIgnoreCase(encoding) || "utf8mb4".equalsIgnoreCase(encoding))) {
+            tmpEc = ec.copy();
+            tmpEc.setEncoding("utf8");
+        }
+        if (newEcOutput != null && newEcOutput.length == 1) {
+            newEcOutput[0] = tmpEc;
+        }
+
+        PartitionPruneStep pointSelectStep = null;
+        if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE
+            || partInfo.getTableType() == PartitionTableType.GSI_TABLE) {
+            // Build PartPred expr
+            int partColValueCnt = pointValue.size();
+            if (partColValueCnt > partColFldList.size()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    "Constant values columns are NOT allowed to be more than the partition columns");
+            }
+            List<RexNode> eqPredList = new ArrayList<>();
+            for (int i = 0; i < partColValueCnt; i++) {
+                RexNode colInput = partColRexInputList.get(i);
+                String val = pointValStr.get(i);
+                RexNode eqExpr = null;
+                if (val == null) {
+                    eqExpr = rexBuilder.makeCall(TddlOperatorTable.IS_NULL, colInput);
+                } else {
+                    RexNode colValLiteral = rexBuilder.makeLiteral(val);
+                    eqExpr = rexBuilder.makeCall(TddlOperatorTable.EQUALS, colInput, colValLiteral);
+                }
+                eqPredList.add(eqExpr);
+            }
+            RexNode finalPredExpr;
+            if (eqPredList.size() == 1) {
+                finalPredExpr = eqPredList.get(0);
+            } else {
+                finalPredExpr = rexBuilder.makeCall(TddlOperatorTable.AND, eqPredList);
+            }
+
+            pointSelectStep = generatePartitionPruneStepInfo(partInfo, tbRelRowType, finalPredExpr, tmpEc);
+        } else {
+            pointSelectStep = generateFirstPartScanOnlyPruneStepInfo(partInfo);
+        }
+
+        return pointSelectStep;
+    }
+
+    protected static PartitionPruneStep generateFullScanPruneStepInfo(PartitionInfo partInfo) {
         PartitionPruneStep finalStep =
             buildStepOp(null, partInfo, null, null, PartKeyLevel.NO_PARTITION_KEY, false, false);
         return finalStep;
     }
 
-    protected static PartitionPruneStep generatePartitionPrueStepInfo(PartitionInfo partInfo,
-                                                                      RelNode relPlan,
-                                                                      RexNode partPredInfo,
-                                                                      ExecutionContext ec) {
+    protected static PartitionPruneStep generatePartitionPruneStepInfo(PartitionInfo partInfo,
+                                                                       RelDataType relRowType,
+                                                                       RexNode partPredInfo,
+                                                                       ExecutionContext ec) {
 
         if (partPredInfo == null) {
-            return generateFullScanPrueStepInfo(partInfo);
+            return generateFullScanPruneStepInfo(partInfo);
         }
 
         if (partInfo.getTableType() == PartitionTableType.BROADCAST_TABLE
             || partInfo.getTableType() == PartitionTableType.SINGLE_TABLE) {
-            return generateFirstPartScanOnlyPrueStepInfo(partInfo);
+            return generateFirstPartScanOnlyPruneStepInfo(partInfo);
         }
 
         AtomicInteger constExprIdGenerator = new AtomicInteger(0);
@@ -105,7 +250,8 @@ public class PartitionPruneStepBuilder {
         /**
          * Rewrite partition predicate & toDnf
          */
-        RexNode rewrotePartPred = PartPredRewriter.rewritePartPredicate(partInfo, relPlan, partPredInfo, stepContext);
+        RexNode rewrotePartPred =
+            PartPredRewriter.rewritePartPredicate(partInfo, relRowType, partPredInfo, stepContext);
 
         /**
          * Check If the predicate expr is two complex and its OpSteps are too many, 
@@ -113,7 +259,7 @@ public class PartitionPruneStepBuilder {
          */
         boolean needGivpUpPruning = checkIfNeedGiveUpPruning(partInfo, stepContext, rewrotePartPred);
         if (needGivpUpPruning) {
-            return generateFullScanPrueStepInfo(partInfo);
+            return generateFullScanPruneStepInfo(partInfo);
         }
 
         /**
@@ -133,16 +279,15 @@ public class PartitionPruneStepBuilder {
          * </pre>
          */
         PartClauseItem clauseItem =
-            PartClauseInfoPreProcessor.convertToPartClauseItem(partInfo, relPlan, rewrotePartPred, stepContext);
+            PartClauseInfoPreProcessor.convertToPartClauseItem(partInfo, relRowType, rewrotePartPred, stepContext);
 
         /**
          * Build the PartPruneStep by the PartClauseItem rewrited from rexnode
          */
-        PartitionPruneStep pruneStep = genPartPruneStepsInner(partInfo, relPlan, clauseItem, stepContext);
+        PartitionPruneStep pruneStep = genPartPruneStepsInner(partInfo, relRowType, clauseItem, stepContext);
         if (pruneStep == null) {
-            pruneStep = generateFullScanPrueStepInfo(partInfo);
+            pruneStep = generateFullScanPruneStepInfo(partInfo);
         }
-
         return pruneStep;
     }
 
@@ -169,13 +314,13 @@ public class PartitionPruneStepBuilder {
      * Generate the pruning step by sharding predicates
      */
     protected static PartitionPruneStep genPartPruneStepsInner(PartitionInfo partInfo,
-                                                               RelNode relPlan,
+                                                               RelDataType relRowType,
                                                                PartClauseItem clauseItem,
                                                                PartPruneStepBuildingContext stepContext) {
 
         PartitionPruneStep stepInfo = null;
         if (clauseItem == null) {
-            stepInfo = generateFullScanPrueStepInfo(partInfo);
+            stepInfo = generateFullScanPruneStepInfo(partInfo);
             return stepInfo;
         }
 
@@ -184,17 +329,17 @@ public class PartitionPruneStepBuilder {
          */
         PartPruneStepType stepType = clauseItem.getType();
         if (stepType == PartPruneStepType.PARTPRUNE_COMBINE_UNION) {
-            stepInfo = genPruneStepsFromOrExpr(partInfo, relPlan, clauseItem, stepContext);
+            stepInfo = genPruneStepsFromOrExpr(partInfo, relRowType, clauseItem, stepContext);
             return stepInfo;
         } else if (stepType == PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT) {
-            stepInfo = genPruneStepsFromAndExpr(partInfo, relPlan, clauseItem, stepContext);
+            stepInfo = genPruneStepsFromAndExpr(partInfo, relRowType, clauseItem, stepContext);
             return stepInfo;
         }
 
         /**
          * Generate pruning steps for the predicate of opExpr
          */
-        stepInfo = genPruneStepsFromOpExpr(partInfo, relPlan, clauseItem, stepContext);
+        stepInfo = genPruneStepsFromOpExpr(partInfo, relRowType, clauseItem, stepContext);
         return stepInfo;
     }
 
@@ -202,19 +347,19 @@ public class PartitionPruneStepBuilder {
      *
      */
     protected static PartitionPruneStep genPruneStepsFromOpExpr(PartitionInfo partInfo,
-                                                                RelNode relPlan,
+                                                                RelDataType relRowType,
                                                                 PartClauseItem clauseItem,
                                                                 PartPruneStepBuildingContext stepContext) {
 
         if (clauseItem.getType() == PartPruneStepType.PARTPRUNE_OP_MISMATCHED_PART_KEY) {
 
             if (clauseItem.isAlwaysTrue()) {
-                PartitionPruneStep alwaysTrueStep = generateFullScanPrueStepInfo(partInfo);
+                PartitionPruneStep alwaysTrueStep = generateFullScanPruneStepInfo(partInfo);
                 return alwaysTrueStep;
             }
 
             if (clauseItem.isAlwaysFalse()) {
-                PartitionPruneStep alwaysFalseStep = generateZeroScanPrueStepInfo(partInfo);
+                PartitionPruneStep alwaysFalseStep = generateZeroScanPruneStepInfo(partInfo);
                 return alwaysFalseStep;
             }
         }
@@ -240,7 +385,7 @@ public class PartitionPruneStepBuilder {
      * Generate pruning combine steps for orExpr / andExpr
      */
     protected static PartitionPruneStep genPruneStepsFromOrExpr(PartitionInfo partInfo,
-                                                                RelNode relPlan,
+                                                                RelDataType relRowType,
                                                                 PartClauseItem clauseItem,
                                                                 PartPruneStepBuildingContext stepContext) {
         PartPruneStepType stepType = clauseItem.getType();
@@ -251,7 +396,7 @@ public class PartitionPruneStepBuilder {
 
         for (int i = 0; i < subItemList.size(); i++) {
             PartClauseItem subItem = subItemList.get(i);
-            PartitionPruneStep subStepInfo = genPartPruneStepsInner(partInfo, relPlan, subItem, stepContext);
+            PartitionPruneStep subStepInfo = genPartPruneStepsInner(partInfo, relRowType, subItem, stepContext);
             if (subStepInfo != null) {
                 subStepList.add(subStepInfo);
             }
@@ -304,7 +449,7 @@ public class PartitionPruneStepBuilder {
      * Generate pruning combine steps for orExpr / andExpr
      */
     protected static PartitionPruneStep genPruneStepsFromAndExpr(PartitionInfo partInfo,
-                                                                 RelNode relPlan,
+                                                                 RelDataType relRowType,
                                                                  PartClauseItem clauseItem,
                                                                  PartPruneStepBuildingContext stepContext) {
         PartPruneStepType stepType = clauseItem.getType();
@@ -350,12 +495,12 @@ public class PartitionPruneStepBuilder {
                      * should just return a zero-scan step directly.
                      */
                     stepContext.resetPrefixPartPredPathCtx();
-                    PartitionPruneStep zeroScanStep = generateZeroScanPrueStepInfo(partInfo);
+                    PartitionPruneStep zeroScanStep = generateZeroScanPruneStepInfo(partInfo);
                     return zeroScanStep;
                 }
                 for (int i = 0; i < andOrItems.size(); i++) {
                     PartitionPruneStep subStepInfo =
-                        genPartPruneStepsInner(partInfo, relPlan, andOrItems.get(i), stepContext);
+                        genPartPruneStepsInner(partInfo, relRowType, andOrItems.get(i), stepContext);
                     if (subStepInfo != null) {
                         subStepList.add(subStepInfo);
                     }
@@ -721,7 +866,7 @@ public class PartitionPruneStepBuilder {
              * When pruneStep is union step, its merged results must be empty range if
              * all its sub ranges are the type CONFLICT_RANGE, so just return a zeroScanStep
              */
-            PartitionPruneStep zeroScanStep = PartitionPruneStepBuilder.generateZeroScanPrueStepInfo(partInfo);
+            PartitionPruneStep zeroScanStep = PartitionPruneStepBuilder.generateZeroScanPruneStepInfo(partInfo);
             return zeroScanStep;
 
         } else if (mergedRanges.size() == 1) {
@@ -765,11 +910,11 @@ public class PartitionPruneStepBuilder {
         RangeIntervalType rangeType = rangeInfo.getRangeType();
         if (rangeType == RangeIntervalType.CONFLICT_RANGE) {
             PartitionPruneStep zeroScanStep = PartitionPruneStepBuilder
-                .generateZeroScanPrueStepInfo(partInfo);
+                .generateZeroScanPruneStepInfo(partInfo);
             return zeroScanStep;
         } else if (rangeType == RangeIntervalType.TAUTOLOGY_RANGE) {
             PartitionPruneStep fullScanStep = PartitionPruneStepBuilder
-                .generateFullScanPrueStepInfo(partInfo.getTableSchema(), partInfo.getTableName(), context);
+                .generateFullScanPruneStepInfo(partInfo.getTableSchema(), partInfo.getTableName(), context);
             return fullScanStep;
         } else {
             // rangeType is RangeIntervalType.SATISFIABLE_RANGE
@@ -777,7 +922,7 @@ public class PartitionPruneStepBuilder {
             // For [-Inf, +Inf]
             if (rangeInfo.getMaxVal().isMaxInf() && rangeInfo.getMinVal().isMinInf()) {
                 PartitionPruneStep fullScanStep = PartitionPruneStepBuilder
-                    .generateFullScanPrueStepInfo(partInfo.getTableSchema(), partInfo.getTableName(), context);
+                    .generateFullScanPruneStepInfo(partInfo.getTableSchema(), partInfo.getTableName(), context);
                 return fullScanStep;
             }
 

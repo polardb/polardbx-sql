@@ -36,6 +36,8 @@ public class AlterTableGroupItemPreparedData extends DdlPreparedData {
     private List<String> oldPartitionNames;
     private List<String> newPartitionNames;
     private ComplexTaskMetaManager.ComplexTaskType taskType;
+    private String primaryTableName;
+    private Long tableVersion;
     /*
      * the new create partition group, it's invisible when
      * the alter tablegroup operation is not finish
@@ -106,5 +108,21 @@ public class AlterTableGroupItemPreparedData extends DdlPreparedData {
 
     public void setTaskType(ComplexTaskMetaManager.ComplexTaskType taskType) {
         this.taskType = taskType;
+    }
+
+    public Long getTableVersion() {
+        return tableVersion;
+    }
+
+    public void setTableVersion(Long tableVersion) {
+        this.tableVersion = tableVersion;
+    }
+
+    public String getPrimaryTableName() {
+        return primaryTableName;
+    }
+
+    public void setPrimaryTableName(String primaryTableName) {
+        this.primaryTableName = primaryTableName;
     }
 }

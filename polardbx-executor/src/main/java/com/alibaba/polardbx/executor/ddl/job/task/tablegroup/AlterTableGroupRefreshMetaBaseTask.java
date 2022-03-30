@@ -22,7 +22,6 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
@@ -35,18 +34,20 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
 
 import java.sql.Connection;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 
 @Getter
 @TaskName(name = "AlterTableGroupRefreshMetaBaseTask")
@@ -74,34 +75,12 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         executeImpl(metaDbConnection, executionContext);
-        updateAllTablesVersion(metaDbConnection);
+        updateAllTablesVersion(metaDbConnection, executionContext);
     }
 
     @Override
     protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         rollbackImpl(metaDbConnection, executionContext);
-    }
-
-    @Override
-    protected void onExecutionSuccess(ExecutionContext executionContext) {
-        reloadTables(executionContext);
-    }
-
-    @Override
-    protected void onRollbackSuccess(ExecutionContext executionContext) {
-        reloadTables(executionContext);
-    }
-
-    protected void reloadTables(ExecutionContext executionContext) {
-        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
-            .reloadTableGroupByGroupName(schemaName, tableGroupName);
-
-        for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
-            String tableName = infoContext.getLogTbRec().tableName;
-            schemaName = infoContext.getLogTbRec().tableSchema;
-            ((GmsTableMetaManager) (executionContext.getSchemaManager(schemaName)))
-                .tonewversion(tableName, true, 500L, 500L, TimeUnit.MILLISECONDS);
-        }
     }
 
     /**
@@ -162,6 +141,9 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
             schemaName = infoContext.getLogTbRec().tableSchema;
             TableMeta tableMeta =
                 OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+            SQLRecorderLogger.ddlMetaLogger.info(
+                "AlterTableGroupRefreshMetaBaseTask-LatestSchemaManager:" + System
+                    .identityHashCode(OptimizerContext.getContext(schemaName).getLatestSchemaManager()));
 
             /**
              * At this time, the old partInfo and the new partInfo has been switched,
@@ -174,6 +156,15 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
                     String.format("Failed to get new partition info for table[%s]", tableName));
             }
 
+            SQLRecorderLogger.ddlMetaLogger.info(MessageFormat.format(
+                "AlterTableGroupRefreshMetaBaseTask-PartitionInfo:{0}",
+                tableMeta.getPartitionInfo().getDigest(tableMeta.getVersion())));
+
+            if (tableMeta.getNewPartitionInfo() != null) {
+                SQLRecorderLogger.ddlMetaLogger.info(MessageFormat.format(
+                    "AlterTableGroupRefreshMetaBaseTask-newPartitionInfo:{0}",
+                    tableMeta.getNewPartitionInfo().getDigest(tableMeta.getVersion())));
+            }
             /**
              * Use the partition Info of table_partitions_delta to replace the partitionInfo of
              * table_partitions
@@ -215,14 +206,14 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
                 tablePartRecordInfoContext.getSubPartitionRecMap(),
                 isUpsert, false);
 
-        }
-        // 5、cleanup partition_group_delta
-        partitionGroupAccessor.deletePartitionGroupsByTableGroupId(tableGroupId, true);
+            // 5、cleanup table_partition_delta
+            //only delete the related records
+            tablePartitionAccessor
+                .deleteTablePartitionConfigsForDeltaTable(schemaName, tableName);
 
-        // 6、cleanup table_partition_delta
-        //todo luoyanxin only delete the related records
-        tablePartitionAccessor
-            .deleteTablePartitionConfigsForDeltaTable(schemaName, null);
+        }
+        // 6、cleanup partition_group_delta
+        partitionGroupAccessor.deletePartitionGroupsByTableGroupId(tableGroupId, true);
 
     }
 
@@ -241,12 +232,20 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
             metaDbConnection);
     }
 
-    protected void updateAllTablesVersion(Connection metaDbConnection) {
+    protected void updateAllTablesVersion(Connection metaDbConnection, ExecutionContext executionContext) {
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
+        SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
         for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
-            updateTableVersion(metaDbConnection, infoContext.getLogTbRec().tableSchema,
-                infoContext.getLogTbRec().tableName);
+            String tableName = infoContext.getLogTbRec().tableName;
+            TableMeta tableMeta = schemaManager.getTable(tableName);
+            if (tableMeta.isGsi()) {
+                //all the gsi table version change will be behavior by primary table
+                assert
+                    tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+                tableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+            }
+            updateTableVersion(metaDbConnection, schemaName, tableName);
         }
     }
 

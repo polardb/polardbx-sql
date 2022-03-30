@@ -98,7 +98,7 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
         if (isGetShardResultForReplicationTable) {
             TableMeta tableMeta =
                 insertEc.getSchemaManager(insert.getSchemaName()).getTable(insert.getLogicalTableName());
-            PhyTableModifyBuilder.removeNonReplicateShardResult(shardResults, tableMeta);
+            PhyTableModifyBuilder.removeNonReplicateShardResultForInsert(shardResults, tableMeta);
         }
 
         // Build PhyTableOperation for insert
@@ -372,23 +372,25 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
         return result;
     }
 
-    public static void removeNonReplicateShardResult(List<PhyTableInsertSharder.PhyTableShardResult> shardResults,
-                                                     TableMeta tableMeta) {
+    public static void removeNonReplicateShardResultForInsert(
+        List<PhyTableInsertSharder.PhyTableShardResult> shardResults,
+        TableMeta tableMeta) {
         if (GeneralUtil.isEmpty(shardResults)) {
             return;
         }
         Map<String, Set<String>> replicateDbIndexAndPhycialTables = new HashMap<>();
         for (PartitionSpec partitionSpec : tableMeta.getNewPartitionInfo().getPartitionBy().getPartitions()) {
             if (!partitionSpec.getLocation().isVisiable() && ComplexTaskPlanUtils
-                .canWrite(tableMeta, partitionSpec.getName())) {
+                .canWrite(tableMeta, partitionSpec.getName()) && !ComplexTaskPlanUtils
+                .isDeleteOnly(tableMeta, partitionSpec.getName())) {
                 PartitionLocation location = partitionSpec.getLocation();
                 replicateDbIndexAndPhycialTables
                     .computeIfAbsent(location.getGroupKey().toUpperCase(), o -> new HashSet<>())
-                    .add(location.getPhyTableName().toLowerCase());
+                    .add(location.getPhyTableName().toUpperCase());
             }
         }
         shardResults.removeIf(c -> !replicateDbIndexAndPhycialTables.containsKey(c.getGroupName().toUpperCase())
-            || replicateDbIndexAndPhycialTables.get(c.getGroupName().toUpperCase())
+            || !replicateDbIndexAndPhycialTables.get(c.getGroupName().toUpperCase())
             .contains(c.getPhyTableName().toUpperCase()));
     }
 

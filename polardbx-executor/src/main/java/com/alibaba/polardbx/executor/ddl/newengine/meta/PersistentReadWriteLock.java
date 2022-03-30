@@ -16,16 +16,23 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.meta;
 
-import com.google.common.collect.Sets;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.metadb.misc.ReadWriteLockAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.ReadWriteLockRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -125,17 +132,16 @@ public class PersistentReadWriteLock {
 
                     int c = 0;
                     for (String resource : resourceList) {
-                        c += accessor.deleteByResourceAndType(owner, resource, owner);
+                        c += accessor.deleteByOwnerAndResourceAndType(owner, resource, owner);
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return c;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
                     return 0;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute();
@@ -151,17 +157,16 @@ public class PersistentReadWriteLock {
                     List<ReadWriteLockRecord> currentLocks = accessor.query(owner);
                     int c = 0;
                     for (ReadWriteLockRecord r : currentLocks) {
-                        c += accessor.deleteByResourceAndType(owner, r.resource, r.owner);
+                        c += accessor.deleteByOwnerAndResourceAndType(owner, r.resource, r.owner);
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return c;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
                     return 0;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute();
@@ -245,17 +250,16 @@ public class PersistentReadWriteLock {
 
                     int c = 0;
                     for (String resource : resourceList) {
-                        c += accessor.deleteByResourceAndType(owner, resource, EXCLUSIVE);
+                        c += accessor.deleteByOwnerAndResourceAndType(owner, resource, EXCLUSIVE);
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return c;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
                     return 0;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute();
@@ -271,17 +275,16 @@ public class PersistentReadWriteLock {
                     List<ReadWriteLockRecord> currentLocks = accessor.query(owner);
                     int c = 0;
                     for (ReadWriteLockRecord r : currentLocks) {
-                        c += accessor.deleteByResourceAndType(owner, r.resource, EXCLUSIVE);
+                        c += accessor.deleteByOwnerAndResourceAndType(owner, r.resource, EXCLUSIVE);
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return c;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
                     return 0;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute();
@@ -300,20 +303,48 @@ public class PersistentReadWriteLock {
                     List<ReadWriteLockRecord> currentLocks = accessor.query(owner);
                     int c = 0;
                     for (ReadWriteLockRecord r : currentLocks) {
-                        c += accessor.deleteByResourceAndType(owner, r.resource, r.type);
+                        c += accessor.deleteByOwnerAndResourceAndType(owner, r.resource, r.type);
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return c;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
                     return 0;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute();
+        return count;
+    }
+
+    /**
+     * 释放所有属于这个owner的锁
+     */
+    public int unlockReadWriteByOwner(Connection connection, String owner) {
+        final ReadWriteLockAccessor accessor = new ReadWriteLockAccessor();
+        accessor.setConnection(connection);
+        List<ReadWriteLockRecord> currentLocks = accessor.query(owner);
+        int count = 0;
+        for (ReadWriteLockRecord r : currentLocks) {
+            count += accessor.deleteByOwnerAndResourceAndType(owner, r.resource, r.type);
+        }
+        return count;
+    }
+
+    public int unlockReadWriteByOwner(Connection connection,
+                                      String owner,
+                                      Set<String> locks){
+        final ReadWriteLockAccessor accessor = new ReadWriteLockAccessor();
+        accessor.setConnection(connection);
+        List<ReadWriteLockRecord> currentLocks = accessor.query(owner);
+        int count = 0;
+        for (ReadWriteLockRecord r : currentLocks) {
+            if(locks.contains(r.resource)){
+                count += accessor.deleteByOwnerAndResourceAndType(owner, r.resource, r.type);
+            }
+        }
         return count;
     }
 
@@ -338,13 +369,12 @@ public class PersistentReadWriteLock {
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return hasReadLock;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
                     return false;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute();
@@ -369,13 +399,12 @@ public class PersistentReadWriteLock {
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return false;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
                     return false;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute();
@@ -400,15 +429,22 @@ public class PersistentReadWriteLock {
                     }
 
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
+                    return blockerSet;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "release write lock");
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
-                    return blockerSet;
+                    throw new TddlNestableRuntimeException(e);
                 }
             }
         }.execute();
+    }
+
+    public boolean tryReadWriteLockBatch(String schemaName,
+                                         String owner,
+                                         Set<String> readLockSet,
+                                         Set<String> writeLockSet){
+        return tryReadWriteLockBatch(schemaName, owner, readLockSet, writeLockSet, (Connection conn) -> true);
     }
 
     /**
@@ -418,21 +454,25 @@ public class PersistentReadWriteLock {
     public boolean tryReadWriteLockBatch(String schemaName,
                                          String owner,
                                          Set<String> readLockSet,
-                                         Set<String> writeLockSet) {
+                                         Set<String> writeLockSet,
+                                         Function<Connection, Boolean> func) {
         if (StringUtils.isEmpty(owner)) {
             throw new IllegalArgumentException("owner is empty");
         }
 
         final Set<String> writeLocks = Sets.newHashSet(writeLockSet);
         final Set<String> readLocks = Sets.newHashSet(Sets.difference(readLockSet, writeLockSet));
-        if (CollectionUtils.isEmpty(readLocks) && CollectionUtils.isEmpty(writeLocks)) {
-            return true;
-        }
         boolean isSuccess = new ReadWriteLockAccessDelegate<Boolean>() {
             @Override
             protected Boolean invoke() {
                 try {
                     MetaDbUtil.beginTransaction(connection);
+                    if (CollectionUtils.isEmpty(readLocks) && CollectionUtils.isEmpty(writeLocks)) {
+                        func.apply(connection);
+                        MetaDbUtil.commit(connection);
+                        MetaDbUtil.endTransaction(connection, LOGGER);
+                        return true;
+                    }
                     List<ReadWriteLockRecord> currentLocks = accessor.query(Sets.union(readLocks, writeLocks), true);
                     for (ReadWriteLockRecord record : currentLocks) {
                         //write lock held by other owner
@@ -462,11 +502,16 @@ public class PersistentReadWriteLock {
                     if (CollectionUtils.isEmpty(needToAcquiredReadLocks)
                         && CollectionUtils.isEmpty(needToAcquiredWriteLocks)
                         && CollectionUtils.isEmpty(needToUpgrade)) {
+
+                        func.apply(connection);
+
+                        MetaDbUtil.commit(connection);
+                        MetaDbUtil.endTransaction(connection, LOGGER);
                         return true;
                     }
 
                     for (String r : needToUpgrade) {
-                        accessor.deleteByResourceAndType(owner, r, owner);
+                        accessor.deleteByOwnerAndResourceAndType(owner, r, owner);
                     }
 
                     List<ReadWriteLockRecord> readLockRecords = needToAcquiredReadLocks.stream().map(e -> {
@@ -490,18 +535,49 @@ public class PersistentReadWriteLock {
                         }).collect(Collectors.toList());
                     accessor.insert(writeLockRecords);
 
+                    func.apply(connection);
+
                     MetaDbUtil.commit(connection);
+                    MetaDbUtil.endTransaction(connection, LOGGER);
                     return true;
                 } catch (Exception e) {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "acquire write lock");
                     return false;
-                } finally {
-                    MetaDbUtil.endTransaction(connection, LOGGER);
                 }
             }
         }.execute().booleanValue();
         return isSuccess;
+    }
+
+    public boolean downGradeWriteLock(Connection connection,
+                                      String owner,
+                                      String writeLock){
+        Preconditions.checkArgument(StringUtils.isNotEmpty(owner), "owner is empty");
+        Preconditions.checkArgument(StringUtils.isNotEmpty(writeLock), "writeLock is empty");
+
+        final ReadWriteLockAccessor accessor = new ReadWriteLockAccessor();
+        accessor.setConnection(connection);
+        Optional<ReadWriteLockRecord> writeLockOptionalRecord = accessor.queryInShareMode(writeLock, EXCLUSIVE);
+        if(!writeLockOptionalRecord.isPresent()){
+            return false;
+        }
+
+        if(!StringUtils.equals(writeLockOptionalRecord.get().owner, owner)){
+            return false;
+        }
+
+        int count = accessor.deleteByOwnerAndResourceAndType(owner, writeLock, EXCLUSIVE);
+        if(count > 0){
+            ReadWriteLockRecord readLockRecord = new ReadWriteLockRecord();
+            readLockRecord.schemaName = writeLockOptionalRecord.get().schemaName;
+            readLockRecord.owner = owner;
+            readLockRecord.resource = writeLock;
+            readLockRecord.type = owner;
+            accessor.insert(Lists.newArrayList(readLockRecord));
+            return true;
+        }
+        return false;
     }
 
     /***************************************** privete function ***********************************************/

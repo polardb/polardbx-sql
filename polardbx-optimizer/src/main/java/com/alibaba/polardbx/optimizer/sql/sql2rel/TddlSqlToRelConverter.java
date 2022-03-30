@@ -28,6 +28,8 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -39,11 +41,13 @@ import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.CheckGsiColumnLenUtils;
 import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -51,7 +55,7 @@ import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.view.DrdsViewExpander;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableList.Builder;
+import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
@@ -72,6 +76,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
+import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexPermuteInputsShuttle;
 import org.apache.calcite.schema.ColumnStrategy;
@@ -92,6 +97,7 @@ import org.apache.calcite.sql.SqlDmlKeyword;
 import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlKind;
@@ -117,6 +123,7 @@ import org.apache.calcite.sql2rel.InitializerExpressionFactory;
 import org.apache.calcite.sql2rel.SqlRexConvertletTable;
 import org.apache.calcite.sql2rel.SqlToRelConverter;
 import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.mapping.Mappings;
@@ -411,7 +418,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         // Replace DEFAULT with default value
         final ReplaceDefaultShuttle replaceDefaultShuttle =
             new ReplaceDefaultShuttle(targetFields, targetColumnNames, targetTable, bb, initializerFactory, tableMeta,
-                call.getSource(), autoIncrementColumns, sqlModeStrict);
+                call.getSource(), autoIncrementColumns, sqlModeStrict, ec);
         source = source.accept(replaceDefaultShuttle);
         // Update columnExpr with data type from new source
         final List<RelDataTypeField> sourceFields = source.getRowType().getFieldList();
@@ -457,7 +464,9 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 || defaultCurrentTimestamp.contains(targetFieldName) || primaryKeys.contains(targetFieldName)
                 || appendAllColumnsForUpsert || autoFillDefaultColumns.contains(targetFieldName)) {
                 // Add literal or function call as default value of column;
-                node = initializerFactory.newColumnDefaultValue(targetTable, i, bb.get());
+                node =
+                    convertDefaultValue(initializerFactory.newColumnDefaultValue(targetTable, i, bb.get()), targetTable,
+                        i, tableMeta, ec);
 
                 if (null == node && (primaryKeys.contains(targetFieldName) || !targetField.getType().isNullable())) {
                     if (!sqlModeStrict) {
@@ -518,6 +527,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         private final SqlNode sqlNode;
         private final Set<String> autoIncrementColumns;
         private final boolean sqlModeStrict;
+        private final ExecutionContext ec;
 
         private final Deque<Boolean> isTop = new ArrayDeque<>();
 
@@ -526,7 +536,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                                      RelOptTable targetTable, Supplier<Blackboard> bb,
                                      InitializerExpressionFactory initializerFactory,
                                      TableMeta tableMeta, SqlNode sqlNode,
-                                     Set<String> autoIncrementColumns, boolean sqlModeStrict) {
+                                     Set<String> autoIncrementColumns, boolean sqlModeStrict,
+                                     ExecutionContext ec) {
             this.targetFields = targetFields;
             this.targetColumnNames = targetColumnNames;
             this.targetTable = targetTable;
@@ -537,6 +548,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             this.autoIncrementColumns = autoIncrementColumns;
             this.isTop.push(true);
             this.sqlModeStrict = sqlModeStrict;
+            this.ec = ec;
         }
 
         @Override
@@ -588,7 +600,9 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                                     validator.newValidationError(sqlNode, RESOURCE.columnNotNullable(targetFieldName)));
                             }
                         } else {
-                            node = initializerFactory.newColumnDefaultValue(targetTable, i, bb.get());
+                            node =
+                                convertDefaultValue(initializerFactory.newColumnDefaultValue(targetTable, i, bb.get()),
+                                    targetTable, i, tableMeta, ec);
                         }
 
                         if (null == node) {
@@ -795,14 +809,43 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         return query;
     }
 
-    static private SqlNode generateNewPartition(TableMeta tableMeta, String indexColName) {
-        final ColumnMeta columnMeta =
-            tableMeta.getPhysicalColumns().stream().filter(col -> col.getName().equalsIgnoreCase(indexColName))
-                .findFirst().orElseThrow(() -> new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                "Unknown GSI column '" + indexColName + "'"));
-        final String typeName = columnMeta.getField().getDataType().getStringSqlType().toLowerCase();
-        return SqlValidatorImpl
-            .assignAutoPartitionNewPartition(new SqlIdentifier(indexColName, SqlParserPos.ZERO), typeName);
+    static private SqlNode generateNewPartition(TableMeta tableMeta, List<String> indexColNames, boolean unique) {
+        final List<ColumnMeta> columnMetas = new ArrayList<>(indexColNames.size());
+        for (String name : indexColNames) {
+            ColumnMeta meta =
+                tableMeta.getPhysicalColumns().stream().filter(col -> col.getName().equalsIgnoreCase(name)).findFirst()
+                    .get();
+            if (meta == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    "Unknown GSI column '" + name + "'");
+            }
+            columnMetas.add(meta);
+        }
+        final List<String> typeNames = columnMetas.stream()
+            .map(meta -> meta.getField().getDataType().getStringSqlType().toLowerCase()).collect(Collectors.toList());
+
+        if (typeNames.isEmpty() || !SqlValidatorImpl.supportNewPartition(typeNames.get(0))) {
+            return null;
+        }
+
+        final List<SqlIdentifier> pks = tableMeta.getPrimaryKey().stream()
+            .map(col -> new SqlIdentifier(col.getName(), SqlParserPos.ZERO))
+            .collect(Collectors.toList());
+        final List<String> pkTypeNames = tableMeta.getPrimaryKey().stream()
+            .map(meta -> meta.getField().getDataType().getStringSqlType().toLowerCase())
+            .collect(Collectors.toList());
+
+        final List<SqlIdentifier> concatKeys = indexColNames.stream()
+            .map(name -> new SqlIdentifier(name, SqlParserPos.ZERO))
+            .collect(Collectors.toList());
+        if (!unique) {
+            // Only concat PK for non-unique.
+            concatKeys.addAll(pks);
+            typeNames.addAll(pkTypeNames);
+        }
+        assert concatKeys.size() == typeNames.size();
+
+        return SqlValidatorImpl.assignAutoPartitionNewPartition(concatKeys, typeNames);
     }
 
     @Override
@@ -864,14 +907,23 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                         "Incorrect index definition; No index column.");
                 }
 
-                final String indexColName = query.getColumns().get(0).getColumnNameStr();
+                final List<String> indexColNames = query.getColumns().stream()
+                    .map(SqlIndexColumnName::getColumnNameStr).collect(Collectors.toList());
+                final boolean unique = query.getConstraintType() != null &&
+                    SqlCreateIndex.SqlIndexConstraintType.UNIQUE == query.getConstraintType();
                 final SqlNode newPartition =
-                    null == query.getPartitioning() ? generateNewPartition(tableMeta, indexColName) : null;
-                query = query.rebuildToGsiNewPartition(newNameIdentifier, newPartition, query.createClusteredIndex());
+                    null == query.getPartitioning() ? generateNewPartition(tableMeta, indexColNames, unique) : null;
+                if (null == query.getPartitioning() && null == newPartition) {
+                    return query; // No extra dealing needed.
+                } else {
+                    // Convert to GSI only if new partition is generated or it has one(GSI).
+                    query = query.rebuildToGsiNewPartition(
+                        newNameIdentifier, newPartition, query.createClusteredIndex());
+                }
             } else {
                 // Assign name only.
                 assert query.getIndexResiding()
-                    != SqlIndexDefinition.SqlIndexResiding.GLOBAL; // Not convert to GSI, so it is GSI.
+                    == SqlIndexDefinition.SqlIndexResiding.GLOBAL; // Not convert to GSI, so it is GSI.
                 query = query.rebuildToGsiNewPartition(newNameIdentifier, null, query.createClusteredIndex());
             }
         }
@@ -948,7 +1000,12 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                         // Ignore special index.
                         && !(addIndex instanceof SqlAddForeignKey)
                         && !(addIndex instanceof SqlAddFullTextIndex)
-                        && !(addIndex instanceof SqlAddSpatialIndex);
+                        && !(addIndex instanceof SqlAddSpatialIndex)
+                        // Unexpected and unrecognized type.
+                        && !(addIndex.getIndexDef().getType() != null
+                        && addIndex.getIndexDef().getType().equalsIgnoreCase("fulltext"))
+                        && !(addIndex.getIndexDef().getType() != null
+                        && addIndex.getIndexDef().getType().equalsIgnoreCase("spatial"));
 
                 if (plannerContext.isExplain() || (!query.createGsi() && !convertToGSI)) {
                     continue;
@@ -1028,23 +1085,30 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                                 "Incorrect index definition; No index column.");
                         }
 
-                        final String indexColName = addIndex.getIndexDef().getColumns().get(0).getColumnNameStr();
+                        final List<String> indexColNames = addIndex.getIndexDef().getColumns().stream()
+                            .map(SqlIndexColumnName::getColumnNameStr).collect(Collectors.toList());
                         final SqlNode newPartition =
                             null == addIndex.getIndexDef().getPartitioning() ?
-                                generateNewPartition(tableMeta, indexColName) : null;
-                        final SqlIndexDefinition newIndexDefinition = addIndex.getIndexDef()
-                            .rebuildToGsiNewPartition(newNameIdentifier, newPartition,
-                                addIndex.getIndexDef().isClustered());
-                        final SqlAddIndex newAddIndex;
-                        if (addIndex instanceof SqlAddUniqueIndex) {
-                            newAddIndex =
-                                new SqlAddUniqueIndex(SqlParserPos.ZERO, newNameIdentifier, newIndexDefinition);
+                                generateNewPartition(tableMeta, indexColNames, addIndex instanceof SqlAddUniqueIndex) :
+                                null;
+                        if (null == newPartition && null == addIndex.getIndexDef().getPartitioning()) {
+                            return query; // No extra dealing needed.
                         } else {
-                            newAddIndex = new SqlAddIndex(SqlParserPos.ZERO, newNameIdentifier, newIndexDefinition);
+                            final SqlIndexDefinition newIndexDefinition = addIndex.getIndexDef()
+                                .rebuildToGsiNewPartition(newNameIdentifier, newPartition,
+                                    addIndex.getIndexDef().isClustered());
+                            final SqlAddIndex newAddIndex;
+                            if (addIndex instanceof SqlAddUniqueIndex) {
+                                newAddIndex = new SqlAddUniqueIndex(
+                                    SqlParserPos.ZERO, newIndexDefinition.getIndexName(), newIndexDefinition);
+                            } else {
+                                newAddIndex = new SqlAddIndex(
+                                    SqlParserPos.ZERO, newIndexDefinition.getIndexName(), newIndexDefinition);
+                            }
+                            assert 1 == query.getAlters().size();
+                            query.getAlters().clear();
+                            query.getAlters().add(newAddIndex);
                         }
-                        assert 1 == query.getAlters().size();
-                        query.getAlters().clear();
-                        query.getAlters().add(newAddIndex);
                     } else {
                         // Assign name only.
                         assert addIndex.getIndexDef().isGlobal() || addIndex.getIndexDef()
@@ -1448,6 +1512,35 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             }
         }
         return null;
+    }
+
+    private RexNode convertDefaultValue(RexNode node, RelOptTable targetTable, int i, TableMeta tableMeta,
+                                        ExecutionContext ec) {
+        final RelDataTypeField relDataTypeField = targetTable.getRowType().getFieldList().get(i);
+        final String columnName = relDataTypeField.getName();
+        final ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
+
+        final Field field = tableMeta.getColumn(columnName).getField();
+        final DataType columnDataType = field.getDataType();
+        final String columnDefaultStr = field.getDefault();
+
+        if (DataTypeUtil.isTimezoneDependentType(columnDataType)) {
+            // If it's not current_timestamp(RexCall), convert default value from timezone in metadb(+08:00) to current
+            // timezone
+            if (node instanceof RexLiteral && TStringUtil.isNotBlank(columnDefaultStr)) {
+                final String timeInCurrentTimezone =
+                    TimestampUtils.convertFromGMT8(columnDefaultStr, ec.getTimeZone().getTimeZone(), field.getScale());
+                final NlsString valueStr = new NlsString(timeInCurrentTimezone, null, null);
+                node = rexBuilder.makeCharLiteral(valueStr);
+            }
+        } else if (columnMeta.isBinaryDefault()) {
+            // Convert from hex string for binary default value
+            if (TStringUtil.isNotBlank(columnDefaultStr)) {
+                node = rexBuilder.makeBinaryLiteral(ByteString.of(columnDefaultStr, 16));
+            }
+        }
+
+        return node;
     }
 
     @Override

@@ -23,6 +23,7 @@ import java.util.Map;
 
 public class RefreshDbTopologyPreparedData extends AlterTableGroupBasePreparedData {
 
+    //key: storage_inst, pair:group and physicalDbName
     Map<String, List<Pair<String, String>>> instGroupDbInfo;
 
     public RefreshDbTopologyPreparedData() {

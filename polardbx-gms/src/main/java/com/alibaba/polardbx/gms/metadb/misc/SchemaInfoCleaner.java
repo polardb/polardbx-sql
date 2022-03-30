@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.gms.metadb.misc;
 
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.scheduler.FiredScheduledJobsAccessor;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobsAccessor;
 
 import java.sql.Connection;
 
@@ -25,11 +27,15 @@ public class SchemaInfoCleaner extends AbstractAccessor {
     private final DdlEngineAccessor ddlEngineAccessor;
     private final ReadWriteLockAccessor readWriteLockAccessor;
     private final DdlEngineTaskAccessor ddlEngineTaskAccessor;
+    private final ScheduledJobsAccessor scheduledJobsAccessor;
+    private final FiredScheduledJobsAccessor firedScheduledJobsAccessor;
 
     public SchemaInfoCleaner() {
         ddlEngineAccessor = new DdlEngineAccessor();
         ddlEngineTaskAccessor = new DdlEngineTaskAccessor();
         readWriteLockAccessor = new ReadWriteLockAccessor();
+        scheduledJobsAccessor = new ScheduledJobsAccessor();
+        firedScheduledJobsAccessor = new FiredScheduledJobsAccessor();
     }
 
     @Override
@@ -38,12 +44,18 @@ public class SchemaInfoCleaner extends AbstractAccessor {
         ddlEngineAccessor.setConnection(connection);
         readWriteLockAccessor.setConnection(connection);
         ddlEngineTaskAccessor.setConnection(connection);
+        scheduledJobsAccessor.setConnection(connection);
+        firedScheduledJobsAccessor.setConnection(connection);
     }
 
     public void removeAll(String schemaName) {
         ddlEngineAccessor.deleteAll(schemaName);
+        ddlEngineAccessor.deleteAllArchive(schemaName);
         ddlEngineTaskAccessor.deleteAll(schemaName);
+        ddlEngineTaskAccessor.deleteAllArchive(schemaName);
         readWriteLockAccessor.deleteAll(schemaName);
+        scheduledJobsAccessor.deleteAll(schemaName);
+        firedScheduledJobsAccessor.deleteAll(schemaName);
     }
 
 }

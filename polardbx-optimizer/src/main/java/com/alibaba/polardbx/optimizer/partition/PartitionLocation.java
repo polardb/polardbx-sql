@@ -122,4 +122,18 @@ public class PartitionLocation {
     public void setVisiable(boolean visiable) {
         this.visiable = visiable;
     }
+
+    public String getDigest() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("location:[");
+        sb.append(this.partitionGroupId);
+        sb.append(",");
+        sb.append(this.groupKey);
+        sb.append(",");
+        sb.append(this.phyTableName);
+        sb.append(",");
+        sb.append(this.visiable);
+        sb.append("]");
+        return sb.toString();
+    }
 }

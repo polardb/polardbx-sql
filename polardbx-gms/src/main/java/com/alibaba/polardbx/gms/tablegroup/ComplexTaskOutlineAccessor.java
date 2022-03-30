@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.util.ArrayList;
@@ -43,22 +44,8 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
 
     private static final String ALL_VALUES = "(null,?, now(),now(),?,?,?,?,?,?,?,?)";
 
-    private static final String INSERT_IGNORE_COMPLEXTASK_OUTLINE =
-        "insert ignore into " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
-
-    private static final String GET_COMPLEXTASK_OUTLINE_BY_ID =
-        "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " where id=?";
-
-    private static final String GET_COMPLEXTASK_OUTLINE_BY_JOB_ID =
-        "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " where job_id=?";
-
-    private static final String GET_COMPLEXTASK_OUTLINE_BY_JOB_ID_SCHEMA_TABLE_NAME =
-        "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
-            + " where job_id=? and table_schema=? and object_name=?";
-
-    private static final String GET_COMPLEXTASK_OUTLINE_BY_SCHEMA_AND_TABLE_NAME =
-        "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
-            + " where table_schema=? and object_name=?";
+    private static final String INSERT_COMPLEXTASK_OUTLINE =
+        "insert into " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
 
     private static final String GET_ALL_UNFINISH_COMPLEX_TASK =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " where status<>-1";
@@ -79,7 +66,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
         "delete from " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " where job_id=? and table_schema=? and object_name=?";
 
     private static final String DELETE_COMPLEXTASK_STATUS_BY_JOB_ID =
-        "delete from " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " where job_id=?";
+        "delete from " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " where table_schema=? and job_id=?";
 
     private static final String DELETE_COMPLEXTASK_BY_SCHEMA =
         "delete from " + GmsSystemTables.COMPLEX_TASK_OUTLINE + " where table_schema=?";
@@ -132,92 +119,12 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
 
             paramsBatch.add(params);
 
+            DdlMetaLogUtil.logSql(INSERT_COMPLEXTASK_OUTLINE, paramsBatch);
+
             return MetaDbUtil
-                .insertAndRetureLastInsertId(INSERT_IGNORE_COMPLEXTASK_OUTLINE, paramsBatch, this.connection);
+                .insertAndRetureLastInsertId(INSERT_COMPLEXTASK_OUTLINE, paramsBatch, this.connection);
         } catch (Exception e) {
             LOGGER.error("Failed to insert into the system table " + GmsSystemTables.COMPLEX_TASK_OUTLINE, e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
-                e.getMessage());
-        }
-    }
-
-    public List<ComplexTaskOutlineRecord> getComplexTaskOutlineById(Long id) {
-        try {
-
-            List<ComplexTaskOutlineRecord> records;
-            Map<Integer, ParameterContext> params = new HashMap<>();
-
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, id);
-            records =
-                MetaDbUtil.query(GET_COMPLEXTASK_OUTLINE_BY_ID, params, ComplexTaskOutlineRecord.class, connection);
-
-            return records;
-        } catch (Exception e) {
-            LOGGER.error("Failed to query the system table " + GmsSystemTables.COMPLEX_TASK_OUTLINE, e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
-                e.getMessage());
-        }
-    }
-
-    public List<ComplexTaskOutlineRecord> getComplexTaskOutlineByJobId(Long jobId) {
-        try {
-
-            List<ComplexTaskOutlineRecord> records;
-            Map<Integer, ParameterContext> params = new HashMap<>();
-
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
-            records =
-                MetaDbUtil.query(GET_COMPLEXTASK_OUTLINE_BY_JOB_ID, params, ComplexTaskOutlineRecord.class, connection);
-
-            return records;
-        } catch (Exception e) {
-            LOGGER.error("Failed to query the system table " + GmsSystemTables.COMPLEX_TASK_OUTLINE, e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
-                e.getMessage());
-        }
-    }
-
-    public List<ComplexTaskOutlineRecord> getComplexTaskOutlineByJobIdAndSchemaAndTable(Long jobId, String schemaName,
-                                                                                        String tableName) {
-        try {
-
-            List<ComplexTaskOutlineRecord> records;
-            Map<Integer, ParameterContext> params = new HashMap<>();
-
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
-            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, schemaName);
-            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableName);
-
-            records =
-                MetaDbUtil
-                    .query(GET_COMPLEXTASK_OUTLINE_BY_JOB_ID_SCHEMA_TABLE_NAME, params, ComplexTaskOutlineRecord.class,
-                        connection);
-
-            return records;
-        } catch (Exception e) {
-            LOGGER.error("Failed to query the system table " + GmsSystemTables.COMPLEX_TASK_OUTLINE, e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
-                e.getMessage());
-        }
-    }
-
-    public List<ComplexTaskOutlineRecord> getComplexTaskBySchemaAndTableName(String schemaName, String tableName) {
-        try {
-
-            List<ComplexTaskOutlineRecord> records;
-            Map<Integer, ParameterContext> params = new HashMap<>();
-
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
-            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
-
-            records =
-                MetaDbUtil
-                    .query(GET_COMPLEXTASK_OUTLINE_BY_SCHEMA_AND_TABLE_NAME, params, ComplexTaskOutlineRecord.class,
-                        connection);
-
-            return records;
-        } catch (Exception e) {
-            LOGGER.error("Failed to query the system table " + GmsSystemTables.COMPLEX_TASK_OUTLINE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
                 e.getMessage());
         }
@@ -231,6 +138,8 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, oldStatus);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, jobId);
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, schemaName);
+
+            DdlMetaLogUtil.logSql(UPDATE_PARENT_COMPLEXTASK_STATUS_BY_JOBID_SCH, params);
 
             MetaDbUtil.update(UPDATE_PARENT_COMPLEXTASK_STATUS_BY_JOBID_SCH, params, connection);
             return;
@@ -249,6 +158,8 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, oldStatus);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, jobId);
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, schemaName);
+
+            DdlMetaLogUtil.logSql(UPDATE_SUBTASK_STATUS_BY_JOBID_SCH, params);
 
             MetaDbUtil.update(UPDATE_SUBTASK_STATUS_BY_JOBID_SCH, params, connection);
             return;
@@ -269,6 +180,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, jobId);
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, schemaName);
             MetaDbUtil.setParameter(5, params, ParameterMethod.setString, objectName);
+            DdlMetaLogUtil.logSql(UPDATE_SUBTASK_STATUS_BY_JOBID_SCH_OBJ, params);
 
             MetaDbUtil.update(UPDATE_SUBTASK_STATUS_BY_JOBID_SCH_OBJ, params, connection);
             return;
@@ -303,6 +215,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, schemaName);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, objectName);
+            DdlMetaLogUtil.logSql(DELETE_COMPLEXTASK_STATUS_BY_JOB_ID_AND_SCH_NAME_AND_OBJ_NAME, params);
 
             MetaDbUtil.update(DELETE_COMPLEXTASK_STATUS_BY_JOB_ID_AND_SCH_NAME_AND_OBJ_NAME, params, connection);
             return;
@@ -313,11 +226,14 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
         }
     }
 
-    public void deleteComplexTaskByJobId(Long jobId) {
+    public void deleteComplexTaskByJobId(String schemaName, Long jobId) {
         try {
 
             Map<Integer, ParameterContext> params = new HashMap<>();
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, jobId);
+
+            DdlMetaLogUtil.logSql(DELETE_COMPLEXTASK_STATUS_BY_JOB_ID, params);
 
             MetaDbUtil.update(DELETE_COMPLEXTASK_STATUS_BY_JOB_ID, params, connection);
             return;
@@ -334,6 +250,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, type);
+            DdlMetaLogUtil.logSql(DELETE_SCALEOUT_SUBTASK_BY_JOB_ID, params);
 
             MetaDbUtil.update(DELETE_SCALEOUT_SUBTASK_BY_JOB_ID, params, connection);
             return;
@@ -350,6 +267,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, type);
+            MetaDbUtil.update(INVALID_SCALEOUT_TASK_BY_JOB_ID, params, connection);
 
             MetaDbUtil.update(INVALID_SCALEOUT_TASK_BY_JOB_ID, params, connection);
             return;
@@ -365,6 +283,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
 
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.update(DELETE_COMPLEXTASK_BY_SCHEMA, params, connection);
 
             MetaDbUtil.update(DELETE_COMPLEXTASK_BY_SCHEMA, params, connection);
             return;

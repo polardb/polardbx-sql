@@ -16,11 +16,14 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.RefreshTopologyBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InitNewStorageInstTask;
+import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.RefreshTopologyAddMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.RefreshTopologyValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
@@ -31,12 +34,14 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshDbTopologyPreparedData;
 import com.google.common.collect.Lists;
+import com.sun.tools.javac.jvm.Gen;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -70,8 +75,15 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 
+        Map<String, Long> tablesVersion = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        tablesPrepareData.entrySet().stream()
+            .forEach(o -> tablesVersion.putIfAbsent(o.getKey(), o.getValue().getTableVersion()));
+
         DdlTask validateTask =
-            new AlterTableGroupValidateTask(schemaName, refreshTopologyPreparedData.getTableGroupName());
+            new AlterTableGroupValidateTask(schemaName, refreshTopologyPreparedData.getTableGroupName(), tablesVersion,
+                true, null);
+        RefreshTopologyValidateTask refreshTopologyValidateTask = new RefreshTopologyValidateTask(schemaName, refreshTopologyPreparedData.getInstGroupDbInfo());
+
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(refreshTopologyPreparedData.getTableGroupName());
 
@@ -97,6 +109,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
 
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
             validateTask,
+            refreshTopologyValidateTask,
             InitNewStorageInstTask,
             addMetaTask
         ));
@@ -150,6 +163,8 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
     @Override
     public void constructSubTasks(String schemaName, ExecutableDdlJob executableDdlJob, DdlTask tailTask,
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
+        EmptyTask emptyTask = new EmptyTask(schemaName);
+        boolean emptyTaskAdded = false;
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             RefreshDbTopologySubTaskJobFactory subTaskJobFactory =
                 new RefreshDbTopologySubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
@@ -159,7 +174,20 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
             ExecutableDdlJob subTask = subTaskJobFactory.create();
             executableDdlJob.combineTasks(subTask);
             executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
-            executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
+
+            if (subTaskJobFactory.getCdcTableGroupDdlMarkTask() != null) {
+                if (!emptyTaskAdded) {
+                    executableDdlJob.addTask(emptyTask);
+                    emptyTaskAdded = true;
+                }
+                executableDdlJob.addTask(subTaskJobFactory.getCdcTableGroupDdlMarkTask());
+                executableDdlJob.addTaskRelationship(subTask.getTail(), emptyTask);
+                executableDdlJob.addTaskRelationship(emptyTask, subTaskJobFactory.getCdcTableGroupDdlMarkTask());
+                executableDdlJob.addTaskRelationship(subTaskJobFactory.getCdcTableGroupDdlMarkTask(), bringUpAlterTableGroupTasks.get(0));
+            } else {
+                executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
+            }
+
             executableDdlJob.getExcludeResources().addAll(subTask.getExcludeResources());
         }
     }
@@ -167,6 +195,16 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
+        RefreshDbTopologyPreparedData refreshTopologyPreparedData =
+            (RefreshDbTopologyPreparedData) preparedData;
+        if (refreshTopologyPreparedData.getInstGroupDbInfo() != null) {
+            for (Map.Entry<String, List<Pair<String, String>>> entry : refreshTopologyPreparedData.getInstGroupDbInfo()
+                .entrySet()) {
+                for (Pair<String, String> groupAndDb : entry.getValue()) {
+                    resources.add(concatWithDot(preparedData.getSchemaName(), groupAndDb.getKey()));
+                }
+            }
+        }
     }
 
     @Override

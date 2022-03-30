@@ -1,0 +1,43 @@
+APPLE:
+  CREATE TABLE `APPLE` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `name` varchar(30) DEFAULT NULL,
+  `pick_date` DATE DEFAULT NULL,
+  `origin_place` varchar(30) DEFAULT NULL,
+  `price` double NOT NULL,
+  `size` double NOT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`id`) tbpartition by hash(`id`) tbpartitions 2
+
+BOY:
+  CREATE TABLE `BOY` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `name` varchar(30) DEFAULT NULL,
+  `birth_date` DATE NOT NULL,
+  `birth_place` varchar(30) NOT NULL,
+  `money` double NOT NULL,
+  `height` double NOT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`id`) tbpartition by hash(`id`) tbpartitions 2
+
+CAR:
+  CREATE TABLE `CAR` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `name` varchar(30) DEFAULT NULL,
+  `brand` varchar(30) NOT NULL,
+  `produce_date` DATE DEFAULT NULL,
+  `origin_place` varchar(30) DEFAULT NULL,
+  `price` double NOT NULL,
+  `size` double NOT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`id`) tbpartition by hash(`id`) tbpartitions 2
+
+NATION:
+  CREATE TABLE `nation` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `name` varchar(30) DEFAULT NULL,
+  `place` varchar(30) NOT NULL,
+  `location` double NOT NULL,
+  `region` double NOT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 single

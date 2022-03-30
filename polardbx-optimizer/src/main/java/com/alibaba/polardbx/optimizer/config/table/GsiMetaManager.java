@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
+import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -34,6 +35,13 @@ import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMap.Builder;
+import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.Maps;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
@@ -75,7 +83,7 @@ public class GsiMetaManager extends AbstractLifecycle {
     private static final Logger logger = LoggerFactory.getLogger(GsiMetaManager.class);
 
     private static final String SELECT_PARTITIONED_TABLE_INFO =
-        "select id, '''' as table_catalog, table_schema, table_name, (case tbl_type when 0 then 1 when 1 then 3 when 2 then 0 when 3 then 2 else -1 end ) as table_type, '' as db_partition_key, '' as db_partition_policy, "
+        "select id, '''' as table_catalog, table_schema, table_name, (case tbl_type when 0 then 1 when 1 then 3 when 2 then 0 when 3 then 2 when 4 then 3 when 5 then 3 else -1 end ) as table_type, '' as db_partition_key, '' as db_partition_policy, "
             + "null as db_partition_count, '' as tb_partition_key, '' as tb_partition_policy, null as tb_partition_count, part_comment as comment from table_partitions";
 
     private static final String SELECT_PARTITIONED_TABLE_INFO_BY_SCHEMA_TABLE =
@@ -183,18 +191,6 @@ public class GsiMetaManager extends AbstractLifecycle {
     private static final String SQL_UPDATE_TABLE_VERSION = "UPDATE "
         + GmsSystemTables.TABLES
         + " SET VERSION=last_insert_id(VERSION+1) WHERE TABLE_SCHEMA=? AND TABLE_NAME=?";
-
-//    public static long updateTableVersion(String schema, String table, Connection conn) throws SQLException {
-//        TableInfoManager tableInfoManager = new TableInfoManager();
-//        long newestVer = -1;
-//        try {
-//            tableInfoManager.setConnection(conn);
-//            newestVer = tableInfoManager.updateVersion(schema, table);
-//            return newestVer;
-//        } finally {
-//            tableInfoManager.setConnection(null);
-//        }
-//    }
 
     public static long updateTableVersion(String schema, String table, Connection conn) throws SQLException {
         try (PreparedStatement pstmt = conn.prepareStatement(SQL_UPDATE_TABLE_VERSION)) {
@@ -382,7 +378,8 @@ public class GsiMetaManager extends AbstractLifecycle {
     }
 
     /**
-     * get all table records including GSI tables
+     * For information_schema, get all table records including GSI tables
+     * both from new partition schemas and the old ones.
      *
      * @return all table records in schemas with {schemaNames} and have table names of {tableNames}
      */
@@ -393,7 +390,10 @@ public class GsiMetaManager extends AbstractLifecycle {
         try {
             String queryAllTblInfoSql;
             if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
-                queryAllTblInfoSql = getSqlGetAllPartitionedTableInfo(schemaNames.size(), tableNames.size());
+                queryAllTblInfoSql = getSqlGetAllPartitionedTableInfo(schemaNames.size(), tableNames.size())
+                    + " union all " + getSqlGetAllTableInfo(schemaNames.size(), tableNames.size());
+                // Duplicate the parameters since we union two sql.
+                paramList.addAll(paramList);
             } else {
                 queryAllTblInfoSql = getSqlGetAllTableInfo(schemaNames.size(), tableNames.size());
             }

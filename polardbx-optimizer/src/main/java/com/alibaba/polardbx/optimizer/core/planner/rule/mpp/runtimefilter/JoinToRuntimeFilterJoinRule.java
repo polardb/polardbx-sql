@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter;
 
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterUtil;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
@@ -26,7 +27,6 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
 import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilter;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
@@ -149,32 +149,24 @@ public class JoinToRuntimeFilterJoinRule extends RelOptRule {
             .map(String::toUpperCase)
             .allMatch(forceEnabledKeys::contains);
 
-        boolean enableRuntimeFilter = forceEnabled;
-        if (!enableRuntimeFilter) {
-            do {
-                if ((probeRowCount < paramManager.getLong(ConnectionParams.RUNTIME_FILTER_PROBE_MIN_ROW_COUNT))) {
-                    break;
-                }
+        if (!forceEnabled) {
+            if ((probeRowCount < paramManager.getLong(ConnectionParams.RUNTIME_FILTER_PROBE_MIN_ROW_COUNT))) {
+                return;
+            }
 
-                // This is a simplified method of estimating bloom filter size since in current implementation
-                // we always split join keys
-                if (BloomFilter.optimalNumOfBits((long) buildKeyNdv, fpp) > paramManager
-                    .getLong(ConnectionParams.BLOOM_FILTER_MAX_SIZE)) {
-                    break;
-                }
+            // This is a simplified method of estimating bloom filter size since in current implementation
+            // we always split join keys
+            if (BloomFilterUtil.optimalNumOfBits((long) buildKeyNdv, fpp) > paramManager
+                .getLong(ConnectionParams.BLOOM_FILTER_MAX_SIZE)) {
+                return;
+            }
 
-                if (!RuntimeFilterUtil.satisfyFilterRatio(paramManager, buildKeyNdv, probeRowCount, fpp)) {
-                    break;
-                }
-
-                enableRuntimeFilter = true;
-            } while (false);
+            if (!RuntimeFilterUtil.satisfyFilterRatio(paramManager, buildKeyNdv, probeRowCount, fpp)) {
+                return;
+            }
         }
 
-        if (!enableRuntimeFilter) {
-            return;
-        }
-
+        boolean usingXxHash = paramManager.getBoolean(ConnectionParams.ENABLE_RUNTIME_FILTER_XXHASH);
         List<RexNode> buildConditions = new ArrayList<>();
         List<RexNode> probeConditions = new ArrayList<>();
         for (int i = 0; i < buildKeys.size(); i++) {
@@ -196,7 +188,7 @@ public class JoinToRuntimeFilterJoinRule extends RelOptRule {
             double probeCount = RuntimeFilterUtil.convertDouble(mq.getRowCount(probeNode));
             double guessSelectivity = 0.25;
             if (buildNdv > 0 && probeCount > 0) {
-                guessSelectivity = Math.max(buildNdv / probeCount * (1 - fpp), 0.25);
+                guessSelectivity = Math.max(buildNdv / probeCount * (1 - fpp), guessSelectivity);
             }
 
             if (!buildKeyToRuntimeFilterId.containsKey(buildKey)) {
@@ -213,7 +205,7 @@ public class JoinToRuntimeFilterJoinRule extends RelOptRule {
             Pair<Integer, Integer> probeKeyRFilterIdPair = Pair.of(probeKeys.get(i), runTimeFilterId);
             if (!probeKeyRFilterIdPairs.contains(probeKeyRFilterIdPair)) {
                 SqlRuntimeFilterFunction filterFunction =
-                    new SqlRuntimeFilterFunction(runTimeFilterId, guessSelectivity);
+                    new SqlRuntimeFilterFunction(runTimeFilterId, guessSelectivity, usingXxHash);
                 RexInputRef probeRexNode = new RexInputRef(
                     probeKeys.get(i), probeType.getFieldList().get(probeKeys.get(i)).getType());
                 probeConditions.add(relBuilder.call(filterFunction, probeRexNode));

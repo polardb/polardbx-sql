@@ -16,6 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ExtComparative;
@@ -136,7 +144,7 @@ public abstract class ShardProcessor {
                                          Map<String, Comparative> comparatives) {
         for (String col : shardColumns) {
             Comparative c = comparatives.get(col);
-            if (c == null || !comparativeIsAEqual(c)) {
+            if (!PlannerUtils.comparativeIsASimpleEqual(c)) {
                 return false;
             }
 
@@ -155,7 +163,7 @@ public abstract class ShardProcessor {
         Map<String, Integer> columnIndex = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         for (String col : columns) {
             Comparative c = comparatives.get(col);
-            if (c == null || !comparativeIsAEqual(c)) {
+            if (c == null || !PlannerUtils.comparativeIsASimpleEqual(c)) {
                 return null;
             }
 

@@ -35,8 +35,6 @@ public class CharsetFactoryImpl implements CharsetFactory {
     public CharsetHandler createCharsetHandler(CharsetName charset, CollationName collation) {
         Preconditions.checkNotNull(charset);
         Preconditions.checkNotNull(collation);
-        Preconditions.checkArgument(charset.isSupported(collation),
-            "collation " + collation + " is not supported in charset " + charset);
         switch (charset) {
         case UTF8MB4:
             switch (collation) {

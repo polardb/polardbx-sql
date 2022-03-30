@@ -189,6 +189,7 @@ public class RuleToUse {
         PushAggRule.SINGLE_GROUP_VIEW,
         PushAggRule.NOT_SINGLE_GROUP_VIEW,
         PushSemiJoinRule.INSTANCE,
+        PushSemiJoinDirectRule.INSTANCE,
         PushJoinRule.INSTANCE,
         PushFilterRule.VIRTUALVIEW);
 
@@ -209,7 +210,8 @@ public class RuleToUse {
         PushProjectRule.INSTANCE,
         PushCorrelateRule.INSTANCE,
         PushJoinRule.INSTANCE,
-        PushSemiJoinRule.INSTANCE
+        PushSemiJoinRule.INSTANCE,
+        PushSemiJoinDirectRule.INSTANCE
     );
 
     /**
@@ -233,6 +235,7 @@ public class RuleToUse {
         // Push Join
         PushJoinRule.INSTANCE,
         PushSemiJoinRule.INSTANCE,
+        PushSemiJoinDirectRule.INSTANCE,
         CorrelateProjectRule.INSTANCE,
         // PushFilter, because Push Sort move to CBO, so we should transpose, let filter down
         // FIXME: sharding calculation dose not satisfying monotonicity
@@ -436,6 +439,7 @@ public class RuleToUse {
         PushFilterRule.PROJECT_FILTER_LOGICALVIEW,
         // Push Join
         CBOPushSemiJoinRule.INSTANCE,
+        CBOPushSemiJoinDirectRule.INSTANCE,
         CBOPushJoinRule.INSTANCE,
         // Push Agg
         CBOPushAggRule.LOGICALVIEW,
@@ -532,5 +536,11 @@ public class RuleToUse {
         RFilterJoinTransposeRule.HASHJOIN_INSTANCE,
         RFilterJoinTransposeRule.SEMI_HASHJOIN_INSTANCE,
         FilterRFBuilderTransposeRule.INSTANCE
+    );
+
+    public static final ImmutableList<RelOptRule> PULL_FILTER_OVER_JOIN = ImmutableList.of(
+        JoinFilterTransposeRule.BOTH_FILTER,
+        JoinFilterTransposeRule.LEFT_FILTER,
+        JoinFilterTransposeRule.RIGHT_FILTER
     );
 }

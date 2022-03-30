@@ -648,9 +648,9 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
 
         // Get all uk constraints from WRITABLE tables
         // [[columnName(upper case)]]
-        List<List<String>> uniqueKeys =
+        List<List<String>> uniqueKeys = new ArrayList<>(new HashSet<>(
             GlobalIndexMeta.getUniqueKeys(primaryTableName, schemaName, true,
-                tm -> GlobalIndexMeta.canWrite(executionContext, tm), executionContext);
+                tm -> GlobalIndexMeta.canWrite(executionContext, tm), executionContext)));
 
         // Only lookup primary table, could be
         // 1. Set by hint

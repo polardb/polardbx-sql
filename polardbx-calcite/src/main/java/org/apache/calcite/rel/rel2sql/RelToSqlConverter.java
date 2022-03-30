@@ -68,6 +68,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlReplace;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlUpdate;
+import org.apache.calcite.sql.dialect.CalciteSqlDialect;
 import org.apache.calcite.sql.fun.SqlRowOperator;
 import org.apache.calcite.sql.fun.SqlSingleValueAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
@@ -119,7 +120,8 @@ public class RelToSqlConverter extends SqlImplementor
   public Result visitChild(int i, RelNode e) {
     try {
       stack.push(new Frame(i, e));
-      return dispatch(e).setStack(stack);
+      Result rs = dispatch(e);
+      return rs.setStack(stack);
     } finally {
       stack.pop();
     }

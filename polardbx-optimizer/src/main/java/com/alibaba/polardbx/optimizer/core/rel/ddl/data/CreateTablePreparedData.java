@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Data;
@@ -37,12 +38,16 @@ public class CreateTablePreparedData extends DdlPreparedData {
     private boolean broadcast;
     private boolean sharding;
 
+    private boolean timestampColumnDefault;
+    private Map<String, String> binaryColumnDefaultValues;
+
     private SqlNode dbPartitionBy;
     private SqlNode dbPartitions;
     private SqlNode tbPartitionBy;
     private SqlNode tbPartitions;
 
     private SqlNode partitioning;
+    private SqlNode localPartitioning;
     private SqlNode tableGroupName;
     private Map<SqlNode, RexNode> partBoundExprInfo;
 
@@ -50,9 +55,15 @@ public class CreateTablePreparedData extends DdlPreparedData {
 
     private TableRule tableRule;
     private PartitionInfo partitionInfo;
+    private LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
 
     /**
      * Create table with locality
      */
     private LocalityDesc locality;
+
+    /**
+     * if Create gsi table
+     */
+    private boolean gsi;
 }

@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -40,6 +41,8 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(DdlEngineTaskAccessor.class);
 
     public static final String DDL_ENGINE_TASK_TABLE = wrap(GmsSystemTables.DDL_ENGINE_TASK);
+
+    public static final String DDL_ENGINE_TASK_TABLE_ARCHIVE = wrap(GmsSystemTables.DDL_ENGINE_TASK_ARCHIVE);
 
     private static final String INSERT_DATA =
         "insert into " + DDL_ENGINE_TASK_TABLE
@@ -59,7 +62,7 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String WITH_ONGOING_TASK = " and `state` <> 'SUCCESS' and `state` <> 'ROLLBACK_SUCCESS' ";
 
-    private static final String WITH_TASK_NAME = " and name = ?";
+    private static final String WITH_TASK_NAME = " and `name` = ?";
 
     private static final String SELECT_BASE = SELECT_FULL + FROM_TABLE;
 
@@ -69,6 +72,8 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String SELECT_ONGOING_TASK =
         SELECT_BASE + WHERE_SCHEMA_NAME + WITH_ONGOING_TASK + WITH_TASK_NAME;
+
+    private static final String SELECT_BY_JOB_ID_TASK_NAME = SELECT_BASE + WHERE_JOB_ID + WITH_TASK_NAME;
 
     private static final String UPDATE_BASE = "update " + DDL_ENGINE_TASK_TABLE + " set ";
 
@@ -89,6 +94,16 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String DELETE_BY_SCHEMA_NAME = DELETE_BASE + WHERE_SCHEMA_NAME;
 
+    private static final String DELETE_ARCHIVE_BASE = "delete from " + DDL_ENGINE_TASK_TABLE_ARCHIVE;
+
+    private static final String DELETE_ARCHIVE_BY_JOB_ID = DELETE_ARCHIVE_BASE + WHERE_JOB_ID;
+
+    private static final String DELETE_ARCHIVE_BY_SCHEMA_NAME = DELETE_ARCHIVE_BASE + WHERE_SCHEMA_NAME;
+
+    private static final String ARCHIVE_BASE = "insert into " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " select * from " + DDL_ENGINE_TASK_TABLE;
+
+    private static final String ARCHIVE_SPECIFIC = ARCHIVE_BASE + WHERE_JOB_ID;
+
     public int insert(List<DdlEngineTaskRecord> recordList) {
         try {
             if (CollectionUtils.isEmpty(recordList)) {
@@ -96,6 +111,7 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
             }
             List<Map<Integer, ParameterContext>> paramsBatch =
                 recordList.stream().map(e -> e.buildParams()).collect(Collectors.toList());
+            DdlMetaLogUtil.logSql(INSERT_DATA + " record count: " + recordList.size());
             int[] r = MetaDbUtil.insert(INSERT_DATA, paramsBatch, connection);
             return Arrays.stream(r).sum();
         } catch (Exception e) {
@@ -133,6 +149,21 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
                 return records.get(0);
             }
             return null;
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
+        }
+    }
+
+    public List<DdlEngineTaskRecord> query(long jobId, String name) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, name);
+
+            List<DdlEngineTaskRecord> records =
+                MetaDbUtil.query(SELECT_BY_JOB_ID_TASK_NAME, params, DdlEngineTaskRecord.class, connection);
+
+            return records;
         } catch (Exception e) {
             throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
         }
@@ -212,6 +243,8 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
         try {
             final Map<Integer, ParameterContext> params =
                 MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
+            deleteArchiveByJobId(jobId);
+            archive(jobId);
             return MetaDbUtil.delete(DELETE_BY_JOB_ID, params, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to delete from " + DDL_ENGINE_TASK_TABLE + " for job " + jobId, "delete from", e);
@@ -226,6 +259,38 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
         } catch (Exception e) {
             throw logAndThrow("Failed to delete from " + DDL_ENGINE_TASK_TABLE + " for schemaName " + schemaName,
                 "delete from", e);
+        }
+    }
+
+    public int deleteArchiveByJobId(long jobId) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
+            return MetaDbUtil.delete(DELETE_ARCHIVE_BY_JOB_ID, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to delete from " + DDL_ENGINE_TASK_TABLE + " for job " + jobId, "delete from", e);
+        }
+    }
+
+    public int deleteAllArchive(String schemaName) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setString, new String[] {schemaName});
+            return MetaDbUtil.delete(DELETE_ARCHIVE_BY_SCHEMA_NAME, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to delete from " + DDL_ENGINE_TASK_TABLE_ARCHIVE + " for schemaName " + schemaName,
+                "delete from", e);
+        }
+    }
+
+    public int archive(long jobId){
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
+            DdlMetaLogUtil.logSql(ARCHIVE_SPECIFIC, params);
+            return MetaDbUtil.delete(ARCHIVE_SPECIFIC, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to copy record from " + DDL_ENGINE_TASK_TABLE + " for job " + jobId, "archive", e);
         }
     }
 

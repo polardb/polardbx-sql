@@ -26,7 +26,6 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.meta.delegate.TableInfoManagerDelegate;
-import com.alibaba.polardbx.executor.ddl.job.task.util.info.DeveloperWarning;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
@@ -65,8 +64,6 @@ import java.util.Set;
  */
 public abstract class DdlPhyPlanBuilder {
 
-    @Deprecated
-    @DeveloperWarning(message = "calling for help: get rid of 'relDdl'")
     protected DDL relDdl;
 
     protected DdlPreparedData ddlPreparedData;
@@ -278,6 +275,10 @@ public abstract class DdlPhyPlanBuilder {
 
     public TableRule getTableRule() {
         return tableRule;
+    }
+
+    public void setPartitionInfo(PartitionInfo partitionInfo) {
+        this.partitionInfo = partitionInfo;
     }
 
     public PartitionInfo getPartitionInfo() {

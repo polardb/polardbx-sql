@@ -47,7 +47,7 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
-import com.alibaba.polardbx.util.IntBloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.ArrayList;
@@ -71,7 +71,7 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     protected ConcurrentRawHashTable hashTable;
     protected int[] positionLinks;
-    protected IntBloomFilter bloomFilter;
+    protected FastIntBloomFilter bloomFilter;
 
     private TypedBuffer groupKeyBuffer;
     private final DataType[] aggValueType;
@@ -201,7 +201,7 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         Arrays.fill(positionLinks, LIST_END);
 
         if (size <= BLOOM_FILTER_ROWS_LIMIT) {
-            bloomFilter = IntBloomFilter.create(size);
+            bloomFilter = FastIntBloomFilter.create(size);
             memoryAllocator.allocateReservedMemory(bloomFilter.sizeInBytes());
         }
         int position = 0;
@@ -284,7 +284,7 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     private void buildOneChunk(Chunk keyChunk, int position, ConcurrentRawHashTable hashTable,
                                int[] positionLinks,
-                               IntBloomFilter bloomFilter, List<Aggregator> aggregators) {
+                               FastIntBloomFilter bloomFilter, List<Aggregator> aggregators) {
         // Calculate hash codes of the whole chunk
         int[] hashes = keyChunk.hashCodeVector();
 

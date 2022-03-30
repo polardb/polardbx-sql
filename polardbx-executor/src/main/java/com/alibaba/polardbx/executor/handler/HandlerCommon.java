@@ -29,10 +29,12 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ExecutorHelper;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.chunk.Chunk;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -41,6 +43,7 @@ import com.alibaba.polardbx.executor.cursor.impl.GroupConcurrentUnionCursor;
 import com.alibaba.polardbx.executor.cursor.impl.GroupSequentialCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.GenericPhyObjectRecorder;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
@@ -55,6 +58,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dml.BroadcastWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
@@ -66,6 +70,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
+import com.alibaba.polardbx.repo.mysql.spi.MyPhyDdlTableCursor;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.util.RexMemoryLimitHelper;
 import org.apache.calcite.linq4j.Ord;
@@ -81,6 +86,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -134,6 +140,9 @@ public abstract class HandlerCommon implements PlanHandler {
         List<Future<Cursor>> futures = new ArrayList<>(subNodes.size());
         List<Throwable> exceptions = new ArrayList<>();
 
+        // For DDL only
+        Map<String, GenericPhyObjectRecorder> phyObjectRecorderMap = new ConcurrentHashMap<>();
+
         /*
          * Execute and collect cursors in a sliding window:
          *
@@ -147,30 +156,46 @@ public abstract class HandlerCommon implements PlanHandler {
         for (int execute = 0, collect = -prefetch; collect < subNodes.size(); execute++, collect++) {
             if (execute < subNodes.size()) {
                 final RelNode subNode = subNodes.get(execute);
-                if (!CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext).checkIfDone()) {
+                GenericPhyObjectRecorder phyObjectRecorder =
+                    CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext);
+                if (!phyObjectRecorder.checkIfDone()) {
                     Future<Cursor> rcfuture = ExecutorContext.getContext(schemaName)
                         .getTopologyExecutor()
                         .execByExecPlanNodeFuture(subNode, executionContext, null);
                     futures.add(rcfuture);
+                    if (subNode instanceof PhyDdlTableOperation) {
+                        String phyTableKey = DdlHelper.genPhyTableInfo(subNode, executionContext.getDdlContext());
+                        if (TStringUtil.isNotBlank(phyTableKey)) {
+                            phyObjectRecorderMap.put(phyTableKey, phyObjectRecorder);
+                        }
+                    }
                 } else {
-                    // Add null as place holder to skip recording during recovery below.
+                    // Add null as placeholder to skip recording during recovery below.
                     futures.add(null);
                 }
             }
             if (collect >= 0) {
-                final RelNode subNode = subNodes.get(collect);
+                GenericPhyObjectRecorder phyObjectRecorder = null;
                 final Future<Cursor> future = futures.get(collect);
                 if (future == null) {
                     // The shard has been done.
                     continue;
                 }
-                GenericPhyObjectRecorder phyObjectRecorder =
-                    CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext);
                 try {
-                    subCursors.add(future.get());
-                    phyObjectRecorder.recordDone();
+                    Cursor cursor = future.get();
+                    subCursors.add(cursor);
+                    if (cursor instanceof MyPhyDdlTableCursor) {
+                        RelNode subNode = ((MyPhyDdlTableCursor) cursor).getRelNode();
+                        String phyTableKey = DdlHelper.genPhyTableInfo(subNode, executionContext.getDdlContext());
+                        if (TStringUtil.isNotBlank(phyTableKey)) {
+                            phyObjectRecorder = phyObjectRecorderMap.get(phyTableKey);
+                            if (phyObjectRecorder != null) {
+                                phyObjectRecorder.recordDone();
+                            }
+                        }
+                    }
                 } catch (Exception e) {
-                    if (!phyObjectRecorder.checkIfIgnoreException(e)) {
+                    if (phyObjectRecorder == null || !phyObjectRecorder.checkIfIgnoreException(e)) {
                         exceptions.add(new TddlException(e));
                     }
                 }
@@ -281,15 +306,24 @@ public abstract class HandlerCommon implements PlanHandler {
      */
     protected void executeInstanceConcurrent(List<RelNode> subNodes, List<Cursor> subCursors,
                                              ExecutionContext ec, String schemaName, List<Throwable> exceptions) {
-        MyDataSourceGetter dsGetter = new MyDataSourceGetter(schemaName);
+        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+        IRepository myRepo = executorContext.getRepositoryHolder().get(Group.GroupType.MYSQL_JDBC.name());
 
         Map<String, List<RelNode>> plansByInstance = new HashMap<>();
         for (RelNode subNode : subNodes) {
-            TGroupDataSource ds = dsGetter.getDataSource(((BaseQueryOperation) subNode).getDbIndex());
+            Object possibleTGroupDataSource = myRepo.getGroupExecutor(optimizerContext.getMatrix()
+                .getGroup(((BaseQueryOperation) subNode).getDbIndex())).getDataSource();
+
+            if (!(possibleTGroupDataSource instanceof TGroupDataSource)) {
+                throw new TddlNestableRuntimeException("Unsupported datasource for INSTANCE_CONCURRENT");
+            }
 
             // ip + port = id
             String instanceId = null;
-            for (Map.Entry<TAtomDataSource, Weight> weightEntry : ds.getAtomDataSourceWeights().entrySet()) {
+            for (Map.Entry<TAtomDataSource, Weight> weightEntry : ((TGroupDataSource) possibleTGroupDataSource)
+                .getAtomDataSourceWeights()
+                .entrySet()) {
                 if (weightEntry.getValue().w != 0) {
                     instanceId = weightEntry.getKey().getHost() + ":" + weightEntry.getKey().getPort();
                     break;

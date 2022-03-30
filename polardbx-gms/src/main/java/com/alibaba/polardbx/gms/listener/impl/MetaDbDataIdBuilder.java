@@ -16,7 +16,11 @@
 
 package com.alibaba.polardbx.gms.listener.impl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+
 import java.text.MessageFormat;
+import java.text.ParseException;
 
 /**
  * @author chenghui.lch
@@ -164,6 +168,18 @@ public class MetaDbDataIdBuilder {
 
     public static String getDbTopologyDataId(String dbName) {
         return DB_TOPOLOGY_DATA_ID.format(new Object[] {dbName.toLowerCase()});
+    }
+
+    public static String resolveDbTopologyDataId(String dataId) {
+        try {
+            Object[] objs = DB_TOPOLOGY_DATA_ID.parse(dataId);
+            if (objs == null || objs.length != 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "Invalid dataId: " + dataId);
+            }
+            return (String) objs[0];
+        } catch (ParseException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "Invalid dataId: " + dataId);
+        }
     }
 
     public static String getGroupConfigDataId(String instId, String dbName, String groupName) {

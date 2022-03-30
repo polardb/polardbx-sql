@@ -50,13 +50,13 @@ import java.util.TreeMap;
 public class PartPredRewriter {
 
     protected static RexNode rewritePartPredicate(PartitionInfo partInfo,
-                                                  RelNode relPlan,
+                                                  RelDataType relRowType,
                                                   RexNode partPred,
                                                   PartPruneStepBuildingContext context) {
         RexNode newPartPred = null;
         RexNode finalPartPred = null;
         try {
-            newPartPred = rewritePredExpr(context, partInfo, relPlan, partPred);
+            newPartPred = rewritePredExpr(context, partInfo, relRowType, partPred);
             if (newPartPred == null) {
                 return null;
             }
@@ -78,7 +78,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewritePredExpr(PartPruneStepBuildingContext context,
                                              PartitionInfo partInfo,
-                                             RelNode relPlan,
+                                             RelDataType relRowType,
                                              RexNode partPred) {
         if (partPred == null) {
             return null;
@@ -98,23 +98,23 @@ public class PartPredRewriter {
         SqlKind kind = partPred.getKind();
 
         if (kind == SqlKind.OR || kind == SqlKind.AND) {
-            rewritedPred = rewriteAndOrExpr(context, partInfo, relPlan, partPredInfo);
+            rewritedPred = rewriteAndOrExpr(context, partInfo, relRowType, partPredInfo);
         } else {
-            rewritedPred = rewriteOpExpr(context, partInfo, relPlan, partPredInfo);
+            rewritedPred = rewriteOpExpr(context, partInfo, relRowType, partPredInfo);
         }
         return rewritedPred;
     }
 
     protected static RexNode rewriteAndOrExpr(PartPruneStepBuildingContext context,
                                               PartitionInfo partInfo,
-                                              RelNode relPlan,
+                                              RelDataType relRowType,
                                               RexCall andOrExpr) {
 
         List<RexNode> subExprNodes = new ArrayList<>();
         int nonPartKeyPredCnt = 0;
         SqlKind parentExprKind = andOrExpr.getKind();
         for (RexNode op : andOrExpr.getOperands()) {
-            RexNode expr = rewritePredExpr(context, partInfo, relPlan, op);
+            RexNode expr = rewritePredExpr(context, partInfo, relRowType, op);
             if (expr == null) {
                 nonPartKeyPredCnt++;
                 if (andOrExpr.getKind() == SqlKind.OR) {
@@ -151,7 +151,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteOpExpr(PartPruneStepBuildingContext context,
                                            PartitionInfo partInfo,
-                                           RelNode relPlan,
+                                           RelDataType relRowType,
                                            RexNode partPredExpr) {
 
         if (!(partPredExpr instanceof RexCall)) {
@@ -172,7 +172,7 @@ public class PartPredRewriter {
         case NOT_EQUALS:
         case GREATER_THAN_OR_EQUAL:
         case GREATER_THAN:
-            rewritedExpr = rewriteComparisonExpr(context, partInfo, relPlan, partPred);
+            rewritedExpr = rewriteComparisonExpr(context, partInfo, relRowType, partPred);
             break;
 
         case IS_NULL:
@@ -181,11 +181,11 @@ public class PartPredRewriter {
             break;
 
         case BETWEEN:
-            rewritedExpr = rewriteBetweenExpr(context, partInfo, relPlan, partPred);
+            rewritedExpr = rewriteBetweenExpr(context, partInfo, relRowType, partPred);
             break;
 
         case IN:
-            rewritedExpr = rewriteInExpr(context, partInfo, relPlan, partPred);
+            rewritedExpr = rewriteInExpr(context, partInfo, relRowType, partPred);
             break;
 
         default:
@@ -209,7 +209,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteComparisonExpr(PartPruneStepBuildingContext context,
                                                    PartitionInfo partInfo,
-                                                   RelNode relPlan,
+                                                   RelDataType relRowType,
                                                    RexCall partCompPred) {
 
         if (partCompPred instanceof RexSubQuery) {
@@ -220,7 +220,7 @@ public class PartPredRewriter {
         RexNode right = partCompPred.getOperands().get(1);
 
         if (left.getKind() == SqlKind.ROW && right.getKind() == SqlKind.ROW) {
-            return rewriteRowCompareExpr(context, partInfo, relPlan, partCompPred);
+            return rewriteRowCompareExpr(context, partInfo, relRowType, partCompPred);
         }
 
         RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
@@ -256,7 +256,7 @@ public class PartPredRewriter {
         SqlOperator op = newPartPred.getOperator();
         SqlKind opKind = op.getKind();
 
-        boolean isPartCol = tryMatchInputToPartCol(context, relPlan.getRowType(), inputRef);
+        boolean isPartCol = tryMatchInputToPartCol(context, relRowType, inputRef);
         if (!isPartCol) {
             return null;
         }
@@ -361,7 +361,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteBetweenExpr(PartPruneStepBuildingContext context,
                                                 PartitionInfo partInfo,
-                                                RelNode relPlan,
+                                                RelDataType relRowType,
                                                 RexCall partPred) {
 
         RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
@@ -384,7 +384,7 @@ public class PartPredRewriter {
         }
 
         RexInputRef input = (RexInputRef) column;
-        boolean isPartCol = tryMatchInputToPartCol(context, relPlan.getRowType(), input);
+        boolean isPartCol = tryMatchInputToPartCol(context, relRowType, input);
         if (!isPartCol) {
             return null;
         }
@@ -423,7 +423,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteRowCompareExpr(PartPruneStepBuildingContext context,
                                                    PartitionInfo partInfo,
-                                                   RelNode relPlan,
+                                                   RelDataType relRowType,
                                                    RexCall partPred) {
 
         RexCall newPartPred = formatInputAndConstForRowExpr(context, partPred);
@@ -442,17 +442,17 @@ public class PartPredRewriter {
         switch (predOpKind) {
         case LESS_THAN:
         case GREATER_THAN: {
-            return rewriteRowLtGtExpr(context, partInfo, relPlan, inputItem, predOpKind, valueItem);
+            return rewriteRowLtGtExpr(context, partInfo, relRowType, inputItem, predOpKind, valueItem);
         }
         case LESS_THAN_OR_EQUAL:
         case GREATER_THAN_OR_EQUAL: {
-            return rewriteRowLeGeExpr(context, partInfo, relPlan, inputItem, predOpKind, valueItem);
+            return rewriteRowLeGeExpr(context, partInfo, relRowType, inputItem, predOpKind, valueItem);
         }
         case EQUALS: {
-            return rewriteRowEqExpr(context, partInfo, relPlan, inputItem, predOpKind, valueItem);
+            return rewriteRowEqExpr(context, partInfo, relRowType, inputItem, predOpKind, valueItem);
         }
         case NOT_EQUALS: {
-            return rewriteRowNotEqExpr(context, partInfo, relPlan, inputItem, predOpKind, valueItem);
+            return rewriteRowNotEqExpr(context, partInfo, relRowType, inputItem, predOpKind, valueItem);
         }
 
         default:
@@ -464,7 +464,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteRowBetweenExpr(PartPruneStepBuildingContext context,
                                                    PartitionInfo partInfo,
-                                                   RelNode relPlan,
+                                                   RelDataType relRowType,
                                                    RexCall partPred) {
 
         RexNode column = partPred.getOperands().get(0);
@@ -507,7 +507,7 @@ public class PartPredRewriter {
 
         List<RexNode> allExprList = new ArrayList<>();
         RexNode newLeftExpr =
-            rewriteRowLeGeExpr(context, partInfo, relPlan, column, TddlOperatorTable.GREATER_THAN_OR_EQUAL.getKind(),
+            rewriteRowLeGeExpr(context, partInfo, relRowType, column, TddlOperatorTable.GREATER_THAN_OR_EQUAL.getKind(),
                 left);
         if (newLeftExpr != null) {
             allExprList.add(newLeftExpr);
@@ -518,7 +518,7 @@ public class PartPredRewriter {
         }
 
         RexNode newRightExpr =
-            rewriteRowLeGeExpr(context, partInfo, relPlan, column, TddlOperatorTable.LESS_THAN_OR_EQUAL.getKind(),
+            rewriteRowLeGeExpr(context, partInfo, relRowType, column, TddlOperatorTable.LESS_THAN_OR_EQUAL.getKind(),
                 right);
         if (newRightExpr != null) {
             allExprList.add(newRightExpr);
@@ -704,7 +704,7 @@ public class PartPredRewriter {
      */
     protected static RexNode rewriteRowEqExpr(PartPruneStepBuildingContext context,
                                               PartitionInfo partInfo,
-                                              RelNode relPlan,
+                                              RelDataType relRowType,
                                               RexNode predInput,
                                               SqlKind opKind,
                                               RexNode predValue) {
@@ -727,7 +727,7 @@ public class PartPredRewriter {
             RexNode valueNode = rowValue.getOperands().get(i);
             if (inputNode instanceof RexInputRef) {
                 boolean isPartCol =
-                    PartPredRewriter.tryMatchInputToPartCol(context, relPlan.getRowType(), (RexInputRef) inputNode);
+                    PartPredRewriter.tryMatchInputToPartCol(context, relRowType, (RexInputRef) inputNode);
                 List<RexNode> eqOpList = new ArrayList<>();
                 if (isPartCol) {
                     eqOpList.add(inputNode);
@@ -776,7 +776,7 @@ public class PartPredRewriter {
      */
     protected static RexNode rewriteRowLtGtExpr(PartPruneStepBuildingContext context,
                                                 PartitionInfo partInfo,
-                                                RelNode relPlan,
+                                                RelDataType relRowType,
                                                 RexNode predInput,
                                                 SqlKind opKind,
                                                 RexNode predValue) {
@@ -809,7 +809,7 @@ public class PartPredRewriter {
         List<Boolean> partColFlags = new ArrayList<>();
         for (int i = 0; i < inputs.size(); i++) {
             RexInputRef inputNode = (RexInputRef) inputs.get(i);
-            boolean isPartCol = PartPredRewriter.tryMatchInputToPartCol(context, relPlan.getRowType(), inputNode);
+            boolean isPartCol = PartPredRewriter.tryMatchInputToPartCol(context, relRowType, inputNode);
             partColFlags.add(isPartCol);
             if (isPartCol) {
                 containPartColInLeft = true;
@@ -903,7 +903,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteRowLeGeExpr(PartPruneStepBuildingContext context,
                                                 PartitionInfo partInfo,
-                                                RelNode relPlan,
+                                                RelDataType relRowType,
                                                 RexNode predInput,
                                                 SqlKind opKind,
                                                 RexNode predValue) {
@@ -916,7 +916,7 @@ public class PartPredRewriter {
         SqlKind neqKind = opKind == SqlKind.LESS_THAN_OR_EQUAL ? SqlKind.LESS_THAN : SqlKind.GREATER_THAN;
         SqlKind eqKind = SqlKind.EQUALS;
 
-        RexNode neqExpr = rewriteRowLtGtExpr(context, partInfo, relPlan, predInput, neqKind, predValue);
+        RexNode neqExpr = rewriteRowLtGtExpr(context, partInfo, relRowType, predInput, neqKind, predValue);
         if (neqExpr != null) {
             allExprList.add(neqExpr);
         } else {
@@ -927,7 +927,7 @@ public class PartPredRewriter {
             allExprList.add(alwaysTrueExpr);
         }
 
-        RexNode eqExpr = rewriteRowEqExpr(context, partInfo, relPlan, predInput, eqKind, predValue);
+        RexNode eqExpr = rewriteRowEqExpr(context, partInfo, relRowType, predInput, eqKind, predValue);
         if (eqExpr != null) {
             allExprList.add(eqExpr);
         } else {
@@ -951,14 +951,14 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteRowNotEqExpr(PartPruneStepBuildingContext context,
                                                  PartitionInfo partInfo,
-                                                 RelNode relPlan,
+                                                 RelDataType relRowType,
                                                  RexNode predInput,
                                                  SqlKind opKind,
                                                  RexNode predValue) {
 
         List<RexNode> allExprList = new ArrayList<>();
 
-        RexNode ltExpr = rewriteRowLtGtExpr(context, partInfo, relPlan, predInput, SqlKind.LESS_THAN, predValue);
+        RexNode ltExpr = rewriteRowLtGtExpr(context, partInfo, relRowType, predInput, SqlKind.LESS_THAN, predValue);
         if (ltExpr != null) {
             allExprList.add(ltExpr);
         } else {
@@ -968,7 +968,7 @@ public class PartPredRewriter {
             RexNode alwaysTrueExpr = buildAlwaysTrueExpr();
             allExprList.add(alwaysTrueExpr);
         }
-        RexNode gtExpr = rewriteRowLtGtExpr(context, partInfo, relPlan, predInput, SqlKind.GREATER_THAN, predValue);
+        RexNode gtExpr = rewriteRowLtGtExpr(context, partInfo, relRowType, predInput, SqlKind.GREATER_THAN, predValue);
         if (gtExpr != null) {
             allExprList.add(gtExpr);
         } else {
@@ -995,7 +995,7 @@ public class PartPredRewriter {
      */
     protected static RexNode rewriteRowInExpr(PartPruneStepBuildingContext context,
                                               PartitionInfo partInfo,
-                                              RelNode relPlan,
+                                              RelDataType relRowType,
                                               RexCall partPred) {
         List<RexNode> operands = partPred.getOperands();
         RexNode left = operands.get(0);
@@ -1028,7 +1028,7 @@ public class PartPredRewriter {
         boolean containPartColInLeft = false;
         for (int i = 0; i < leftItem.getOperands().size(); i++) {
             RexInputRef inputNode = (RexInputRef) leftItem.getOperands().get(i);
-            boolean isPartCol = PartPredRewriter.tryMatchInputToPartCol(context, relPlan.getRowType(), inputNode);
+            boolean isPartCol = PartPredRewriter.tryMatchInputToPartCol(context, relRowType, inputNode);
             if (isPartCol) {
                 containPartColInLeft = true;
                 break;
@@ -1070,7 +1070,7 @@ public class PartPredRewriter {
         List<RexNode> allExprList = new ArrayList<>();
         for (int i = 0; i < inValList.size(); i++) {
             RexNode oneVal = inValList.get(i);
-            RexNode expr = rewriteRowEqExpr(context, partInfo, relPlan, leftItem, SqlKind.EQUALS, oneVal);
+            RexNode expr = rewriteRowEqExpr(context, partInfo, relRowType, leftItem, SqlKind.EQUALS, oneVal);
             if (expr != null) {
                 allExprList.add(expr);
             } else {
@@ -1095,7 +1095,7 @@ public class PartPredRewriter {
 
     protected static RexNode rewriteInExpr(PartPruneStepBuildingContext context,
                                            PartitionInfo partInfo,
-                                           RelNode relPlan,
+                                           RelDataType relRowType,
                                            RexCall partPred) {
 
         RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
@@ -1112,7 +1112,7 @@ public class PartPredRewriter {
         List<RexNode> inValueList = new ArrayList<>();
         RexNode inputSide = null;
         if (left.getKind() == SqlKind.ROW && right.getKind() == SqlKind.ROW) {
-            return rewriteRowInExpr(context, partInfo, relPlan, partPred);
+            return rewriteRowInExpr(context, partInfo, relRowType, partPred);
         } else if (right.getKind() == SqlKind.ROW) {
 
             /**
@@ -1143,7 +1143,7 @@ public class PartPredRewriter {
             }
 
             RexInputRef input = (RexInputRef) inputSide;
-            boolean isPartCol = PartPredRewriter.tryMatchInputToPartCol(context, relPlan.getRowType(), input);
+            boolean isPartCol = PartPredRewriter.tryMatchInputToPartCol(context, relRowType, input);
             if (!isPartCol) {
                 /**
                  * No find any partition col in the in predicate

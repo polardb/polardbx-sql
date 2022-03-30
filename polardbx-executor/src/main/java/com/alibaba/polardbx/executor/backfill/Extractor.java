@@ -30,6 +30,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
@@ -38,6 +39,9 @@ import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.executor.workqueue.PriorityFIFOTask;
 import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -185,7 +189,7 @@ public class Extractor {
         this.primaryKeysId = primaryKeysId;
         this.primaryKeysIdMap = new HashMap<>();
         for (int i = 0; i < primaryKeysId.size(); i++) {
-            primaryKeysIdMap.put((long)primaryKeysId.get(i), (long)i);
+            primaryKeysIdMap.put((long) primaryKeysId.get(i), (long) i);
         }
         this.tm = ExecutorContext.getContext(schemaName).getTransactionManager();
         this.backfillManager = new GsiBackfillManager(schemaName);
@@ -441,7 +445,8 @@ public class Extractor {
                                       ExecutionContext ec,
                                       BiConsumer<List<Map<Integer, ParameterContext>>, Pair<ExecutionContext, String>> loader) {
         // Load upper bound
-        List<ParameterContext> upperBoundParam = buildUpperBoundParam(backfillObjects.size(), backfillObjects, primaryKeysIdMap);
+        List<ParameterContext> upperBoundParam =
+            buildUpperBoundParam(backfillObjects.size(), backfillObjects, primaryKeysIdMap);
         final boolean withUpperBound = GeneralUtil.isNotEmpty(upperBoundParam);
 
         // Init historical position mark
@@ -490,8 +495,13 @@ public class Extractor {
 
             // Update position mark
             successRowCount += lastBatch.size();
-            reporter.updatePositionMark(ec, backfillObjects, successRowCount, lastPk, beforeLastPk, finished, primaryKeysIdMap);
+            reporter.updatePositionMark(ec, backfillObjects, successRowCount, lastPk, beforeLastPk, finished,
+                primaryKeysIdMap);
             ec.getStats().backfillRows.addAndGet(lastBatch.size());
+            DdlEngineStats.METRIC_BACKFILL_ROWS_FINISHED.update(lastBatch.size());
+            long elapsedMillis = System.currentTimeMillis() - start;
+            long speedPerSecond = 1000L * lastBatch.size() / elapsedMillis;
+            DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(speedPerSecond);
 
             if (!finished) {
                 t.feedback(new com.alibaba.polardbx.executor.backfill.Throttle.FeedbackStats(
@@ -511,6 +521,7 @@ public class Extractor {
             }
         } while (!finished);
 
+        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
         reporter.addBackfillCount(successRowCount);
 
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Last backfill row for {1}[{2}][{3}]: {4}",
@@ -600,9 +611,9 @@ public class Extractor {
         // Value of Primary Key can never be null
         return backfillObjects.stream().sorted(Comparator.comparingLong(o -> primaryKeysIdMap.get(o.columnIndex)))
             .filter(bfo -> Objects.nonNull(bfo.maxValue)).map(
-            bfo -> com.alibaba.polardbx.executor.gsi.utils.Transformer
-                .buildParamByType(offset + bfo.columnIndex, bfo.parameterMethod, bfo.maxValue)).collect(
-            Collectors.toList());
+                bfo -> com.alibaba.polardbx.executor.gsi.utils.Transformer
+                    .buildParamByType(offset + bfo.columnIndex, bfo.parameterMethod, bfo.maxValue)).collect(
+                Collectors.toList());
     }
 
     /**
@@ -617,7 +628,8 @@ public class Extractor {
         List<ParameterContext> lastPk = null;
         if (GeneralUtil.isNotEmpty(batchResult)) {
             Map<Integer, ParameterContext> lastRow = batchResult.get(batchResult.size() - 1);
-            lastPk = primaryKeysId.stream().mapToInt(i -> i).mapToObj(i -> lastRow.get(i + 1)).collect(Collectors.toList());
+            lastPk =
+                primaryKeysId.stream().mapToInt(i -> i).mapToObj(i -> lastRow.get(i + 1)).collect(Collectors.toList());
         }
 
         return lastPk;
@@ -732,8 +744,11 @@ public class Extractor {
                 backfillBean.setProgress(100);
 
                 // Log the backfill speed.
-                double time = ((System.currentTimeMillis() - startTime) / 1000.0);
+                long timeMillis = System.currentTimeMillis() - startTime;
+                double time = (timeMillis / 1000.0);
                 double speed = backfillCount.get() / time;
+                DdlEngineStats.METRIC_BACKFILL_TIME_MILLIS.update(timeMillis);
+
                 SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
                     "[{0}] Backfill job: {1} total: {2} time: {3}s speed: {4}row/s with {5} task(s) PWQ total {6} thread(s).",
                     ec.getTraceId(), backfillBean.jobId, backfillCount.get(), time, speed, taskCount,
@@ -744,7 +759,8 @@ public class Extractor {
 
         public void updatePositionMark(ExecutionContext ec, List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
                                        long successRowCount, List<ParameterContext> lastPk,
-                                       List<ParameterContext> beforeLastPk, boolean finished, Map<Long, Long> primaryKeysIdMap) {
+                                       List<ParameterContext> beforeLastPk, boolean finished,
+                                       Map<Long, Long> primaryKeysIdMap) {
 
             final GsiBackfillManager.BackfillStatus
                 status =
@@ -752,7 +768,8 @@ public class Extractor {
             final List<ParameterContext> pk = (finished && null == lastPk) ? beforeLastPk : lastPk;
 
             // Update position mark and status
-            final Integer partial = backfillManager.updateBackfillObject(backfillObjects, pk, successRowCount, status, primaryKeysIdMap);
+            final Integer partial =
+                backfillManager.updateBackfillObject(backfillObjects, pk, successRowCount, status, primaryKeysIdMap);
 
             assert backfillBean.backfillObjects != null;
             final GsiBackfillManager.BackfillObjectKey key = backfillObjects.get(0).key();
@@ -832,13 +849,7 @@ public class Extractor {
             targetColumnMap.put(targetTableColumns.get(i), i);
         }
         // order reserved primary keys
-        List<String> primaryKeys;
-        if (sourceTableMeta.isHasPrimaryKey()) {
-            primaryKeys = sourceTableMeta.getPrimaryIndex().getKeyColumns().stream().map(ColumnMeta::getName)
-                .collect(Collectors.toList());
-        } else {
-            primaryKeys = new ArrayList<>();
-        }
+        List<String> primaryKeys = getPrimaryKeys(sourceTableMeta, ec);
         // primary keys appeared in select list with reserved order
         List<String> appearedKeys = new ArrayList<>();
         List<Integer> appearedKeysId = new ArrayList<>();
@@ -850,5 +861,19 @@ public class Extractor {
         }
 
         return new ExtractorInfo(sourceTableMeta, targetTableColumns, appearedKeys, appearedKeysId);
+    }
+    public static List<String> getPrimaryKeys(TableMeta tableMeta, ExecutionContext ec) {
+        final SchemaManager sm = ec.getSchemaManager(tableMeta.getSchemaName());
+        List<String> primaryKeys = ImmutableList
+            .copyOf((tableMeta.isHasPrimaryKey() ? tableMeta.getPrimaryKey() :
+                tableMeta.getGsiImplicitPrimaryKey())
+                .stream().map(ColumnMeta::getName).collect(Collectors.toList()));
+        if (GeneralUtil.isEmpty(primaryKeys) && tableMeta.isGsi()) {
+            String primaryTable = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+            final TableMeta primaryTableMeta = sm.getTable(primaryTable);
+            primaryKeys =
+                primaryTableMeta.getPrimaryKey().stream().map(ColumnMeta::getName).collect(Collectors.toList());
+        }
+        return primaryKeys;
     }
 }

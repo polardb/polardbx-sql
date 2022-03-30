@@ -171,8 +171,6 @@ public class ConnectionProperties {
 
     public static final String ALLOW_SIMPLE_SEQUENCE = "ALLOW_SIMPLE_SEQUENCE";
 
-    public static final String PURE_ASYNC_DDL_MODE = "PURE_ASYNC_DDL_MODE";
-
     public static final String AUTO_ADD_APP_MODE = "AUTO_ADD_APP_MODE";
 
     public static final String RETRY_ERROR_SQL_ON_OLD_SERVER = "RETRY_ERROR_SQL_ON_OLD_SERVER";
@@ -195,8 +193,19 @@ public class ConnectionProperties {
 
     public static final String VERSION_PREFIX = "VERSION_PREFIX";
 
+    /**
+     * 是否对 Group Sequence 启用插入显式值的追随功能
+     */
+    public static final String ENABLE_GROUP_SEQ_CATCHER = "ENABLE_GROUP_SEQ_CATCHER";
+
+    /**
+     * Group Sequence 检查插入显式值的周期/间隔，默认为5分钟
+     */
     public static final String GROUP_SEQ_CHECK_INTERVAL = "GROUP_SEQ_CHECK_INTERVAL";
 
+    /**
+     * BlockIndexNLJoin : block size
+     */
     public static final String JOIN_BLOCK_SIZE = "JOIN_BLOCK_SIZE";
 
     public static final String LOOKUP_JOIN_MAX_BATCH_SIZE = "LOOKUP_JOIN_MAX_BATCH_SIZE";
@@ -333,6 +342,10 @@ public class ConnectionProperties {
 
     public static final String MYSQL_JOIN_REORDER_EXHAUSTIVE_DEPTH = "MYSQL_JOIN_REORDER_EXHAUSTIVE_DEPTH";
 
+    public static final String ENABLE_LV_SUBQUERY_UNWRAP = "ENABLE_LV_SUBQUERY_UNWRAP";
+    /**
+     * enable semi join reorder default true
+     */
     public static final String ENABLE_SEMI_JOIN_REORDER = "ENABLE_SEMI_JOIN_REORDER";
 
     public static final String ENABLE_OUTER_JOIN_REORDER = "ENABLE_OUTER_JOIN_REORDER";
@@ -355,6 +368,19 @@ public class ConnectionProperties {
 
     public static final String ENABLE_CBO_PUSH_JOIN = "ENABLE_CBO_PUSH_JOIN";
 
+    /**
+     * cbo restrict push join, enable when join in cn is >= CBO_RESTRICT_PUSH_JOIN_LIMIT
+     */
+    public static final String CBO_RESTRICT_PUSH_JOIN_LIMIT = "CBO_RESTRICT_PUSH_JOIN_LIMIT";
+
+    /**
+     * cbo restrict push join rule counter, restrict the rule if it has been invoked CBO_RESTRICT_PUSH_JOIN_LIMIT times
+     */
+    public static final String CBO_RESTRICT_PUSH_JOIN_COUNT = "CBO_RESTRICT_PUSH_JOIN_COUNT";
+
+    /**
+     * enable rbo push agg default true
+     */
     public static final String ENABLE_PUSH_AGG = "ENABLE_PUSH_AGG";
 
     public static final String PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD = "PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD";
@@ -423,8 +449,19 @@ public class ConnectionProperties {
 
     public static final String SCALEOUT_BACKFILL_PARALLELISM = "SCALEOUT_BACKFILL_PARALLELISM";
 
+    /**
+     * parallelism tasks of logical table for scaleout
+     */
     public static final String SCALEOUT_TASK_PARALLELISM = "SCALEOUT_TASK_PARALLELISM";
 
+    /**
+     * parallelism tasks of logical table for tablegroup
+     */
+    public static final String TABLEGROUP_TASK_PARALLELISM = "TABLEGROUP_TASK_PARALLELISM";
+
+    /**
+     * batch size for scaleout check procedure
+     */
     public static final String SCALEOUT_CHECK_BATCH_SIZE = "SCALEOUT_CHECK_BATCH_SIZE";
 
     public static final String SCALEOUT_CHECK_SPEED_LIMITATION = "SCALEOUT_CHECK_SPEED_LIMITATION";
@@ -492,6 +529,14 @@ public class ConnectionProperties {
 
     public static final String ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI = "ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI";
 
+    /**
+     * the default partition mode
+     */
+    public static final String DEFAULT_PARTITION_MODE = "DEFAULT_PARTITION_MODE";
+
+    /**
+     * allow auto partition.
+     */
     public static final String AUTO_PARTITION = "AUTO_PARTITION";
 
     public static final String AUTO_PARTITION_PARTITIONS = "AUTO_PARTITION_PARTITIONS";
@@ -550,6 +595,11 @@ public class ConnectionProperties {
 
     public static final String CHUNK_SIZE = "CHUNK_SIZE";
 
+    public static final String INDEX_ADVISOR_BROADCAST_THRESHOLD = "INDEX_ADVISOR_BROADCAST_THRESHOLD";
+
+    /**
+     * VECTORIZATION
+     */
     public static final String ENABLE_EXPRESSION_VECTORIZATION = "ENABLE_EXPRESSION_VECTORIZATION";
 
     public static final String PLAN_EXTERNALIZE_TEST = "PLAN_EXTERNALIZE_TEST";
@@ -566,6 +616,8 @@ public class ConnectionProperties {
 
     public static final String SPM_EVOLUTION_RATE = "SPM_EVOLUTION_RATE";
 
+    public static final String SPM_PQO_STEADY_CHOOSE_TIME = "SPM_PQO_STEADY_CHOOSE_TIME";
+
     public static final String SPM_MAX_UNACCEPTED_PLAN_EVOLUTION_TIMES = "SPM_MAX_UNACCEPTED_PLAN_EVOLUTION_TIMES";
 
     public static final String SPM_MAX_BASELINE_INFO_SQL_LENGTH = "SPM_MAX_BASELINE_INFO_SQL_LENGTH";
@@ -578,6 +630,11 @@ public class ConnectionProperties {
 
     public static final String EXPLAIN_OUTPUT_FORMAT = "EXPLAIN_OUTPUT_FORMAT";
 
+    public static final String SPM_MAX_PQO_PARAMS_SIZE = "SPM_MAX_PQO_PARAMS_SIZE";
+
+    /**
+     * max length of sql text in sql.log, default is 4096
+     */
     public static final String SQL_LOG_MAX_LENGTH = "SQL_LOG_MAX_LENGTH";
 
     public static final String DNF_REX_NODE_LIMIT = "DNF_REX_NODE_LIMIT";
@@ -596,6 +653,41 @@ public class ConnectionProperties {
 
     public static final String ENABLE_RANDOM_PHY_TABLE_NAME = "ENABLE_RANDOM_PHY_TABLE_NAME";
 
+    /**
+     * Check if asynchronous DDL is supported. It's FALSE by default.
+     */
+    public static final String ENABLE_ASYNC_DDL = "ENABLE_ASYNC_DDL";
+
+    /**
+     * Force DDLs to run on the legacy DDL engine (Async DDL).
+     */
+    public static final String FORCE_DDL_ON_LEGACY_ENGINE = "FORCE_DDL_ON_LEGACY_ENGINE";
+
+    public static final String DDL_ENGINE_DEBUG = "DDL_ENGINE_DEBUG";
+
+    public static final String DDL_SHARD_CHANGE_DEBUG = "DDL_SHARD_CHANGE_DEBUG";
+
+    /**
+     * Check if asynchronous DDL is pure, i.e. A DDL execution returns
+     * immediately.
+     */
+    public static final String PURE_ASYNC_DDL_MODE = "PURE_ASYNC_DDL_MODE";
+
+    public static final String ENABLE_OPERATE_SUBJOB = "ENABLE_OPERATE_SUBJOB";
+
+    /**
+     * Check if the "INSTANT ADD COLUMN" feature is supported.
+     */
+    public static final String SUPPORT_INSTANT_ADD_COLUMN = "SUPPORT_INSTANT_ADD_COLUMN";
+
+    /**
+     * DDL job request timeout.
+     */
+    public static final String DDL_JOB_REQUEST_TIMEOUT = "DDL_JOB_REQUEST_TIMEOUT";
+
+    /**
+     * Indicate that how many logical DDLs are allowed to execute concurrently.
+     */
     public static final String LOGICAL_DDL_PARALLELISM = "LOGICAL_DDL_PARALLELISM";
 
     public static final String PHYSICAL_DDL_MDL_WAITING_TIMEOUT = "PHYSICAL_DDL_MDL_WAITING_TIMEOUT";
@@ -979,6 +1071,8 @@ public class ConnectionProperties {
 
     public static final String ENABLE_RUNTIME_FILTER_INTO_BUILD_SIDE = "ENABLE_RUNTIME_FILTER_INTO_BUILD_SIDE";
 
+    public static final String ENABLE_RUNTIME_FILTER_XXHASH = "ENABLE_RUNTIME_FILTER_XXHASH";
+
     public static final String ENABLE_SPLIT_RUNTIME_FILTER = "ENABLE_SPLIT_RUNTIME_FILTER";
 
     public static final String ENABLE_OPTIMIZE_SCAN_WITH_RUNTIME_FILTER = "ENABLE_OPTIMIZE_SCAN_WITH_RUNTIME_FILTER";
@@ -1056,8 +1150,14 @@ public class ConnectionProperties {
     public static final String BALANCER_MAX_PARTITION_SIZE = "BALANCER_MAX_PARTITION_SIZE";
     public static final String BALANCER_WINDOW = "BALANCER_WINDOW";
 
+    /**
+     * switch for partition management
+     */
     public static final String ENABLE_PARTITION_MANAGEMENT = "ENABLE_PARTITION_MANAGEMENT";
 
+    /**
+     * switch for partition pruning, only use for qatest and debug
+     */
     public static final String ENABLE_PARTITION_PRUNING = "ENABLE_PARTITION_PRUNING";
 
     public static final String ENABLE_AUTO_MERGE_INTERVALS_IN_PRUNING = "ENABLE_AUTO_MERGE_INTERVALS_IN_PRUNING";
@@ -1125,6 +1225,14 @@ public class ConnectionProperties {
 
     public static final String FORCE_READ_OUTSIDE_TX = "FORCE_READ_OUTSIDE_TX";
 
+    public static final String SCHEDULER_SCAN_INTERVAL_SECONDS = "SCHEDULER_SCAN_INTERVAL_SECONDS";
+    public static final String SCHEDULER_CLEAN_UP_INTERVAL_HOURS = "SCHEDULER_CLEAN_UP_INTERVAL_HOURS";
+    public static final String SCHEDULER_RECORD_KEEP_HOURS = "SCHEDULER_RECORD_KEEP_HOURS";
+    public static final String SCHEDULER_MIN_WORKER_COUNT = "SCHEDULER_MIN_WORKER_COUNT";
+    public static final String SCHEDULER_MAX_WORKER_COUNT = "SCHEDULER_MAX_WORKER_COUNT";
+
+    public static final String DEFAULT_LOCAL_PARTITION_SCHEDULE_CRON_EXPR =
+        "DEFAULT_LOCAL_PARTITION_SCHEDULE_CRON_EXPR";
 
     public static final String INTERRUPT_DDL_WHILE_LOSING_LEADER = "INTERRUPT_DDL_WHILE_LOSING_LEADER";
 
@@ -1133,4 +1241,43 @@ public class ConnectionProperties {
     public static final String ENABLE_LOGICALVIEW_COST = "ENABLE_LOGICALVIEW_COST";
 
     public static final String FORCE_RECREATE_GROUP_DATASOURCE = "FORCE_RECREATE_GROUP_DATASOURCE";
+
+    /**
+     * check target table after alter tablegroup's backfill
+     */
+    public static final String TABLEGROUP_REORG_CHECK_AFTER_BACKFILL = "TABLEGROUP_REORG_CHECK_AFTER_BACKFILL";
+
+    /**
+     * TABLEGROUP_REORG_BACKFILL_USE_FASTCHECKER
+     */
+    public static final String TABLEGROUP_REORG_BACKFILL_USE_FASTCHECKER = "TABLEGROUP_REORG_BACKFILL_USE_FASTCHECKER";
+
+    public static final String TABLEGROUP_REORG_CHECK_BATCH_SIZE = "TABLEGROUP_REORG_CHECK_BATCH_SIZE";
+
+    public static final String TABLEGROUP_REORG_CHECK_SPEED_LIMITATION = "TABLEGROUP_REORG_CHECK_SPEED_LIMITATION";
+
+    public static final String TABLEGROUP_REORG_CHECK_SPEED_MIN = "TABLEGROUP_REORG_CHECK_SPEED_MIN";
+
+    public static final String TABLEGROUP_REORG_CHECK_PARALLELISM = "TABLEGROUP_REORG_CHECK_PARALLELISM";
+
+    public static final String TABLEGROUP_REORG_FASTCHECKER_PARALLELISM = "TABLEGROUP_REORG_FASTCHECKER_PARALLELISM";
+    /**
+     * number of error for check early fail.
+     */
+    public static final String TABLEGROUP_REORG_EARLY_FAIL_NUMBER = "TABLEGROUP_REORG_EARLY_FAIL_NUMBER";
+
+    /**
+     * set the table's final status for alter tablegroup debug purpose.
+     */
+    public static final String TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG = "TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG";
+
+    /**
+     * flag that if auto warming logical db
+     */
+    public static final String ENABLE_LOGICAL_DB_WARMMING_UP = "ENABLE_LOGICAL_DB_WARMMING_UP";
+
+    /**
+     * pool size of auto-warming-logical-db-executor
+     */
+    public static final String LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE = "LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE";
 }

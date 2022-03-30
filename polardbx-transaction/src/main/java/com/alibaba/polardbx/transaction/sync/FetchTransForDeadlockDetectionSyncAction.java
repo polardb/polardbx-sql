@@ -50,6 +50,8 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
         result.addColumn("GROUP", DataTypes.StringType);
         result.addColumn("CONN_ID", DataTypes.LongType);
         result.addColumn("FRONTEND_CONN_ID", DataTypes.LongType);
+        result.addColumn("START_TIME", DataTypes.LongType);
+        result.addColumn("SQL", DataTypes.StringType);
 
         final long beforeTimeMillis = System.currentTimeMillis() - 1000L;
         final long beforeTxid = IdGenerator.assembleId(beforeTimeMillis, 0, 0);
@@ -63,8 +65,17 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
                 continue;
             }
             long frontendConnId = tran.getExecutionContext().getConnId();
+            final String sql = tran.getExecutionContext().getOriginSql();
+            final String truncatedSql = (sql == null) ? "" : sql.substring(0, Math.min(sql.length(), 4096));
+
             ((TransactionConnectionHolder) tran.getConnectionHolder()).handleConnIds((group, connId) -> {
-                result.addRow(new Object[] {tran.getId(), group, connId, frontendConnId});
+                result.addRow(new Object[] {
+                    tran.getId(),
+                    group,
+                    connId,
+                    frontendConnId,
+                    tran.getStartTime(),
+                    truncatedSql});
             });
         }
 

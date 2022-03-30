@@ -227,4 +227,8 @@ public class ColumnMeta implements Serializable {
         return (flag & ColumnsRecord.FLAG_FILL_DEFAULT) != 0L;
     }
 
+    public boolean isBinaryDefault() {
+        return (flag & ColumnsRecord.FLAG_BINARY_DEFAULT) != 0L;
+    }
+
 }

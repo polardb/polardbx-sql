@@ -36,6 +36,7 @@ import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateRowCountSyncAction;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
+import com.alibaba.polardbx.executor.utils.SchemaMetaUtil;
 import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -112,7 +113,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
      * select table rows sql, need to concat with where filter
      */
     private static final String SELECT_TABLE_ROWS_SQL =
-        "SELECT table_schema, table_name, table_rows FROM information_schema.tables ";
+            "SELECT table_schema, table_name, table_rows FROM information_schema.tables ";
 
     /**
      * show tables
@@ -123,7 +124,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
      * select column cardinality sql, need to concat with where filter
      */
     private static final String SELECT_COLUMN_CARDINALITY_SQL =
-        "SELECT table_schema, table_name, column_name, cardinality FROM information_schema.statistics ";
+            "SELECT table_schema, table_name, column_name, cardinality FROM information_schema.statistics ";
 
     /**
      * for remember the init state
@@ -223,7 +224,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
         long end = System.currentTimeMillis();
         schemaLastCollectTime = end;
         logger.info("collectRowCount " + count + " tables statistics with sql count " + actualSqlCount + " consuming "
-            + (end - start) / 1000.0 + " seconds");
+                + (end - start) / 1000.0 + " seconds");
         persistStatistic(false);
     }
 
@@ -249,17 +250,17 @@ public class MysqlStatisticCollector extends StatisticCollector {
             SqlConverter sqlConverter = SqlConverter.getInstance(schemaName, executionContext);
             RelOptCluster relOptCluster = sqlConverter.createRelOptCluster();
             InformationSchemaTables informationSchemaTables =
-                new InformationSchemaTables(relOptCluster, relOptCluster.getPlanner().emptyTraitSet());
+                    new InformationSchemaTables(relOptCluster, relOptCluster.getPlanner().emptyTraitSet());
             RexBuilder rexBuilder = relOptCluster.getRexBuilder();
             RexNode filterCondition = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS,
-                rexBuilder.makeInputRef(informationSchemaTables, informationSchemaTables.getTableSchemaIndex()),
-                rexBuilder.makeLiteral(schemaName));
+                    rexBuilder.makeInputRef(informationSchemaTables, informationSchemaTables.getTableSchemaIndex()),
+                    rexBuilder.makeLiteral(schemaName));
             if (logicalTableName != null) {
                 RexNode tableNameFilterCondition = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS,
-                    rexBuilder.makeInputRef(informationSchemaTables, informationSchemaTables.getTableNameIndex()),
-                    rexBuilder.makeLiteral(logicalTableName));
+                        rexBuilder.makeInputRef(informationSchemaTables, informationSchemaTables.getTableNameIndex()),
+                        rexBuilder.makeLiteral(logicalTableName));
                 filterCondition = rexBuilder.makeCall(SqlStdOperatorTable.AND, filterCondition,
-                    tableNameFilterCondition);
+                        tableNameFilterCondition);
             }
 
             informationSchemaTables.pushFilter(filterCondition);
@@ -282,12 +283,12 @@ public class MysqlStatisticCollector extends StatisticCollector {
 
                     if (schemaName.equalsIgnoreCase(tableSchema)) {
                         tablesAccessor.updateStatistic(tableSchema, tableName, tableRows, avgRowLength, dataLength,
-                            maxDataLength, indexLength, dataFree);
+                                maxDataLength, indexLength, dataFree);
                     }
                 }
             } catch (SQLException e) {
                 throw new RuntimeException(
-                    "Schema `" + schemaName + "` build meta error.");
+                        "Schema `" + schemaName + "` build meta error.");
             } finally {
                 try {
                     if (cursor != null) {
@@ -315,7 +316,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
         long end = System.currentTimeMillis();
         schemaLastCollectTime = end;
         logger.info("collectRowCount " + count + " tables statistics with sql count " + actualSqlCount + " consuming "
-            + (end - start) / 1000.0 + " seconds");
+                + (end - start) / 1000.0 + " seconds");
     }
 
     private List<String> getAllTables(String groupName) {
@@ -348,7 +349,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
                 String tableName = rs.getString(1);
                 // Exclude table name of secondary index and system table name
                 if (TStringUtil.contains(tableName, InfoSchemaCommon.KEYWORD_SECONDARY_INDEX)
-                    || SystemTables.contains(tableName)) {
+                        || SystemTables.contains(tableName)) {
                     continue;
                 }
                 tables.add(tableName);
@@ -404,8 +405,8 @@ public class MysqlStatisticCollector extends StatisticCollector {
         long end = System.currentTimeMillis();
         schemaLastCollectTime = end;
         logger.info(
-            "collectCardinality " + count + " tables statistics with sql count " + actualSqlCount + " consuming "
-                + (end - start) / 1000.0 + " seconds");
+                "collectCardinality " + count + " tables statistics with sql count " + actualSqlCount + " consuming "
+                        + (end - start) / 1000.0 + " seconds");
     }
 
     public synchronized void collectCardinality(String logicalTableName, String whereFilter,
@@ -416,7 +417,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
         if (!partitionInfoManager.isNewPartDbTable(logicalTableName)) {
             if (tableRule == null && onlyCollectorTablesFromRule()) {
                 logger
-                    .error("no table rule for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
+                        .error("no table rule for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
                 return;
             }
         }
@@ -472,9 +473,9 @@ public class MysqlStatisticCollector extends StatisticCollector {
             StatisticManager.CacheLine cacheLine = statisticManager.getCacheLine(logicalTableName);
             // already has analyzed table, skip
             if (cacheLine.getCardinalityMap() != null
-                && cacheLine.getCountMinSketchMap() != null
-                && cacheLine.getHistogramMap() != null
-                && cacheLine.getNullCountMap() != null) {
+                    && cacheLine.getCountMinSketchMap() != null
+                    && cacheLine.getHistogramMap() != null
+                    && cacheLine.getNullCountMap() != null) {
                 continue;
             }
             long physicalCardinalitySum = 0;
@@ -486,7 +487,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
                     continue LOOP;
                 }
                 Long physicalCardinality =
-                    queryCardinality(groupName, physicalTables, columnName, whereFilter, columnCardinalityCache);
+                        queryCardinality(groupName, physicalTables, columnName, whereFilter, columnCardinalityCache);
                 if (physicalCardinality == null) {
                     continue LOOP; // no index stats
                 } else {
@@ -512,13 +513,13 @@ public class MysqlStatisticCollector extends StatisticCollector {
                 }
 
                 if (partitionKeys.size() == 1 && partitionKeys.contains(columnName)
-                    && subPartitionKeys.size() == 1 && subPartitionKeys.contains(columnName)) {
+                        && subPartitionKeys.size() == 1 && subPartitionKeys.contains(columnName)) {
                     logicalCardinality = physicalCardinalitySum;
                 } else if (partitionKeys.size() == 1 && partitionKeys.contains(columnName)
-                    && subPartitionKeys.isEmpty()) {
+                        && subPartitionKeys.isEmpty()) {
                     logicalCardinality = physicalCardinalitySum;
                 } else if (partitionKeys.isEmpty()
-                    && subPartitionKeys.size() == 1 && subPartitionKeys.contains(columnName)) {
+                        && subPartitionKeys.size() == 1 && subPartitionKeys.contains(columnName)) {
                     logicalCardinality = physicalCardinalitySum;
                 } else {
                     logicalCardinality = (long) (physicalCardinalitySum / Math.sqrt(physicalTableCount));
@@ -536,13 +537,13 @@ public class MysqlStatisticCollector extends StatisticCollector {
                 tbPartitionKeys.addAll(tableRule.getTbPartitionKeys());
 
                 if (dbPartitionKeys.size() == 1 && dbPartitionKeys.contains(columnName)
-                    && tbPartitionKeys.size() == 1 && tbPartitionKeys.contains(columnName)) {
+                        && tbPartitionKeys.size() == 1 && tbPartitionKeys.contains(columnName)) {
                     logicalCardinality = physicalCardinalitySum;
                 } else if (dbPartitionKeys.size() == 1 && dbPartitionKeys.contains(columnName)
-                    && tbPartitionKeys.isEmpty()) {
+                        && tbPartitionKeys.isEmpty()) {
                     logicalCardinality = physicalCardinalitySum;
                 } else if (dbPartitionKeys.isEmpty()
-                    && tbPartitionKeys.size() == 1 && tbPartitionKeys.contains(columnName)) {
+                        && tbPartitionKeys.size() == 1 && tbPartitionKeys.contains(columnName)) {
                     logicalCardinality = physicalCardinalitySum;
                 } else {
                     logicalCardinality = (long) (physicalCardinalitySum / Math.sqrt(physicalTableCount));
@@ -665,15 +666,15 @@ public class MysqlStatisticCollector extends StatisticCollector {
             return;
         }
         String informationSchemaTablesWhereFilter =
-            constructInformationSchemaTablesWhereFilter(dbNameList, physicalNameList);
+                constructInformationSchemaTablesWhereFilter(dbNameList, physicalNameList);
         collectRowCount(logicalTableName, informationSchemaTablesWhereFilter, tablesRowCountCache);
         long end = System.currentTimeMillis();
         schemaLastCollectTime = end;
         logger.info("collectRowCount 1 tables statistics with sql count " + actualSqlCount + " consuming "
-            + (end - start) / 1000.0 + " seconds");
+                + (end - start) / 1000.0 + " seconds");
         persistStatistic(logicalTableName, false); // persistStatistic
         SyncManagerHelper.sync(new UpdateRowCountSyncAction(schemaName, logicalTableName,
-            statisticManager.getCacheLine(logicalTableName).getRowCount()), schemaName);
+                statisticManager.getCacheLine(logicalTableName).getRowCount()), schemaName);
     }
 
     private List<String> getPhysicalTableNameList(String logicalTableName) {
@@ -721,8 +722,8 @@ public class MysqlStatisticCollector extends StatisticCollector {
             }
             logger.debug("start collectRowCount with scan");
             StatisticBuilder statisticBuilder = new StatisticBuilder(statisticManager, tDataSource,
-                callerParamManager, logicalTableName,
-                columnMetaList, false);
+                    callerParamManager, logicalTableName,
+                    columnMetaList, SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName()), false);
 
             statisticBuilder.prepare();
             statisticBuilder.analyze();
@@ -733,14 +734,49 @@ public class MysqlStatisticCollector extends StatisticCollector {
             persistStatistic(logicalTableName, true);
             /** sync other nodes */
             SyncManagerHelper.sync(
-                new UpdateStatisticSyncAction(
-                    schemaName,
-                    logicalTableName,
-                    cacheLine),
-                schemaName);
+                    new UpdateStatisticSyncAction(
+                            schemaName,
+                            logicalTableName,
+                            cacheLine),
+                    schemaName);
         } catch (Throwable e) {
             logger.error(
-                "analyzeColumns error for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
+                    "analyzeColumns error for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
+            logger.error(e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean sampleColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
+                                  ParamManager callerParamManager) {
+        try {
+            if (columnMetaList.isEmpty()) {
+                return true;
+            }
+            logger.debug("start sample table:" + logicalTableName);
+            StatisticBuilder statisticBuilder = new StatisticBuilder(statisticManager, tDataSource,
+                    callerParamManager, logicalTableName,
+                    columnMetaList, false, false);
+
+            statisticBuilder.prepare();
+            statisticBuilder.analyze();
+            StatisticManager.CacheLine cacheLine = statisticBuilder.build();
+
+            statisticManager.setCacheLine(logicalTableName, cacheLine);
+            /** persist */
+            persistStatistic(logicalTableName, true);
+            /** sync other nodes */
+            SyncManagerHelper.sync(
+                    new UpdateStatisticSyncAction(
+                            schemaName,
+                            logicalTableName,
+                            cacheLine),
+                    schemaName);
+        } catch (Throwable e) {
+            logger.error(
+                    "sample table error for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
             logger.error(e);
             return false;
         }
@@ -756,8 +792,8 @@ public class MysqlStatisticCollector extends StatisticCollector {
             }
             logger.debug("start collectRowCount with scan");
             StatisticBuilder statisticBuilder = new StatisticBuilder(statisticManager, tDataSource,
-                callerParamManager, logicalTableName,
-                columnMetaList, true);
+                    callerParamManager, logicalTableName,
+                    columnMetaList, SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName(), callerParamManager.getBoolean(ConnectionParams.ENABLE_HLL)), true);
 
             statisticBuilder.prepare();
             statisticBuilder.analyze();
@@ -768,14 +804,14 @@ public class MysqlStatisticCollector extends StatisticCollector {
             persistStatistic(logicalTableName, true);
             /** sync other nodes */
             SyncManagerHelper.sync(
-                new UpdateStatisticSyncAction(
-                    schemaName,
-                    logicalTableName,
-                    cacheLine),
-                schemaName);
+                    new UpdateStatisticSyncAction(
+                            schemaName,
+                            logicalTableName,
+                            cacheLine),
+                    schemaName);
         } catch (Throwable e) {
             logger.error(
-                "analyzeColumns error for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
+                    "analyzeColumns error for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
             logger.error(e);
             return false;
         }
@@ -787,23 +823,23 @@ public class MysqlStatisticCollector extends StatisticCollector {
         ArrayList<SystemTableTableStatistic.Row> rowList = new ArrayList<>();
         StatisticManager.CacheLine cacheLine = statisticManager.getCacheLine(logicalTableName);
         rowList.add(new SystemTableTableStatistic.Row(logicalTableName.toLowerCase(), cacheLine.getRowCount(),
-            cacheLine.getLastModifyTime()));
+                cacheLine.getLastModifyTime()));
         systemTableTableStatistic.batchReplace(rowList);
 
         ArrayList<SystemTableColumnStatistic.Row> columnRowList = new ArrayList<>();
         if (withColumnStatistic && cacheLine.getCardinalityMap() != null && cacheLine.getCountMinSketchMap() != null
-            && cacheLine.getHistogramMap() != null && cacheLine.getNullCountMap() != null) {
+                && cacheLine.getHistogramMap() != null && cacheLine.getNullCountMap() != null) {
             for (String columnName : cacheLine.getCardinalityMap().keySet()) {
                 columnRowList.add(new SystemTableColumnStatistic.Row(
-                    logicalTableName.toLowerCase(),
-                    columnName,
-                    cacheLine.getCardinalityMap().get(columnName),
-                    cacheLine.getCountMinSketchMap().get(columnName),
-                    cacheLine.getHistogramMap().get(columnName),
-                    cacheLine.getTopNMap().get(columnName),
-                    cacheLine.getNullCountMap().get(columnName),
-                    cacheLine.getSampleRate(),
-                    cacheLine.getLastModifyTime()));
+                        logicalTableName.toLowerCase(),
+                        columnName,
+                        cacheLine.getCardinalityMap().get(columnName),
+                        cacheLine.getCountMinSketchMap().get(columnName),
+                        cacheLine.getHistogramMap().get(columnName),
+                        cacheLine.getTopNMap().get(columnName),
+                        cacheLine.getNullCountMap().get(columnName),
+                        cacheLine.getSampleRate(),
+                        cacheLine.getLastModifyTime()));
             }
         }
         systemTableColumnStatistic.batchReplace(columnRowList);
@@ -825,24 +861,24 @@ public class MysqlStatisticCollector extends StatisticCollector {
             StatisticManager.CacheLine cacheLine = entry.getValue();
             if (cacheLine.getRowCount() > 0) {
                 rowList.add(new SystemTableTableStatistic.Row(logicalTableName.toLowerCase(), cacheLine.getRowCount(),
-                    cacheLine.getLastModifyTime()));
+                        cacheLine.getLastModifyTime()));
             }
             if (withColumnStatistic
-                && cacheLine.getCardinalityMap() != null
-                && cacheLine.getCountMinSketchMap() != null
-                && cacheLine.getHistogramMap() != null
-                && cacheLine.getNullCountMap() != null) {
+                    && cacheLine.getCardinalityMap() != null
+                    && cacheLine.getCountMinSketchMap() != null
+                    && cacheLine.getHistogramMap() != null
+                    && cacheLine.getNullCountMap() != null) {
                 for (String columnName : cacheLine.getCardinalityMap().keySet()) {
                     columnRowList.add(new SystemTableColumnStatistic.Row(
-                        logicalTableName.toLowerCase(),
-                        columnName,
-                        cacheLine.getCardinalityMap().get(columnName),
-                        cacheLine.getCountMinSketchMap().get(columnName),
-                        cacheLine.getHistogramMap().get(columnName),
-                        cacheLine.getTopNMap().get(columnName),
-                        cacheLine.getNullCountMap().get(columnName),
-                        cacheLine.getSampleRate(),
-                        cacheLine.getLastModifyTime()));
+                            logicalTableName.toLowerCase(),
+                            columnName,
+                            cacheLine.getCardinalityMap().get(columnName),
+                            cacheLine.getCountMinSketchMap().get(columnName),
+                            cacheLine.getHistogramMap().get(columnName),
+                            cacheLine.getTopNMap().get(columnName),
+                            cacheLine.getNullCountMap().get(columnName),
+                            cacheLine.getSampleRate(),
+                            cacheLine.getLastModifyTime()));
                 }
             }
         }
@@ -891,7 +927,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
             TableRule tableRule = tddlRuleManager.getTableRule(logicalTableName);
             if (tableRule == null && onlyCollectorTablesFromRule()) {
                 logger
-                    .error("no table rule for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
+                        .error("no table rule for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
             }
             if (tableRule == null) {
                 String dbIndex = tddlRuleManager.getDefaultDbIndex(logicalTableName);
@@ -1136,7 +1172,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
     private String getDbName(TGroupDataSource dataSource) {
         try {
             return dataSource.getConfigManager().getDataSource(MasterSlave.MASTER_ONLY)
-                .getDsConfHandle().getRunTimeConf().getDbName();
+                    .getDsConfHandle().getRunTimeConf().getDbName();
         } catch (Throwable e) {
             logger.error("getDbName fail ", e);
             return null;

@@ -126,7 +126,7 @@ public class PushProjectRule extends RelOptRule {
     }
 
     private boolean couldPush(RexNode e) {
-        if (doNotPush(e)) {
+        if (doNotPush(e, false)) {
             return false;
         }
         RexUtil.DynamicFinder dynamicFinder = new RexUtil.DynamicFinder();
@@ -143,9 +143,13 @@ public class PushProjectRule extends RelOptRule {
     }
 
     public static boolean doNotPush(Project project) {
+        return doNotPush(project, false);
+    }
+
+    public static boolean doNotPush(Project project, boolean postPlanner) {
         List<RexNode> exps = project.getChildExps();
         for (RexNode node : exps) {
-            if (doNotPush(node)) {
+            if (doNotPush(node, postPlanner)) {
                 return true;
             }
             if (RexUtil.containsCorrelation(node)) {
@@ -155,7 +159,7 @@ public class PushProjectRule extends RelOptRule {
         return false;
     }
 
-    public static boolean doNotPush(RexNode node) {
+    private static boolean doNotPush(RexNode node, boolean postPlanner) {
         if (node instanceof RexOver) {
             return true;
         }
@@ -168,7 +172,7 @@ public class PushProjectRule extends RelOptRule {
             return true;
         }
 
-        if (RexUtils.containsUnPushableFunction(node)) {
+        if (RexUtils.containsUnPushableFunction(node, postPlanner)) {
             return true;
         }
         return false;

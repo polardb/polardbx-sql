@@ -26,7 +26,6 @@ import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineAccessor;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
@@ -299,26 +298,36 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
         return getComplexTaskTableMetaBean(schemaName, logicalTableName, parentTasks, subTasks);
     }
 
-    public static ComplexTaskTableMetaBean getComplexTaskTableMetaBean(String schemaName, String logicalTableName) {
-
+    public static ComplexTaskTableMetaBean getComplexTaskTableMetaBean(String schemaName,
+                                                                       String logicalTableName) {
         try (Connection conn = MetaDbUtil.getConnection()) {
-            ComplexTaskOutlineAccessor complexTaskOutlineAccessor = new ComplexTaskOutlineAccessor();
-            complexTaskOutlineAccessor.setConnection(conn);
-            List<ComplexTaskOutlineRecord> complexTaskOutlineRecords =
-                complexTaskOutlineAccessor.getAllUnFinishComlexTaskBySchemaAndTable(schemaName, logicalTableName);
-            if (GeneralUtil.isEmpty(complexTaskOutlineRecords)) {
-                return new ComplexTaskTableMetaBean(schemaName, logicalTableName);
-            } else {
-                return getComplexTaskTableMetaBean(schemaName, logicalTableName,
-                    complexTaskOutlineRecords.stream().filter(o -> o.getSubTask() == 0)
-                        .collect(Collectors.toList()),
-                    complexTaskOutlineRecords.stream().filter(o -> o.getSubTask() == 1)
-                        .collect(Collectors.toList()));
-            }
+            return getComplexTaskTableMetaBean(conn, schemaName, logicalTableName);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION,
                 e,
                 "cannot get table info from system table");
+        }
+    }
+
+    public static ComplexTaskTableMetaBean getComplexTaskTableMetaBean(Connection metaDbConn,
+                                                                       String schemaName,
+                                                                       String logicalTableName) {
+        if (metaDbConn == null) {
+            return getComplexTaskTableMetaBean(schemaName, logicalTableName);
+        }
+
+        ComplexTaskOutlineAccessor complexTaskOutlineAccessor = new ComplexTaskOutlineAccessor();
+        complexTaskOutlineAccessor.setConnection(metaDbConn);
+        List<ComplexTaskOutlineRecord> complexTaskOutlineRecords =
+            complexTaskOutlineAccessor.getAllUnFinishComlexTaskBySchemaAndTable(schemaName, logicalTableName);
+        if (GeneralUtil.isEmpty(complexTaskOutlineRecords)) {
+            return new ComplexTaskTableMetaBean(schemaName, logicalTableName);
+        } else {
+            return getComplexTaskTableMetaBean(schemaName, logicalTableName,
+                complexTaskOutlineRecords.stream().filter(o -> o.getSubTask() == 0)
+                    .collect(Collectors.toList()),
+                complexTaskOutlineRecords.stream().filter(o -> o.getSubTask() == 1)
+                    .collect(Collectors.toList()));
         }
     }
 
@@ -346,7 +355,9 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
         DROP_PARTITION(7),
         MODIFY_PARTITION(8),
         REFRESH_TOPOLOGY(9),
-        MOVE_DATABASE(10);
+        MOVE_DATABASE(10),
+        SPLIT_HOT_VALUE(11);
+
         private final int value;
 
         public static ComplexTaskType from(int value) {
@@ -371,6 +382,8 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
                 return REFRESH_TOPOLOGY;
             case 10:
                 return MOVE_DATABASE;
+            case 11:
+                return SPLIT_HOT_VALUE;
             default:
                 return null;
             }
@@ -427,23 +440,29 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
 
     public void reloadComplexTaskStatus() {
         ComplexTaskOutlineAccessor complexTaskOutlineAccessor = new ComplexTaskOutlineAccessor();
-        complexTaskOutlineAccessor.setConnection(MetaDbDataSource.getInstance().getConnection());
-        List<ComplexTaskOutlineRecord> records = complexTaskOutlineAccessor
-            .getAllUnFinishParentComlexTask(schemaName);
+        try (Connection conn = MetaDbUtil.getConnection()) {
+            complexTaskOutlineAccessor.setConnection(conn);
+            List<ComplexTaskOutlineRecord> records = complexTaskOutlineAccessor
+                .getAllUnFinishParentComlexTask(schemaName);
 
-        if (GeneralUtil.isNotEmpty(records)) {
-            for (ComplexTaskOutlineRecord record : records) {
-                ParentComplexTaskStatusInfo parentComplexTaskStatusInfo =
-                    new ParentComplexTaskStatusInfo(record.getTableGroupName(), record.getObjectName(),
-                        ComplexTaskStatus.from(record.getStatus()),
-                        ComplexTaskType.from(record.getType()));
-                String tableGroupName =
-                    StringUtils.isEmpty(record.getTableGroupName()) ? "" : record.getTableGroupName();
-                String key = tableGroupName + "#" + record.getObjectName();
-                complexTaskStatusInfoMap.put(key, parentComplexTaskStatusInfo);
+            if (GeneralUtil.isNotEmpty(records)) {
+                for (ComplexTaskOutlineRecord record : records) {
+                    ParentComplexTaskStatusInfo parentComplexTaskStatusInfo =
+                        new ParentComplexTaskStatusInfo(record.getTableGroupName(), record.getObjectName(),
+                            ComplexTaskStatus.from(record.getStatus()),
+                            ComplexTaskType.from(record.getType()));
+                    String tableGroupName =
+                        StringUtils.isEmpty(record.getTableGroupName()) ? "" : record.getTableGroupName();
+                    String key = tableGroupName + "#" + record.getObjectName();
+                    complexTaskStatusInfoMap.put(key, parentComplexTaskStatusInfo);
+                }
+            } else {
+                complexTaskStatusInfoMap.clear();
             }
-        } else {
-            complexTaskStatusInfoMap.clear();
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION,
+                e,
+                "cannot get table info from system table");
         }
     }
 
@@ -566,6 +585,44 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
 
         public Map<String, ParentComplexTaskStatusInfo> getParentComplexTaskStatusInfoMap() {
             return parentComplexTaskStatusInfoMap;
+        }
+
+        public String getDigest() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("ComplexTaskTableMetaBeanDigest:[");
+            sb.append(this.logicalTableName);
+            sb.append(":");
+            try {
+                if (GeneralUtil.isNotEmpty(partitionTableMetaMap)) {
+                    for (Map.Entry<String, ComplexTaskStatus> entry : partitionTableMetaMap.entrySet()) {
+                        sb.append("[");
+                        sb.append(entry.getKey());
+                        sb.append(":");
+                        sb.append(entry.getValue().toString());
+                        sb.append("]\n");
+                    }
+                }
+                if (GeneralUtil.isNotEmpty(parentComplexTaskStatusInfoMap)) {
+                    for (Map.Entry<String, ParentComplexTaskStatusInfo> entry : parentComplexTaskStatusInfoMap
+                        .entrySet()) {
+                        sb.append("[");
+                        sb.append(entry.getKey());
+                        sb.append(":");
+                        sb.append(entry.getValue().tableGroupName);
+                        sb.append(",");
+                        sb.append(entry.getValue().objectName);
+                        sb.append(",");
+                        sb.append(entry.getValue().status.toString());
+                        sb.append("]\n");
+                    }
+                }
+                sb.append("isNeedSwitchDatasource:");
+                sb.append(this.isNeedSwitchDatasource());
+                sb.append("]");
+            } catch (Exception ex) {
+                //ignore
+            }
+            return sb.toString();
         }
     }
 

@@ -31,6 +31,9 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -42,6 +45,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -61,13 +65,11 @@ public class RepartitionValidator {
      * 1. 必须变成某种类型的表，不可能既不是拆分表，也不是广播表/单表
      * 2. 如果主键是auto_increment且没有sequence，则报错。提示用户手动创建sequence
      * 3. 所有GSI必须包含主表的主键和拆分列
-     * 4. 禁止带GSI的拆分表变成单表/广播表
      * <p>
      * check:
      * 1. the target table must be one of: [partition table、broadcast table、single table]
      * 2. if the primary key is auto_increment, but there's no sequence, an error should be thrown.
      * 3. all GSIs should contain the pk&sk of the primary table
-     * 4. altering a GSI-with-partition-table to single/broadcast table is forbidden
      */
     public static void validate(String schemaName,
                                 String sourceTableName,
@@ -119,12 +121,12 @@ public class RepartitionValidator {
             GlobalIndexMeta.getIndex(sourceTableName, schemaName, IndexStatus.ALL, null);
 
         //make sure there's no GSI before altering primary table to single or broadcast table
-        if (CollectionUtils.isNotEmpty(gsiTableMeta)) {
-            if (isBroadcast || isSingle) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_TO_SINGLE_OR_BROADCAST_WITH_GSI,
-                    "Please drop all Global Indexes before altering any table to single or broadcast");
-            }
-        }
+//        if (CollectionUtils.isNotEmpty(gsiTableMeta)) {
+//            if (isBroadcast || isSingle) {
+//                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_TO_SINGLE_OR_BROADCAST_WITH_GSI,
+//                    "Please drop all Global Indexes before altering any table to single or broadcast");
+//            }
+//        }
     }
 
     /**
@@ -272,5 +274,18 @@ public class RepartitionValidator {
         }
 
         return true;
+    }
+
+    /**
+     * 如果拆分规则与原先相同，则直接返回成功
+     * return true is the partitionInfo is the same as before
+     */
+    public static boolean checkPartitionInfoUnchanged(String schemaName,
+                                                  String sourceTableName,
+                                                  PartitionInfo partitionInfo) {
+        PartitionInfo primaryPartitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
+            .getPartitionInfo(sourceTableName);
+
+        return PartitionInfoUtil.checkPartitionInfoEquals(primaryPartitionInfo, partitionInfo);
     }
 }

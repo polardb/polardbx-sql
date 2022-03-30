@@ -27,8 +27,9 @@ import java.util.Map;
 public class AlterTableGroupExtractPartitionPreparedData extends AlterTableGroupBasePreparedData {
 
     private Map<SqlNode, RexNode> partBoundExprInfo;
-    private SqlNode hotKey;
+    private List<SqlNode> hotKeys;
     private List<SqlPartition> newPartitions;
+    List<Long[]> splitPoints;
 
     public AlterTableGroupExtractPartitionPreparedData() {
     }
@@ -42,12 +43,12 @@ public class AlterTableGroupExtractPartitionPreparedData extends AlterTableGroup
         this.partBoundExprInfo = partBoundExprInfo;
     }
 
-    public SqlNode getHotKey() {
-        return hotKey;
+    public List<SqlNode> getHotKeys() {
+        return hotKeys;
     }
 
-    public void setHotKey(SqlNode hotKey) {
-        this.hotKey = hotKey;
+    public void setHotKeys(List<SqlNode> hotKeys) {
+        this.hotKeys = hotKeys;
     }
 
     public List<SqlPartition> getNewPartitions() {
@@ -65,5 +66,13 @@ public class AlterTableGroupExtractPartitionPreparedData extends AlterTableGroup
 
     public void setSplitPartitions(List<String> splitPartitions) {
         setOldPartitionNames(splitPartitions);
+    }
+
+    public List<Long[]> getSplitPoints() {
+        return splitPoints;
+    }
+
+    public void setSplitPoints(List<Long[]> splitPoints) {
+        this.splitPoints = splitPoints;
     }
 }

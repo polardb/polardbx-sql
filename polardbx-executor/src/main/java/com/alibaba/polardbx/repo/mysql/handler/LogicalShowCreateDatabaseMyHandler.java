@@ -87,7 +87,7 @@ public class LogicalShowCreateDatabaseMyHandler extends HandlerCommon {
 
         StringBuilder optiionBuilder = new StringBuilder();
         if (!StringUtils.isEmpty(partitionMode)) {
-            optiionBuilder.append("PARTITION_MODE = \'").append(partitionMode).append("\'");
+            optiionBuilder.append("MODE = \'").append(partitionMode).append("\'");
         }
 
         if (locality != null) {

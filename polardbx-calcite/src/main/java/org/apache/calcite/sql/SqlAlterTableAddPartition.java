@@ -16,9 +16,12 @@
 
 package org.apache.calcite.sql;
 
-import com.google.common.collect.ImmutableList;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.validate.SqlValidator;
+import org.apache.calcite.sql.validate.SqlValidatorScope;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -78,5 +81,16 @@ public class SqlAlterTableAddPartition extends SqlAlterSpecification {
 
     public void setParent(SqlNode parent) {
         this.parent = parent;
+    }
+
+    @Override
+    public void validate(SqlValidator validator, SqlValidatorScope scope) {
+        validator.setColumnReferenceExpansion(false);
+        if (GeneralUtil.isNotEmpty(partitions)) {
+            List<SqlNode> partDefs = new ArrayList<>();
+            partDefs.addAll(partitions);
+            int partColCnt = -1;
+            SqlPartitionBy.validatePartitionDefs(validator, scope, partDefs, partColCnt, true);
+        }
     }
 }

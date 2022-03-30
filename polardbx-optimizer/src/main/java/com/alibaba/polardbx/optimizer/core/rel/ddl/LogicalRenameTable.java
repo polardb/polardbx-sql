@@ -19,6 +19,8 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablePreparedData;
 import org.apache.calcite.rel.ddl.RenameTable;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -46,6 +48,8 @@ public class LogicalRenameTable extends BaseDdlOperation {
     private RenameTablePreparedData preparePrimaryData() {
         RenameTablePreparedData preparedData = new RenameTablePreparedData();
 
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableMeta tableMeta = sm.getTable(tableName);
         SqlIdentifier newTableName = (SqlIdentifier) relDdl.getNewTableName();
         if (newTableName != null && !newTableName.isSimple()) {
             String targetSchema = newTableName.names.get(0);
@@ -59,6 +63,7 @@ public class LogicalRenameTable extends BaseDdlOperation {
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(tableName);
         preparedData.setNewTableName(newTableName.getLastName());
+        preparedData.setTableVersion(tableMeta.getVersion());
 
         return preparedData;
     }

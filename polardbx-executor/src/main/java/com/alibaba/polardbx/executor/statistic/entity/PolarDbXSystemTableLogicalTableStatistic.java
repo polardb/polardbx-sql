@@ -32,6 +32,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
@@ -202,17 +203,18 @@ public class PolarDbXSystemTableLogicalTableStatistic implements SystemTableTabl
     }
 
     @Override
-    public void selectAll(StatisticManager statisticManager, long sinceTime) {
+    public Collection<Row> selectAll(long sinceTime) {
+        ArrayList<Row> result = new ArrayList<>();
+
         if (!canRead()) {
-            return;
+            return result;
         }
         if (!checkTableFromCache()) {
-            return;
+            return result;
         }
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
-        ArrayList<Row> result = new ArrayList<>();
         logger.debug("[debug] selectAll");
         try {
             conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
@@ -228,9 +230,7 @@ public class PolarDbXSystemTableLogicalTableStatistic implements SystemTableTabl
                     row = new SystemTableTableStatistic.Row(rs.getString("TABLE_NAME"), rs.getLong("ROW_COUNT"),
                     rs.getLong("UNIX_TIME"));
 
-                StatisticManager.CacheLine cacheLine = statisticManager.getCacheLine(row.getTableName(), true);
-                cacheLine.setRowCount(row.getRowCount());
-                cacheLine.setLastModifyTime(row.getUnixTime());
+                result.add(row);
             }
         } catch (Exception e) {
             logger.error("select " + TABLE_NAME + " error", e);
@@ -239,6 +239,7 @@ public class PolarDbXSystemTableLogicalTableStatistic implements SystemTableTabl
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
         }
+        return result;
     }
 
     @Override

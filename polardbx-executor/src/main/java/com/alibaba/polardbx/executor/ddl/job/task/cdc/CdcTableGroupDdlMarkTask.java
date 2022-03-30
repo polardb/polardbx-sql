@@ -19,12 +19,14 @@ package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
@@ -37,18 +39,22 @@ import java.util.Set;
 @TaskName(name = "CdcTableGroupDdlMarkTask")
 @Getter
 @Setter
+@Slf4j
 public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
+
     private String logicalTableName;
     private SqlKind sqlKind;
     private Map<String, Set<String>> targetTableTopology;
+    private String ddlStmt;
 
     @JSONCreator
     public CdcTableGroupDdlMarkTask(String schemaName, String logicalTableName, SqlKind sqlKind,
-                                    Map<String, Set<String>> targetTableTopology) {
+                                    Map<String, Set<String>> targetTableTopology, String ddlStmt) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.sqlKind = sqlKind;
         this.targetTableTopology = targetTableTopology;
+        this.ddlStmt = ddlStmt;
     }
 
     @Override
@@ -58,11 +64,12 @@ public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
     }
 
     private void mark4TableGroupChange(ExecutionContext executionContext) {
+        log.info("new topology for table {} is {}", logicalTableName, targetTableTopology);
         DdlContext ddlContext = executionContext.getDdlContext();
 
         CdcManagerHelper.getInstance()
-            .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlContext.getDdlStmt(),
-                ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
+            .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlStmt, DdlType.ALTER_TABLEGROUP,
+                ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
                 executionContext.getExtraCmds(), true, targetTableTopology);
     }
 }

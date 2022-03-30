@@ -49,7 +49,7 @@ public interface RelShuttle {
 
   RelNode visit(LogicalJoin join);
 
-//  RelNode visit(LogicalSemiJoin join);
+  RelNode visit(LogicalSemiJoin join);
 
   RelNode visit(LogicalCorrelate correlate);
 

@@ -26,10 +26,7 @@ import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Created by luoyanxin.
@@ -87,54 +84,33 @@ public class SqlAlterTableGroupSplitPartition extends SqlAlterSpecification {
         validator.setColumnReferenceExpansion(false);
 
         if (GeneralUtil.isNotEmpty(newPartitions)) {
-            Set<String> partNameSet = new HashSet<>();
-            for (int i = 0; i < newPartitions.size(); i++) {
-                SqlPartition partDef = newPartitions.get(i);
 
-                // Validate all part names of PartitionBy
-                SqlNode partName = partDef.getName();
-                String partNameStr = null;
-                if (!(partName instanceof SqlIdentifier)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
-                        String.format("The partition name is invalid", partName.toString()));
-                } else {
-                    partNameStr = ((SqlIdentifier) partName).getLastName();
-                    if (partNameSet.contains(partNameStr)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
-                            String.format("The partition name [%s] is duplicated", partNameStr));
-                    }
-                    partNameSet.add(partNameStr.toLowerCase());
-                }
-
-                SqlPartitionValue bndVal = partDef.getValues();
-                if (bndVal != null) {
-                    List<SqlNode> items =
-                        bndVal.getItems().stream().map(o -> o.getValue()).collect(Collectors.toList());
-                    for (int j = 0; j < items.size(); j++) {
-                        SqlNode valItem = items.get(j);
-                        validator.deriveType(scope, valItem);
-                    }
-                    bndVal.validate(validator, scope);
-                }
-
-                // Validate partitionsCount
-                if (this.atValue != null) {
-                    RelDataType dataType = validator.deriveType(scope, this.atValue);
-                    if (dataType == null) {
+            List<SqlNode> partDefs = new ArrayList<>();
+            partDefs.addAll(newPartitions);
+            int partColCnt = -1;
+            SqlPartitionBy.validatePartitionDefs(validator, scope, partDefs, partColCnt, true);
+            if (this.atValue != null) {
+                SqlNode v = this.atValue;
+                if (v instanceof SqlIdentifier) {
+                    String str = ((SqlIdentifier) v).getLastName();
+                    if (str != null && str.toLowerCase().contains("maxvalue")) {
                         throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
                             "The at value is invalid"));
-                    } else {
-                        SqlTypeName typeName = dataType.getSqlTypeName();
-                        if (!SqlTypeName.INT_TYPES.contains(typeName)) {
-                            throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
-                                "The at value must be an integer"));
-                        }
                     }
                 }
-
-                // Validate subPartitionBy
-                // To be impl
+                RelDataType dataType = validator.deriveType(scope, this.atValue);
+                if (dataType == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                        "The at value is invalid"));
+                } else {
+                    SqlTypeName typeName = dataType.getSqlTypeName();
+                    if (!SqlTypeName.INT_TYPES.contains(typeName)) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                            "The at value must be an integer"));
+                    }
+                }
             }
+
         }
     }
 }

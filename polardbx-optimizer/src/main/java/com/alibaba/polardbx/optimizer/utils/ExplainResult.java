@@ -80,8 +80,11 @@ public class ExplainResult {
         JSON_PLAN,
         // index and other advisor
         ADVISOR,
+        // the statistics needed by the sql
+        STATISTICS,
         // show vectorized plan
         VEC;
+
 
         public boolean isLogic() {
             return this == LOGIC || isSimple();
@@ -139,6 +142,10 @@ public class ExplainResult {
             return this == ADVISOR;
         }
 
+        public boolean isStatistics() {
+            return this == STATISTICS;
+        }
+
         public boolean isA(EnumSet enumSet) {
             return null != enumSet && enumSet.contains(this);
         }
@@ -182,6 +189,10 @@ public class ExplainResult {
 
     public static boolean isExplainAdvisor(ExplainResult er) {
         return er == null ? false : er.explainMode.isAdvisor();
+    }
+
+    public static boolean isExplainStatistics(ExplainResult er) {
+        return er != null && er.explainMode.isStatistics();
     }
 
     public static boolean isExplainVec(ExplainResult er) {

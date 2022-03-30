@@ -89,6 +89,9 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
         ExecutableDdlJob result = new ExecutableDdlJob();
 
         boolean isAutoPartition = this.preparedData.getPrimaryTablePreparedData().isAutoPartition();
+        boolean hasTimestampColumnDefault = this.preparedData.getPrimaryTablePreparedData().isTimestampColumnDefault();
+        Map<String, String> binaryColumnDefaultValues =
+            this.preparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues();
         PhysicalPlanData physicalPlanData =
             DdlJobDataConverter.convertToPhysicalPlanData(
                 primaryTableTopology,
@@ -97,12 +100,14 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
                 isAutoPartition);
         ExecutableDdlJob4CreateTable createTableJob = (ExecutableDdlJob4CreateTable) new CreateTableJobFactory(
             false,
+            hasTimestampColumnDefault,
+            binaryColumnDefaultValues,
             physicalPlanData,
             executionContext).create();
         result.combineTasks(createTableJob);
         result.removeTaskRelationship(
-            createTableJob.getCdcDdlMarkTask(),
-            createTableJob.getCreateTableShowTableMetaTask());
+            createTableJob.getCreateTableAddTablesMetaTask(),
+            createTableJob.getCdcDdlMarkTask());
 
         Map<String, CreateGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
         for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
@@ -119,9 +124,9 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
             result.removeTaskRelationship(
                 createTableJob.getCreateTableAddTablesExtMetaTask(), createTableJob.getCreateTablePhyDdlTask());
             result.addTaskRelationship(
-                createTableJob.getCdcDdlMarkTask(), gsiJob.getCreateTableAddTablesExtMetaTask());
+                createTableJob.getCreateTableAddTablesMetaTask(), gsiJob.getCreateTableAddTablesExtMetaTask());
             result.addTaskRelationship(
-                gsiJob.getLastTask(), createTableJob.getCreateTableShowTableMetaTask());
+                gsiJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
         }
 
         result.setExceptionActionForAllSuccessor(

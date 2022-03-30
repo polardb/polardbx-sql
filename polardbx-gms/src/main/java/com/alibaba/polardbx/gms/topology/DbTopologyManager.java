@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.AddressUtils;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -36,13 +37,13 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.util.AppNameUtil;
 import com.alibaba.polardbx.gms.util.GmsJdbcUtil;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -57,8 +58,11 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -84,13 +88,15 @@ public class DbTopologyManager {
 
     public static final int DEFAULT_RENAME_PHY_DB_BATCH_SIZE = 1024;
 
+    public static final long DEFAULT_PARTITION_COUNT_EACH_DN = 8;
+
     public static String defaultCharacterSetForCreatingDb = DEFAULT_DB_CHARACTER_SET;
 
     public static int maxLogicalDbCount = DbTopologyManager.DEFAULT_MAX_LOGICAL_DB_COUNT;
 
     protected static int shardDbCountEachStorageInst = DbTopologyManager.DEFAULT_SHARD_DB_COUNT_EACH_STORAGE_INST;
 
-    protected static boolean enablePartitionManagement = false;
+    protected static String defaultPartitionMode = DbInfoManager.MODE_DRDS;
 
     protected static SchemaMetaCleaner schemaMetaCleaner = null;
 
@@ -151,6 +157,17 @@ public class DbTopologyManager {
             DbInfoAccessor dbInfoAccessor = new DbInfoAccessor();
             dbInfoAccessor.setConnection(metaDbConn);
             return dbInfoAccessor.getDbInfoByType(DbInfoRecord.DB_TYPE_NEW_PART_DB);
+        } catch (Throwable ex) {
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
+    public static List<DbInfoRecord> getNewPartDbInfoFromMetaDb(String schemaName) {
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+
+            DbInfoAccessor dbInfoAccessor = new DbInfoAccessor();
+            dbInfoAccessor.setConnection(metaDbConn);
+            return dbInfoAccessor.getDbInfoBySchAndType(schemaName, DbInfoRecord.DB_TYPE_NEW_PART_DB);
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
         }
@@ -217,7 +234,8 @@ public class DbTopologyManager {
             createDbInfo.storageInstList = storageInstIdList;
 
             createDbInfo.groupLocator =
-                new DefaultGroupLocator(createDbInfo.groupPhyDbMap, createDbInfo.storageInstList, new ArrayList<>());
+                new DefaultGroupLocator(createDbInfo.dbType,
+                    createDbInfo.groupPhyDbMap, createDbInfo.storageInstList, new ArrayList<>());
             DbTopologyManager.createLogicalDb(createDbInfo);
 
         } catch (Throwable ex) {
@@ -1104,7 +1122,8 @@ public class DbTopologyManager {
                     InstIdUtil.getInstId(),
                     StorageInfoRecord.INST_KIND_MASTER);
             List<String> storageIdList = storageList.stream()
-                .filter(x -> localityFilter == null || localityFilter.test(x))
+                .filter(x -> localityFilter == null || localityFilter.test(x)) // filter locality property
+                .filter(StorageInfoRecord::isStatusReady) // create database on `READY` ata-nodes
                 .map(StorageInfoRecord::getInstanceId)
                 .distinct()
                 .collect(Collectors.toList());
@@ -1151,7 +1170,7 @@ public class DbTopologyManager {
         createDbInfo.singleGroup = grpNameSingleGroup;
         createDbInfo.defaultDbIndex = grpNameSingleGroup;
         createDbInfo.groupLocator =
-            new DefaultGroupLocator(createDbInfo.groupPhyDbMap, createDbInfo.storageInstList,
+            new DefaultGroupLocator(createDbInfo.dbType, createDbInfo.groupPhyDbMap, createDbInfo.storageInstList,
                 DbTopologyManager.singleGroupStorageInstList);
 
         createDbInfo.isCreateIfNotExists = isCreateIfNotExists;
@@ -1225,41 +1244,12 @@ public class DbTopologyManager {
                 dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(dbName, grpKey);
             if (dbGroupInfoRecord != null) {
 
-                switch (dbGroupInfoRecord.groupType) {
-
-                case DbGroupInfoRecord.GROUP_TYPE_NORMAL: {
+                if (dbGroupInfoRecord.groupType != DbGroupInfoRecord.GROUP_TYPE_ADDING) {
                     throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                        String.format("Failed add new group[%s] because the group has already exists", grpKey));
+                        String.format("Failed add new group[%s] because the group_type is %s",
+                            grpKey, dbGroupInfoRecord.groupType));
                 }
 
-                case DbGroupInfoRecord.GROUP_TYPE_ADDED: {
-                    if (!ifNotExists) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                            String
-                                .format("Failed add new group[%s] because the scaleout group has already exists",
-                                    grpKey));
-                    } else {
-                        break;
-                    }
-                }
-
-                case DbGroupInfoRecord.GROUP_TYPE_ADDING: {
-                    // Ignore to update db_type to adding
-                    break;
-                }
-
-                case DbGroupInfoRecord.GROUP_TYPE_REMOVING: {
-                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                        String.format("Failed add new group[%s] because the group is removing", grpKey));
-                }
-
-                case DbGroupInfoRecord.GROUP_TYPE_SCALEOUT_FINISHED: {
-                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                        String.format("Failed add new group[%s] because the scalout finished group has already exists",
-                            grpKey));
-                }
-
-                }
             } else {
                 // No find any info for new group, then go to adding
                 dbGroupInfoAccessor
@@ -1389,20 +1379,68 @@ public class DbTopologyManager {
         }
     }
 
-    public static void removeGroupByName(String schema, String groupName, Connection metaDbConn) {
-        GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
-        groupDetailInfoAccessor.setConnection(metaDbConn);
-        GroupDetailInfoRecord detailRecord =
-            groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndGroupName(InstIdUtil.getInstId(), schema, groupName);
+    public static void cleanPhyDbOfRemovingDbGroup(String schema, String groupName, Connection metaDbConn,
+                                                   long socketTimeout) {
 
-        DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
-        dbGroupInfoAccessor.setConnection(metaDbConn);
-        DbGroupInfoRecord groupRecord = dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(schema, groupName);
+        /**
+         * Check if the meta info of the to-removed group is valid
+         */
+        String storageInstId = null;
+        String phyDbName = null;
+        try {
+            String defaultGroup = TableInfoManager.getSchemaDefaultDbIndex(schema);
+            if (StringUtils.equalsIgnoreCase(defaultGroup, groupName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                    String.format("Default group could not be removed: %s.%s", schema, groupName));
+            }
 
-        removeNewGroupIntoDb(schema, detailRecord.getStorageInstId(), groupName, groupRecord.phyDbName, -1, metaDbConn);
+            DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
+            GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+            groupDetailInfoAccessor.setConnection(metaDbConn);
+            dbGroupInfoAccessor.setConnection(metaDbConn);
+            GroupDetailInfoRecord detailRecord =
+                groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndGroupName(InstIdUtil.getInstId(), schema,
+                    groupName);
+            DbGroupInfoRecord dbGroupRecord = dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(schema, groupName);
+            if (detailRecord == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                    String.format("Group not exists: %s[%s] in ", schema, groupName));
+            }
+            if (dbGroupRecord != null) {
+                if (!dbGroupRecord.isRemoving()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                        String.format("Could not clean non-removing group[%s] of type [%d]", groupName,
+                            dbGroupRecord.getGroupTypeStr()));
+                }
+            }
+            phyDbName = dbGroupRecord.phyDbName;
+            storageInstId = detailRecord.storageInstId;
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+
+        /**
+         * Drop physical db for the to-removed group
+         */
+        dropPhyDbForRemovingGroup(storageInstId, groupName, phyDbName, socketTimeout);
     }
 
-    public static void removeNewGroupIntoDb(String dbName,
+    public static void dropPhyDbForRemovingGroup(String storageInstId,
+                                                 String newGroupName,
+                                                 String newPhyDbName,
+                                                 long socketTimeout) {
+        try {
+            Map<String, String> grpPhyDbMap = new HashMap<>();
+            grpPhyDbMap.put(newGroupName, newPhyDbName);
+            dropPhysicalDbsInStorageInst(storageInstId, grpPhyDbMap, socketTimeout);
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
+    public static void removeOldGroupFromDb(String dbName,
                                             String storageInstId,
                                             String newGroupName,
                                             String newPhyDbName,
@@ -1417,28 +1455,24 @@ public class DbTopologyManager {
         GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
         groupDetailInfoAccessor.setConnection(metaDbConn);
 
-        String grpKey = newGroupName;
-
         try {
             GroupDetailInfoRecord groupDetailInfoRecord =
-                groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndGroupName(instId, dbName, grpKey);
+                groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndGroupName(instId, dbName, newGroupName);
             DbGroupInfoRecord dbGroupInfoRecord =
-                dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(dbName, grpKey);
+                dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(dbName, newGroupName);
             if (dbGroupInfoRecord != null) {
                 // remove db_group_info and group_detail_info from db for target groups
                 dbGroupInfoAccessor.deleteDbGroupInfoByDbAndGroup(dbName, newGroupName);
                 groupDetailInfoAccessor.deleteGroupDetailInfoByDbAndGroup(dbName, newGroupName);
 
-                String instIdOfGroup = groupDetailInfoRecord.instId;
-                int groupType = dbGroupInfoRecord.groupType;
-
-                if (groupType == DbGroupInfoRecord.GROUP_TYPE_NORMAL) {
+                if (!dbGroupInfoRecord.isRemovable()) {
                     throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                        String
-                            .format("Failed to remove the group[%s] because the group is not scale-out group", grpKey));
+                        String.format("Could not remove group[%s] of type %d", newGroupName,
+                            dbGroupInfoRecord.groupType));
                 }
 
-                String dataIdOfGroup = MetaDbDataIdBuilder.getGroupConfigDataId(instIdOfGroup, dbName, newGroupName);
+                String dataIdOfGroup =
+                    MetaDbDataIdBuilder.getGroupConfigDataId(groupDetailInfoRecord.instId, dbName, newGroupName);
                 MetaDbConfigManager.getInstance().unregister(dataIdOfGroup, metaDbConn);
 
                 // upgrade op version  and notify other server nodes to reload topology by timer task
@@ -1543,6 +1577,7 @@ public class DbTopologyManager {
                         String.format("Failed to remove the group[%s] because the group is adding", grpKey));
                 }
 
+                case DbGroupInfoRecord.GROUP_TYPE_BEFORE_REMOVE:
                 case DbGroupInfoRecord.GROUP_TYPE_REMOVING: {
                     // Ignore to update db_type to removing
                     break;
@@ -2130,12 +2165,80 @@ public class DbTopologyManager {
         return storageInstGrpAndDbMap;
     }
 
-    public static boolean isEnablePartitionManagement() {
-        return enablePartitionManagement;
+    public static String getDefaultPartitionMode() {
+        return defaultPartitionMode;
     }
 
-    public static void setEnablePartitionManagement(boolean enablePartitionManagement) {
-        DbTopologyManager.enablePartitionManagement = enablePartitionManagement;
+    public static void setDefaultPartitionMode(String defaultPartitionMode) {
+        DbTopologyManager.defaultPartitionMode = defaultPartitionMode;
     }
 
+    public static long decideAutoPartitionCount() {
+        long autoPartCount = DEFAULT_PARTITION_COUNT_EACH_DN;
+        long rwDnCount = 0;
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            StorageInfoAccessor dnInfoAccessor = new StorageInfoAccessor();
+            dnInfoAccessor.setConnection(conn);
+            rwDnCount = dnInfoAccessor.countAllRwStorageInsts();
+        } catch (Throwable ex) {
+            logger.warn("Failed to fetch the rw-dn count from metadb", ex);
+        }
+        if (rwDnCount > 0) {
+            // Use dn * DEFAULT_PARTITION_COUNT_EACH_DN
+            // as the default partition count of auto partitions
+            // and save it into metadb after the first starting up.
+            autoPartCount = rwDnCount * DEFAULT_PARTITION_COUNT_EACH_DN;
+        }
+        return autoPartCount;
+    }
+
+    public static boolean checkStorageInstDeletable(Set<String> nonDeletableStorageInstSet,
+                                                    String targetDnId,
+                                                    int dbInstKind) {
+        // only the dnId is a rw-dn and it is non in the set of non-deletable dn set (default dn set and single_group dn set)
+        // are allowed to be deleted (scale-in)
+        boolean deletable = (dbInstKind == StorageInfoRecord.INST_KIND_MASTER) &&
+            !nonDeletableStorageInstSet.contains(targetDnId);
+        return deletable;
+
+    }
+
+    public static Set<String> getNonDeletableStorageInst(Connection metaDbConn) {
+
+        // Storage instance contains default group is not deletable
+        Map<String, String> schema2DefaultGroup = TableInfoManager.getAllDefaultDbIndex(metaDbConn);
+        Set<String> allDefaultGroupSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        allDefaultGroupSet.addAll(schema2DefaultGroup.values());
+        Set<String> allNonDeletableStorageInstIdSet = new HashSet<>();
+        String instId = InstIdUtil.getInstId();
+        GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+        groupDetailInfoAccessor.setConnection(metaDbConn);
+
+        List<GroupDetailInfoRecord> allGrpDetailInfos = groupDetailInfoAccessor.getGroupDetailInfoByInstId(instId);
+        for (int i = 0; i < allGrpDetailInfos.size(); i++) {
+            GroupDetailInfoRecord groupDetail = allGrpDetailInfos.get(i);
+            String grpName = groupDetail.getGroupName();
+            String dnId = groupDetail.getStorageInstId();
+            boolean isSingleGrp = GroupInfoUtil.isSingleGroup(grpName);
+            /**
+             * Collect all the dnId of default_group and single_group
+             */
+            if (allDefaultGroupSet.contains(grpName) || isSingleGrp) {
+                if (!allNonDeletableStorageInstIdSet.contains(dnId)) {
+                    allNonDeletableStorageInstIdSet.add(dnId);
+                }
+            }
+        }
+
+        if (!DbTopologyManager.singleGroupStorageInstList.isEmpty()) {
+            List<String> singleGrpStorageInstListConfig = DbTopologyManager.singleGroupStorageInstList;
+            for (int i = 0; i < singleGrpStorageInstListConfig.size(); i++) {
+                String targetDnId = singleGrpStorageInstListConfig.get(i);
+                if (!allNonDeletableStorageInstIdSet.contains(targetDnId)) {
+                    allNonDeletableStorageInstIdSet.add(targetDnId);
+                }
+            }
+        }
+        return allNonDeletableStorageInstIdSet;
+    }
 }

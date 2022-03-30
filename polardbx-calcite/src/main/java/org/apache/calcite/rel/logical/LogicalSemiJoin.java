@@ -16,12 +16,13 @@
  */
 package org.apache.calcite.rel.logical;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.plan.hep.HepRelVertex;
@@ -40,6 +41,7 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
+import org.apache.calcite.rex.RexSimplify;
 import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlNodeList;
@@ -183,7 +185,7 @@ public class LogicalSemiJoin extends SemiJoin {
                 relInput.getExpression("condition")).leftKeys,
             JoinInfo.of(relInput.getInputs().get(0), relInput.getInputs().get(1),
                 relInput.getExpression("condition")).rightKeys,
-            ImmutableSet.<CorrelationId>of(),
+            relInput.getVariablesSet(),
             JoinRelType.valueOf(relInput.getString("joinType")),
             null);
         if (relInput.get("operands") == null) {
@@ -285,7 +287,8 @@ public class LogicalSemiJoin extends SemiJoin {
     }
 
     public RelNode getPushDownRelNode(RelNode pushedRelNode, RelBuilder relBuilder, final RexBuilder rexBuilder,
-                                      List<RexNode> leftFilters, final List<RexNode> rightFilters) {
+                                      List<RexNode> leftFilters, final List<RexNode> rightFilters,
+                                      final boolean enable_lv_subquery_unwrap) {
 
         /**
          * trans condition to correlate rexnode
@@ -345,6 +348,9 @@ public class LogicalSemiJoin extends SemiJoin {
             throw new RuntimeException(ERROR_SUBQUERY_MULTI_COLUMNS);
         }
 
+        if (operator == null) {
+            return null;
+        }
         if (relBuilder.peek().getRowType().getFieldCount() > this.getOperands().size()) {
             if (operator.getKind() != EXISTS && operator.getKind() != NOT_EXISTS
                 && operator.getKind() != SCALAR_QUERY) {
@@ -356,6 +362,12 @@ public class LogicalSemiJoin extends SemiJoin {
             } else {
                 relBuilder.project(rexBuilder.makeInputRef(relBuilder.peek(), 0));
             }
+        }
+
+        if (enable_lv_subquery_unwrap) {
+            //in the case like (project)<-filter<-(project), we should push filter down
+            final RexSimplify simplify = new RexSimplify(rb, RelOptPredicateList.EMPTY, false, RexUtil.EXECUTOR);
+            relBuilder.push(RelOptUtil.filterProject(relBuilder.build(), relBuilder, simplify));
         }
 
         RelNode left;

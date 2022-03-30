@@ -456,8 +456,12 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
 
             accept(Token.RPAREN);
 
-            if (lexer.token() == Token.HINT && lexer.stringVal().charAt(0) == '!') {
-                lexer.nextToken();
+//            if (lexer.token() == Token.HINT && lexer.stringVal().charAt(0) == '!') {
+//                lexer.nextToken();
+//            }
+
+            if (lexer.token() == (Token.HINT)) {
+                this.exprParser.parseHints(stmt.getOptionHints());
             }
         }
 
@@ -918,6 +922,12 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                 continue;
             }
 
+            if (lexer.identifierEquals(FnvHash.Constants.LOCAL)) {
+                SQLPartitionBy localPartitionClause = parseLocalPartitionBy();
+                stmt.setLocalPartitioning(localPartitionClause);
+                continue;
+            }
+
             if (lexer.identifierEquals(FnvHash.Constants.BROADCAST)) {
                 lexer.nextToken();
                 stmt.setBroadCast(true);
@@ -1173,6 +1183,51 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
             this.exprParser.parseHints(stmt.getOptionHints());
         }
         return stmt;
+    }
+
+    public SQLPartitionBy parseLocalPartitionBy(){
+        lexer.nextToken();
+        accept(Token.PARTITION);
+        accept(Token.BY);
+        acceptIdentifier("RANGE");
+
+        SQLPartitionByRange partitionClause = new SQLPartitionByRange();
+
+        accept(Token.LPAREN);
+        partitionClause.addColumn(this.exprParser.name());
+        accept(Token.RPAREN);
+
+        if(lexer.identifierEquals(FnvHash.Constants.STARTWITH)){
+            lexer.nextToken();
+            partitionClause.setStartWith(exprParser.expr());
+        }
+
+        partitionClause.setInterval(getExprParser().parseInterval());
+
+        if(lexer.identifierEquals("EXPIRE")){
+            acceptIdentifier("EXPIRE");
+            acceptIdentifier("AFTER");
+            partitionClause.setExpireAfter((SQLIntegerExpr) exprParser.expr());
+        }
+
+        if(lexer.identifierEquals("PRE")){
+            acceptIdentifier("PRE");
+            acceptIdentifier("ALLOCATE");
+            partitionClause.setPreAllocate((SQLIntegerExpr) exprParser.expr());
+        }
+
+        if (lexer.identifierEquals("PIVOTDATE")){
+            acceptIdentifier("PIVOTDATE");
+            partitionClause.setPivotDateExpr(exprParser.expr());
+        }
+
+        if (lexer.token() == Token.DISABLE){
+            lexer.nextToken();
+            acceptIdentifier("SCHEDULE");
+            partitionClause.setDisableSchedule(true);
+        }
+
+        return partitionClause;
     }
 
     public SQLPartitionBy parsePartitionBy() {

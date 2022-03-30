@@ -205,9 +205,21 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
     }
 
     private void afterInitConfigHolder() {
-        // Set storage info whether supports bloom filter
+        putBloomFilterProperties();
+
+    }
+
+    /**
+     * Set by storage info whether supports bloom filter
+     */
+    private void putBloomFilterProperties() {
         boolean storageSupportsBloomFilter = configHolder.getStorageInfoManager().supportsBloomFilter();
         connectionProperties.put(ConnectionProperties.STORAGE_SUPPORTS_BLOOM_FILTER, storageSupportsBloomFilter);
+
+        if (storageSupportsBloomFilter) {
+            boolean storageSupportsXxHash = configHolder.getStorageInfoManager().supportsXxHash();
+            connectionProperties.put(ConnectionProperties.ENABLE_RUNTIME_FILTER_XXHASH, storageSupportsXxHash);
+        }
     }
 
     private void loadConnectionProperties() {

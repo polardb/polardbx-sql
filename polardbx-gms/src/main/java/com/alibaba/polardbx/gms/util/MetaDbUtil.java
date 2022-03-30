@@ -16,14 +16,17 @@
 
 package com.alibaba.polardbx.gms.util;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -33,6 +36,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 public class MetaDbUtil {
 
@@ -247,6 +251,19 @@ public class MetaDbUtil {
             } else {
                 MetaDbLogUtil.META_DB_LOG.error(errMsg, ex);
             }
+            if(conn instanceof XConnection){
+                try {
+                    ((XConnection) conn).setLastException(ex);
+                } catch (SQLException throwables) {
+                    if (logger != null) {
+                        logger.error("setLastException error", throwables);
+                    } else {
+                        MetaDbLogUtil.META_DB_LOG.error("setLastException error", throwables);
+                    }
+                } finally {
+                    throw new TddlNestableRuntimeException(ex);
+                }
+            }
         }
         if (TStringUtil.isNotBlank(tableName)) {
             errMsg = "Failed to " + action + " for " + schemaName + "." + tableName;
@@ -267,4 +284,33 @@ public class MetaDbUtil {
         }
     }
 
+    /**
+     * Create a connection to metadb and execute query
+     */
+    public static <T> T queryMetaDbWrapper(Connection metaDbConn, Function<Connection, T> func) {
+        T result = null;
+
+        if (metaDbConn == null) {
+            try (Connection conn = getConnection()) {
+                conn.setAutoCommit(false);
+                conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+
+                result = func.apply(conn);
+
+                conn.setAutoCommit(true);
+                return result;
+            } catch (Throwable ex) {
+                MetaDbLogUtil.META_DB_LOG.error(ex);
+                throw GeneralUtil.nestedException(ex);
+            }
+        } else {
+            try {
+                result = func.apply(metaDbConn);
+                return result;
+            } catch (Throwable ex) {
+                MetaDbLogUtil.META_DB_LOG.error(ex);
+                throw GeneralUtil.nestedException(ex);
+            }
+        }
+    }
 }

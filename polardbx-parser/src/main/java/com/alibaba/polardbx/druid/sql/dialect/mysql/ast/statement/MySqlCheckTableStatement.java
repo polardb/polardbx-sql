@@ -25,9 +25,28 @@ import java.util.List;
 public class MySqlCheckTableStatement extends MySqlStatementImpl {
     private final List<SQLExprTableSource> tables = new ArrayList<SQLExprTableSource>();
 
+    private boolean withLocalPartitions;
+
+    private String displayMode = "";
 
     public MySqlCheckTableStatement() {
 
+    }
+
+    public boolean isWithLocalPartitions() {
+        return this.withLocalPartitions;
+    }
+
+    public void setWithLocalPartitions(final boolean withLocalPartitions) {
+        this.withLocalPartitions = withLocalPartitions;
+    }
+
+    public String getDisplayMode(){
+        return this.displayMode;
+    }
+
+    public void setDisplayMode(String mode){
+        this.displayMode = mode;
     }
 
     public void addTable(SQLExprTableSource table) {

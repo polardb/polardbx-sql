@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.gms;
 
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 
 public class TableMetaListener implements ConfigListener {
 
@@ -31,7 +32,8 @@ public class TableMetaListener implements ConfigListener {
 
     @Override
     public void onHandleConfig(String dataId, long newOpVersion) {
-        ((GmsTableMetaManager) OptimizerContext.getContext(schemaName).getLatestSchemaManager())
-            .tonewversion(tableName);
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        // TODO(pt.luoyanxin) optimize single-version schema change
+        sm.toNewVersionForTableGroup(tableName, true);
     }
 }

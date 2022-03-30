@@ -38,4 +38,11 @@ public class OptimizerHelper {
     public static IServerConfigManager getServerConfigManager() {
         return serverConfigManager;
     }
+
+    /**
+     * used only in optimizer unit test
+     */
+    public static void clear(){
+        serverConfigManager = null;
+    }
 }

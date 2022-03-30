@@ -68,12 +68,12 @@
 
   plan: |
 
-    Project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8", pk0="pk0", c10="c10", c20="c20", c30="c30", c40="c40", c50="c50", c60="c60", c70="c70", c80="c80")
-      BKAJoin(condition="pk0 = pk AND c20 <=> c2", type="inner")
-        Gather(concurrent=true)
-          IndexScan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardCount=28, sql="SELECT `t`.`pk`, `t`.`c1`, `t`.`c2`, `t`.`c3`, `t`.`c4`, `t`.`c5`, `t`.`c6`, `t`.`c7`, `t`.`c8`, `t0`.`pk` AS `pk0`, `t0`.`c1` AS `c10`, `t0`.`c2` AS `c20`, `t0`.`c5` AS `c50` FROM (SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE (`c2` = ?)) AS `t` INNER JOIN (SELECT `pk`, `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE (`pk` = ?)) AS `t0` ON (`t`.`c1` = `t0`.`c1`)")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE ((`pk` = ?) AND (`pk` IN (...)))")
+    project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8", pk0="pk0", c10="c10", c20="c20", c30="c30", c40="c40", c50="c50", c60="c60", c70="c70", c80="c80")
+      bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
+        gather(concurrent=true)
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
   # join transpose, inner join, index right, covering index
 - sql: |
@@ -82,8 +82,8 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      IndexScan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardCount=28, sql="SELECT `t`.`pk`, `t`.`c1`, `t`.`c2`, `t`.`c3`, `t`.`c4`, `t`.`c5`, `t`.`c6`, `t`.`c7`, `t`.`c8`, `t0`.`c1` AS `c10`, `t0`.`c5` AS `c50` FROM (SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE (`c2` = ?)) AS `t` INNER JOIN (SELECT `pk`, `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE (`pk` = ?)) AS `t0` ON (`t`.`c1` = `t0`.`c1`)")
+    gather(concurrent=true)
+      indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
 
   # join transpose, right join, index right, non-covering index
 - sql: |
@@ -147,12 +147,12 @@
 
   plan: |
 
-    Project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
-      BKAJoin(condition="pk0 = pk AND c20 <=> c2", type="inner")
-        Gather(concurrent=true)
-          IndexScan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardCount=28, sql="SELECT `t`.`pk`, `t`.`c1`, `t`.`c2`, `t`.`c3`, `t`.`c4`, `t`.`c5`, `t`.`c6`, `t`.`c7`, `t`.`c8`, `t0`.`pk` AS `pk0`, `t0`.`c1` AS `c10`, `t0`.`c2` AS `c20`, `t0`.`c5` AS `c50` FROM (SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE (`c2` = ?)) AS `t` INNER JOIN (SELECT `pk`, `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE (`pk` = ?)) AS `t0` ON (`t`.`c1` = `t0`.`c1`)")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE ((`pk` = ?) AND (`pk` IN (...)))")
+    project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
+      bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
+        gather(concurrent=true)
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
   # join transpose, inner join, index left, covering index
 - sql: |
@@ -161,8 +161,8 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      IndexScan(tables="[0000-0003].t2_i_b_[00-27],t1_[00-27]", shardCount=28, sql="SELECT `t0`.`pk`, `t0`.`c1`, `t0`.`c2`, `t0`.`c3`, `t0`.`c4`, `t0`.`c5`, `t0`.`c6`, `t0`.`c7`, `t0`.`c8`, `t`.`c1` AS `c10`, `t`.`c5` AS `c50` FROM (SELECT `pk`, `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE (`pk` = ?)) AS `t` INNER JOIN (SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE (`c2` = ?)) AS `t0` ON (`t`.`c1` = `t0`.`c1`)")
+    gather(concurrent=true)
+      indexscan(tables="[0000-0003].t2_i_b_[00-27],t1_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c5` as `c50` from `t2_i_b` as `t2_i_b` inner join `t1` as `t1` on (`t2_i_b`.`c1` = `t1`.`c1`) where ((`t1`.`c2` = ?) and (`t2_i_b`.`pk` = ?))")
 
   # join transpose, left join, index left, non-covering index
 - sql: |
@@ -171,12 +171,12 @@
 
   plan: |
 
-    Project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
-      BKAJoin(condition="pk0 = pk AND c20 <=> c2", type="inner")
-        Gather(concurrent=true)
-          IndexScan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardCount=28, sql="SELECT `t`.`pk`, `t`.`c1`, `t`.`c2`, `t`.`c3`, `t`.`c4`, `t`.`c5`, `t`.`c6`, `t`.`c7`, `t`.`c8`, `t0`.`pk` AS `pk0`, `t0`.`c1` AS `c10`, `t0`.`c2` AS `c20`, `t0`.`c5` AS `c50` FROM (SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE (`c2` = ?)) AS `t` INNER JOIN (SELECT `pk`, `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE (`pk` = ?)) AS `t0` ON (`t`.`c1` = `t0`.`c1`)")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE ((`pk` = ?) AND (`pk` IN (...)))")
+    project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
+      bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
+        gather(concurrent=true)
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
   # join transpose, right join, index left, non-covering index
 - sql: |
@@ -185,12 +185,12 @@
 
   plan: |
 
-    Project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
-      BKAJoin(condition="pk0 = pk AND c20 <=> c2", type="inner")
-        Gather(concurrent=true)
-          IndexScan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardCount=28, sql="SELECT `t`.`pk`, `t`.`c1`, `t`.`c2`, `t`.`c3`, `t`.`c4`, `t`.`c5`, `t`.`c6`, `t`.`c7`, `t`.`c8`, `t0`.`pk` AS `pk0`, `t0`.`c1` AS `c10`, `t0`.`c2` AS `c20`, `t0`.`c5` AS `c50` FROM (SELECT `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` FROM `t1` AS `t1` WHERE (`c2` = ?)) AS `t` INNER JOIN (SELECT `pk`, `c1`, `c2`, `c5` FROM `t2_i_b` AS `t2_i_b` WHERE (`pk` = ?)) AS `t0` ON (`t`.`c1` = `t0`.`c1`)")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` FROM `t2` AS `t2` WHERE ((`pk` = ?) AND (`pk` IN (...)))")
+    project(pk="pk0", c1="c10", c2="c20", c3="c30", c4="c40", c5="c50", c6="c60", c7="c70", c8="c80", pk0="pk", c10="c1", c20="c2", c30="c3", c40="c4", c50="c5", c60="c6", c70="c7", c80="c8")
+      bkajoin(condition="pk0 = pk and c20 <=> c2", type="inner")
+        gather(concurrent=true)
+          indexscan(tables="[0000-0003].t1_[00-27],t2_i_b_[00-27]", shardcount=28, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t2_i_b`.`pk` as `pk0`, `t2_i_b`.`c1` as `c10`, `t2_i_b`.`c2` as `c20`, `t2_i_b`.`c5` as `c50` from `t1` as `t1` inner join `t2_i_b` as `t2_i_b` on (`t1`.`c1` = `t2_i_b`.`c1`) where ((`t2_i_b`.`pk` = ?) and (`t1`.`c2` = ?))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `pk`, `c2`, `c3`, `c4`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`pk` = ?) and (`pk` in (...)))")
 
   # join transpose, right join, index left, non-covering index
 - sql: |

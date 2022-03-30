@@ -35,6 +35,24 @@ public enum DdlType {
     RENAME_GLOBAL_INDEX,
     CHECK_GLOBAL_INDEX,
 
-    MOVE_DATABASE
+    MOVE_DATABASE,
+    REBALANCE,
+
+    ALTER_TABLEGROUP,
+    REFRESH_TOPOLOGY,
+    ;
+
+    public static boolean needDefaultDdlShareLock(DdlType type){
+        if(type == null){
+            return true;
+        }
+        switch (type){
+        case REFRESH_TOPOLOGY:
+        case REBALANCE:
+            return false;
+        default:
+            return true;
+        }
+    }
 
 }

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -48,6 +49,7 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.cdc.CdcDbLock.acquireCdcDbLockByForUpdate;
 import static com.alibaba.polardbx.cdc.CdcDbLock.releaseCdcDbLockByCommit;
+import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_FAIL;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_INITIAL;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_SUCCESS;
@@ -78,7 +80,7 @@ public class CdcStorageUtil {
             Optional<PolarxCommandRecord> commandRecordOptional =
                 getCommandIfPresent(commandAccessor, storageInstIds, identifier);
             if (commandRecordOptional.isPresent()) {
-                log.info("command record for {} has already exist, will recover.", storageInstIds);
+                log.warn("command record for {} has already exist, will recover.", storageInstIds);
                 PolarxCommandRecord commandRecord = commandRecordOptional.get();
                 checkAndProcess(commandAccessor, commandRecord, storageInstIds);
             } else {
@@ -162,7 +164,7 @@ public class CdcStorageUtil {
             } else if (latestRecord.cmdStatus == COMMAND_STATUS_FAIL) {
                 processFailedCommand(latestRecord);
             } else if (latestRecord.cmdStatus == COMMAND_STATUS_SUCCESS) {
-                log.info("command record is ready, detail info is " + commandRecord);
+                log.warn("command record is ready, detail info is " + commandRecord);
                 break;
             } else {
                 throw new TddlNestableRuntimeException("unknown command status : " + commandRecord.cmdStatus);
@@ -172,7 +174,7 @@ public class CdcStorageUtil {
 
     private static void checkStorageStatus(Connection connection, String instructionId) {
         if (!isCdcNodeExists(connection)) {
-            log.info("cdc node is not exist, no need to check storage status.");
+            log.warn("cdc node is not exist, no need to check storage status.");
             return;
         }
 
@@ -188,7 +190,7 @@ public class CdcStorageUtil {
                     while (rs.next()) {
                         long status = rs.getLong(1);
                         if (status == 0) {
-                            log.info("storage history record is ready for instruction id :" + instructionId);
+                            log.warn("storage history record is ready for instruction id :" + instructionId);
                             return;
                         } else {
                             throw new TddlNestableRuntimeException("invalid storage history status :" + status);
@@ -277,6 +279,9 @@ public class CdcStorageUtil {
                 MetaDbConfigManager.getInstance().notify(MetaDbDataIdBuilder.getDbTopologyDataId(dbName), metaDbConn);
                 metaDbConn.commit();
 
+                // try inject trouble
+                tryInjectTrouble(storageInstId);
+
                 MetaDbConfigManager.getInstance().sync(MetaDbDataIdBuilder.getDbTopologyDataId(dbName));
             } catch (Throwable ex) {
                 throw GeneralUtil.nestedException(ex);
@@ -292,6 +297,17 @@ public class CdcStorageUtil {
     private static void processFailedCommand(PolarxCommandRecord commandRecord) {
         throw new TddlNestableRuntimeException("Removing storage failed in cdc stage,"
             + " detail info is :" + commandRecord);
+    }
+
+    private static void tryInjectTrouble(String storageInstId) {
+        FailPoint.inject(FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP, () -> {
+            log.warn("inject failure to cdc after remove group at storage " + storageInstId);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+            }
+            Runtime.getRuntime().halt(1);
+        });
     }
 
     private static void sleep() {

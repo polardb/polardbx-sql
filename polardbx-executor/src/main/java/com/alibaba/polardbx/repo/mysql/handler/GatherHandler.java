@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 
@@ -58,7 +59,6 @@ public class GatherHandler extends HandlerCommon {
                 inputCursors.add(cursor);
             }
         }
-
         if (useUpdate) {
             int affectRows = 0;
             for (Cursor inputCursor : inputCursors) {

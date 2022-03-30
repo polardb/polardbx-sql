@@ -26,11 +26,16 @@ import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author arnkore 2017-06-19 17:47
@@ -89,6 +94,7 @@ public class CheckTableUtil {
             rs = conn.createStatement().executeQuery(sql);
 
             Map<String, FieldDescription> fieldDescMaps = new HashMap<String, FieldDescription>();
+            Map<String, FieldDescription> physicalOrderFieldMaps = new LinkedHashMap<String, FieldDescription>();
             while (rs.next()) {
                 FieldDescription fd = new FieldDescription();
                 if (isShadow) {
@@ -108,8 +114,10 @@ public class CheckTableUtil {
                     fd.setFieldExtra(rs.getString(6));
                 }
                 fieldDescMaps.put(fd.getFieldName(), fd);
+                physicalOrderFieldMaps.put(fd.getFieldName(), fd);
             }
             tableDescription.setFields(fieldDescMaps);
+            tableDescription.setPhysicalOrderFields(physicalOrderFieldMaps);
 
         } catch (Exception e) {
             // 打好相关的日志
@@ -145,6 +153,142 @@ public class CheckTableUtil {
         }
 
         return tableDescription;
+    }
+
+    public static List<LocalPartitionDescription> getLocalPartitionDescription(MyRepository myRepository,
+                                                                               String groupName,
+                                                                               String tableName) {
+        final List<LocalPartitionDescription> localPartitionMap = new ArrayList<>();
+
+        TGroupDataSource groupDs = (TGroupDataSource) myRepository.getDataSource(groupName);
+        TAtomDataSource masterAtom = findMasterAtomForGroup(groupDs);
+        final String physicalSchemaName = masterAtom.getDsConfHandle().getRunTimeConf().getDbName();
+
+        Connection conn = null;
+        ResultSet rs = null;
+        Throwable ex = null;
+        try {
+            String sql = "select * from information_schema.partitions where table_name=? and TABLE_SCHEMA=?";
+            conn = masterAtom.getConnection();
+            PreparedStatement preparedStatement = conn.prepareStatement(sql);
+            preparedStatement.setString(1, tableName);
+            preparedStatement.setString(2, physicalSchemaName);
+
+            rs = preparedStatement.executeQuery();
+
+            while (rs.next()) {
+                LocalPartitionDescription fd = new LocalPartitionDescription();
+                fd.setTableCatalog(rs.getString("TABLE_CATALOG"));
+                fd.setTableSchema(rs.getString("TABLE_SCHEMA"));
+                fd.setTableName(rs.getString("TABLE_NAME"));
+                fd.setPartitionName(rs.getString("PARTITION_NAME"));
+                fd.setSubpartitionName(rs.getString("SUBPARTITION_NAME"));
+                fd.setPartitionOrdinalPosition(rs.getLong("PARTITION_ORDINAL_POSITION"));
+                fd.setSubpartitionOrdinalPosition(rs.getLong("SUBPARTITION_ORDINAL_POSITION"));
+                fd.setPartitionMethod(rs.getString("PARTITION_METHOD"));
+                fd.setSubpartitionMethod(rs.getString("SUBPARTITION_METHOD"));
+                fd.setPartitionExpression(rs.getString("PARTITION_EXPRESSION"));
+                fd.setSubpartitionExpression(rs.getString("SUBPARTITION_EXPRESSION"));
+                fd.setPartitionDescription(rs.getString("PARTITION_DESCRIPTION"));
+                fd.setTableRows(rs.getLong("TABLE_ROWS"));
+                fd.setAvgRowLength(rs.getLong("AVG_ROW_LENGTH"));
+                fd.setDataLength(rs.getLong("DATA_LENGTH"));
+                fd.setMaxDataLength(rs.getLong("MAX_DATA_LENGTH"));
+                fd.setIndexLength(rs.getLong("INDEX_LENGTH"));
+                fd.setDataFree(rs.getLong("DATA_FREE"));
+//                fd.setCreateTime(rs.getDate("CREATE_TIME"));
+//                fd.setUpdateTime(rs.getDate("UPDATE_TIME"));
+//                fd.setCheckTime(rs.getDate("CHECK_TIME"));
+                fd.setChecksum(rs.getLong("CHECKSUM"));
+                fd.setPartitionComment(rs.getString("PARTITION_COMMENT"));
+                fd.setNodegroup(rs.getString("NODEGROUP"));
+                fd.setTablespaceName(rs.getString("TABLESPACE_NAME"));
+                localPartitionMap.add(fd);
+            }
+
+        } catch (Exception e) {
+            // 打好相关的日志
+            if (e instanceof SQLException) {
+                if (((SQLException) e).getErrorCode() == MysqlErrorNumbers.ER_NO_SUCH_TABLE) {
+                    // mysql 报没有这个表，则表示直接将这个表置为null
+                }
+                ex = e;
+            } else {
+                // 注意打好日志
+                logger.error(e);
+                ex = e;
+            }
+        } finally {
+            try {
+                if (rs != null) {
+                    rs.close();
+                }
+                if (conn != null) {
+                    conn.close();
+                }
+            } catch (SQLException e) {
+                // 打好相关的日志
+                logger.error(e);
+            }
+            if (ex != null) {
+                GeneralUtil.nestedException(ex);
+            }
+        }
+        return localPartitionMap;
+    }
+
+    public static TableCheckResult verifyTableAndGsiMeta(TableDescription tableDesc, TableDescription gsiDesc){
+        TableCheckResult tableCheckResult = new TableCheckResult();
+        tableCheckResult.setTableDesc(gsiDesc);
+        tableCheckResult.setExist(true);
+
+        Map<String, FieldDescription> gsiFieldDescMap = gsiDesc.getFields();
+        Map<String, FieldDescription> tableFieldDescMap = tableDesc.getFields();
+
+        for (Map.Entry<String, FieldDescription> gsiFieldDesc : gsiFieldDescMap.entrySet()) {
+            String fieldName = gsiFieldDesc.getKey();
+            FieldDescription fieldDesc = gsiFieldDesc.getValue();
+
+            FieldDescription tableFieldDesc = tableFieldDescMap.get(fieldName);
+            if (tableFieldDesc != null) {
+                if (!fieldDesc.equalsTableAndGsi(tableFieldDesc)) {
+                    tableCheckResult.setFieldDescTheSame(false);
+                    tableCheckResult.addIncorrectFieldDescMaps(fieldDesc);
+                }
+            } else {
+                tableCheckResult.addUnexpectedFieldDesc(fieldDesc);
+            }
+        }
+        return tableCheckResult;
+    }
+
+    public static TableCheckResult verifylogicalAndPhysicalMeta(TableDescription physicalTableDesc,  List<FieldDescription> logicalMetaDescs){
+        TableCheckResult tableCheckResult = new TableCheckResult();
+        tableCheckResult.setTableDesc(physicalTableDesc);
+        tableCheckResult.setExist(true);
+
+        Map<String, FieldDescription> physicalDescs =  physicalTableDesc.getPhysicalOrderFields();
+//        List<FieldDescription> physicalDescs = Arrays.asList(logicalTablePhysicalDesc.values().toArray(new FieldDescription[0]));
+        Set<String> fieldNameSet = new HashSet<>();
+        for(FieldDescription logicalMetaDesc: logicalMetaDescs){
+            String fieldName = logicalMetaDesc.fieldName;
+            fieldNameSet.add(fieldName);
+            FieldDescription physicalDesc = physicalDescs.get(fieldName);
+            if(physicalDesc != null){
+                if(!physicalDesc.equalsLogicalAndPhysicalMeta(logicalMetaDesc)) {
+                    tableCheckResult.setFieldDescTheSame(false);
+                    tableCheckResult.addIncorrectFieldDescMaps(physicalDesc);
+                }
+            }else{
+                tableCheckResult.addMissingFieldDesc(logicalMetaDesc);
+            }
+        }
+        Set<String> unexpectedFieldNames = physicalDescs.keySet();
+        unexpectedFieldNames.removeAll(fieldNameSet);
+        for(String unexpectedFieldName:unexpectedFieldNames){
+            tableCheckResult.addUnexpectedFieldDesc(physicalDescs.get(unexpectedFieldName));
+        }
+        return tableCheckResult;
     }
 
     public static TableCheckResult verifyTableMeta(TableDescription referTableDesc, TableDescription targetTableDesc) {

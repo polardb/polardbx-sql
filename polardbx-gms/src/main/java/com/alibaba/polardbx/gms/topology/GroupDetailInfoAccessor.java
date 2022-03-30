@@ -149,11 +149,20 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
         MetaDbUtil.delete(DELETE_GROUP_DETAIL_INFO_BY_DB_NAME, params, this.connection);
     }
 
-    public void deleteGroupDetailInfoByDbAndGroup(String dbName, String groupName) throws SQLException {
-        Map<Integer, ParameterContext> params = new HashMap<>();
-        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
-        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, groupName);
-        MetaDbUtil.delete(DELETE_GROUP_DETAIL_INFO_BY_DB_AND_GROUP, params, this.connection);
+    public void deleteGroupDetailInfoByDbAndGroup(String dbName, String groupName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, groupName);
+            MetaDbUtil.delete(DELETE_GROUP_DETAIL_INFO_BY_DB_AND_GROUP, params, this.connection);
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                GROUP_DETAIL_INFO_TABLE,
+                e.getMessage());
+        }
+
+
     }
 
     public void deleteGroupDetailInfoByInstId(String instId) throws SQLException {

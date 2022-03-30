@@ -28,6 +28,8 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.rpc.XConfig;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.rpc.XConfig;
@@ -43,7 +45,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.utils.transaction.DeadlockParser.GLOBAL_DEADLOCK;
+import static com.alibaba.polardbx.executor.utils.transaction.DeadlockParser.MDL_DEADLOCK;
+import static com.alibaba.polardbx.executor.utils.transaction.DeadlockParser.NO_DEADLOCKS_DETECTED;
 
 /**
  * @author chenmo.cm
@@ -68,13 +75,24 @@ public class StorageInfoManager extends AbstractLifecycle {
     private boolean lowerCaseTableNames;
     private volatile boolean supportHyperLogLog;
     private volatile boolean lessMy56Version;
+    private boolean supportXxHash;
 
     /**
      * FastChecker: generate checksum on xdb node
      * Since: 5.4.12 fix
      * Requirement: XDB supports HASHCHECK function
      */
+    /**
+     * Record the latest global deadlock log and global MDL deadlock log
+     */
+    private static final ConcurrentMap<String, String> deadlockLogMap;
     private volatile boolean supportFastChecker = false;
+
+    static {
+        deadlockLogMap = new ConcurrentHashMap<>(2);
+        deadlockLogMap.put(GLOBAL_DEADLOCK, NO_DEADLOCKS_DETECTED);
+        deadlockLogMap.put(MDL_DEADLOCK, NO_DEADLOCKS_DETECTED);
+    }
 
     public StorageInfoManager(TopologyHandler topologyHandler) {
         storageInfos = new ConcurrentHashMap<>();
@@ -84,6 +102,34 @@ public class StorageInfoManager extends AbstractLifecycle {
 
         Preconditions.checkNotNull(topologyHandler);
         this.topologyHandler = topologyHandler;
+    }
+
+    /**
+     * Get deadlock information
+     */
+    public static String getDeadlockInfo() {
+        return deadlockLogMap.get(GLOBAL_DEADLOCK);
+    }
+
+    /**
+     * Get MDL deadlock information
+     */
+    public static String getMdlDeadlockInfo() {
+        return deadlockLogMap.get(MDL_DEADLOCK);
+    }
+
+    /**
+     * Update deadlock information
+     */
+    public static void updateDeadlockInfo(String newDeadlockInfo) {
+        deadlockLogMap.put(GLOBAL_DEADLOCK, newDeadlockInfo);
+    }
+
+    /**
+     * Update MDL deadlock information
+     */
+    public static void updateMdlDeadlockInfo(String newMdlDeadlockInfo) {
+        deadlockLogMap.put(MDL_DEADLOCK, newMdlDeadlockInfo);
     }
 
     public static String getMySqlVersion(IDataSource dataSource) {
@@ -178,7 +224,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             // 该变量只需要存在就支持，默认为OFF
             return hasNext;
         } catch (SQLException ex) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG, ex,
+            throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
                 "Failed to check shared read view support: " + ex.getMessage());
         }
     }
@@ -285,8 +331,19 @@ public class StorageInfoManager extends AbstractLifecycle {
             ResultSet rs = stmt.executeQuery("SHOW STATUS LIKE 'Rsa_public_key'")) {
             return rs.next();
         } catch (SQLException ex) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG, ex,
+            throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
                 "Failed to check openssl support: " + ex.getMessage());
+        }
+    }
+
+    private static boolean checkSupportXxHash(IDataSource dataSource) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'udf_bloomfilter_xxhash'")) {
+            return rs.next() && StringUtils.equalsIgnoreCase(rs.getString(2), "ON");
+        } catch (SQLException ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
+                "Failed to check  support: " + ex.getMessage());
         }
     }
 
@@ -318,32 +375,36 @@ public class StorageInfoManager extends AbstractLifecycle {
         boolean tmpSupportSharedReadView = true;
         boolean tmpSupportCtsTransaction = true;
         boolean tmpSupportHyperLogLog = true;
+        boolean tmpSupportXxHash = true;
         boolean lessMysql56 = false;
         boolean tmpSupportFastChecker = true;
         boolean tmpRDS80 = true;
         for (Group group : topologyHandler.getMatrix().getGroups()) {
-            if (group.getType() == GroupType.MYSQL_JDBC) {
-                IGroupExecutor groupExecutor = topologyHandler.get(group.getName());
+            if (group.getType() != GroupType.MYSQL_JDBC || !DbGroupInfoManager.isNormalGroup(group)) {
+                continue;
+            }
 
-                final StorageInfo storageInfo = initStorageInfo(group, groupExecutor.getDataSource());
-                if (storageInfo != null) {
-                    tmpSupportXA &= supportXA(storageInfo);
-                    lessMysql56 = lessMysql56 || lessMysql56Version(storageInfo);
-                    tmpSupportTso &= storageInfo.supportTso;
-                    tmpSupportTsoHeartbeat &= storageInfo.supportTsoHeartbeat;
-                    tmpSupportPurgeTso &= storageInfo.supportPurgeTso;
-                    tmpSupportCtsTransaction &= storageInfo.supportCtsTransaction;
-                    tmpSupportDeadlockDetection &= supportDeadlockDetection(storageInfo);
-                    tmpSupportMdlDeadlockDetection &= supportMdlDeadlockDetection(storageInfo);
-                    tmpSupportsBloomFilter &= storageInfo.supportsBloomFilter;
-                    tmpSupportOpenSSL &= storageInfo.supportOpenSSL;
-                    tmpSupportHyperLogLog &= storageInfo.supportHyperLogLog;
-                    tmpSupportsReturning &= storageInfo.supportsReturning;
-                    tmpLowerCaseTableNames &= enableLowerCaseTableNames(storageInfo);
-                    tmpSupportSharedReadView &= storageInfo.supportSharedReadView;
-                    tmpSupportFastChecker &= storageInfo.supportFastChecker;
-                    tmpRDS80 &= isRDS80(storageInfo);
-                }
+            IGroupExecutor groupExecutor = topologyHandler.get(group.getName());
+
+            final StorageInfo storageInfo = initStorageInfo(group, groupExecutor.getDataSource());
+            if (storageInfo != null) {
+                tmpSupportXA &= supportXA(storageInfo);
+                lessMysql56 = lessMysql56 || lessMysql56Version(storageInfo);
+                tmpSupportTso &= storageInfo.supportTso;
+                tmpSupportTsoHeartbeat &= storageInfo.supportTsoHeartbeat;
+                tmpSupportPurgeTso &= storageInfo.supportPurgeTso;
+                tmpSupportCtsTransaction &= storageInfo.supportCtsTransaction;
+                tmpSupportDeadlockDetection &= supportDeadlockDetection(storageInfo);
+                tmpSupportMdlDeadlockDetection &= supportMdlDeadlockDetection(storageInfo);
+                tmpSupportsBloomFilter &= storageInfo.supportsBloomFilter;
+                tmpSupportOpenSSL &= storageInfo.supportOpenSSL;
+                tmpSupportHyperLogLog &= storageInfo.supportHyperLogLog;
+                tmpSupportsReturning &= storageInfo.supportsReturning;
+                tmpLowerCaseTableNames &= enableLowerCaseTableNames(storageInfo);
+                tmpSupportSharedReadView &= storageInfo.supportSharedReadView;
+                tmpSupportFastChecker &= storageInfo.supportFastChecker;
+                tmpRDS80 &= isRDS80(storageInfo);
+                tmpSupportXxHash &= storageInfo.supportXxHash;
             }
         }
 
@@ -365,6 +426,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         this.supportHyperLogLog = tmpSupportHyperLogLog;
         this.lessMy56Version = lessMysql56;
         this.supportFastChecker = tmpSupportFastChecker;
+        this.supportXxHash = tmpSupportXxHash;
     }
 
     private boolean metaDbUsesXProtocol() {
@@ -518,6 +580,14 @@ public class StorageInfoManager extends AbstractLifecycle {
         return supportHyperLogLog;
     }
 
+    public boolean supportsXxHash() {
+        if (!isInited()) {
+            init();
+        }
+
+        return supportXxHash;
+    }
+
     public boolean supportsReturning() {
         if (!isInited()) {
             init();
@@ -559,6 +629,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         public final boolean supportOpenSSL;
         boolean supportHyperLogLog;
         boolean supportFastChecker;
+        boolean supportXxHash;
 
         public StorageInfo(
             String version,
@@ -576,7 +647,8 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean isMetaDataLocksEnable,
             boolean supportHyperLogLog,
             boolean supportOpenSSL,
-            boolean supportFastChecker
+            boolean supportFastChecker,
+            boolean supportXxHash
         ) {
             this.version = version;
             this.supportTso = supportTso;
@@ -594,6 +666,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             this.supportOpenSSL = supportOpenSSL;
             this.supportHyperLogLog = supportHyperLogLog;
             this.supportFastChecker = supportFastChecker;
+            this.supportXxHash = supportXxHash;
         }
 
         public static StorageInfo create(IDataSource dataSource) {
@@ -605,6 +678,7 @@ public class StorageInfoManager extends AbstractLifecycle {
                     false, false,
                     false, false, false, 1,
                     false, false,
+                    false,
                     false,
                     false,
                     false,
@@ -633,13 +707,14 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportHyperLogLog = polarxUDFInfo.map(PolarxUDFInfo::supportsHyperLogLog).orElse(false);
             boolean supportOpenSSL = checkSupportOpenSSL(dataSource);
             boolean supportFastChecker = polarxUDFInfo.map(PolarxUDFInfo::supportFastChecker).orElse(false);
+            boolean supportXxHash = checkSupportXxHash(dataSource);
 
-            return new StorageInfo(version, supportTso, supportTsoHeartbeat, supportPurgeTso, supportCtsTransaction, supportsBloomFilter,
-                supportsReturning, lowerCaseTableNames, supportPerformanceSchema, isXEngine, supportSharedReadView,
-                hasMetaDataLocksSelectPrivilege, isMetaDataLocksEnable, supportHyperLogLog, supportOpenSSL,
-                supportFastChecker);
+            return new StorageInfo(version, supportTso, supportPurgeTso, supportTsoHeartbeat, supportCtsTransaction,
+                supportsBloomFilter, supportsReturning, lowerCaseTableNames, supportPerformanceSchema, isXEngine,
+                supportSharedReadView, hasMetaDataLocksSelectPrivilege, isMetaDataLocksEnable, supportHyperLogLog,
+                supportOpenSSL, supportFastChecker,
+                supportXxHash);
         }
-
     }
 
     public static class PolarxUDFInfo {

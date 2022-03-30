@@ -67,12 +67,18 @@ public class PartitionBoundVal {
 
     public static PartitionBoundVal createPartitionBoundVal(PartitionField value,
                                                             PartitionBoundValueKind valueKind,
-                                                            boolean isNull) {
-        if (valueKind == PartitionBoundValueKind.DATUM_NORMAL_VALUE && value == null) {
-            value = PartitionFieldBuilder.createField(DataTypes.LongType);
-            value.setNull(true);
+                                                            boolean isAlwaysNull) {
+        boolean isNullVal = isAlwaysNull;
+        if (valueKind == PartitionBoundValueKind.DATUM_NORMAL_VALUE && !isAlwaysNull) {
+            if (value == null) {
+                value = PartitionFieldBuilder.createField(DataTypes.LongType);
+                value.setNull(true);
+                isNullVal = true;
+            } else {
+                isNullVal = value.isNull();
+            }
         }
-        return new PartitionBoundVal(value, isNull, valueKind);
+        return new PartitionBoundVal(value, isNullVal, valueKind);
     }
 
     public static PartitionBoundVal createNormalValue(PartitionField value) {
@@ -91,6 +97,9 @@ public class PartitionBoundVal {
     }
 
     public PartitionBoundVal(PartitionField value, boolean isNullValue, PartitionBoundValueKind valueKind) {
+        /**
+         * When the value kind of value is min_val or max_val, this.value is null
+         */
         this.value = value;
         this.isNullValue = isNullValue;
         this.valueKind = valueKind;

@@ -62,7 +62,8 @@ public class LogUtils {
     }
 
     public static void recordSql(ServerConnection c, String tag, ByteString sql, long endTimeNano, long affectedRows) {
-        recordSql(c, tag, sql, null, null, affectedRows, endTimeNano, null, null, null, WorkloadType.TP, null, null);
+        recordSql(c, tag, sql, null, null, affectedRows, endTimeNano, null, null, null, WorkloadType.TP, null, null,
+            false);
     }
 
     public static void recordPreparedSql(ServerConnection c, String stmtId,
@@ -74,13 +75,14 @@ public class LogUtils {
         tagInfo.append("[prepare] ");
         tagInfo.append("[stmt:").append(stmtId).append("]");
         recordSql(c, tagInfo.toString(), sql, null, null, affectedRows, endTimeNano, null, null, null, WorkloadType.TP,
-            null, null);
+            null, null, false);
     }
 
     public static void recordSql(ServerConnection c, String tag, ByteString sqlBytes,
                                  List<Pair<Integer, ParameterContext>> params, String transactionPolicy,
                                  long affectRow, long endTimeNano, QueryMetrics metrics, Integer baselineInfoId,
-                                 Integer planInfoId, WorkloadType workloadType, RelOptCost cost, ExecutorMode mode) {
+                                 Integer planInfoId, WorkloadType workloadType, RelOptCost cost, ExecutorMode mode,
+                                 boolean recordSlowDetail) {
 
         try {
             if (!recordSql.isInfoEnabled()) {
@@ -124,7 +126,7 @@ public class LogUtils {
 
             long sqlBeginTs = c.getSqlBeginTimestamp();
             long startTime = c.getLastActiveTime();
-            long duration = (endTimeNano - startTime) / (1000 * 1000); // milliseconds
+            long duration = (endTimeNano - startTime) / 1000; // milliseconds
 
             StringBuilder sqlInfo = new StringBuilder();
             if (tag != null && !tag.isEmpty()) {
@@ -186,7 +188,7 @@ public class LogUtils {
                 cclSqlMetric = new CclSqlMetric();
                 cclSqlMetric.setSchemaName(schema.getName());
                 cclSqlMetric.setOriginalSql(sqlBytes.toString());
-                cclSqlMetric.setResponseTime(duration);
+                cclSqlMetric.setResponseTime(duration/1000);
                 cclSqlMetric.setAffectedRows(affectRow);
                 if (metrics != null && metrics.runTimeStat != null && metrics.runTimeStat.getSqlType() != null) {
                     cclSqlMetric.setSqlType(metrics.runTimeStat.getSqlType().getI());
@@ -290,7 +292,12 @@ public class LogUtils {
             }
 
             sqlInfo.append("] # ").append(c.getTraceId());
-            SQLRecorderLogger.sqlLogger.info(sqlInfo.toString());
+            String sqlLogContent = sqlInfo.toString();
+            SQLRecorderLogger.sqlLogger.info(sqlLogContent);
+            //log slow detail
+            if (recordSlowDetail) {
+                SQLRecorderLogger.slowDetailLogger.info(sqlLogContent);
+            }
         } catch (Throwable ex) {
             logger.info("record sql failed", ex);
         }

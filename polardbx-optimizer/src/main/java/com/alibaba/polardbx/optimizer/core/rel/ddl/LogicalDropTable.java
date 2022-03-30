@@ -21,6 +21,8 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropTableWithGsiPreparedData;
@@ -93,6 +95,15 @@ public class LogicalDropTable extends BaseDdlOperation {
     private DropTablePreparedData preparePrimaryData() {
         DropTablePreparedData preparedData =
             new DropTablePreparedData(schemaName, tableName, sqlDropTable.isIfExists());
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        try {
+            TableMeta tableMeta = sm.getTable(tableName);
+            preparedData.setTableVersion(tableMeta.getVersion());
+        } catch (Exception ex) {
+            if (!sqlDropTable.isIfExists()) {
+                throw ex;
+            }
+        }
         return preparedData;
     }
 

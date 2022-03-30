@@ -33,10 +33,9 @@ public class KeyPartRouter extends RangePartRouter {
     protected int partitionCount = 0;
     protected SearchDatumHasher hasher;
     protected RelDataType boundValDataType;
-    
 
     public KeyPartRouter(Object[] sortedBoundObjArr, SearchDatumHasher hasher, Comparator keyBndValCmp) {
-        super(sortedBoundObjArr, keyBndValCmp == null ?  new LongComparator() : keyBndValCmp);
+        super(sortedBoundObjArr, keyBndValCmp == null ? new LongComparator() : keyBndValCmp);
         this.partitionCount = sortedBoundObjArr.length;
         this.hasher = hasher;
         this.boundValDataType = PartitionPrunerUtils.getTypeFactory().createSqlType(SqlTypeName.BIGINT);
@@ -47,33 +46,60 @@ public class KeyPartRouter extends RangePartRouter {
         RouterResult rs;
         SearchDatumInfo queryValDatum = (SearchDatumInfo) queryVal;
         int partColInt = queryValDatum.datumInfo.length;
-        Long[] hashVals = hasher.calcHashCodeForKey(queryValDatum);
+        Long[] hashVals = hasher.calcHashCodeForKeyStrategy(queryValDatum);
         if (partColInt == 1) {
             ComparisonKind searchCmp = comp;
             if (comp != ComparisonKind.EQUAL) {
                 searchCmp = ComparisonKind.NOT_EQUAL;
             }
             rs = super.routePartitions(ec, searchCmp, hashVals[0]);
-        
+
         } else {
             PartitionBoundVal[] boundValArr = new PartitionBoundVal[partColInt];
             for (int i = 0; i < partColInt; i++) {
                 PartitionBoundVal queryValOfOneFld = queryValDatum.datumInfo[i];
                 if (queryValOfOneFld.isNormalValue()) {
                     boundValArr[i] = PartitionInfoBuilder
-                        .buildOneHashBoundValByLong(null, hashVals[i], boundValDataType, PartFieldAccessType.QUERY_PRUNING);
+                        .buildOneHashBoundValByLong(null, hashVals[i], boundValDataType,
+                            PartFieldAccessType.QUERY_PRUNING);
                 } else {
                     if (queryValOfOneFld.isMaxValue()) {
                         boundValArr[i] = PartitionInfoBuilder
-                            .buildOneHashBoundValByLong(null, SearchDatumHasher.MAX_HASH_VALUE, boundValDataType, PartFieldAccessType.QUERY_PRUNING);
+                            .buildOneHashBoundValByLong(null, SearchDatumHasher.MAX_HASH_VALUE, boundValDataType,
+                                PartFieldAccessType.QUERY_PRUNING);
                     } else {
                         boundValArr[i] = PartitionInfoBuilder
-                            .buildOneHashBoundValByLong(null, SearchDatumHasher.MIN_HASH_VALUE, boundValDataType, PartFieldAccessType.QUERY_PRUNING);
+                            .buildOneHashBoundValByLong(null, SearchDatumHasher.MIN_HASH_VALUE, boundValDataType,
+                                PartFieldAccessType.QUERY_PRUNING);
                     }
                 }
             }
             SearchDatumInfo hashValDatum = new SearchDatumInfo(boundValArr);
-            rs = super.routePartitions(ec, comp, hashValDatum);            
+            rs = super.routePartitions(ec, comp, hashValDatum);
+        }
+        rs.strategy = PartitionStrategy.KEY;
+        return rs;
+    }
+
+    public RouterResult routePartitionsFromHashCode(ExecutionContext ec, ComparisonKind comp, int partColInt,
+                                                    Long[] hashVals) {
+        RouterResult rs;
+        if (partColInt == 1) {
+            ComparisonKind searchCmp = comp;
+            if (comp != ComparisonKind.EQUAL) {
+                searchCmp = ComparisonKind.NOT_EQUAL;
+            }
+            rs = super.routePartitions(ec, searchCmp, hashVals[0]);
+
+        } else {
+            PartitionBoundVal[] boundValArr = new PartitionBoundVal[partColInt];
+            for (int i = 0; i < partColInt; i++) {
+                boundValArr[i] = PartitionInfoBuilder
+                    .buildOneHashBoundValByLong(null, hashVals[i], boundValDataType,
+                        PartFieldAccessType.QUERY_PRUNING);
+            }
+            SearchDatumInfo hashValDatum = new SearchDatumInfo(boundValArr);
+            rs = super.routePartitions(ec, comp, hashValDatum);
         }
         rs.strategy = PartitionStrategy.KEY;
         return rs;

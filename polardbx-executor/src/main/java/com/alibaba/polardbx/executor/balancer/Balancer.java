@@ -151,15 +151,28 @@ public class Balancer extends AbstractLifecycle {
         }
 
         List<BalancePolicy> policies = getBalancePolicy(options.policy);
+
+        /**
+         * Fast checker if the drain node can be deletable
+         */
+        if (options.drainNode != null) {
+            PolicyDrainNode.DrainNodeInfo drainNodeInfo = PolicyDrainNode.DrainNodeInfo.parse(options.drainNode);
+            drainNodeInfo.validate();
+        }
+
         List<DbInfoRecord> dbInfoList = DbInfoManager.getInstance().getDbInfoList();
         List<String> schemaList = dbInfoList.stream()
             .filter(DbInfoRecord::isUserDb).map(x -> x.dbName).collect(Collectors.toList());
 
         Map<String, BalanceStats> stats = schemaList.stream().map(schema ->
-            collectBalanceStatsOfDatabase(ec, schema)
+            collectBalanceStatsOfDatabase(schema)
         ).collect(Collectors.toMap(BalanceStats::getSchema, x -> x));
 
         List<BalanceAction> actions = new ArrayList<>();
+
+        if (!jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already in rebalance");
+        }
 
         for (BalancePolicy policy : policies) {
             actions.addAll(policy.applyToMultiDb(ec, stats, options, schemaList));
@@ -177,7 +190,7 @@ public class Balancer extends AbstractLifecycle {
         if (isSharding) {
             throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE, "only partition database support rebalance table");
         }
-        BalanceStats stats = collectBalanceStatsOfTable(ec, schema, tableName);
+        BalanceStats stats = collectBalanceStatsOfTable(schema, tableName);
 
         return rebalanceImpl(ec, options, stats, schema);
     }
@@ -189,12 +202,15 @@ public class Balancer extends AbstractLifecycle {
         String schema = ec.getSchemaName();
         DdlJobManager jobManager = new DdlJobManager();
         String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schema);
-        boolean ok = jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name));
-        if (!ok) {
+        if (!jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name))) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already in rebalance");
         }
 
-        BalanceStats stats = collectBalanceStatsOfDatabase(ec, schema);
+        BalanceStats stats = collectBalanceStatsOfDatabase(schema);
+
+        if (!jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already in rebalance");
+        }
 
         return rebalanceImpl(ec, options, stats, schema);
     }
@@ -237,9 +253,9 @@ public class Balancer extends AbstractLifecycle {
         return new PolicyDataBalance();
     }
 
-    private BalanceStats collectBalanceStatsOfTable(ExecutionContext ec, String schema, String tableName) {
+    public static BalanceStats collectBalanceStatsOfTable(String schema, String tableName) {
         if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
-            List<TableGroupStat> tableGroupStats = StatsUtils.getTableGroupsStats(ec.getSchemaName(), tableName);
+            List<TableGroupStat> tableGroupStats = StatsUtils.getTableGroupsStats(schema, tableName);
             return BalanceStats.createForPartition(schema, tableGroupStats);
         } else {
             List<GroupStats.GroupsOfStorage> groupStats = GroupStats.getGroupsOfDb(schema);
@@ -247,8 +263,8 @@ public class Balancer extends AbstractLifecycle {
         }
     }
 
-    private BalanceStats collectBalanceStatsOfDatabase(ExecutionContext ec, String schema) {
-        return collectBalanceStatsOfTable(ec, schema, null);
+    public static BalanceStats collectBalanceStatsOfDatabase(String schema) {
+        return collectBalanceStatsOfTable(schema, null);
     }
 
 }

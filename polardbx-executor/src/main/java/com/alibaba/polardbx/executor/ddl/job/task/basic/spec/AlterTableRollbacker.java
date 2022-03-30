@@ -69,9 +69,9 @@ public class AlterTableRollbacker {
     }
 
     public static boolean checkIfRollbackable(SQLAlterTableStatement alterTableStmt) {
-        if (alterTableStmt.getPartition() != null) {
-            return false;
-        }
+//        if (alterTableStmt.getPartition() != null) {
+//            return false;
+//        }
 
         // alter operations
         EnumSet<AlterTableOperation> alterOperations = EnumSet.noneOf(AlterTableOperation.class);

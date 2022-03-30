@@ -61,7 +61,7 @@ public interface BalancePolicy {
     }
 
     /**
-     * Apply to database which partition_mode='partitioning'
+     * Apply to database which mode='auto'
      */
     default List<BalanceAction> applyToPartitionDb(ExecutionContext ec,
                                                    BalanceOptions options,
@@ -71,7 +71,7 @@ public interface BalancePolicy {
     }
 
     /**
-     * Apply to database which partition_mode='sharding'
+     * Apply to database which mode='drds'
      */
     default List<BalanceAction> applyToShardingDb(ExecutionContext ec,
                                                   BalanceOptions options,

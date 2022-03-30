@@ -22,6 +22,8 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaInnodbBufferPage;
@@ -80,7 +82,7 @@ public class InformationSchemaInnodbBufferHandler extends BaseVirtualViewSubClas
 //        schemaNames.add(SystemDbHelper.INFO_SCHEMA_DB_NAME);
         schemaNames.add(executionContext.getSchemaName());
 
-        Map<String, List<TGroupDataSource>> instId2GroupList = virtualViewHandler.getInstId2GroupList(schemaNames);
+        Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(schemaNames);
 
         for (List<TGroupDataSource> groupDataSourceList : instId2GroupList.values()) {
 

@@ -40,6 +40,9 @@ public class SQLRecorderLogger {
     // 逻辑慢SQL日志
     public final static Logger slowLogger = LoggerFactory.getLogger("slow");
 
+    //逻辑慢SQL日志详细，和SQL日志一样的指标
+    public final static Logger slowDetailLogger = LoggerFactory.getLogger("slow_detail");
+
     // 物理慢SQL
     public final static Logger physicalSlowLogger = LoggerFactory.getLogger("physical_slow");
 

@@ -152,7 +152,15 @@ public class RelOptCluster {
     if (mq == null) {
       mq = RelMetadataQuery.instance();
     }
-    return mq;
+
+    RelMetadataQuery local = mq;
+    if (local == null) {
+      // maybe some concurrent thread call invalidateMetadataQuery
+      // cache RelMetadataQuery on the stack to in case of returning null
+      local = RelMetadataQuery.instance();
+      mq = local;
+    }
+    return local;
   }
 
   /**

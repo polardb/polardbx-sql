@@ -38,6 +38,7 @@ import com.alibaba.polardbx.optimizer.core.function.SqlNumericConvFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericCrc32Function;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericOneFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlPadFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlPartRouteFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlRepeatFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlReplaceFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlReverseFunction;
@@ -269,6 +270,9 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         SqlFunctionCategory.SYSTEM);
     public static SqlFunction CONCAT = new SqlConcatFunction("CONCAT");
     public static SqlFunction CONCAT_WS = new SqlConcatFunction("CONCAT_WS");
+
+    public static SqlFunction PART_ROUTE = new SqlPartRouteFunction("PART_ROUTE");
+
     // Todo:CONNECTION_ID
     public static SqlFunction CONV = new SqlNumericConvFunction("CONV");
     // public static SqlFunction CONVERT = new CoronaDBSqlConvertFunction();
@@ -767,6 +771,8 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         InferTypes.FIRST_KNOWN,
         OperandTypes.ANY_ANY,
         SqlFunctionCategory.TIMEDATE);
+
+    public static SqlFunction CURTIMEZONE = new FunctionWithoutArg("CUR_TIME_ZONE", ReturnTypes.VARCHAR_2000);
 
     /**
      * SUBSTRING_INDEX SUBTIME
@@ -2171,7 +2177,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     // JSON functions
     public static SqlFunction JSON_EXTRACT = new SqlFunction("JSON_EXTRACT",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
@@ -2192,21 +2198,21 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
 
     public static SqlFunction JSON_ARRAY_APPEND = new SqlFunction("JSON_ARRAY_APPEND",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_ARRAY = new SqlFunction("JSON_ARRAY",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_ARRAY_INSERT = new SqlFunction("JSON_ARRAY_INSERT",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
@@ -2227,56 +2233,56 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
 
     public static SqlFunction JSON_DEPTH = new SqlFunction("JSON_DEPTH",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.INTEGER_NULLABLE,
+        ReturnTypes.BIGINT_NULLABLE,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_INSERT = new SqlFunction("JSON_INSERT",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_KEYS = new SqlFunction("JSON_KEYS",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_LENGTH = new SqlFunction("JSON_LENGTH",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.INTEGER_NULLABLE,
+        ReturnTypes.BIGINT_NULLABLE,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_MERGE = new SqlFunction("JSON_MERGE",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_MERGE_PATCH = new SqlFunction("JSON_MERGE_PATCH",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_MERGE_PRESERVE = new SqlFunction("JSON_MERGE_PRESERVE",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_OBJECT = new SqlFunction("JSON_OBJECT",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
@@ -2311,21 +2317,21 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
 
     public static SqlFunction JSON_SEARCH = new SqlFunction("JSON_SEARCH",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_SET = new SqlFunction("JSON_SET",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.JSON,
         InferTypes.FIRST_KNOWN,
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction JSON_STORAGE_SIZE = new SqlFunction("JSON_STORAGE_SIZE",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.INTEGER_NULLABLE,
+        ReturnTypes.BIGINT_NULLABLE,
         InferTypes.FIRST_KNOWN,
         OperandTypes.ANY,
         SqlFunctionCategory.SYSTEM);

@@ -17,9 +17,10 @@
 package com.alibaba.polardbx.optimizer.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import org.openjdk.jol.info.ClassLayout;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
@@ -30,6 +31,7 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
  * @author hongxi.chx
  */
 public class ShortBlock extends AbstractBlock {
+    private static final short NULL_VALUE = (short) 0;
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(ShortBlock.class).instanceSize();
 
     private short[] values;
@@ -83,9 +85,9 @@ public class ShortBlock extends AbstractBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putShort((short) 0);
+            sink.putShort(NULL_VALUE);
         } else {
             sink.putShort(getShort(position));
         }

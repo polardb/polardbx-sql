@@ -39,6 +39,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexProgram;
 import org.apache.calcite.rex.RexProgramBuilder;
 import org.apache.calcite.rex.RexSubQuery;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.tools.RelBuilderFactory;
@@ -182,7 +183,7 @@ public class JoinProjectTransposeRule extends RelOptRule {
 
     if (leftProj != null) {
       for (RexNode rexNode : leftProj.getProjects()) {
-        if (rexNode instanceof RexSubQuery) {
+        if (RexUtil.hasSubQuery(rexNode)) {
           return;
         }
       }
@@ -190,7 +191,7 @@ public class JoinProjectTransposeRule extends RelOptRule {
 
     if (rightProj != null) {
       for (RexNode rexNode : rightProj.getProjects()) {
-        if (rexNode instanceof RexSubQuery) {
+        if (RexUtil.hasSubQuery(rexNode)) {
           return;
         }
       }

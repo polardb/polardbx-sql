@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import lombok.Data;
 import org.apache.calcite.sql.SequenceBean;
@@ -67,6 +68,8 @@ public class PhysicalPlanData {
     private boolean truncatePartition;
 
     private LocalityDesc localityDesc;
+
+    private AlterTablePreparedData alterTablePreparedData;
 
     @Override
     public String toString() {

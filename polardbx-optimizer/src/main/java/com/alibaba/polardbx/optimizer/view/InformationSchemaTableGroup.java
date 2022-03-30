@@ -28,11 +28,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Created by luoyanxin.
+ * Created by chenghui.lch
  *
- * @author luoyanxin
+ * @author chenghui.lch
  */
-public class InformationSchemaTableGroup extends VirtualView {
+public class InformationSchemaTableGroup extends InformationSchemaFullTableGroup {
 
     protected InformationSchemaTableGroup(RelOptCluster cluster,
                                           RelTraitSet traitSet) {
@@ -48,14 +48,17 @@ public class InformationSchemaTableGroup extends VirtualView {
         final RelDataTypeFactory typeFactory = getCluster().getTypeFactory();
         List<RelDataTypeFieldImpl> columns = new ArrayList<>();
 
-        columns.add(new RelDataTypeFieldImpl("SCHEMA_NAME", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_SCHEMA", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_GROUP_ID", 1, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("TABLE_GROUP_NAME", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("LOCALITY", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PRIMARY_ZONE", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("IS_MANUAL_CREATE", 5, typeFactory.createSqlType(SqlTypeName.INTEGER)));
-        columns.add(new RelDataTypeFieldImpl("PART_INFO", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("TABLES", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("CUR_PART_KEY", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("MAX_PART_KEY", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PART_COUNT", 8, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_COUNT", 9, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("INDEX_COUNT", 10, typeFactory.createSqlType(SqlTypeName.BIGINT)));
 
         return typeFactory.createStructType(columns);
     }

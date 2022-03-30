@@ -22,31 +22,24 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLAggregateExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLAllColumnExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLJoinTableSource;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectItem;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableSource;
+import com.alibaba.polardbx.druid.sql.ast.statement.*;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Created by wenshao on 21/07/2017.
  */
 public class Schema {
-    private         String                  catalog;
-    private         String                  name;
-    protected final Map<Long, SchemaObject> objects    = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
-    protected final Map<Long, SchemaObject> functions  = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
-    private         SchemaRepository        repository;
+    private String catalog;
+    private String name;
+    protected final Map<Long, SchemaObject> objects = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
+    protected final Map<Long, SchemaObject> indexes = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
+    protected final Map<Long, SchemaObject> sequences = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
+    protected final Map<Long, SchemaObject> functions = new ConcurrentHashMap<Long, SchemaObject>(16, 0.75f, 1);
+    private SchemaRepository repository;
 
     protected Schema(SchemaRepository repository) {
         this(repository, null);
@@ -157,7 +150,7 @@ public class Schema {
 
     public boolean isSequence(String name) {
         long nameHashCode64 = FnvHash.hashCode64(name);
-        SchemaObject object = objects.get(nameHashCode64);
+        SchemaObject object = sequences.get(nameHashCode64);
         return object != null
                 && object.getType() == SchemaObjectType.Sequence;
     }
@@ -347,6 +340,18 @@ public class Schema {
 
     public Collection<SchemaObject> getObjects() {
         return this.objects.values();
+    }
+
+    public Collection<SchemaObject> getIndexes() {
+        return indexes.values();
+    }
+
+    public Collection<SchemaObject> getSequences() {
+        return sequences.values();
+    }
+
+    public Collection<SchemaObject> getFunctions() {
+        return functions.values();
     }
 
     public int getViewCount() {

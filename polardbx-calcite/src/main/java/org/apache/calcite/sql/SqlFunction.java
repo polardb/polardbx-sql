@@ -63,6 +63,7 @@ public class SqlFunction extends SqlOperator {
   static {
     // Non-mysql Functions
     NON_PUSHDOWN_FUNCTION.add(NEXTVAL_FUNC_NAME);
+    NON_PUSHDOWN_FUNCTION.add("PART_ROUTE");
 
     // Information Functions
     NON_PUSHDOWN_FUNCTION.add("CONNECTION_ID");
@@ -118,6 +119,7 @@ public class SqlFunction extends SqlOperator {
     DYNAMIC_FUNCTION.add("SYSTEM_USER");
     DYNAMIC_FUNCTION.add("USER");
     DYNAMIC_FUNCTION.add("VERSION");
+    
   }
 
   public static boolean isDynamic(SqlFunction func) {

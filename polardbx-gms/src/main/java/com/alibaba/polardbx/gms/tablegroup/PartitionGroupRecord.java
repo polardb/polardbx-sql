@@ -143,4 +143,18 @@ public class PartitionGroupRecord implements SystemTableRecord {
     public void setVisible(int visible) {
         this.visible = visible;
     }
+
+    public String digest() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n");
+        sb.append("pgId:");
+        sb.append(id);
+        sb.append(" name:");
+        sb.append(partition_name);
+        sb.append(" tgId:");
+        sb.append(tg_id);
+        sb.append(" phyDb:");
+        sb.append(phy_db);
+        return sb.toString();
+    }
 }

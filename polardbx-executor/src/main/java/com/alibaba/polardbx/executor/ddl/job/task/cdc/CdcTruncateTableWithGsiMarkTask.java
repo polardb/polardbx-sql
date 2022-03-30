@@ -69,14 +69,15 @@ public class CdcTruncateTableWithGsiMarkTask extends BaseDdlTask {
             params.put(ICdcManager.TABLE_NEW_PATTERN, tmpTbNamePattern);
             params.putAll(executionContext.getExtraCmds());
             CdcManagerHelper.getInstance()
-                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), ddlContext.getDdlStmt(),
-                    ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public, params);
+                    .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), ddlContext.getDdlStmt(),
+                            ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public, params,
+                            true, Maps.newHashMap());
         } else {
             Map<String, Set<String>> tmpTableTopology = TruncateUtil.getTmpTableTopology(schemaName, tmpTableName);
             CdcManagerHelper.getInstance()
-                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), ddlContext.getDdlStmt(),
-                    ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public,
-                    executionContext.getExtraCmds(), true, tmpTableTopology);
+                    .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), ddlContext.getDdlStmt(),
+                            ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public,
+                            executionContext.getExtraCmds(), true, tmpTableTopology);
         }
     }
 }

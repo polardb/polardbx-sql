@@ -1360,6 +1360,10 @@ public enum SqlKind {
 
     CREATE_CCL_TRIGGER,
 
+    CREATE_SCHEDULE,
+
+    DROP_SCHEDULE,
+
     /**
      * {@code DROP DATABASE} DDL statement.
      */
@@ -1448,6 +1452,8 @@ public enum SqlKind {
 
     SHOW_DDL_RESULTS,
 
+    SHOW_SCHEDULE_RESULTS,
+
     SHOW_GRANTS,
 
     SHOW_AUTHORS,
@@ -1462,6 +1468,10 @@ public enum SqlKind {
 
     SHOW_GLOBAL_INDEX,
 
+    SHOW_GLOBAL_DEADLOCKS,
+
+    SHOW_LOCAL_DEADLOCKS,
+
     SHOW_METADATA_LOCK,
 
     SHOW_TRANS,
@@ -1475,6 +1485,18 @@ public enum SqlKind {
     SHOW_MASTER_STATUS,
 
     SHOW_BINLOG_EVENTS,
+
+    CHANGE_MASTER,
+
+    START_SLAVE,
+
+    STOP_SLAVE,
+
+    RESET_SLAVE,
+
+    CHANGE_REPLICATION_FILTER,
+
+    SHOW_SLAVE_STATUS,
 
     DESCRIBE_COLUMNS,
 
@@ -1596,6 +1618,11 @@ public enum SqlKind {
     EXTRACT_PARTITION,
 
     /**
+     * partition management: alter table group split into partitions xxx by hot value(xxx[,..,xxx])
+     */
+    SPLIT_HOT_VALUE,
+
+    /**
      * partition management: create new tablegroup
      */
     CREATE_TABLEGROUP,
@@ -1627,7 +1654,20 @@ public enum SqlKind {
     /**
      * refresh topology
      */
-    REFRESH_TOPOLOGY;
+    REFRESH_TOPOLOGY,
+    /**
+     * allocate local partition
+     */
+    ALLOCATE_LOCAL_PARTITION,
+    /**
+     * expire local partition
+     */
+    EXPIRE_LOCAL_PARTITION,
+    /**
+     * REPARTITION_LOCAL_PARTITION
+     */
+    REPARTITION_LOCAL_PARTITION
+    ;
 
     //~ Static fields/initializers ---------------------------------------------
 
@@ -1662,6 +1702,7 @@ public enum SqlKind {
      * {@link #SHOW_DDL_STATUS       } ,
      * {@link #SHOW_DDL_JOBS         } ,
      * {@link #SHOW_DDL_RESULTS      } ,
+     * {@link #SHOW_SCHEDULE_RESULTS      } ,
      * {@link #SHOW_GRANTS           } ,
      * {@link #DESCRIBE_COLUMNS      } ,
      * {@link #SHOW_AUTHORS          } ,
@@ -1693,6 +1734,7 @@ public enum SqlKind {
         SHOW_DDL_STATUS,
         SHOW_DDL_JOBS,
         SHOW_DDL_RESULTS,
+        SHOW_SCHEDULE_RESULTS,
         SHOW_GRANTS,
         DESCRIBE_COLUMNS,
         SHOW_AUTHORS,
@@ -1701,7 +1743,9 @@ public enum SqlKind {
         SHOW_PROFILE,
         SHOW_GLOBAL_INDEX,
         SHOW_METADATA_LOCK,
-        SHOW_TRANS);
+        SHOW_TRANS,
+        SHOW_LOCAL_DEADLOCKS,
+        SHOW_GLOBAL_DEADLOCKS);
 
     public static final EnumSet<SqlKind> LOGICAL_SHOW_WITH_TABLE = EnumSet.of(SHOW_CREATE_TABLE,
         SHOW_TOPOLOGY,
@@ -1713,6 +1757,9 @@ public enum SqlKind {
 
     public static final EnumSet<SqlKind> LOGICAL_SHOW_BINLOG =
         EnumSet.of(SHOW_BINARY_LOGS, SHOW_BINLOG_EVENTS, SHOW_MASTER_STATUS);
+
+    public static final EnumSet<SqlKind> LOGICAL_REPLICATION = EnumSet.of(CHANGE_MASTER,
+        START_SLAVE, STOP_SLAVE, CHANGE_REPLICATION_FILTER, SHOW_SLAVE_STATUS, RESET_SLAVE);
 
     public static final EnumSet<SqlKind> SHOW_QUERY = concat(EnumSet.of(SHOW), LOGICAL_SHOW_QUERY);
 
@@ -1831,7 +1878,8 @@ public enum SqlKind {
 
     public static final EnumSet<SqlKind> DDL_SUPPORTED_BY_NEW_ENGINE =
         EnumSet.of(RENAME_TABLE, TRUNCATE_TABLE, DROP_TABLE, CREATE_INDEX, DROP_INDEX, ALTER_TABLE, CREATE_TABLE,
-            ALTER_TABLEGROUP, ALTER_TABLE_SET_TABLEGROUP, REFRESH_TOPOLOGY, CHECK_GLOBAL_INDEX, ALTER_RULE, MOVE_DATABASE);
+            ALTER_TABLEGROUP, ALTER_TABLE_SET_TABLEGROUP, REFRESH_TOPOLOGY, CHECK_GLOBAL_INDEX, ALTER_RULE,
+            MOVE_DATABASE);
 
     public static final EnumSet<SqlKind> SUPPORT_DDL =
         EnumSet.of(CREATE_TABLE, ALTER_TABLE, DROP_TABLE,
@@ -1843,7 +1891,7 @@ public enum SqlKind {
             CREATE_DATABASE,
             DROP_DATABASE, CHECK_GLOBAL_INDEX, MOVE_DATABASE,
             CHANGE_CONSENSUS_ROLE, ALTER_SYSTEM_SET_CONFIG,
-            REBALANCE);
+            REBALANCE, ALLOCATE_LOCAL_PARTITION, REPARTITION_LOCAL_PARTITION);
 
     public static final EnumSet<SqlKind> SUPPORT_SHADOW_DDL =
         EnumSet.of(CREATE_TABLE, ALTER_TABLE, DROP_TABLE,
@@ -1856,6 +1904,9 @@ public enum SqlKind {
         EnumSet.of(CREATE_CCL_RULE, DROP_CCL_RULE, SHOW_CCL_RULE, CLEAR_CCL_RULES, CREATE_CCL_TRIGGER, DROP_CCL_TRIGGER,
             SHOW_CCL_TRIGGER, CLEAR_CCL_TRIGGERS, SLOW_SQL_CCL);
 
+    public static final EnumSet<SqlKind> SUPPORT_SCHEDULE =
+        EnumSet.of(CREATE_SCHEDULE, DROP_SCHEDULE);
+
     /**
      * Category consisting of all DAL operators.
      */
@@ -1865,7 +1916,9 @@ public enum SqlKind {
         SQL_SET_QUERY,
         SQL_TABLE_LOCK,
         SQL_TRANS,
-        SUPPORT_CCL);
+        SUPPORT_CCL,
+        LOGICAL_REPLICATION,
+        SUPPORT_SCHEDULE);
 
     /**
      * Category consisting of query node types.

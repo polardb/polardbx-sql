@@ -219,7 +219,7 @@ public class RelToLabelConverter extends RelShuttleImpl {
     @Override
     public RelNode visit(TableScan scan) {
         if (scan instanceof LogicalView) {
-            ((LogicalView) scan).getPushedRelNode().accept(this);
+            (((LogicalView) scan).getSemiJoinRemovedRelNode()).accept(this);
         } else {
             blackboard.tableScan(scan);
         }

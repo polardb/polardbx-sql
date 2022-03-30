@@ -21,13 +21,18 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineResourceManager;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.PersistentReadWriteLock;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.google.common.base.Joiner;
+import com.google.common.collect.Sets;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.List;
+import java.util.Set;
 
-import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.EMPTY_CONTENT;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ENGINE_TYPE_DAG;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.NONE;
 import static com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap.DdlEngineDagExecutionInfo;
@@ -43,11 +48,21 @@ public class DdlCacheCollectionSyncAction implements ISyncAction {
         this.schemaName = schemaName;
     }
 
+    private PersistentReadWriteLock lockManager = PersistentReadWriteLock.create();
+
     @Override
     public ResultCursor sync() {
         ArrayResultCursor resultCursor = buildResultCursor();
 
         String serverInfo = TddlNode.getNodeInfo();
+
+        // All DDls
+        List<DdlContext> ddlAcquiringLocksList = DdlEngineResourceManager.getAllDdlAcquiringLocks(schemaName);
+        if (CollectionUtils.isNotEmpty(ddlAcquiringLocksList)){
+            for(DdlContext ddlContext: ddlAcquiringLocksList){
+                resultCursor.addRow(buildRowFromDdlContext(ddlContext, serverInfo));
+            }
+        }
 
         List<DdlEngineDagExecutionInfo> ddlExecutionInfoList = DdlEngineDagExecutorMap.getAllDdlJobCaches(schemaName);
         if (CollectionUtils.isNotEmpty(ddlExecutionInfoList)) {
@@ -65,12 +80,31 @@ public class DdlCacheCollectionSyncAction implements ISyncAction {
         resultCursor.addColumn("SERVER", DataTypes.StringType);
         resultCursor.addColumn("JOB_ID", DataTypes.StringType);
         resultCursor.addColumn("SCHEMA_NAME", DataTypes.StringType);
-        resultCursor.addColumn("RESOURCES", DataTypes.StringType);
+        resultCursor.addColumn("DDL_STMT", DataTypes.StringType);
         resultCursor.addColumn("STATE", DataTypes.StringType);
         resultCursor.addColumn("INTERRUPTED", DataTypes.StringType);
         resultCursor.addColumn("LEGACY_ENGINE_INFO", DataTypes.StringType);
         resultCursor.initMeta();
         return resultCursor;
+    }
+
+    private Object[] buildRowFromDdlContext(DdlContext ddlContext, String nodeInfo) {
+        Set<String> blockers =
+            lockManager.queryBlocker(Sets.union(Sets.newHashSet(ddlContext.getSchemaName()), ddlContext.getResources()));
+        return new Object[] {
+            ENGINE_TYPE_DAG,
+            nodeInfo,
+            ddlContext.getJobId(),
+            ddlContext.getSchemaName(),
+            ddlContext.getDdlStmt(),
+            String.format("Acquiring DDL Locks, S:%s, X:%s, Blockers:[%s]",
+                ddlContext.getSchemaName(),
+                setToString(ddlContext.getResources()),
+                setToString(blockers)
+            ),
+            ddlContext.isInterrupted(),
+            NONE
+        };
     }
 
     private Object[] buildRow(DdlEngineDagExecutionInfo ddlJobCache, String nodeInfo) {
@@ -79,8 +113,8 @@ public class DdlCacheCollectionSyncAction implements ISyncAction {
             nodeInfo,
             ddlJobCache.jobId,
             ddlJobCache.schemaName,
-            ddlJobCache.resources,
-            ddlJobCache.state != null ? ddlJobCache.state.name() : EMPTY_CONTENT,
+            ddlJobCache.ddlStmt,
+            ddlJobCache.state != null ? ddlJobCache.state.name() : NONE,
             ddlJobCache.interrupted,
             NONE
         };
@@ -92,6 +126,13 @@ public class DdlCacheCollectionSyncAction implements ISyncAction {
 
     public void setSchemaName(String schemaName) {
         this.schemaName = schemaName;
+    }
+
+    private String setToString(Set<String> lockSet){
+        if(CollectionUtils.isEmpty(lockSet)){
+            return "";
+        }
+        return Joiner.on(",").join(lockSet);
     }
 
 }

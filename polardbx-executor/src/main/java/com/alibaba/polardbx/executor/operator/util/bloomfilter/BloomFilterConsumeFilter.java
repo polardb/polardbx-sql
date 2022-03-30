@@ -17,7 +17,8 @@
 package com.alibaba.polardbx.executor.operator.util.bloomfilter;
 
 import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 
 /**
  * @author bairui.lrj
@@ -25,7 +26,7 @@ import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
  */
 public class BloomFilterConsumeFilter {
     private final BloomFilterConsume bloomFilterConsume;
-    private TddlHasher hasher;
+    private IStreamingHasher hasher;
 
     public BloomFilterConsumeFilter(BloomFilterConsume bloomFilterConsume) {
         this.bloomFilterConsume = bloomFilterConsume;
@@ -43,5 +44,9 @@ public class BloomFilterConsumeFilter {
                 .mightContain(row.hashCode(hasher, bloomFilterConsume.getHashKeys()));
         }
         return bfilter;
+    }
+
+    public BloomFilter getBloomFilter() {
+        return bloomFilterConsume.getBloomFilter();
     }
 }

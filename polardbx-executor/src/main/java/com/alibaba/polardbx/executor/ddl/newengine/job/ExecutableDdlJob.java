@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.newengine.job;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph;
 import org.apache.commons.collections.CollectionUtils;
 
+import javax.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +35,7 @@ public class ExecutableDdlJob extends AbstractDdlJob {
     public DdlJob combineTasks(ExecutableDdlJob ddlJob) {
         synchronized (taskGraph) {
             taskGraph.addGraph(ddlJob.taskGraph);
+            this.addExcludeResources(ddlJob.getExcludeResources());
         }
         return this;
     }
@@ -44,6 +46,7 @@ public class ExecutableDdlJob extends AbstractDdlJob {
      * @param job the new job
      * @return job self
      */
+    @Deprecated
     public DdlJob appendJob(ExecutableDdlJob job) {
         if (job.isEmpty()) {
             return this;
@@ -57,7 +60,7 @@ public class ExecutableDdlJob extends AbstractDdlJob {
             }
         } else {
             combineTasks(job);
-            if (getTail() != null) {
+            if (getTail() != null && job.getHead() != null) {
                 addTaskRelationship(getTail(), job.getHead());
             }
         }
@@ -73,6 +76,7 @@ public class ExecutableDdlJob extends AbstractDdlJob {
     /**
      * Append a job after the predecessor node
      */
+    @Deprecated
     public DdlJob appendJobAfter(DdlTask predecessor, ExecutableDdlJob job) {
         if (job.isEmpty()) {
             return this;
@@ -85,6 +89,39 @@ public class ExecutableDdlJob extends AbstractDdlJob {
         }
         addTaskRelationship(predecessor, job.getHead());
 
+        this.excludeResources.addAll(job.getExcludeResources());
+        return this;
+    }
+
+
+    /**
+     * A convenient method to append to the DAG tail
+     *
+     * @param job the new job
+     * @return job self
+     */
+    public DdlJob appendJob2(ExecutableDdlJob job) {
+        if (job == null || job.isEmpty()) {
+            return this;
+        }
+        taskGraph.appendGraph(job.taskGraph);
+
+        // combine resources
+        this.excludeResources.addAll(job.getExcludeResources());
+        return this;
+    }
+
+    /**
+     * Append a job after the predecessor node
+     */
+    public DdlJob appendJobAfter2(@NotNull DdlTask predecessor, ExecutableDdlJob job) {
+        if (job == null || job.isEmpty()) {
+            return this;
+        }
+
+        taskGraph.appendGraphAfter(taskGraph.findVertex(predecessor), job.taskGraph);
+
+        // combine resources
         this.excludeResources.addAll(job.getExcludeResources());
         return this;
     }

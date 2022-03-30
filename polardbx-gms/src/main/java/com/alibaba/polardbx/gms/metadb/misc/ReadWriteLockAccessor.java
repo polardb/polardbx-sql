@@ -93,6 +93,7 @@ public class ReadWriteLockAccessor extends AbstractAccessor {
 
     public int insert(List<ReadWriteLockRecord> recordList) {
         try {
+
             if (CollectionUtils.isEmpty(recordList)) {
                 return 0;
             }
@@ -209,7 +210,7 @@ public class ReadWriteLockAccessor extends AbstractAccessor {
         }
     }
 
-    public int deleteByResourceAndType(String owner, String resource, String type) {
+    public int deleteByOwnerAndResourceAndType(String owner, String resource, String type) {
         try {
             final Map<Integer, ParameterContext> params = new HashMap<>(16);
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, owner);

@@ -16,26 +16,18 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.factory.RefreshTopologyFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
-import com.alibaba.polardbx.gms.util.GroupInfoUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRefreshTopology;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class LogicalRefreshTopologyHandler extends LogicalCommonDdlHandler {
 
@@ -45,48 +37,19 @@ public class LogicalRefreshTopologyHandler extends LogicalCommonDdlHandler {
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
-        LogicalRefreshTopology logicalRefreshTopology =
-            (LogicalRefreshTopology) logicalDdlPlan;
+        LogicalRefreshTopology logicalRefreshTopology = (LogicalRefreshTopology) logicalDdlPlan;
+
         List<DbInfoRecord> newPartDbInfoRecords =
-            DbTopologyManager.getNewPartDbInfoFromMetaDb();
+            DbTopologyManager.getNewPartDbInfoFromMetaDb(executionContext.getSchemaName());
         if (GeneralUtil.isEmpty(newPartDbInfoRecords)) {
             return new TransientDdlJob();
         }
 
-        Map<String, Pair<TableGroupConfig, Map<String, List<Pair<String, String>>>>> dbTableGroupAndInstGroupInfo =
-            new HashMap<>();
-        for (DbInfoRecord dbInfoRecord : newPartDbInfoRecords) {
-            Map<String, List<Pair<String, String>>> instGroupDbInfo =
-                DbTopologyManager.generateDbAndGroupNewConfigInfo(dbInfoRecord.dbName);
-            TableGroupConfig tableGroupConfig =
-                OptimizerContext.getContext(dbInfoRecord.dbName).getTableGroupInfoManager()
-                    .getBroadcastTableGroupConfig();
-            if (GeneralUtil.isNotEmpty(instGroupDbInfo)) {
-                final boolean shareStorageMode =
-                    executionContext.getParamManager().getBoolean(ConnectionParams.SHARE_STORAGE_MODE);
-                //for local debug
-                if (shareStorageMode) {
-                    Map<String, List<Pair<String, String>>> copyInstGroupDbInfo = new HashMap<>();
-                    for (Map.Entry<String, List<Pair<String, String>>> entry : instGroupDbInfo.entrySet()) {
-                        for (Pair<String, String> pair : entry.getValue()) {
-                            copyInstGroupDbInfo.computeIfAbsent(entry.getKey(), o -> new ArrayList<>()).add(Pair.of(
-                                GroupInfoUtil.buildGroupNameFromPhysicalDb(pair.getValue() + "S"),
-                                pair.getValue() + "S"));
-                        }
-                    }
-                    instGroupDbInfo = copyInstGroupDbInfo;
-                }
-                dbTableGroupAndInstGroupInfo.put(dbInfoRecord.dbName, new Pair<>(tableGroupConfig, instGroupDbInfo));
-            }
-        }
-        if (GeneralUtil.isEmpty(dbTableGroupAndInstGroupInfo)) {
-            // nothing to do, all the new storage insts are inited or not prepared
-            return new TransientDdlJob();
-        }
-        logicalRefreshTopology.preparedData(dbTableGroupAndInstGroupInfo);
-        return RefreshTopologyFactory
-            .create(logicalRefreshTopology.relDdl, logicalRefreshTopology.getPreparedData(),
-                executionContext);
+        logicalRefreshTopology.preparedData(executionContext);
+        return RefreshTopologyFactory.create(
+            logicalRefreshTopology.relDdl,
+            logicalRefreshTopology.getPreparedData(),
+            executionContext);
     }
 
     @Override

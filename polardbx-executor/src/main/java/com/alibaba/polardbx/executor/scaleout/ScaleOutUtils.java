@@ -19,12 +19,19 @@ package com.alibaba.polardbx.executor.scaleout;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.LongConfigParam;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
@@ -32,6 +39,7 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import java.sql.Connection;
 import java.text.MessageFormat;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -108,7 +116,7 @@ public class ScaleOutUtils {
         do {
             try {
                 DbTopologyManager
-                    .removeNewGroupIntoDb(schemaName, targetStorageInstId, targetGroup,
+                    .removeOldGroupFromDb(schemaName, targetStorageInstId, targetGroup,
                         phyDbOfTargetGroup, socketTimeOut, metaDbConnection);
                 ex = null;
                 break;
@@ -128,21 +136,73 @@ public class ScaleOutUtils {
         }
     }
 
-    public static void setGroupTypeByDbAndGroup(String schemaName, String groupName, int groupType,
-                                                Connection metaDbConn) {
+    public static void updateGroupType(String schemaName,
+                                       String groupName,
+                                       int groupType,
+                                       Connection metaDbConn) {
+        updateGroupType(schemaName, Arrays.asList(groupName), groupType, metaDbConn);
+    }
+
+    /**
+     * Update group type and notify some registered listeners
+     */
+    public static void updateGroupType(String schemaName,
+                                       List<String> groupNameList,
+                                       int groupType,
+                                       Connection metaDbConn) {
+        updateGroupType(schemaName, groupNameList, -1, groupType, metaDbConn);
+    }
+
+    public static void updateGroupType(String schemaName,
+                                       List<String> groupNameList,
+                                       int beforeGroupType,
+                                       int afterGroupType,
+                                       Connection metaDbConn) {
         DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
         dbGroupInfoAccessor.setConnection(metaDbConn);
-        dbGroupInfoAccessor
-            .updateGroupTypeByDbAndGroup(schemaName, groupName,
-                groupType);
+
+        for (String groupName : groupNameList) {
+            if (beforeGroupType >= 0) {
+                DbGroupInfoRecord
+                    dbGroupInfoRecord = dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(schemaName, groupName, false);
+                if (dbGroupInfoRecord.groupType != beforeGroupType) {
+                    continue;
+                }
+            }
+            // update metaDb
+            dbGroupInfoAccessor.updateGroupTypeByDbAndGroup(schemaName, groupName, afterGroupType);
+
+            // group.config
+            String instIdOfGroup = InstIdUtil.getInstId();
+            String groupConfigDataId = MetaDbDataIdBuilder.getGroupConfigDataId(instIdOfGroup, schemaName, groupName);
+            MetaDbConfigManager.getInstance().notify(groupConfigDataId, metaDbConn);
+        }
+
+        // db.topology
+        String dbTopologyDataId = MetaDbDataIdBuilder.getDbTopologyDataId(schemaName);
+        MetaDbConfigManager.getInstance().notify(dbTopologyDataId, metaDbConn);
+    }
+
+    /**
+     * Parallelism for alter tablegroup task
+     */
+    public static int getTableGroupTaskParallelism(ExecutionContext ec) {
+        return getScaleoutTaskParallelismImpl(ec, ConnectionParams.TABLEGROUP_TASK_PARALLELISM);
+    }
+
+    /**
+     * Parallelism for scaleout task
+     */
+    public static int getScaleoutTaskParallelism(ExecutionContext ec) {
+        return getScaleoutTaskParallelismImpl(ec, ConnectionParams.SCALEOUT_TASK_PARALLELISM);
     }
 
     /**
      * Min(NumCpuCores, Max(4, NumStorageNodes * 2))
      */
-    public static int getScaleoutTaskParallelism(ExecutionContext ec) {
+    private static int getScaleoutTaskParallelismImpl(ExecutionContext ec, LongConfigParam param) {
         final int minParallelism = 4;
-        long parallelism = ec.getParamManager().getLong(ConnectionParams.SCALEOUT_TASK_PARALLELISM);
+        long parallelism = ec.getParamManager().getLong(param);
         if (parallelism > 0) {
             return (int) parallelism;
         }

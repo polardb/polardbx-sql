@@ -18,6 +18,16 @@ package com.alibaba.polardbx.optimizer.core.planner;
 
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
+import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
+import com.alibaba.polardbx.optimizer.exception.OptimizerException;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.UncheckedExecutionException;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -219,21 +229,14 @@ public final class PlanCache {
                 cache.invalidate(cacheKey);
             }
         } else {
-            if (cacheKey.getTableMetas().stream().anyMatch(t -> {
+            for (TableMeta t : cacheKey.metas) {
                 TableMeta newVersionMeta =
                     OptimizerContext.getContext(t.getSchemaName()).getLatestSchemaManager()
                         .getTableWithNull(t.getTableName());
-                if (newVersionMeta == null) {
-                    return true;
+                if (newVersionMeta == null || newVersionMeta.getVersion() > t.getVersion()) {
+                    cache.invalidate(cacheKey);
+                    return false;
                 }
-
-                if (newVersionMeta.getVersion() > t.getVersion()) {
-                    return true;
-                }
-                return false;
-            })) {
-                cache.invalidate(cacheKey);
-                return false;
             }
         }
         return true;
@@ -275,7 +278,7 @@ public final class PlanCache {
                 versionInfo.append(table.getVersion());
             }
         }
-        return new CacheKey(sqlParameterized.getSql(), versionInfo.toString(), tables, testMode,
+        return new CacheKey(sqlParameterized, versionInfo.toString(), tables, testMode,
             plannerContext.getExecutionContext().isAutoCommit());
     }
 
@@ -368,10 +371,21 @@ public final class PlanCache {
             return typeDigest;
         }
 
+        /**
+         * only related to parameterizedSql
+         */
         public String getTemplateId() {
-            int hashCode = (int) (31 * parameterizedSql.hashCode() + typeDigest);
+            int hashCode = getTemplateHash();
             return TStringUtil.int2FixedLenHexStr(hashCode);
         }
+
+        /**
+         * only related to parameterizedSql
+         */
+        public int getTemplateHash() {
+            return parameterizedSql.hashCode();
+        }
+
     }
 
     /**

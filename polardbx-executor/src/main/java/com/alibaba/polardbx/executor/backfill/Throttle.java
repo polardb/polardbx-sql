@@ -18,9 +18,12 @@ package com.alibaba.polardbx.executor.backfill;
 
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import org.apache.commons.collections.set.SynchronizedSet;
 
 import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -45,10 +48,7 @@ public class Throttle {
         }
     });
 
-    public void stop() {
-        timerTaskExecutor.shutdown();
-        reset();
-    }
+    private final static Set<Throttle> THROTTLE_INSTANCES = SynchronizedSet.decorate(new HashSet<>());
 
     public long getMaxRate() {
         return this.maxRate;
@@ -91,6 +91,7 @@ public class Throttle {
     private int cyclePeriod = 3;
 
     public Throttle(long minRate, long maxRate, String schema) {
+        THROTTLE_INSTANCES.add(this);
         this.minRate = minRate;
         this.maxRate = maxRate;
         reset();
@@ -183,6 +184,23 @@ public class Throttle {
 
                 }
             }, 0, cyclePeriod, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Get total throttle rate of all instances
+     */
+    public static long getTotalThrottleRate() {
+        long res = 0;
+        for (Throttle t : THROTTLE_INSTANCES) {
+            res += t.getNewRate();
+        }
+        return res;
+    }
+
+    public void stop() {
+        timerTaskExecutor.shutdown();
+        reset();
+        THROTTLE_INSTANCES.remove(this);
     }
 
     public double getActualRateLastCycle() {

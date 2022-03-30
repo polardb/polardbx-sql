@@ -124,4 +124,47 @@ public class FieldDescription {
 
         return true;
     }
+
+    public boolean equalsLogicalAndPhysicalMeta(FieldDescription otherDesc) {
+
+        String fieldName = otherDesc.getFieldName();
+        String fieldType = otherDesc.getFieldType();
+        String fieldNull = otherDesc.getFieldNull();
+        String fieldDefault = otherDesc.getFieldDefault();
+
+        if (!StringUtils.equals(this.fieldName, fieldName)) {
+            return false;
+        }
+
+        if (!StringUtils.equals(this.fieldType, fieldType)) {
+            return false;
+        }
+
+        if (!StringUtils.equals(this.fieldNull, fieldNull)) {
+            return false;
+        }
+
+        if (!StringUtils.equals(this.fieldDefault, fieldDefault)) {
+            return false;
+        }
+
+        return true;
+    }
+    public boolean equalsTableAndGsi(FieldDescription otherDesc) {
+
+        String fieldName = otherDesc.getFieldName();
+        String fieldType = otherDesc.getFieldType();
+        String fieldNull = otherDesc.getFieldNull();
+        String fieldDefault = otherDesc.getFieldDefault();
+
+        if (!StringUtils.equals(this.fieldName, fieldName)) {
+            return false;
+        }
+
+        if (!StringUtils.equals(this.fieldType, fieldType)) {
+            return false;
+        }
+
+        return true;
+    }
 }

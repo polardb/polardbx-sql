@@ -19,6 +19,7 @@ package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -43,6 +44,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ENGINE_TYPE_DAG;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.NONE;
@@ -60,6 +62,19 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         super(repo);
     }
 
+    public static List<DdlEngineRecord> inspectDdlJobs(Pair<List<Long>, String> schemaOrJobsIds,
+                                                       DdlEngineSchedulerManager dsm) {
+        if (CollectionUtils.isNotEmpty(schemaOrJobsIds.getKey())) {
+            List<Long> jobIds = schemaOrJobsIds.getKey();
+            return dsm.fetchRecords(jobIds);
+        } else if (StringUtils.isNotEmpty(schemaOrJobsIds.getValue())) {
+            String schema = schemaOrJobsIds.getValue();
+            return dsm.fetchRecords(schema);
+        } else {
+            throw new IllegalArgumentException("either schema or jobIds should be exist");
+        }
+    }
+
     @Override
     public Cursor doHandle(final LogicalDal logicalPlan, ExecutionContext executionContext) {
         SqlShowDdlJobs showDdlJobs = (SqlShowDdlJobs) logicalPlan.getNativeSqlNode();
@@ -67,19 +82,17 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         boolean isFull = showDdlJobs.isFull();
         List<Long> jobIds = showDdlJobs.getJobIds();
 
-        // Try new DDL engine first.
-        List<DdlEngineRecord> records;
-        if (jobIds != null && jobIds.size() > 0) {
-            records = schedulerManager.fetchRecords(jobIds);
-        } else {
-            records = schedulerManager.fetchRecords(executionContext.getSchemaName());
-        }
+        List<DdlEngineRecord> records =
+            inspectDdlJobs(Pair.of(jobIds, executionContext.getSchemaName()), schedulerManager);
 
         ArrayResultCursor resultCursor = buildResultCursor(isFull);
         if (CollectionUtils.isNotEmpty(records)) {
             gsiBackfillManager = new GsiBackfillManager(executionContext.getSchemaName());
             // If the jobs on new DDL engine, then show them.
             for (DdlEngineRecord record : records) {
+                if (!isFull && record.isSubJob()) {
+                    continue;
+                }
                 resultCursor.addRow(buildRow(record, isFull));
             }
         }
@@ -96,8 +109,8 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         resultCursor.addColumn("ENGINE", DataTypes.StringType);
         resultCursor.addColumn("DDL_TYPE", DataTypes.StringType);
         resultCursor.addColumn("STATE", DataTypes.StringType);
-        resultCursor.addColumn("BACKFILL_PROGRESS", DataTypes.StringType);
-        resultCursor.addColumn("PHY_DDL_PROGRESS", DataTypes.StringType);
+        resultCursor.addColumn("TOTAL_BACKFILL_PROGRESS", DataTypes.StringType);
+        resultCursor.addColumn("CURRENT_PHY_DDL_PROGRESS", DataTypes.StringType);
         resultCursor.addColumn("PROGRESS", DataTypes.StringType);
         resultCursor.addColumn("START_TIME", DataTypes.StringType);
         resultCursor.addColumn("END_TIME", DataTypes.StringType);
@@ -126,8 +139,9 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         if (phyProcess != null && phyProcess != StringUtils.EMPTY) {
             phyProcess = phyProcess.substring(0, Math.min(phyProcess.length(), MAX_SHOW_LEN));
         }
-        String backfillProgress = getBackfillProgress(record.jobId);
-        String totalProgress = getTaskProgress(record.jobId);
+        Pair<String, String> taskAndBackfillProgress = getTaskAndBackfillProgress(record.jobId);
+        String totalProgress = taskAndBackfillProgress.getKey();
+        String backfillProgress = taskAndBackfillProgress.getValue();
         String cancelable = Boolean.valueOf(record.isSupportCancel()).toString();
 
         String gmtCreated = DdlHelper.convertTimestamp(record.gmtCreated);
@@ -142,6 +156,10 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         }
 
         if (isFull) {
+            String ddlResult = NONE;
+            if(StringUtils.isNotEmpty(record.result)){
+                ddlResult = StringUtils.substring(record.result, 0, MAX_SHOW_LEN);
+            }
             return new Object[] {
                 record.jobId, record.schemaName, record.objectName, ENGINE_TYPE_DAG, record.ddlType, record.state,
                 backfillProgress,
@@ -149,7 +167,7 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
                 totalProgress,
                 gmtCreated, gmtModified, elapsedTime, phyProcess,
                 cancelable,
-                NONE, record.responseNode, record.executionNode, record.traceId, record.ddlStmt, NONE, NONE
+                NONE, record.responseNode, record.executionNode, record.traceId, record.ddlStmt, ddlResult, NONE
             };
         } else {
             return new Object[] {
@@ -205,25 +223,83 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         return phyProcess.toString();
     }
 
-    private String getTaskProgress(long jobId) {
+    /**
+     * left: taskProgress
+     * right: BackFillProgress
+     *
+     * @param jobId
+     * @return
+     */
+    private Pair<String, String> getTaskAndBackfillProgress(long jobId) {
         List<DdlEngineTaskRecord> taskRecordList = schedulerManager.fetchTaskRecord(jobId);
         if (CollectionUtils.isEmpty(taskRecordList)) {
-            return 100 + PERCENTAGE;
+            return Pair.of(NONE, NONE);
         }
-        int totalCount = taskRecordList.size();
-        int finishedCount = 0;
-        for (DdlEngineTaskRecord record : taskRecordList) {
-            if (StringUtils.equalsIgnoreCase(DdlTaskState.SUCCESS.name(), record.getState())) {
-                finishedCount++;
-            }
-        }
-        int progress = finishedCount * 100 / totalCount;
-        return progress + PERCENTAGE;
+        final String taskProgress = getTaskProgress(jobId, taskRecordList);
+        final String backfillProgress = getBackfillProgress(jobId, taskRecordList);
+        return Pair.of(taskProgress, backfillProgress);
     }
 
-    private String getBackfillProgress(long jobId) {
-        Integer backfillProgress = gsiBackfillManager.loadBackfillMeta(jobId).getProgress();
-        return Optional.ofNullable(backfillProgress).map(p -> p + PERCENTAGE).orElse(NONE);
+    private String getTaskProgress(long jobId, List<DdlEngineTaskRecord> taskRecordList) {
+        try {
+            int totalCount = taskRecordList.size();
+            int finishedCount = 0;
+            for (DdlEngineTaskRecord record : taskRecordList) {
+                if (StringUtils.equalsIgnoreCase(DdlTaskState.SUCCESS.name(), record.getState())) {
+                    finishedCount++;
+                }
+            }
+            if(totalCount == 0){
+                return NONE;
+            }
+            int progress = finishedCount * 100 / totalCount;
+            return progress + PERCENTAGE;
+        }catch (Exception e){
+            LOGGER.error("get task progress error, jobId:" + jobId, e);
+            return NONE;
+        }
+    }
+
+    private String getBackfillProgress(long jobId, List<DdlEngineTaskRecord> taskRecordList) {
+        if(CollectionUtils.isEmpty(taskRecordList)){
+            return NONE;
+        }
+        try {
+            List<Long> candidate = taskRecordList.stream()
+                .filter(e->StringUtils.containsIgnoreCase(e.getName(), "BackFill"))
+                .map(e->e.taskId)
+                .collect(Collectors.toList());
+            candidate.add(jobId);
+
+            int totalCount = 0;
+            int backfillProgress = 0;
+            for(Long backfillId: candidate){
+                List<GsiBackfillManager.BackfillObjectRecord> rList = gsiBackfillManager.queryBackfillProgress(backfillId);
+                if(CollectionUtils.isEmpty(rList)){
+                    continue;
+                }
+                totalCount += rList.size();
+                for(GsiBackfillManager.BackfillObjectRecord r: rList){
+                    backfillProgress += safeParseLong(r.getLastValue());
+                }
+            }
+            if(totalCount == 0){
+                return NONE;
+            }
+            return Optional.ofNullable(backfillProgress/totalCount).map(p -> p + PERCENTAGE).orElse(NONE);
+        }catch (Exception e){
+            LOGGER.error("get backfill progress error, jobId:" + jobId, e);
+            return NONE;
+        }
+    }
+
+    private long safeParseLong(String str){
+        try {
+            return Long.valueOf(str);
+        }catch (Exception e){
+            LOGGER.error("parse backfill progress error. str:" + str, e);
+            return 0L;
+        }
     }
 
 }

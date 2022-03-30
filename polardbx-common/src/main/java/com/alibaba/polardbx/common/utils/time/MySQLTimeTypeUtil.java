@@ -32,6 +32,7 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Calendar;
@@ -552,6 +553,10 @@ public class MySQLTimeTypeUtil {
         long dateAsMillis = dateCal.getTimeInMillis();
 
         return new Date(dateAsMillis);
+    }
+
+    public static LocalDate createJavaLocalDate(MysqlDateTime t) {
+        return LocalDate.of((int) t.getYear(), (int) (t.getMonth() - 1), (int) t.getDay());
     }
 
     public static Date createOriginalDate(MysqlDateTime t) {

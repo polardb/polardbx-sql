@@ -248,7 +248,7 @@ public class SqlIndexDefinition extends SqlCall {
             }
 
             if (null != partitioning) {
-                // do nothing
+                // partitioning.unparse(writer, leftPrec, rightPrec);
             }
 
             if (writer instanceof SqlPrettyWriter) {

@@ -126,7 +126,6 @@ public class ReplicationShardingModifyWriter extends ShardingModifyWriter implem
         if (distinctRows.isEmpty()) {
             return replicatedRelNode;
         }
-
         // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
             .buildResultForShardingTable(qn.left, qn.right, distinctRows, skMetas, skMapping, pkMapping, ec, true);
@@ -139,7 +138,7 @@ public class ReplicationShardingModifyWriter extends ShardingModifyWriter implem
                 PartitionLocation location = partitionSpec.getLocation();
                 replicateDbIndexAndPhycialTables
                     .computeIfAbsent(location.getGroupKey().toUpperCase(), o -> new HashSet<>())
-                    .add(location.getPhyTableName().toLowerCase());
+                    .add(location.getPhyTableName().toUpperCase());
             }
         }
 

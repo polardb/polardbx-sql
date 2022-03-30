@@ -34,8 +34,6 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SqlAlterTablePartitionKey.class);
 
-    private String sourceSql;
-
     private final SqlIdentifier originTableName;
 
     private final SqlNode dbPartitionBy;
@@ -57,7 +55,6 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
         super(tableName, null, sql, null, new ArrayList<>(), SqlParserPos.ZERO);
         this.name = tableName;
         this.originTableName = tableName;
-        this.sourceSql = sql;
         this.dbPartitionBy = dbPartitionBy;
         this.dbpartitions = dbpartitions;
         this.tablePartitionBy = tablePartitionBy;
@@ -67,15 +64,6 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
     @Override
     public SqlIdentifier getOriginTableName() {
         return originTableName;
-    }
-
-    @Override
-    public String getSourceSql() {
-        return sourceSql;
-    }
-
-    public void setSourceSql(String sourceSql) {
-        this.sourceSql = sourceSql;
     }
 
     public SqlNode getDbPartitionBy() {
@@ -119,7 +107,7 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
     }
 
     private String prepare() {
-        return sourceSql;
+        return getSourceSql();
     }
 
     public String getSchemaName() {
@@ -173,5 +161,9 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
 
     public void setSingle(final boolean single) {
         this.single = single;
+    }
+
+    public boolean isSingleOrBroadcast() {
+        return this.single || this.broadcast;
     }
 }

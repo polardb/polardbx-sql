@@ -146,6 +146,19 @@ public class CheckGsiTask extends BaseBackfillTask {
             SqlSelect.LockMode.valueOf(indexTableLockMode),
             ec);
     }
+    
+    protected boolean fastCheckWithCatchEx(ExecutionContext ec) {
+        boolean fastCheckSucc = false;
+        try {
+            fastCheckSucc = fastCheck(ec);
+        } catch (Throwable ex) {
+            fastCheckSucc =false;
+            String msg = String.format("Failed to use fastChecker to check gsi backFill because of throwing exceptions,  so use old checker instead");
+            SQLRecorderLogger.ddlLogger.warn(msg, ex);
+            LOG.warn(msg, ex);
+        }
+        return fastCheckSucc;
+    }
 
     // TODO(moyi) do not execute task directly
     public void checkInBackfill(ExecutionContext ec) {

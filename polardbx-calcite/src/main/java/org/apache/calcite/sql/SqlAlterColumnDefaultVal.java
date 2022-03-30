@@ -108,4 +108,8 @@ public class SqlAlterColumnDefaultVal extends SqlAlterSpecification {
             sourceSql,
             getParserPosition());
     }
+
+    public SqlLiteral getDefaultVal() {
+        return defaultVal;
+    }
 }

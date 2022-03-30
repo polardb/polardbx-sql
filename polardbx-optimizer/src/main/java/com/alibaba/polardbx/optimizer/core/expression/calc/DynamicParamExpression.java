@@ -16,13 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.expression.calc;
 
-import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
-import io.airlift.slice.Slice;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.sql.SqlKind;

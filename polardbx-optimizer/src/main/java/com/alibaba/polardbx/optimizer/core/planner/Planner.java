@@ -16,6 +16,23 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
+import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlExplainStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlLexer;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.druid.sql.parser.Token;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsSortConvertRule;
+import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.constants.CpuStatAttribute;
@@ -40,15 +57,6 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
-import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlExplainStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlLexer;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.druid.sql.parser.Token;
-import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
 import com.alibaba.polardbx.gms.locality.PrimaryZoneInfo;
@@ -74,7 +82,6 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsFilterConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsLogicalViewConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsOutFileConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsProjectConvertRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsSortConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsSortJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsSortProjectTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalAggToHashAggRule;
@@ -113,6 +120,7 @@ import com.alibaba.polardbx.optimizer.core.rel.RemoveSchemaNameVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceLogicalTableNameWithPhysicalTableNameVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ToDrdsRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.UserHintPassThroughVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.hint.HintPlanner;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
@@ -149,11 +157,10 @@ import com.alibaba.polardbx.optimizer.variable.VariableManager;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.rule.TableRule;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptRule;
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.plan.hep.HepMatchOrder;
@@ -171,6 +178,7 @@ import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.rules.ProjectRemoveRule;
 import org.apache.calcite.rel.rules.SemiJoinProjectTransposeRule;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
@@ -194,6 +202,7 @@ import org.apache.calcite.sql.util.SqlBasicVisitor;
 import org.apache.calcite.util.NlsString;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.lang.reflect.InvocationTargetException;
@@ -208,11 +217,11 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.getRexNodeTableMap;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdvisor;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
+import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
 import static com.alibaba.polardbx.optimizer.utils.RelUtils.disableMpp;
 import static com.alibaba.polardbx.optimizer.workload.WorkloadUtil.determineWorkloadType;
 import static org.apache.calcite.sql.SqlKind.DDL;
@@ -427,12 +436,7 @@ public class Planner {
         // fill the userDefVariable & sysDefVariable
         if (p != null) {
             // record nlsString in parameters
-            Map<Integer, NlsString> nlsStringMap = IntStream.range(0, p.size())
-                .filter(i -> p.get(i) instanceof NlsString)
-                .boxed()
-                .collect(
-                    Collectors.toMap(i -> i, i -> (NlsString) p.get(i))
-                );
+            Map<Integer, NlsString> nlsStringMap = new HashMap<>(p.size());
             executionContext.setParameterNlsStrings(nlsStringMap);
 
             VariableManager variableManager =
@@ -557,6 +561,7 @@ public class Planner {
                         }
                     }
                 } else if (p.get(i) instanceof NlsString) {
+                    nlsStringMap.put(i, (NlsString) p.get(i));
                     // reduce nlsString to Java String
                     NlsString nlsString = (NlsString) p.get(i);
                     if (CharsetName.of(nlsString.getCharsetName()) != CharsetName.BINARY) {
@@ -567,7 +572,6 @@ public class Planner {
                 }
             }
         }
-
         Parameters parameters = executionContext.getParams();
         parameters.setParams(OptimizerUtils.buildParam(p));
     }
@@ -673,7 +677,11 @@ public class Planner {
                 .forEach(e -> ec.addMessage(ExecutionContext.FailedMessage, e));
         }
         ec.setGroupHint(cmdBean.getGroupHint().toString());
-        ec.putAllHintCmds(cmdBean.getExtraCmd());
+        if (isExplain && explain.explainMode.isStatistics()) {
+            ec.putAllHintCmdsWithDefault(cmdBean.getExtraCmd());
+        } else {
+            ec.putAllHintCmds(cmdBean.getExtraCmd());
+        }
         cmdBean.setExtraCmd(ec.getExtraCmds());
         ec.setOriginSqlPushdownOrRoute(hintCollection.pushdownSqlOrRoute());
 
@@ -850,15 +858,16 @@ public class Planner {
             }
         }
         RelMetadataQuery mq = drdsRelNode.getCluster().getMetadataQuery();
-        if (Boolean
-            .parseBoolean(plannerContext.getParamManager().getProps().get(ConnectionProperties.PREPARE_OPTIMIZE))) {
-            return constructExecutionPlan(mq.getOriginalRowType(drdsRelNode), drdsRelNode, drdsRelNode, validatedNode,
-                converter,
-                toDrdsRelVisitor, plannerContext,
-                false);
+        if (Boolean.valueOf(plannerContext.getParamManager().getProps().get(ConnectionProperties.PREPARE_OPTIMIZE))) {
+            ExecutionPlan executionPlan =
+                constructExecutionPlan(mq.getOriginalRowType(drdsRelNode), drdsRelNode, drdsRelNode, validatedNode,
+                    converter,
+                    toDrdsRelVisitor, plannerContext,
+                    ExecutionPlan.DirectMode.NONE);
+            return executionPlan;
         }
         RelNode optimizedNode;
-        boolean shouldDirect;
+        ExecutionPlan.DirectMode directMode;
         RelNode unoptimizedNode = drdsRelNode;
         if (plannerContext.getExternalizePlan() != null) {
             // use plan
@@ -869,24 +878,91 @@ public class Planner {
                 PlanManagerUtil.jsonToRelNode(plannerContext.getExternalizePlan(), cluster,
                     SqlConverter.getInstance(plannerContext.getSchemaName(), plannerContext.getExecutionContext())
                         .getCatalog());
-            shouldDirect = false;
+            directMode = ExecutionPlan.DirectMode.NONE;
         } else {
             // optimize
-            shouldDirect = shouldDirect(toDrdsRelVisitor, validatedNode, plannerContext);
-            optimizedNode = shouldDirect ? unoptimizedNode : optimize(unoptimizedNode, plannerContext);
+            boolean directByTable = shouldDirectByTable(toDrdsRelVisitor, validatedNode, plannerContext);
+            if (directByTable) {
+                optimizedNode = unoptimizedNode;
+                directMode = ExecutionPlan.DirectMode.TABLE_DIRECT;
+            } else {
+                optimizedNode = optimize(unoptimizedNode, plannerContext);
+                if (canDirectByShardingKey(optimizedNode)) {
+                    directMode = ExecutionPlan.DirectMode.SHARDING_KEY_DIRECT;
+                } else {
+                    directMode = ExecutionPlan.DirectMode.NONE;
+                }
+            }
         }
         ExecutionPlan executionPlan =
             constructExecutionPlan(mq.getOriginalRowType(drdsRelNode), unoptimizedNode, optimizedNode, validatedNode,
                 converter,
                 toDrdsRelVisitor, plannerContext,
-                shouldDirect);
+                directMode);
 
         checkModifyLimitation(executionPlan, validatedNode, plannerContext.getExecutionContext().isUseHint(),
             plannerContext);
 
-        PostPlanner.getInstance().setSkipPostOptFlag(plannerContext, optimizedNode, shouldDirect);
+        PostPlanner.getInstance().setSkipPostOptFlag(plannerContext, optimizedNode, directMode.isDirect());
 
         return executionPlan;
+    }
+
+    /**
+     * 是否为分片键点查（主键）
+     */
+    private boolean canDirectByShardingKey(RelNode optimizedNode) {
+        if (!(optimizedNode instanceof LogicalView) || optimizedNode instanceof LogicalModifyView) {
+            return false;
+        }
+        LogicalView lv = (LogicalView) optimizedNode;
+        if (lv.getTableNames().size() > 1 || CollectionUtils.isNotEmpty(lv.getScalarList())) {
+            return false;
+        }
+        if (optimizedNode.getHints() != null && CollectionUtils.isNotEmpty(optimizedNode.getHints().getList())) {
+            // 可能用hint直接指定路由
+            return false;
+        }
+        OptimizerContext oc = OptimizerContext.getContext(lv.getSchemaName());
+        TddlRuleManager or = oc.getRuleManager();
+        TableRule tableRule = or.getTableRule(lv.getLogicalTableName());
+        if (tableRule == null) {
+            return false;
+        }
+        List<String> shardColumns = tableRule.getShardColumns();
+        Map<String, Comparative> comparatives = lv.getComparative();
+
+        boolean canShard = equalsInAllColumns(shardColumns, comparatives);
+        if (!canShard) {
+            return false;
+        }
+        // 判断是否为点查
+        final TableMeta primaryTableMeta = oc.getLatestSchemaManager().getTable(lv.getLogicalTableName());
+        List<String> pkColumns = new ArrayList<>(primaryTableMeta.getPrimaryKey().size());
+        for (ColumnMeta pk : primaryTableMeta.getPrimaryKey()) {
+            pkColumns.add(pk.getName());
+        }
+
+        return equalsInAllColumns(pkColumns, comparatives);
+    }
+
+    /**
+     * 判断给定列均在谓词中出现
+     * 且谓词都为equal
+     */
+    public static boolean equalsInAllColumns(List<String> columns,
+                                             Map<String, Comparative> comparatives) {
+        for (String col : columns) {
+            Comparative c = comparatives.get(col);
+            if (c == null || !PlannerUtils.comparativeIsASimpleEqual(c)) {
+                return false;
+            }
+
+            if (!(c.getValue() instanceof RexDynamicParam)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -985,6 +1061,11 @@ public class Planner {
         volcanoPlanner.setEnablePassThrough(enablePassThrough);
         boolean enableDerive = paramManager.getBoolean(ConnectionParams.ENABLE_DERIVE_TRAIT);
         volcanoPlanner.setEnableDerive(enableDerive);
+        // CBO_RESTRICT_PUSH_JOIN_LIMIT < 0 means disable the restriction
+        boolean enableRestrictCBOPushJoin = paramManager.getInt(ConnectionParams.CBO_RESTRICT_PUSH_JOIN_LIMIT) >= 0
+            && countVisitor.getJoinCount() >= paramManager
+            .getInt(ConnectionParams.CBO_RESTRICT_PUSH_JOIN_LIMIT);
+        plannerContext.setRestrictCboPushJoin(enableRestrictCBOPushJoin);
 
         addCBORule(volcanoPlanner, countVisitor, paramManager, plannerContext);
 
@@ -1006,6 +1087,10 @@ public class Planner {
             throw new RuntimeException("Sql could not be implemented");
         } finally {
             volcanoPlanner.clear();
+            plannerContext.setRestrictCboPushJoin(false);
+        }
+        if (plannerContext.getExecutionContext().isEnableRuleCounter()) {
+            plannerContext.getExecutionContext().setRuleCount(volcanoPlanner.getRuleCount());
         }
 
         output = optimizeByExpandTableLookup(output, plannerContext);
@@ -1113,14 +1198,25 @@ public class Planner {
         boolean enableHashJoin = paramManager.getBoolean(ConnectionParams.ENABLE_HASH_JOIN);
         boolean enableBKAJoin = paramManager.getBoolean(ConnectionParams.ENABLE_BKA_JOIN);
         boolean enableNLJoin = paramManager.getBoolean(ConnectionParams.ENABLE_NL_JOIN);
-        boolean enableSortMergeJoin = paramManager.getBoolean(ConnectionParams.ENABLE_SORT_MERGE_JOIN);
+        boolean enableSortMergeJoin = paramManager.getBoolean(ConnectionParams.ENABLE_SORT_MERGE_JOIN) &&
+            !plannerContext.getRestrictCboPushJoin();
         boolean enableSemiHashJoin = paramManager.getBoolean(ConnectionParams.ENABLE_SEMI_HASH_JOIN);
         boolean enableSemiNLJoin = paramManager.getBoolean(ConnectionParams.ENABLE_SEMI_NL_JOIN);
         boolean enableMaterializedSemiJoin = paramManager.getBoolean(ConnectionParams.ENABLE_MATERIALIZED_SEMI_JOIN);
-        boolean enableSemiSortMergeJoin = paramManager.getBoolean(ConnectionParams.ENABLE_SEMI_SORT_MERGE_JOIN);
+        boolean enableSemiSortMergeJoin = paramManager.getBoolean(ConnectionParams.ENABLE_SEMI_SORT_MERGE_JOIN) &&
+            !plannerContext.getRestrictCboPushJoin();
         boolean enableHashAGG = paramManager.getBoolean(ConnectionParams.ENABLE_HASH_AGG);
         boolean enableSortAgg = paramManager.getBoolean(ConnectionParams.ENABLE_SORT_AGG);
         ImmutableList<RelOptRule> rules = RuleToUse.CBO_BASE_RULE;
+
+        if (plannerContext.getExtraCmds().containsKey(ConnectionProperties.ENABLE_SORT_MERGE_JOIN)) {
+            enableSortMergeJoin = Boolean.parseBoolean(
+                String.valueOf(plannerContext.getExtraCmds().get(ConnectionProperties.ENABLE_SORT_MERGE_JOIN)));
+        }
+        if (plannerContext.getExtraCmds().containsKey(ConnectionProperties.ENABLE_SEMI_SORT_MERGE_JOIN)) {
+            enableSemiSortMergeJoin = Boolean.parseBoolean(
+                String.valueOf(plannerContext.getExtraCmds().get(ConnectionProperties.ENABLE_SEMI_SORT_MERGE_JOIN)));
+        }
 
         if (!plannerContext.isAutoCommit() || plannerContext.getSqlKind().belongsTo(SqlKind.DML)) {
             // Sort-Merge Join cannot work in transaction
@@ -1319,7 +1415,11 @@ public class Planner {
         return output;
     }
 
-    private boolean shouldDirect(ToDrdsRelVisitor toDrdsRelVisitor, SqlNode sqlNode, PlannerContext plannerContext) {
+    /**
+     * 针对单表和广播表的direct转发
+     */
+    private boolean shouldDirectByTable(ToDrdsRelVisitor toDrdsRelVisitor, SqlNode sqlNode,
+                                        PlannerContext plannerContext) {
         if (!plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DIRECT_PLAN)) {
             return false;
         }
@@ -1361,13 +1461,14 @@ public class Planner {
                                                  SqlConverter converter,
                                                  ToDrdsRelVisitor toDrdsRelVisitor,
                                                  PlannerContext plannerContext,
-                                                 boolean constructDirectPlan) {
+                                                 ExecutionPlan.DirectMode directPlanMode) {
         final List<String> tableNames = MetaUtils.buildTableNamesForNode(validatedNode);
-        CursorMeta cursorMeta = CursorMeta.build(CalciteUtils.buildColumnMeta(originalRowType, tableNames));
+        CursorMeta cursorMeta = null;
 
         ExecutionPlan result = null;
         RelNode finalPlan = null;
-        if (constructDirectPlan) {
+        switch (directPlanMode) {
+        case TABLE_DIRECT:
             if (validatedNode.isA(DML)) {
                 cursorMeta = CalciteUtils.buildDmlCursorMeta();
             }
@@ -1384,10 +1485,23 @@ public class Planner {
             } else {
                 optimizedNode = finalPlan;
             }
-        } else {
+            break;
+        case SHARDING_KEY_DIRECT:
+            optimizedNode = buildDirectShardingKeyPlan((LogicalView) optimizedNode,
+                unoptimizedNode,
+                validatedNode,
+                toDrdsRelVisitor.isShouldRemoveSchemaName(), plannerContext);
+            break;
+        case NONE:
             if (validatedNode.isA(DML) || optimizedNode instanceof LogicalOutFile) {
                 cursorMeta = CalciteUtils.buildDmlCursorMeta();
             }
+            break;
+        default:
+            throw new UnsupportedOperationException("Unknown directPlanMode: " + directPlanMode);
+        }
+        if (cursorMeta == null) {
+            cursorMeta = CursorMeta.build(CalciteUtils.buildColumnMeta(originalRowType, tableNames));
         }
 
         // Copy user hint from AST to all logical view.
@@ -1399,9 +1513,9 @@ public class Planner {
         }
 
         result = new ExecutionPlan(validatedNode, optimizedNode, cursorMeta);
-
+        result.setDirectShardingKey(directPlanMode == ExecutionPlan.DirectMode.SHARDING_KEY_DIRECT);
         ExplainResult explainResult = plannerContext.getExecutionContext().getExplain();
-        if (isExplainAdvisor(explainResult)) {
+        if (isExplainAdvisor(explainResult) || isExplainStatistics(explainResult)) {
             plannerContext.getExecutionContext().setUnOptimizedPlan(unoptimizedNode);
         }
 
@@ -1440,10 +1554,11 @@ public class Planner {
         SqlNode ast = executionPlan.getAst();
         SqlKind kind = ast.getKind();
 
-        PlanShardInfo planShardInfo = new PlanShardInfo();
+        PlanShardInfo planShardInfo;
         boolean needInitPlanShard = !(plan instanceof DirectTableOperation) && !(plan instanceof VirtualView) &&
-            !((plan instanceof SingleRel) && (((SingleRel) plan).getInput()) instanceof VirtualView);
-        needInitPlanShard = needInitPlanShard ? !needSkipInitPlanShardInfo(plan) : needInitPlanShard;
+            !(plan instanceof DirectShardingKeyTableOperation) && !((plan instanceof SingleRel) && (((SingleRel) plan)
+            .getInput()) instanceof VirtualView);
+        needInitPlanShard = needInitPlanShard && !needSkipInitPlanShardInfo(plan);
 
         if (needInitPlanShard) {
             switch (kind) {
@@ -1496,8 +1611,8 @@ public class Planner {
         if (visitor.isModifyShardingColumn()) {
             plan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
         }
-        if (visitor.isWithForceIndex()) {
-            plan.getPlanProperties().set(ExecutionPlanProperties.WITH_FORCE_INDEX);
+        if (visitor.isWithIndexHint()) {
+            plan.getPlanProperties().set(ExecutionPlanProperties.WITH_INDEX_HINT);
         }
         if (!sqlNode.isA(SqlKind.DML)) {
             plan.setOriginTableNames(visitor.getTableNames());
@@ -1522,6 +1637,24 @@ public class Planner {
      */
     private RelNode buildDirectPlan(LogicalView logicalView, RelNode relNode, SqlNode sqlNode,
                                     boolean shouldRemoveSchema, PlannerContext pc) {
+        if (sqlNode instanceof SqlInsert) {
+            SqlInsert insert = (SqlInsert) sqlNode;
+            RelOptTable targetTable = relNode.getTable();
+            final org.apache.calcite.util.Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
+            final TableMeta tableMeta =
+                pc.getExecutionContext().getSchemaManager(qn.left).getTable(qn.right);
+            // Expand insert target column list because logical column order may be different from physical column order
+            if (insert.getTargetColumnList() == null && tableMeta.requireLogicalColumnOrder()) {
+                RelDataType baseRowType = targetTable.getRowType();
+                List<SqlNode> nodes = new ArrayList<>();
+                for (String fieldName: baseRowType.getFieldNames()) {
+                    nodes.add(new SqlIdentifier(fieldName, SqlParserPos.ZERO));
+                }
+                SqlNodeList columnList = new SqlNodeList(nodes, SqlParserPos.ZERO);
+                insert.setOperand(3, columnList);
+            }
+        }
+
         // Remove SchemaName
         if (shouldRemoveSchema) {
             RemoveSchemaNameVisitor visitor = new RemoveSchemaNameVisitor(logicalView.getSchemaName());
@@ -1596,21 +1729,8 @@ public class Planner {
                 return new BroadcastTableModify(directTableScan);
             }
         }
-        // Generate XPlan via raw relnode.
-        // TODO: lock not supported now.
-        // Always generate the XPlan in case of switching connection pool.
-        if (sqlNode.getKind() == SqlKind.SELECT
-            && ((SqlSelect) sqlNode).getLockMode() == SqlSelect.LockMode.UNDEF) {
-            final RelToXPlanConverter converter = new RelToXPlanConverter();
-            try {
-                directTableScan.setXTemplate(converter.convert(RelXPlanOptimizer.optimize(relNode)));
-            } catch (Exception e) {
-                Throwable throwable = e;
-                while (throwable.getCause() != null && throwable.getCause() instanceof InvocationTargetException) {
-                    throwable = ((InvocationTargetException) throwable.getCause()).getTargetException();
-                }
-                logger.info("XPlan converter: " + throwable.getMessage());
-            }
+        if (canUseXPlan(sqlNode)) {
+            setXTemplate(directTableScan, relNode);
         }
         // Init sql digest.
         try {
@@ -1620,6 +1740,72 @@ public class Planner {
         }
 
         return directTableScan;
+    }
+
+    /**
+     * 分片键点查,直接填充 LogicalView
+     */
+    private RelNode buildDirectShardingKeyPlan(LogicalView logicalView, RelNode relNode, SqlNode sqlNode,
+                                               boolean shouldRemoveSchema, PlannerContext pc) {
+        // Remove SchemaName
+        String schemaName = logicalView.getSchemaName();
+        if (shouldRemoveSchema) {
+            RemoveSchemaNameVisitor visitor = new RemoveSchemaNameVisitor(schemaName);
+            sqlNode = sqlNode.accept(visitor);
+        }
+        ReplaceTableNameWithQuestionMarkVisitor visitor =
+            new ReplaceTableNameWithQuestionMarkVisitor(schemaName, true, pc.getExecutionContext());
+        sqlNode = sqlNode.accept(visitor);
+        String sqlTemplate = RelUtils.toNativeSql(sqlNode);
+
+        String tableName = logicalView.getLogicalTableName();
+        List<Integer> paramIndex = PlannerUtils.getDynamicParamIndex(sqlNode);
+
+        DirectShardingKeyTableOperation directTableScan = new DirectShardingKeyTableOperation(logicalView,
+            relNode.getRowType(),
+            tableName,
+            sqlTemplate,
+            paramIndex, pc.getExecutionContext());
+        directTableScan.setNativeSqlNode(sqlNode);
+
+        if (sqlNode.getKind() == SqlKind.SELECT) {
+            directTableScan.setLockMode(((SqlSelect) sqlNode).getLockMode());
+        }
+
+        if (canUseXPlan(sqlNode)) {
+            setXTemplate(directTableScan, relNode);
+        }
+        // Init sql digest.
+        try {
+            directTableScan.setSqlDigest(com.google.protobuf.ByteString
+                .copyFrom(MessageDigest.getInstance("md5").digest(directTableScan.getNativeSql().getBytes())));
+        } catch (Exception ignore) {
+        }
+
+        return directTableScan;
+    }
+
+    /**
+     * Generate XPlan via raw relnode.
+     * TODO: lock not supported now.
+     * Always generate the XPlan in case of switching connection pool.
+     */
+    private boolean canUseXPlan(SqlNode sqlNode) {
+        return sqlNode.getKind() == SqlKind.SELECT
+            && ((SqlSelect) sqlNode).getLockMode() == SqlSelect.LockMode.UNDEF;
+    }
+
+    private void setXTemplate(BaseQueryOperation operation, RelNode relNode) {
+        final RelToXPlanConverter converter = new RelToXPlanConverter();
+        try {
+            operation.setXTemplate(converter.convert(RelXPlanOptimizer.optimize(relNode)));
+        } catch (Exception e) {
+            Throwable throwable = e;
+            while (throwable.getCause() != null && throwable.getCause() instanceof InvocationTargetException) {
+                throwable = ((InvocationTargetException) throwable.getCause()).getTargetException();
+            }
+            logger.info("XPlan converter: " + throwable.getMessage());
+        }
     }
 
     /**
@@ -1668,10 +1854,17 @@ public class Planner {
         // stat cpu for planner
         statCpuForBuildPlan(executionContext, startOptimizePlan);
 
-        // post planner
-        if (executionPlan.isUsePostPlanner()) {
-            ExecutionPlan executionPlanForPostPlanner = executionPlan.copy(executionPlan.getPlan());
-            executionPlan = PostPlanner.getInstance().optimize(executionPlanForPostPlanner, executionContext);
+        if (executionPlan.isDirectShardingKey()) {
+            // 点查计划在plan阶段保存sharding信息
+            Pair<String, String> dbIndexAndTableName =
+                ((DirectShardingKeyTableOperation) executionPlan.getPlan()).getDbIndexAndTableName(executionContext);
+            executionPlan.setDbIndexAndTableName(dbIndexAndTableName);
+        } else {
+            // post planner
+            if (executionPlan.isUsePostPlanner()) {
+                ExecutionPlan executionPlanForPostPlanner = executionPlan.copy(executionPlan.getPlan());
+                executionPlan = PostPlanner.getInstance().optimize(executionPlanForPostPlanner, executionContext);
+            }
         }
 
         PlannerContext.getPlannerContext(executionPlan.getPlan()).setExecutionContext(executionContext);

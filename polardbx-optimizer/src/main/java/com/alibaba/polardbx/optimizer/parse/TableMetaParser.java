@@ -143,7 +143,7 @@ public class TableMetaParser {
             .build();
 
         return new TableMeta(tableName, columns, primaryKey, secondaryIndexes, primaryKey != null, TableStatus.PUBLIC,
-            0);
+            0, 0);
     }
 
     /**

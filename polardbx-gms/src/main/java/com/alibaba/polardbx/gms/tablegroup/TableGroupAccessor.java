@@ -22,9 +22,10 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -79,6 +80,13 @@ public class TableGroupAccessor extends AbstractAccessor {
     private static final String UPDATE_GROUP_TYPE_BY_ID =
         "update " + GmsSystemTables.TABLE_GROUP + " set tg_type = ? where id = ?";
 
+    private static final String GET_TABLE_GROUP_BY_SCHEMA_GROUP_NAME_FOR_UPDATE =
+        "select " + ALL_COLUMNS + " from " + GmsSystemTables.TABLE_GROUP
+            + " where schema_name=? and tg_name=? for update";
+
+    private static final String UPDATE_INITED_BY_ID =
+        "update " + GmsSystemTables.TABLE_GROUP + " set inited = ? where id = ?";
+
     public List<TableGroupRecord> getTableGroupsByID(Long id) {
         try {
 
@@ -97,7 +105,8 @@ public class TableGroupAccessor extends AbstractAccessor {
         }
     }
 
-    public List<TableGroupRecord> getTableGroupsBySchemaAndName(String schemaName, String tableGroupName) {
+    public List<TableGroupRecord> getTableGroupsBySchemaAndName(String schemaName, String tableGroupName,
+                                                                boolean forUpdate) {
         try {
 
             List<TableGroupRecord> records;
@@ -106,8 +115,11 @@ public class TableGroupAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableGroupName);
 
+            String sql =
+                forUpdate ? GET_TABLE_GROUP_BY_SCHEMA_GROUP_NAME_FOR_UPDATE : GET_TABLE_GROUP_BY_SCHEMA_GROUP_NAME;
+
             records =
-                MetaDbUtil.query(GET_TABLE_GROUP_BY_SCHEMA_GROUP_NAME, params, TableGroupRecord.class, connection);
+                MetaDbUtil.query(sql, params, TableGroupRecord.class, connection);
 
             return records;
         } catch (Exception e) {
@@ -145,12 +157,13 @@ public class TableGroupAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setString, tableGroupRecord.tg_name);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setString, tableGroupRecord.locality);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setString, tableGroupRecord.primary_zone);
-            MetaDbUtil.setParameter(i++, params, ParameterMethod.setInt, tableGroupRecord.inited);
+            MetaDbUtil.setParameter(i++, params, ParameterMethod.setInt, tableGroupRecord.getInited());
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setLong, tableGroupRecord.meta_version);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setInt, tableGroupRecord.manual_create);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setInt, tableGroupRecord.tg_type);
 
             paramsBatch.add(params);
+            DdlMetaLogUtil.logSql(INSERT_IGNORE_TABLE_GROUP, params);
 
             return MetaDbUtil.insertAndRetureLastInsertId(INSERT_IGNORE_TABLE_GROUP, paramsBatch, this.connection);
         } catch (Exception e) {
@@ -166,6 +179,9 @@ public class TableGroupAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, groupName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, groupId);
+
+            DdlMetaLogUtil.logSql(UPDATE_GROUP_NAME_BY_ID, params);
+
             MetaDbUtil.update(UPDATE_GROUP_NAME_BY_ID, params, connection);
             return;
         } catch (Exception e) {
@@ -225,6 +241,9 @@ public class TableGroupAccessor extends AbstractAccessor {
 
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+
+            DdlMetaLogUtil.logSql(DELETE_ALL_BY_SCHEMA_NAME, params);
+
             MetaDbUtil.update(DELETE_ALL_BY_SCHEMA_NAME, params, connection);
             return;
         } catch (Exception e) {
@@ -240,6 +259,9 @@ public class TableGroupAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tableGroupId);
+
+            DdlMetaLogUtil.logSql(DELETE_ALL_BY_SCHEMA_NAME_ID, params);
+
             MetaDbUtil.update(DELETE_ALL_BY_SCHEMA_NAME_ID, params, connection);
             return;
         } catch (Exception e) {
@@ -278,7 +300,28 @@ public class TableGroupAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, tableGroupType);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, groupId);
+
+            DdlMetaLogUtil.logSql(UPDATE_GROUP_TYPE_BY_ID, params);
+
             MetaDbUtil.update(UPDATE_GROUP_TYPE_BY_ID, params, connection);
+            return;
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table 'table_group'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void updateInitedById(Long groupId, int inited) {
+        try {
+
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, inited);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, groupId);
+
+            DdlMetaLogUtil.logSql(UPDATE_INITED_BY_ID, params);
+
+            MetaDbUtil.update(UPDATE_INITED_BY_ID, params, connection);
             return;
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table 'table_group'", e);

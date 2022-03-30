@@ -21,6 +21,8 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.DropIndex;
@@ -69,12 +71,18 @@ public class DropPartitionGlobalIndexBuilder extends DropGlobalIndexBuilder {
 
     @Override
     protected void buildTableRuleAndTopology() {
-        dropTableBuilder =
-            new DropPartitionTableBuilder(relDdl, gsiPreparedData.getIndexTablePreparedData(), executionContext);
-        dropTableBuilder.build();
+        if (partitionInfo == null) {
+            // drop normal gsi table
+            dropTableBuilder =
+                new DropPartitionTableBuilder(relDdl, gsiPreparedData.getIndexTablePreparedData(), executionContext);
+            dropTableBuilder.build();
 
-        this.partitionInfo = dropTableBuilder.getPartitionInfo();
-        this.tableTopology = dropTableBuilder.getTableTopology();
+            this.partitionInfo = dropTableBuilder.getPartitionInfo();
+            this.tableTopology = dropTableBuilder.getTableTopology();
+        } else {
+            // drop repartition gsi table
+            this.tableTopology = PartitionInfoUtil.buildTargetTablesFromPartitionInfo(partitionInfo);
+        }
     }
 
 }

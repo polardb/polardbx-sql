@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.TruncateTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.TruncateTableWithGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTableRecycleBinTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecycleMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -39,6 +40,7 @@ import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.TruncateUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
@@ -68,6 +70,7 @@ import java.util.List;
 import java.util.Map;
 
 import static com.alibaba.polardbx.executor.ddl.job.factory.CreateTableJobFactory.CREATE_TABLE_SYNC_TASK;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecycleMarkTask.CDC_RECYCLE_HINTS;
 
 public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
 
@@ -128,11 +131,12 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
 
         String tableName = logicalTruncateTable.getTableName().toLowerCase();
         SqlNode tableNameNode = new SqlIdentifier(tableName, SqlParserPos.ZERO);
-        String createTableSql = DdlHelper.generateCreateTableSql(tableNameNode, executionContext).toLowerCase();
+        String createTableSql = DdlHelper.genCreateTableSql(tableNameNode, executionContext).toLowerCase();
 
         createTableSql = createTableSql.replaceFirst(tableName, tmpBinName);
         SqlNode newTableNameNode = new SqlIdentifier(tmpBinName, SqlParserPos.ZERO);
 
+        createTableSql = CDC_RECYCLE_HINTS + createTableSql;
         SqlCreateTable sqlCreateTable = (SqlCreateTable) new FastsqlParser().parse(createTableSql).get(0);
 
         CreateTable createTable =
@@ -145,10 +149,16 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
 
         TruncateTableRecycleBinTask truncateTableRecycleBinTask =
             new TruncateTableRecycleBinTask(executionContext.getSchemaName(), tableName, binName, tmpBinName);
+        CdcTruncateWithRecycleMarkTask cdcTask1 = new CdcTruncateWithRecycleMarkTask(executionContext.getSchemaName(),
+            tableName, binName);
+        CdcTruncateWithRecycleMarkTask cdcTask2 = new CdcTruncateWithRecycleMarkTask(executionContext.getSchemaName(),
+            tmpBinName, tableName);
 
         truncateWithRecycleBinJob.addTask(truncateTableRecycleBinTask);
         DdlTask tableSyncTask = truncateWithRecycleBinJob.getTaskByLabel(CREATE_TABLE_SYNC_TASK);
-        truncateWithRecycleBinJob.addTaskRelationship(tableSyncTask, truncateTableRecycleBinTask);
+        truncateWithRecycleBinJob.addTaskRelationship(tableSyncTask, cdcTask1);
+        truncateWithRecycleBinJob.addTaskRelationship(cdcTask1, cdcTask2);
+        truncateWithRecycleBinJob.addTaskRelationship(cdcTask2, truncateTableRecycleBinTask);
         truncateWithRecycleBinJob.labelAsTail(truncateTableRecycleBinTask);
 
         recycleBin.add(binName, tableName);
@@ -158,7 +168,7 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
 
     private ExecutableDdlJob buildCreateTableJob(LogicalCreateTable logicalCreateTable,
                                                  ExecutionContext executionContext) {
-        logicalCreateTable.prepareData();
+        logicalCreateTable.prepareData(executionContext);
         CreateTablePreparedData createTablePreparedData = logicalCreateTable.getCreateTablePreparedData();
 
         DdlPhyPlanBuilder createTableBuilder =
@@ -171,6 +181,8 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
 
         return new CreateTableJobFactory(
             createTablePreparedData.isAutoPartition(),
+            createTablePreparedData.isTimestampColumnDefault(),
+            createTablePreparedData.getBinaryColumnDefaultValues(),
             physicalPlanData,
             executionContext
         ).create();
@@ -186,8 +198,8 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
         Map<String, String> tmpIndexTableMap = new HashMap<>();
 
         LogicalCreateTable logicalCreateTable =
-            generateLogicalCreateTmpTable(logicalTruncateTable.getTableName(), tmpTableSuffix, tmpIndexTableMap,
-                isNewPartDb, executionContext);
+            generateLogicalCreateTmpTable(logicalTruncateTable.getSchemaName(), logicalTruncateTable.getTableName(),
+                tmpTableSuffix, tmpIndexTableMap, isNewPartDb, executionContext);
 
         if (isNewPartDb) {
             List<String> tmpIndexTableNames = new ArrayList<>(
@@ -220,7 +232,8 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
         return new TruncateTableJobFactory(physicalPlanData).create();
     }
 
-    private LogicalCreateTable generateLogicalCreateTmpTable(String targetTableName, String tmpTableSuffix,
+    private LogicalCreateTable generateLogicalCreateTmpTable(String schemaName, String targetTableName,
+                                                             String tmpTableSuffix,
                                                              Map<String, String> tmpIndexTableMap, boolean isNewPartDb,
                                                              ExecutionContext executionContext) {
         LogicalShowCreateTableHandler logicalShowCreateTablesHandler = new LogicalShowCreateTableHandler(repo);
@@ -279,9 +292,11 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
             }
         }
 
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(targetTableName);
+
         ExecutionPlan createTablePlan = Planner.getInstance().getPlan(sqlCreateTable, plannerContext);
         LogicalCreateTable logicalCreateTable = (LogicalCreateTable) createTablePlan.getPlan();
-        logicalCreateTable.prepareData();
+        logicalCreateTable.prepareData(executionContext);
         return logicalCreateTable;
     }
 }

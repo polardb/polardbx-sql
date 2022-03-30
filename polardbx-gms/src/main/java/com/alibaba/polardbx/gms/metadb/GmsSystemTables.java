@@ -63,6 +63,7 @@ public class GmsSystemTables {
     public static final String PARTITION_GROUP = "partition_group";
     public static final String PARTITION_GROUP_DELTA = "partition_group_delta";
     public static final String TABLE_PARTITIONS_DELTA = "table_partitions_delta";
+    public static final String TABLE_LOCAL_PARTITIONS = "table_local_partitions";
 
     /**
      * MPP Node Info
@@ -95,6 +96,9 @@ public class GmsSystemTables {
     public static final String DDL_JOBS = "ddl_jobs";
     public static final String DDL_ENGINE = "ddl_engine";
     public static final String DDL_ENGINE_TASK = "ddl_engine_task";
+
+    public static final String DDL_ENGINE_ARCHIVE = "ddl_engine_archive";
+    public static final String DDL_ENGINE_TASK_ARCHIVE = "ddl_engine_task_archive";
 
     /**
      * Recycle Bin
@@ -142,6 +146,12 @@ public class GmsSystemTables {
     public static final String LOCALITY_INFO = "locality_info";
     public static final String VARIABLE_CONFIG = "variable_config";
     /**
+     * Scheduled Jobs
+     */
+    public static final String SCHEDULED_JOBS = "scheduled_jobs";
+    public static final String FIRED_SCHEDULED_JOBS = "fired_scheduled_jobs";
+
+    /**
      * Scale Out
      */
     public static final String SCALEOUT_OUTLINE = "scaleout_outline";
@@ -172,6 +182,8 @@ public class GmsSystemTables {
      */
     public final static String BINLOG_POLARX_COMMAND_TABLE = "binlog_polarx_command";
 
+    public final static String DDL_PLAN = "ddl_plan";
+
     static {
         register(DUAL);
         register(SCHEMA_CHANGE);
@@ -191,6 +203,7 @@ public class GmsSystemTables {
         register(PARTITIONS);
         register(TABLE_CONSTRAINTS);
         register(TABLE_PARTITIONS);
+        register(TABLE_LOCAL_PARTITIONS);
         register(TABLE_GROUP);
         register(PARTITION_GROUP);
         register(REFERENTIAL_CONSTRAINTS);
@@ -202,6 +215,8 @@ public class GmsSystemTables {
         register(DDL_JOBS);
         register(DDL_ENGINE);
         register(DDL_ENGINE_TASK);
+        register(DDL_ENGINE_ARCHIVE);
+        register(DDL_ENGINE_TASK_ARCHIVE);
         register(READ_WRITE_LOCK);
         register(TABLE_STATISTICS);
         register(PLAN_INFO);
@@ -240,9 +255,12 @@ public class GmsSystemTables {
         register(BINLOG_POLARX_COMMAND_TABLE);
         register(TABLE_PARTITIONS_DELTA);
         register(LOCALITY_INFO);
+        register(SCHEDULED_JOBS);
+        register(FIRED_SCHEDULED_JOBS);
         register(PARTITION_GROUP_DELTA);
         register(COMPLEX_TASK_OUTLINE);
         register(VARIABLE_CONFIG);
+        register(DDL_PLAN);
     }
 
     static {

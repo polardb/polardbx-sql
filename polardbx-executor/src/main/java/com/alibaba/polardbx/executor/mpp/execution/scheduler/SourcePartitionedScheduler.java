@@ -117,7 +117,8 @@ public class SourcePartitionedScheduler implements StageScheduler {
 
         List<RemoteTask> newTasks = new ArrayList<>();
         for (Map.Entry<Node, Multimap<Integer, Split>> taskSplits : splitAssignments.entrySet()) {
-            newTasks.addAll(stage.scheduleSplits(taskSplits.getKey(), taskSplits.getValue(), true));
+            newTasks.addAll(stage.scheduleSplits(
+                taskSplits.getKey(), taskSplits.getValue(), true));
         }
         return new ScheduleResult(true, newTasks, 0);
     }

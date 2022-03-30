@@ -61,16 +61,14 @@ public class SingleModifyWriter extends AbstractSingleWriter implements Distinct
      * otherwise groupingMapping is the combination of pkMapping and skMapping
      */
     private final Mapping groupingMapping;
-    protected final TableRule tableRule;
 
     public SingleModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
-                              Mapping updateSetMapping, Mapping groupingMapping, TableRule tableRule) {
+                              Mapping updateSetMapping, Mapping groupingMapping) {
         super(targetTable, modify.getOperation());
         this.modify = modify;
         this.pkMapping = pkMapping;
         this.updateSetMapping = updateSetMapping;
         this.groupingMapping = groupingMapping;
-        this.tableRule = tableRule;
     }
 
     @Override
@@ -91,7 +89,7 @@ public class SingleModifyWriter extends AbstractSingleWriter implements Distinct
 
         // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
-            .buildResultForSingleTable(schemaName, logicalTableName, distinctRows, pkIndexList, tableRule);
+            .buildResultForSingleTable(schemaName, logicalTableName, distinctRows, pkIndexList);
 
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {

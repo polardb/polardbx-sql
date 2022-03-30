@@ -8,7 +8,7 @@
     select * from emp a where EMPNO in (select DEPTNO from dept b  ) and empno=3
 
   plan: |
-    LogicalView(tables="optest_0000.emp_03,dept_03", sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE ((`EMPNO` = 3) AND (`EMPNO` IN (SELECT * FROM (SELECT `DEPTNO` FROM `dept` AS `dept`) AS `t` WHERE (`DEPTNO` = 3))))")
+    logicalview(tables="optest_0000.emp_03,dept_03", sql="select `empno`, `ename`, `job`, `mgr`, `hiredate`, `sal`, `comm`, `deptno`, `slacker` from `emp` as `emp` where ((`empno` in (select `deptno` from `dept` as `dept` where (`deptno` = 3))) and (`empno` = 3))")
 
 - sql: |
     select * from emp where EMPNO in(select EMPNO from emp) and ename in (select ename from emp)
@@ -22,13 +22,13 @@
     select * from emp where EMPNO in(select EMPNO from emp) and empno=3 and EMPNO in (select DEPTNO from dept)
 
   plan: |
-    LogicalView(tables="optest_0000.emp_03,dept_03", sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (((`EMPNO` = 3) AND (`EMPNO` IN (SELECT * FROM (SELECT `EMPNO` FROM `emp` AS `emp0`) AS `t` WHERE (`EMPNO` = 3)))) AND (`EMPNO` IN (SELECT * FROM (SELECT `DEPTNO` FROM `dept` AS `dept`) AS `t1` WHERE (`DEPTNO` = 3))))")
+    logicalview(tables="optest_0000.emp_03,dept_03", sql="select `empno`, `ename`, `job`, `mgr`, `hiredate`, `sal`, `comm`, `deptno`, `slacker` from `emp` as `emp` where (((`empno` in (select `empno` from `emp` as `emp0` where (`empno` = 3))) and (`empno` in (select `deptno` from `dept` as `dept` where (`deptno` = 3)))) and (`empno` = 3))")
 
 - sql: |
     select * from emp t1 where EMPNO in(select EMPNO from emp t2 where t1.ename = t2.ename) and empno=3 and EMPNO in (select DEPTNO from dept)
 
   plan: |
-    LogicalView(tables="optest_0000.emp_03,dept_03", sql="SELECT `EMPNO`, `ENAME`, `JOB`, `MGR`, `HIREDATE`, `SAL`, `COMM`, `DEPTNO`, `SLACKER` FROM `emp` AS `emp` WHERE (((`EMPNO` = 3) AND (`EMPNO` IN (SELECT `EMPNO` FROM (SELECT `EMPNO`, `ENAME` FROM `emp` AS `emp0`) AS `t` WHERE (((`emp`.`EMPNO` = `EMPNO`) AND (`emp`.`ENAME` = `ENAME`)) AND (`EMPNO` = 3))))) AND (`EMPNO` IN (SELECT * FROM (SELECT `DEPTNO` FROM `dept` AS `dept`) AS `t2` WHERE ((`emp`.`EMPNO` = `DEPTNO`) AND (`DEPTNO` = 3)))))")
+    logicalview(tables="optest_0000.emp_03,dept_03", sql="select `empno`, `ename`, `job`, `mgr`, `hiredate`, `sal`, `comm`, `deptno`, `slacker` from `emp` as `emp` where (((`empno` in (select `empno` from `emp` as `emp0` where (((`emp`.`empno` = `empno`) and (`emp`.`ename` = `ename`)) and (`empno` = 3)))) and (`empno` in (select `deptno` from `dept` as `dept` where ((`emp`.`empno` = `deptno`) and (`deptno` = 3))))) and (`empno` = 3))")
 
 - sql: |
     select * from emp a where EMPNO not in (select DEPTNO from dept b  )

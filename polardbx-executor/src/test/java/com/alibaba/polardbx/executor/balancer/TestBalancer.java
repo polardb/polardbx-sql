@@ -19,10 +19,13 @@ package com.alibaba.polardbx.executor.balancer;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.executor.balancer.action.ActionLockResource;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.balancer.action.ActionMergePartition;
 import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroup;
+import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroups;
 import com.alibaba.polardbx.executor.balancer.action.ActionSplitPartition;
+import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
 import com.alibaba.polardbx.executor.balancer.policy.PolicyDataBalance;
 import com.alibaba.polardbx.executor.balancer.policy.PolicyDrainNode;
@@ -30,9 +33,11 @@ import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.val;
+import org.apache.calcite.sql.SqlRebalance;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -120,12 +125,36 @@ public class TestBalancer {
         return groups;
     }
 
+    private Map<String, List<GroupStats.GroupsOfStorage>> makeGroups4() {
+        List<GroupStats.GroupsOfStorage> storageList = Arrays.asList(
+            new GroupStats.GroupsOfStorage("dn1", groupLists("dn1", 0, 1)),
+            new GroupStats.GroupsOfStorage("dn2", groupLists("dn2", 4, 9)));
+
+        Map<String, List<GroupStats.GroupsOfStorage>> groups = new HashMap<>();
+        groups.put("db1", storageList);
+        return groups;
+    }
+
     class MockedPolicyDataBalance extends PolicyDataBalance {
 
         @Override
         protected boolean isStorageReady(String storageInst) {
             return true;
         }
+    }
+
+    private List<BalanceAction> drainNode(Map<String, List<GroupStats.GroupsOfStorage>> groups,
+                                          BalanceOptions options) {
+        PolicyDrainNode policy = new MockedPolicyDrainNode();
+        List<BalanceAction> result = new ArrayList<>();
+        for (val kv : groups.entrySet()) {
+            String schema = kv.getKey();
+            List<GroupStats.GroupsOfStorage> groupList = kv.getValue();
+            BalanceStats stats = BalanceStats.createForSharding(schema, groupList);
+            result.addAll(policy.applyToShardingDb(null, options, stats, schema));
+        }
+
+        return result;
     }
 
     protected List<BalanceAction> balanceGroups(Map<String, List<GroupStats.GroupsOfStorage>> groups,
@@ -141,18 +170,11 @@ public class TestBalancer {
         return result;
     }
 
-    private List<BalanceAction> drainNode(Map<String, List<GroupStats.GroupsOfStorage>> groups,
-                                          BalanceOptions options) {
-        PolicyDrainNode policy = new PolicyDrainNode();
-        List<BalanceAction> result = new ArrayList<>();
-        for (val kv : groups.entrySet()) {
-            String schema = kv.getKey();
-            List<GroupStats.GroupsOfStorage> groupList = kv.getValue();
-            BalanceStats stats = BalanceStats.createForSharding(schema, groupList);
-            result.addAll(policy.applyToShardingDb(null, options, stats, schema));
-        }
+    class MockedPolicyDrainNode extends PolicyDrainNode {
 
-        return result;
+        @Override
+        protected void doValidate(DrainNodeInfo info) {
+        }
     }
 
     @Test
@@ -166,11 +188,37 @@ public class TestBalancer {
             Assert.assertEquals(expectedActions, actions);
         }
 
-        // no empty storage node
+        // uniformed storage nodes
         {
             Map<String, List<GroupStats.GroupsOfStorage>> groups = makeGroups2();
             List<BalanceAction> actions = balanceGroups(groups, BalanceOptions.withDefault());
             List<BalanceAction> expectedActions = Collections.emptyList();
+            Assert.assertEquals(expectedActions, actions);
+        }
+
+        // non-uniformed storage nodes
+        {
+            Map<String, List<GroupStats.GroupsOfStorage>> groups = makeGroups4();
+            List<BalanceAction> actions = balanceGroups(groups, BalanceOptions.withDefault());
+            List<BalanceAction> expectedActions =
+                Arrays.asList(
+                    new ActionLockResource(
+                        "db1",
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                    ),
+                    new ActionMoveGroups("db1",
+                        Arrays.asList(
+                            new ActionMoveGroup("db1", Arrays.asList("g4"), "dn1"),
+                            new ActionMoveGroup("db1", Arrays.asList("g5"), "dn1")
+                        ))
+                );
+
+            for (BalanceAction action : actions) {
+                if (action instanceof ActionMoveGroups) {
+                    ActionMoveGroups mg = (ActionMoveGroups) action;
+                    Collections.sort(mg.getActions());
+                }
+            }
             Assert.assertEquals(expectedActions, actions);
         }
 
@@ -180,11 +228,24 @@ public class TestBalancer {
             List<BalanceAction> actions = balanceGroups(groups, BalanceOptions.withDefault());
             List<BalanceAction> expectedActions =
                 Arrays.asList(
-                    new ActionMoveGroup("db1", Arrays.asList("g0"), "dn3"),
-                    new ActionMoveGroup("db1", Arrays.asList("g1"), "dn3"),
-                    new ActionMoveGroup("db1", Arrays.asList("g4"), "dn3"),
-                    new ActionMoveGroup("db1", Arrays.asList("g5"), "dn3")
+                    new ActionLockResource(
+                        "db1",
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                    ),
+                    new ActionMoveGroups("db1",
+                        Arrays.asList(
+                            new ActionMoveGroup("db1", Arrays.asList("g0"), "dn3"),
+                            new ActionMoveGroup("db1", Arrays.asList("g4"), "dn3"),
+                            new ActionMoveGroup("db1", Arrays.asList("g5"), "dn3")
+                        ))
                 );
+
+            for (BalanceAction action : actions) {
+                if (action instanceof ActionMoveGroups) {
+                    ActionMoveGroups mg = (ActionMoveGroups) action;
+                    Collections.sort(mg.getActions());
+                }
+            }
             Assert.assertEquals(expectedActions, actions);
         }
 
@@ -194,10 +255,26 @@ public class TestBalancer {
             List<BalanceAction> actions = balanceGroups(groups, BalanceOptions.withDefault());
             List<BalanceAction> expectedActions =
                 Arrays.asList(
-                    new ActionMoveGroup("db1", Arrays.asList("g0"), "dn3"),
-                    new ActionMoveGroup("db1", Arrays.asList("g1"), "dn4"),
-                    new ActionMoveGroup("db1", Arrays.asList("g4"), "dn3"),
-                    new ActionMoveGroup("db1", Arrays.asList("g5"), "dn4"));
+                    new ActionLockResource(
+                        "db1",
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                    ),
+                    new ActionMoveGroups(
+                        "db1",
+                        Arrays.asList(
+                            new ActionMoveGroup("db1", Arrays.asList("g4"), "dn3"),
+                            new ActionMoveGroup("db1", Arrays.asList("g5"), "dn3"),
+                            new ActionMoveGroup("db1", Arrays.asList("g0"), "dn4"),
+                            new ActionMoveGroup("db1", Arrays.asList("g1"), "dn4")
+                        )
+                    )
+                );
+            for (BalanceAction action : actions) {
+                if (action instanceof ActionMoveGroups) {
+                    ActionMoveGroups mg = (ActionMoveGroups) action;
+                    Collections.sort(mg.getActions());
+                }
+            }
             Assert.assertEquals(expectedActions, actions);
         }
     }
@@ -220,10 +297,17 @@ public class TestBalancer {
             List<BalanceAction> actions = drainNode(groups, options);
             List<BalanceAction> expectedActions =
                 Arrays.asList(
-                    new ActionMoveGroup("db1", Arrays.asList("g0"), "dn2"),
-                    new ActionMoveGroup("db1", Arrays.asList("g1"), "dn3"),
-                    new ActionMoveGroup("db1", Arrays.asList("g2"), "dn2"),
-                    new ActionMoveGroup("db1", Arrays.asList("g3"), "dn3")
+                    new ActionLockResource(
+                        "db1",
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                    ),
+                    new ActionMoveGroups("db1",
+                        Arrays.asList(
+                            new ActionMoveGroup("db1", Arrays.asList("g0"), "dn2"),
+                            new ActionMoveGroup("db1", Arrays.asList("g1"), "dn3"),
+                            new ActionMoveGroup("db1", Arrays.asList("g2"), "dn2"),
+                            new ActionMoveGroup("db1", Arrays.asList("g3"), "dn3")
+                        ))
                 );
             Assert.assertEquals(expectedActions, actions);
         }
@@ -398,5 +482,26 @@ public class TestBalancer {
 
         ActionMergePartition result = JSON.parseObject(json, ActionMergePartition.class);
         Assert.assertEquals(merge, result);
+    }
+
+    @Test
+    public void testActionLockResourceEquals(){
+        ActionLockResource ar1 = null;
+        ActionLockResource ar2 = null;
+
+        ar1 = new ActionLockResource("schema1", Sets.newHashSet("a"));
+        ar2 = new ActionLockResource("schema1", Sets.newHashSet("a"));
+        Assert.assertEquals(ar1, ar2);
+        Assert.assertEquals(ar1.hashCode(), ar2.hashCode());
+
+        ar1 = new ActionLockResource("schema1", Sets.newHashSet("a", "b"));
+        ar2 = new ActionLockResource("schema1", Sets.newHashSet("a", "b"));
+        Assert.assertEquals(ar1, ar2);
+        Assert.assertEquals(ar1.hashCode(), ar2.hashCode());
+
+        ar1 = new ActionLockResource("schema1", Sets.newHashSet("a"));
+        ar2 = new ActionLockResource("schema1", Sets.newHashSet("b"));
+        Assert.assertNotEquals(ar1, ar2);
+        Assert.assertNotEquals(ar1.hashCode(), ar2.hashCode());
     }
 }

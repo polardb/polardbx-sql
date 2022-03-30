@@ -139,7 +139,7 @@ public class ReplicationInsertWriter extends InsertWriter implements Replication
         final List<PhyTableInsertSharder.PhyTableShardResult> shardResults = new ArrayList<>(
             insertPartitioner
                 .shardValues(insert.getInput(), insert.getLogicalTableName(), executionContext, true));
-        PhyTableModifyBuilder.removeNonReplicateShardResult(shardResults, tableMeta);
+        PhyTableModifyBuilder.removeNonReplicateShardResultForInsert(shardResults, tableMeta);
         final PhyTableInsertBuilder phyTableInsertbuilder =
             new PhyTableInsertBuilder(insertPartitioner.getSqlTemplate(),
                 executionContext,

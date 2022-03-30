@@ -16,29 +16,39 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.corrector.Reporter;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.partitionmanagement.BackfillExecutor;
 import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGroupChecker;
 import com.alibaba.polardbx.executor.partitionmanagement.corrector.AlterTableGroupReporter;
+import com.alibaba.polardbx.executor.partitionmanagement.fastchecker.AlterTableGroupFastChecker;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.AlterTableGroupBackfill;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.commons.lang3.StringUtils;
 
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
 
@@ -83,62 +93,151 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
         // Check target table immediately after backfill by default.
         assert !targetPhyTables.isEmpty();
         final boolean check =
-            executionContext.getParamManager().getBoolean(ConnectionParams.SCALEOUT_CHECK_AFTER_BACKFILL);
+            executionContext.getParamManager().getBoolean(ConnectionParams.TABLEGROUP_REORG_CHECK_AFTER_BACKFILL);
         if (check) {
-            final long batchSize =
-                executionContext.getParamManager().getLong(ConnectionParams.SCALEOUT_CHECK_BATCH_SIZE);
-            final long speedLimit =
-                executionContext.getParamManager().getLong(ConnectionParams.SCALEOUT_CHECK_SPEED_LIMITATION);
-            final long speedMin =
-                executionContext.getParamManager().getLong(ConnectionParams.SCALEOUT_CHECK_SPEED_MIN);
-            final long parallelism =
-                executionContext.getParamManager().getLong(ConnectionParams.SCALEOUT_CHECK_PARALLELISM);
-            final long earlyFailNumber =
-                executionContext.getParamManager().getLong(ConnectionParams.SCALEOUT_EARLY_FAIL_NUMBER);
-
-            Checker checker = AlterTableGroupChecker.create(schemaName,
-                logicalTable,
-                logicalTable,
-                batchSize,
-                speedMin,
-                speedLimit,
-                parallelism,
-                SqlSelect.LockMode.UNDEF,
-                SqlSelect.LockMode.UNDEF,
-                executionContext,
-                sourcePhyTables,
-                targetPhyTables);
-            checker.setInBackfill(true);
-
-            if (null == executionContext.getDdlJobId() || 0 == executionContext.getDdlJobId()) {
-                checker.setJobId(JOB_ID_GENERATOR.nextId());
+            final boolean useFastChecker =
+                FastChecker.isSupported(schemaName) &&
+                    executionContext.getParamManager()
+                        .getBoolean(ConnectionParams.TABLEGROUP_REORG_BACKFILL_USE_FASTCHECKER);
+            if (useFastChecker && fastCheckWithCatchEx(backfill, executionContext)) {
+                return new AffectRowCursor(affectRows);
             } else {
-                checker.setJobId(executionContext.getDdlJobId());
+                checkInCN(backfill, executionContext);
             }
-
-            // Run the simple check.
-            final Reporter reporter = new AlterTableGroupReporter(earlyFailNumber);
-            try {
-                checker.check(executionContext, reporter);
-            } catch (TddlNestableRuntimeException e) {
-                if (e.getMessage().contains("Too many conflicts")) {
-                    throw GeneralUtil
-                        .nestedException(
-                            "alter tableGroup checker error limit exceeded. Please try to rollback/recover this job");
-                } else {
-                    throw e;
-                }
-            }
-
-            final List<CheckerManager.CheckerReport> checkerReports = reporter.getCheckerReports();
-            if (!checkerReports.isEmpty()) {
-                // Some error found.
-                throw GeneralUtil.nestedException(
-                    "alter tableGroup checker found error after backfill. Please try to rollback/recover this job");
-            }
-
         }
 
         return new AffectRowCursor(affectRows);
+    }
+
+    protected boolean fastCheckWithCatchEx(AlterTableGroupBackfill backfill, ExecutionContext executionContext) {
+        boolean fastCheckSucc = false;
+        try {
+            fastCheckSucc = fastCheck(backfill, executionContext);
+        } catch (Throwable ex) {
+            fastCheckSucc = false;
+            String msg = String.format(
+                "Failed to use fastChecker to check alter tablegroup backFill because of throwing exceptions,  so use old checker instead");
+            SQLRecorderLogger.ddlLogger.warn(msg, ex);
+        }
+        return fastCheckSucc;
+    }
+
+    boolean fastCheck(AlterTableGroupBackfill backfill,
+                      ExecutionContext executionContext) {
+        long startTime = System.currentTimeMillis();
+
+        String schemaName = backfill.getSchemaName();
+        String logicalTable = backfill.getLogicalTableName();
+
+        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+            "FastChecker for alter tablegroup, schema [{0}] logical table [{1}] start",
+            schemaName, logicalTable));
+        final int fastCheckerParallelism =
+            executionContext.getParamManager().getInt(ConnectionParams.TABLEGROUP_REORG_FASTCHECKER_PARALLELISM);
+
+        FastChecker fastChecker = AlterTableGroupFastChecker
+            .create(schemaName, backfill.getLogicalTableName(),
+                backfill.getSourcePhyTables(),
+                backfill.getTargetPhyTables(), fastCheckerParallelism, executionContext);
+        boolean fastCheckResult = false;
+        final int maxRetryTimes =
+            executionContext.getParamManager().getInt(ConnectionParams.FASTCHECKER_RETRY_TIMES);
+
+        int tryTimes = 0;
+        while (tryTimes < maxRetryTimes && fastCheckResult == false) {
+            try {
+                fastCheckResult = fastChecker.check(executionContext);
+            } catch (TddlNestableRuntimeException e) {
+                if (StringUtils.containsIgnoreCase(e.getMessage(), "acquire lock timeout")) {
+                    //if acquire lock timeout, we will retry
+                    if (tryTimes < maxRetryTimes - 1) {
+                        try {
+                            TimeUnit.MILLISECONDS.sleep(2000L * (1 + tryTimes));
+                        } catch (InterruptedException ex) {
+                            throw new TddlNestableRuntimeException(ex);
+                        }
+                        continue;
+                    } else {
+                        throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+                            "alter tablegroup fastchecker retry exceed max times", e);
+                    }
+                } else {
+                    //other exception, we simply throw out
+                    throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, e,
+                        "alter tablegroup fastchecker failed to check");
+                }
+            } finally {
+                tryTimes += 1;
+                SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                    "FastChecker for alter tablegroup, schema [{0}] logical src table [{1}] finish, time use [{2}], check result [{3}]",
+                    schemaName, logicalTable,
+                    (System.currentTimeMillis() - startTime) / 1000.0,
+                    fastCheckResult ? "pass" : "not pass")
+                );
+                if (!fastCheckResult) {
+                    EventLogger.log(EventType.DDL_WARN, "FastChecker failed");
+                }
+            }
+        }
+        return fastCheckResult;
+    }
+
+    private void checkInCN(AlterTableGroupBackfill backfill, ExecutionContext executionContext) {
+        final long batchSize =
+            executionContext.getParamManager().getLong(ConnectionParams.TABLEGROUP_REORG_CHECK_BATCH_SIZE);
+        final long speedLimit =
+            executionContext.getParamManager().getLong(ConnectionParams.TABLEGROUP_REORG_CHECK_SPEED_LIMITATION);
+        final long speedMin =
+            executionContext.getParamManager().getLong(ConnectionParams.TABLEGROUP_REORG_CHECK_SPEED_MIN);
+        final long parallelism =
+            executionContext.getParamManager().getLong(ConnectionParams.TABLEGROUP_REORG_CHECK_PARALLELISM);
+        final long earlyFailNumber =
+            executionContext.getParamManager().getLong(ConnectionParams.TABLEGROUP_REORG_EARLY_FAIL_NUMBER);
+
+        String schemaName = backfill.getSchemaName();
+        String logicalTable = backfill.getLogicalTableName();
+        Map<String, Set<String>> sourcePhyTables = backfill.getSourcePhyTables();
+        Map<String, Set<String>> targetPhyTables = backfill.getTargetPhyTables();
+
+        Checker checker = AlterTableGroupChecker.create(schemaName,
+            logicalTable,
+            logicalTable,
+            batchSize,
+            speedMin,
+            speedLimit,
+            parallelism,
+            SqlSelect.LockMode.UNDEF,
+            SqlSelect.LockMode.UNDEF,
+            executionContext,
+            sourcePhyTables,
+            targetPhyTables);
+        checker.setInBackfill(true);
+
+        if (null == executionContext.getDdlJobId() || 0 == executionContext.getDdlJobId()) {
+            checker.setJobId(JOB_ID_GENERATOR.nextId());
+        } else {
+            checker.setJobId(executionContext.getDdlJobId());
+        }
+
+        // Run the simple check.
+        final Reporter reporter = new AlterTableGroupReporter(earlyFailNumber);
+        try {
+            checker.check(executionContext, reporter);
+        } catch (TddlNestableRuntimeException e) {
+            if (e.getMessage().contains("Too many conflicts")) {
+                throw GeneralUtil
+                    .nestedException(
+                        "alter tableGroup checker error limit exceeded. Please try to rollback/recover this job");
+            } else {
+                throw e;
+            }
+        }
+
+        final List<CheckerManager.CheckerReport> checkerReports = reporter.getCheckerReports();
+        if (!checkerReports.isEmpty()) {
+            // Some error found.
+            throw GeneralUtil.nestedException(
+                "alter tableGroup checker found error after backfill. Please try to rollback/recover this job");
+        }
     }
 }

@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.executor.operator.util.bloomfilter;
 
-import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilter;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.google.common.util.concurrent.SettableFuture;
 
 import java.util.List;
 
@@ -54,7 +54,9 @@ public class BloomFilterConsume {
 
     public synchronized void setBloomFilter(BloomFilterInfo filterInfo) {
         if (this.bloomFilter == null) {
-            log.warn("receive the bloom filter for " + filterInfo.getId());
+            if (log.isInfoEnabled()) {
+                log.info("receive the bloom filter for " + filterInfo.getId());
+            }
             //only received the first bloomFilter,and ignore others' bloomfilter
             if (filterInfo.getData() != null) {
                 BloomFilter bloomFilter = filterInfo.toBloomFilter();

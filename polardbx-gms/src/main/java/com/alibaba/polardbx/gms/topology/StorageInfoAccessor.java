@@ -112,6 +112,9 @@ public class StorageInfoAccessor extends AbstractAccessor {
     private static final String UPDATE_STORAGE_STATUS =
         "update storage_info set status=? where storage_master_inst_id=?";
 
+    private static final String COUNT_ALL_RW_STORAGES =
+        "select count(distinct storage_inst_id) as rw_dn_cnt from storage_info where status=0 and inst_kind=0";
+
     public void removeStorageInfo(String storageInstId, String ip, Integer port) {
 
         try {
@@ -509,6 +512,37 @@ public class StorageInfoAccessor extends AbstractAccessor {
                     roAndRwPairList.add(roInstIdAndRwIdPair);
                 }
                 return roAndRwPairList;
+            } catch (Throwable ex) {
+                throw ex;
+            } finally {
+                if (rs != null) {
+                    rs.close();
+                }
+
+                if (stmt != null) {
+                    stmt.close();
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + STORAGE_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query", STORAGE_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public long countAllRwStorageInsts() {
+        try {
+            PreparedStatement stmt = null;
+            ResultSet rs = null;
+            try {
+                stmt = this.connection.prepareStatement(COUNT_ALL_RW_STORAGES);
+                rs = stmt.executeQuery();
+                long rwDnCnt = 0;
+                while (rs.next()) {
+                    rwDnCnt = rs.getLong("rw_dn_cnt");
+                }
+                return rwDnCnt;
             } catch (Throwable ex) {
                 throw ex;
             } finally {

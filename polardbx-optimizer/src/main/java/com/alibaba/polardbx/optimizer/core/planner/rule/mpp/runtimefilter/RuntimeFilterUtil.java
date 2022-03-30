@@ -22,7 +22,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
@@ -37,6 +37,9 @@ import java.util.List;
 import java.util.Set;
 
 public class RuntimeFilterUtil {
+    /**
+     * TODO 重构支持类型判断
+     */
     private static final Set<DataType<?>> RUNTIME_FILTER_SUPPORTED_TYPES = Sets.newHashSet(
         DataTypes.StringType,
         DataTypes.ULongType,
@@ -44,7 +47,8 @@ public class RuntimeFilterUtil {
         DataTypes.DateType,
         DataTypes.TimestampType,
         DataTypes.DatetimeType,
-        DataTypes.TimeType
+        DataTypes.TimeType,
+        DataTypes.DecimalType
     );
 
     private static final Set<DataType<?>> MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES = Sets.newHashSet(
@@ -59,8 +63,8 @@ public class RuntimeFilterUtil {
         DataTypes.IntegerType,
         DataTypes.UIntegerType,
         DataTypes.LongType,
-        DataTypes.ULongType,
-        DataTypes.DecimalType);
+        DataTypes.ULongType);
+//        DataTypes.DecimalType);
 
     public static boolean canPushRuntimeFilterToMysql(DataType<?> dataType) {
         return MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES.contains(dataType);

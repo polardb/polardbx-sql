@@ -53,6 +53,8 @@ public interface FailPointKey {
      */
     String FP_RANDOM_CRASH = "FP_RANDOM_CRASH";
 
+    String FP_OVERRIDE_NOW = "FP_OVERRIDE_NOW";
+
     /**
      * set @FP_RANDOM_PHYSICAL_DDL_EXCEPTION='30';
      * inject exception during executing physical DDL
@@ -65,6 +67,12 @@ public interface FailPointKey {
      * 执行物理DDL时失败
      */
     String FP_PHYSICAL_DDL_EXCEPTION = "FP_PHYSICAL_DDL_EXCEPTION";
+
+    /**
+     * set @FP_PHYSICAL_DDL_PARTIAL_EXCEPTION='true';
+     * 执行物理DDL时失败
+     */
+    String FP_PHYSICAL_DDL_PARTIAL_EXCEPTION = "FP_PHYSICAL_DDL_PARTIAL_EXCEPTION";
 
     /**
      * set @FP_RANDOM_BACKFILL_EXCEPTION='30';
@@ -95,6 +103,24 @@ public interface FailPointKey {
      * 劫持所有的JOB, 替换为MockDdlJob
      */
     String FP_HIJACK_DDL_JOB = "FP_HIJACK_DDL_JOB";
+
+    /**
+     * set @FP_HIJACK_DDL_JOB_FORMAT='RANDOM';
+     * set @FP_HIJACK_DDL_JOB_FORMAT='SEQUELTIAL';
+     */
+    String FP_HIJACK_DDL_JOB_FORMAT = "FP_HIJACK_DDL_JOB_FORMAT";
+
+    /**
+     * set @FP_INJECT_SUBJOB='true';
+     * Inject subjob into MockDdl
+     */
+    String FP_INJECT_SUBJOB = "FP_INJECT_SUBJOB";
+
+    /**
+     * set @FP_PAUSE_DDL_JOB_ONCE_CREATED='true';
+     * 创建完DDL之后立刻暂停
+     */
+    String FP_PAUSE_DDL_JOB_ONCE_CREATED = "FP_PAUSE_DDL_JOB_ONCE_CREATED";
 
     /**
      * set @FP_TRUNCATE_CUTOVER_FAIL='true';
@@ -188,5 +214,17 @@ public interface FailPointKey {
      * 在老引擎的afterDo()之前注入失败
      */
     String FP_INJECT_FAILURE_TO_LEGACY_DDL_ENGINE_AFTER_DO = "FP_INJECT_FAILURE_TO_LEGACY_DDL_ENGINE_AFTER_DO";
+
+    /**
+     * set @FP_INJECT_FAILURE_TO_CDC_AFTER_ADD_NEW_GROUP='true';
+     * 在cdc系统库新增Group之后注入失败
+     */
+    String FP_INJECT_FAILURE_TO_CDC_AFTER_ADD_NEW_GROUP = "FP_INJECT_FAILURE_TO_CDC_AFTER_ADD_NEW_GROUP";
+
+    /**
+     * set @FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP='true';
+     * 在cdc系统库新增Group之后注入失败
+     */
+    String FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP = "FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP";
 
 }

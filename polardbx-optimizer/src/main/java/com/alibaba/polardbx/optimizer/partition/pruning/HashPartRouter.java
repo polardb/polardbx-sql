@@ -38,7 +38,7 @@ public class HashPartRouter extends RangePartRouter {
         RouterResult rs = null;
         if (comp == ComparisonKind.EQUAL) {
             // Convert the searchVal from field space to hash space
-            long hashVal = hasher.calcHashCode(ec, (SearchDatumInfo) searchVal);
+            long hashVal = hasher.calcHashCodeForHashStrategy(ec, (SearchDatumInfo) searchVal);
             rs = super.routePartitions(ec, comp, hashVal);
         } else {
             rs = super.routePartitions(ec, ComparisonKind.NOT_EQUAL, searchVal);

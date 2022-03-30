@@ -39,7 +39,7 @@ import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
-import com.alibaba.polardbx.util.IntBloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.ArrayList;
@@ -619,7 +619,7 @@ public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoke
         //build
         ConcurrentRawHashTable hashTable;
         int[] positionLinks;
-        IntBloomFilter bloomFilter;
+        FastIntBloomFilter bloomFilter;
 
         // Special mode only for semi/anti-join
         private boolean directOutputProbe;
@@ -875,7 +875,7 @@ public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoke
 
             if (!alreadyBuild) {
                 if (size <= BLOOM_FILTER_ROWS_LIMIT && size > 0) {
-                    this.bloomFilter = IntBloomFilter.create(size);
+                    this.bloomFilter = FastIntBloomFilter.create(size);
                 }
             }
 

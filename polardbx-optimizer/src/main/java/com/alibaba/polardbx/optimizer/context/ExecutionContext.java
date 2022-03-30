@@ -16,12 +16,22 @@
 
 package com.alibaba.polardbx.optimizer.context;
 
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
+import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
+import com.alibaba.polardbx.optimizer.workload.WorkloadType;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -31,7 +41,6 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.ccl.common.CclContext;
@@ -47,18 +56,14 @@ import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
-import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
 import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
-import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.util.ValueHolder;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rex.RexFieldAccess;
@@ -100,6 +105,8 @@ public class ExecutionContext {
 
     private Map<String, Object> extraCmds = new HashMap<>();
 
+    private Map<String, Object> defaultExtraCmds;
+
     /**
      * 需要传输到mpp worker端的hint参数列表, extraCmds不包含在hintCmds中
      */
@@ -108,7 +115,7 @@ public class ExecutionContext {
     /**
      * schema manager used in this query
      */
-    private Map<String, SchemaManager> schemaManagers = new HashMap<>();
+    private Map<String, SchemaManager> schemaManagers = new ConcurrentHashMap<>();
 
     /**
      * schema manager of this schema used in this query
@@ -303,7 +310,7 @@ public class ExecutionContext {
 
     private QuerySpillSpaceMonitor querySpillSpaceMonitor;
 
-    private boolean shareReadView;
+    private boolean shareReadView = false;
 
     private Point point;
 
@@ -314,7 +321,23 @@ public class ExecutionContext {
     private String returning = null;
 
     private boolean optimizedWithReturning = false;
+    /**
+     * For DirectShardingKeyTableOperation
+     */
+    private Pair<String, String> dbIndexAndTableName = null;
     private long backfillId;
+    private boolean clientFoundRows = true;
+
+    /**
+     * enable the rule counter in cbo
+     * there is no need to copy the value
+     */
+    private boolean enableRuleCounter = false;
+    /**
+     * record the times of rules called in cbo
+     * there is no need to copy the value
+     */
+    private long ruleCount = 0;
 
     private boolean executingPreparedStmt = false;
     private PreparedStmtCache preparedStmtCache = null;
@@ -481,6 +504,12 @@ public class ExecutionContext {
     }
 
     public void setTxIsolation(int txIsolation) {
+        if (txIsolation == this.txIsolation) {
+            return;
+        }
+        if (!ShareReadViewPolicy.supportTxIsolation(txIsolation)) {
+            this.shareReadView = false;
+        }
         this.txIsolation = txIsolation;
     }
 
@@ -708,6 +737,10 @@ public class ExecutionContext {
 
     public Map<String, PhyFeedBack> getxFeedBackMap() {
         return xFeedBackMap;
+    }
+
+    public Pair<String, String> getDbIndexAndTableName() {
+        return finalPlan.getDbIndexAndTableName();
     }
 
     public void clearPreparedStmt() {
@@ -1052,7 +1085,7 @@ public class ExecutionContext {
         ec.testMode = isTestMode();
         ec.useHint = isUseHint();
         ec.loadDataContext = getLoadDataContext();
-        ec.schemaManagers = new HashMap<>(this.schemaManagers);
+        ec.schemaManagers = new ConcurrentHashMap<>(this.schemaManagers);
         ec.currentSchemaManager = this.currentSchemaManager;
         ec.finalPlan = getFinalPlan();
         ec.parameterNlsStrings = getParameterNlsStrings();
@@ -1067,13 +1100,14 @@ public class ExecutionContext {
         ec.optimizedWithReturning = isOptimizedWithReturning();
         ec.readOnly = isReadOnly();
         ec.backfillId = getBackfillId();
+        ec.clientFoundRows = isClientFoundRows();
         ec.executingPreparedStmt = false;
         ec.preparedStmtCache = null;
         return ec;
     }
 
     public void refreshTableMeta() {
-        this.schemaManagers = new HashMap<>();
+        this.schemaManagers = new ConcurrentHashMap<>();
         this.currentSchemaManager = null;
     }
 
@@ -1123,6 +1157,26 @@ public class ExecutionContext {
 
     public Map<String, Object> getHintCmds() {
         return hintCmds;
+    }
+
+    public Map<String, Object> getDefaultExtraCmds() {
+        return defaultExtraCmds;
+    }
+
+    public void putAllHintCmdsWithDefault(Map<String, Object> hintCmds) {
+        this.hintCmds = hintCmds;
+        if (this.extraCmds != null && hintCmds != null) {
+            if (defaultExtraCmds == null) {
+                defaultExtraCmds = new HashMap<>();
+            }
+            for (Map.Entry<String, Object> entry : hintCmds.entrySet()) {
+                String key = entry.getKey();
+                // prepare default extra cmd for 'explain statistics'
+                defaultExtraCmds.put(key,
+                    this.extraCmds.containsKey(key) ? this.extraCmds.get(key) : null);
+                this.extraCmds.put(key, entry.getValue());
+            }
+        }
     }
 
     public void putAllHintCmds(Map<String, Object> hintCmds) {
@@ -1402,6 +1456,13 @@ public class ExecutionContext {
     }
 
     public void setShareReadView(boolean shareReadView) {
+        if (shareReadView == this.shareReadView) {
+            return;
+        }
+        if (shareReadView) {
+            // 如果是在serverConnection之外设置shareReadView 需重新检查隔离级别条件
+            ShareReadViewPolicy.checkTxIsolation(this.txIsolation);
+        }
         this.shareReadView = shareReadView;
     }
 
@@ -1495,5 +1556,29 @@ public class ExecutionContext {
 
     public void setBackfillId(long backfillId) {
         this.backfillId = backfillId;
+    }
+
+    public boolean isClientFoundRows() {
+        return clientFoundRows;
+    }
+
+    public void setClientFoundRows(boolean clientFoundRows) {
+        this.clientFoundRows = clientFoundRows;
+    }
+
+    public boolean isEnableRuleCounter() {
+        return enableRuleCounter;
+    }
+
+    public void setEnableRuleCounter(boolean enableRuleCounter) {
+        this.enableRuleCounter = enableRuleCounter;
+    }
+
+    public void setRuleCount(long ruleCount) {
+        this.ruleCount = ruleCount;
+    }
+
+    public long getRuleCount() {
+        return ruleCount;
     }
 }

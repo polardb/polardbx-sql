@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -226,14 +227,33 @@ public class CheckModifyLimitation {
             final String tableName = qualifiedTableName.right;
             final String columnName = updateColumnList.get(i);
 
-            if (OptimizerContext.getContext(schemaName)
-                .getRuleManager()
-                .getSharedColumns(tableName)
-                .stream()
-                .anyMatch(s -> s.equalsIgnoreCase(columnName))) {
-                handler.accept(columnName, tableMeta);
-                return true;
+            if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                if (OptimizerContext.getContext(schemaName)
+                    .getRuleManager()
+                    .getSharedColumns(tableName)
+                    .stream()
+                    .anyMatch(s -> s.equalsIgnoreCase(columnName))) {
+                    handler.accept(columnName, tableMeta);
+                    return true;
+                }
+            } else {
+                if (OptimizerContext.getContext(schemaName)
+                    .getRuleManager()
+                    .getActualSharedColumns(tableName)
+                    .stream()
+                    .anyMatch(s -> s.equalsIgnoreCase(columnName))) {
+                    handler.accept(columnName, tableMeta);
+                    return true;
+                }
             }
+//            if (OptimizerContext.getContext(schemaName)
+//                .getRuleManager()
+//                .getSharedColumns(tableName)
+//                .stream()
+//                .anyMatch(s -> s.equalsIgnoreCase(columnName))) {
+//                handler.accept(columnName, tableMeta);
+//                return true;
+//            }
         }
 
         return false;

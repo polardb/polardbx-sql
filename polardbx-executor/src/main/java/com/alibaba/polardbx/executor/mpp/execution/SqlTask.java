@@ -47,7 +47,7 @@ import com.alibaba.polardbx.optimizer.statis.TaskMemoryStatisticsGroup;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.units.DataSize;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;

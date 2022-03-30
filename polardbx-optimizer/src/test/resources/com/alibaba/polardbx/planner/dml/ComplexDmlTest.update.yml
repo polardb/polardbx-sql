@@ -150,10 +150,8 @@
     update test_broadcast a join (select name, id from test_hash_ta b where b.name = "c" and b.id = 1) b set a.name = b.name where a.id = b.id;
 
   plan: |
-
-    LogicalModify(TYPE="UPDATE", SET="test_broadcast.name=$3")
-      LogicalView(tables="optest_0001.test_hash_ta,test_broadcast", sql="SELECT `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `t`.`name` AS `name0`, `t`.`id` AS `id0`, `t`.`name` FROM (SELECT `id`, `name`, `create_time` FROM `test_hash_ta` AS `test_hash_ta` WHERE ((`name` = ?) AND (`id` = ?))) AS `t` INNER JOIN `test_broadcast` AS `test_broadcast` ON (`t`.`id` = `test_broadcast`.`id`) FOR UPDATE")
-
+    logicalmodify(type="update", set="test_broadcast.name=$3")
+      logicalview(tables="optest_0001.test_hash_ta,test_broadcast", sql="select `test_broadcast`.`id`, `test_broadcast`.`name`, `test_broadcast`.`create_time`, `test_hash_ta`.`name` as `name0`, `test_hash_ta`.`id` as `id0`, `test_hash_ta`.`name` from `test_hash_ta` as `test_hash_ta` inner join `test_broadcast` as `test_broadcast` on (`test_hash_ta`.`id` = `test_broadcast`.`id`) where ((`test_hash_ta`.`name` = ?) and (`test_hash_ta`.`id` = ?)) for update")
   # Modify sharding key
 
 # Modify sharding key of primary

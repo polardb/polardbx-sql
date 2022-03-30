@@ -21,7 +21,6 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -31,13 +30,12 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchService;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticCollector;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticService;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
-import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -53,14 +51,15 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.clearspring.analytics.stream.frequency.CountMinSketch;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.commons.codec.binary.Base64;
 
-import java.sql.SQLException;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,9 +73,12 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.DEFAULT_SAMPLE_SIZE;
+import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.buildSketchKey;
+import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.getColumnMetas;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.CACHE_LINE;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.HEAVY_HITTER;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.HISTOGRAM;
+import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.HLL_SKETCH;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.MULTI;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource.TOP_N;
 
@@ -96,12 +98,6 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
 
     private boolean alreadyStartCollection = false;
 
-    private SystemTableTableStatistic systemTableTableStatistic;
-
-    private SystemTableColumnStatistic systemTableColumnStatistic;
-
-    private SystemTableNDVSketchStatistic ndvSketchStatistic;
-
     private static boolean USE_HEAVY_HITTER = false;
 
     private AutoAnalyzeTask autoAnalyzeTask;
@@ -110,25 +106,17 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
 
     private Boolean supportHLL = null;
 
-    /**
-     * TDataSource connection properties manager
-     */
-    private final ParamManager paramManager;
+    private StatisticDataSource sds;
 
-    private NDVSketchService ndvSketch;
+    /**
+     * schemaName:table name:columns name -> sketch
+     */
+    private Map<String, Long> cardinalitySketch = Maps.newConcurrentMap();
 
     public StatisticManager(String schemaName,
-                            SystemTableTableStatistic systemTableTableStatistic,
-                            SystemTableColumnStatistic systemTableColumnStatistic,
-                            SystemTableNDVSketchStatistic ndvSketchStatistic,
-                            NDVSketchService ndvSketch,
-                            Map<String, Object> connectionProperties) {
+                            StatisticDataSource sds) {
         this.schemaName = schemaName;
-        this.systemTableTableStatistic = systemTableTableStatistic;
-        this.systemTableColumnStatistic = systemTableColumnStatistic;
-        this.ndvSketchStatistic = ndvSketchStatistic;
-        this.ndvSketch = ndvSketch;
-        this.paramManager = new ParamManager(connectionProperties);
+        this.sds = sds;
         this.statisticLogInfo = new StatisticLogInfo();
     }
 
@@ -160,13 +148,9 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             new ThreadPoolExecutor.DiscardPolicy());
         long start = System.currentTimeMillis();
         if (ConfigDataMode.isMasterMode()) {
-            systemTableTableStatistic.createTableIfNotExist();
-            systemTableColumnStatistic.createTableIfNotExist();
-            if (ndvSketchStatistic != null) {
-                ndvSketchStatistic.createTableIfNotExist();
-            }
+            getSds().init();
         }
-        readStatistic();
+        readStatistic(0L);
 
         long end = System.currentTimeMillis();
         logger.info("StatisticManager init consuming " + (end - start) / 1000.0 + " seconds");
@@ -190,23 +174,30 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         statisticCache.clear();
     }
 
-    private void readStatistic() {
-        systemTableTableStatistic.selectAll(this, 0);
-        systemTableColumnStatistic.selectAll(this, 0);
-        reloadNDV();
-    }
-
     private void readStatistic(long sinceTime) {
-        systemTableTableStatistic.selectAll(this, sinceTime);
-        systemTableColumnStatistic.selectAll(this, sinceTime);
-    }
+        Collection<SystemTableTableStatistic.Row> tableRowList = getSds().loadAllTableStatistic(sinceTime);
+        for (SystemTableTableStatistic.Row row : tableRowList) {
+            StatisticManager.CacheLine cacheLine = getCacheLine(row.getTableName(), true);
+            cacheLine.setRowCount(row.getRowCount());
+            cacheLine.setLastModifyTime(row.getUnixTime());
+        }
 
-    private void reloadNDV() {
-        ndvSketch.parse(ndvSketchStatistic.loadAll(schemaName));
+        Collection<SystemTableColumnStatistic.Row> columnRowList = getSds().loadAllColumnStatistic(sinceTime);
+        for (SystemTableColumnStatistic.Row row : columnRowList) {
+            StatisticManager.CacheLine cacheLine = getCacheLine(row.getTableName(), true);
+            cacheLine.setCardinality(row.getColumnName(), row.getCardinality());
+            cacheLine.setCountMinSketch(row.getColumnName(), row.getCountMinSketch());
+            cacheLine.setHistogram(row.getColumnName(), row.getHistogram());
+            cacheLine.setTopN(row.getColumnName(), row.getTopN());
+            cacheLine.setNullCount(row.getColumnName(), row.getNullCount());
+            cacheLine.setSampleRate(row.getSampleRate());
+        }
+        cardinalitySketch.putAll(getSds().loadAllCardinality());
     }
 
     public void reloadNDVbyTableName(String tableName) {
-        ndvSketch.parse(ndvSketchStatistic.loadByTableName(schemaName, tableName));
+        getSds().reloadNDVbyTableName(tableName);
+        cardinalitySketch.putAll(getSds().syncCardinality());
     }
 
     public void startCollectForeverAsync(StatisticCollector statisticCollector) {
@@ -240,20 +231,21 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             @Override
             public void run() {
                 MDC.put(MDC.MDC_KEY_APP, getSchemaName().toLowerCase());
-                if (paramManager.getBoolean(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION)) {
+                if (getSds().acquireStatisticConfig()
+                    .getBoolean(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION)) {
                     readStatistic(lastReadTime);
                     lastReadTime = unixTimeStamp();
                 }
             }
         }, 300, 300, TimeUnit.SECONDS);
 
-        logger.info("startCollectForeverAsync");
+        logger.info("statistic modual init finish");
     }
 
     private void startAutoAnalyzeNdv() {
         scheduler.scheduleWithFixedDelay(() -> {
             MDC.put(MDC.MDC_KEY_APP, getSchemaName().toLowerCase());
-            if (!paramManager.getBoolean(ConnectionParams.ENABLE_HLL)) {
+            if (!getSds().acquireStatisticConfig().getBoolean(ConnectionParams.ENABLE_HLL)) {
                 StatisticUtils.logInfo(schemaName, "ndv stopped by config: ENABLE_HLL");
                 return;
             }
@@ -266,18 +258,12 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
                 if (rowCount < DEFAULT_SAMPLE_SIZE) {
                     continue;
                 }
-
                 Set<String> cols = tableColumnsMap.get(t);
                 for (String col : cols) {
-                    try {
-                        ndvSketch.updateStockShardParts(t, col);
-                    } catch (SQLException e) {
-                        e.printStackTrace();
-                        // stop by sql exception
-                        return;
-                    }
+                    getSds().updateColumnCardinality(t, col);
                 }
             }
+            cardinalitySketch.putAll(getSds().syncCardinality());
         }, 300, 300, TimeUnit.SECONDS);
     }
 
@@ -290,7 +276,8 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         calendar.set(Calendar.SECOND, startTime.getSecond());
 
         long delay = calendar.getTimeInMillis() - System.currentTimeMillis();
-        int autoAnalyzePeriodInHours = paramManager.getInt(ConnectionParams.AUTO_ANALYZE_PERIOD_IN_HOURS);
+        int autoAnalyzePeriodInHours =
+            getSds().acquireStatisticConfig().getInt(ConnectionParams.AUTO_ANALYZE_PERIOD_IN_HOURS);
         autoAnalyzeTask =
             new AutoAnalyzeTask(schemaName, statisticLogInfo, delay, autoAnalyzePeriodInHours, statisticCollector);
         scheduler.scheduleWithFixedDelay(autoAnalyzeTask, delay, autoAnalyzePeriodInHours * 3600 * 1000,
@@ -381,18 +368,15 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
      * if not exists return -1
      */
     public StatisticResult getCardinality(String logicalTableName, String columnName) {
-        CacheLine cacheLine = getCacheLine(logicalTableName);
-        if (ndvSketch != null) {
-            StatisticResult c = ndvSketch.getCardinality(logicalTableName, columnName);
-            if (c != StatisticResult.EMPTY) {
-                return c;
-            }
+        Long cardinality = cardinalitySketch.get(buildSketchKey(schemaName, logicalTableName, columnName));
+        if (cardinality != null && cardinality != -1) {
+            return StatisticResult.build(HLL_SKETCH).setValue(cardinality);
         }
-
+        CacheLine cacheLine = getCacheLine(logicalTableName);
         cacheLine.setLastAccessTime(unixTimeStamp());
         Map<String, Long> cardinalityMap = cacheLine.getCardinalityMap();
         if (cardinalityMap != null) {
-            Long cardinality = cardinalityMap.get(columnName.toLowerCase());
+            cardinality = cardinalityMap.get(columnName.toLowerCase());
             if (cardinality == null) {
                 return StatisticResult.EMPTY;
             } else {
@@ -598,7 +582,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         }
         executor.execute(() -> {
             MDC.put(MDC.MDC_KEY_APP, getSchemaName().toLowerCase());
-            if (paramManager.getBoolean(ConnectionParams.ENABLE_STATISTIC_FEEDBACK)) {
+            if (getSds().acquireStatisticConfig().getBoolean(ConnectionParams.ENABLE_STATISTIC_FEEDBACK)) {
                 StatisticUtils.logInfo(schemaName,
                     "statistics feedback analyze " + logicalTableName + " tables statistics " + "start");
                 long start = System.currentTimeMillis();
@@ -643,8 +627,16 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         CacheLine cacheLine = getCacheLine(oldLogicalTableName);
         statisticCache.put(newLogicalTableName.toLowerCase(), cacheLine);
         statisticCache.remove(oldLogicalTableName.toLowerCase());
-        systemTableTableStatistic.renameTable(oldLogicalTableName.toLowerCase(), newLogicalTableName.toLowerCase());
-        systemTableColumnStatistic.renameTable(oldLogicalTableName.toLowerCase(), newLogicalTableName.toLowerCase());
+        List<String> removeList = Lists.newLinkedList();
+        for (String key : cardinalitySketch.keySet()) {
+            if (key.startsWith(schemaName + ":" + oldLogicalTableName)) {
+                removeList.add(key);
+            }
+        }
+        removeList.forEach(key -> cardinalitySketch.remove(key));
+        getSds().renameTable(oldLogicalTableName.toLowerCase(), newLogicalTableName.toLowerCase());
+        getSds().reloadNDVbyTableName(newLogicalTableName);
+        cardinalitySketch.putAll(getSds().syncCardinality());
     }
 
     public void removeLogicalColumnList(String logicalTableName, List<String> columnNameList) {
@@ -671,12 +663,37 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
                 nullCountMap.remove(columnName);
             }
         }
-        systemTableColumnStatistic.removeLogicalTableColumnList(logicalTableName, columnNameList);
+        getSds().removeLogicalTableColumnList(logicalTableName, columnNameList);
     }
 
     @Override
     public Set<String> getTableNamesCollected() {
         return Sets.newHashSet(statisticCache.keySet());
+    }
+
+    /**
+     * 同步接口,触发对应表的 sample 收集并形成直方图和 TOPN
+     */
+    @Override
+    public void sampleTable(String logicalTableName) {
+        MDC.put(MDC.MDC_KEY_APP, getSchemaName().toLowerCase());
+        StatisticUtils.logInfo(schemaName,
+            "statistics sample " + logicalTableName + " statistics start");
+        long start = System.currentTimeMillis();
+        // column statistic
+        List<ColumnMeta> analyzeColumnList = getColumnMetas(false, schemaName, logicalTableName);
+        if (analyzeColumnList == null || analyzeColumnList.isEmpty()) {
+            return;
+        }
+        statisticCollector.sampleColumns(
+            logicalTableName,
+            analyzeColumnList,
+            OptimizerContext.getContext(schemaName).getParamManager());
+        long end = System.currentTimeMillis();
+        StatisticUtils
+            .logInfo(schemaName, "statistics sample " + logicalTableName + " statistics "
+                + "consuming "
+                + (end - start) / 1000.0 + " seconds");
     }
 
     public void removeLogicalTableList(List<String> logicalTableNameList) {
@@ -685,17 +702,8 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         }
         for (String logicalTableName : logicalTableNameList) {
             this.statisticCache.remove(logicalTableName.toLowerCase());
-            if (ndvSketch != null) {
-                this.ndvSketch.remove(logicalTableName.toLowerCase());
-            }
         }
-        systemTableTableStatistic.removeLogicalTableList(logicalTableNameList);
-        systemTableColumnStatistic.removeLogicalTableList(logicalTableNameList);
-        if (ndvSketchStatistic != null) {
-            for (String logicalTableName : logicalTableNameList) {
-                ndvSketchStatistic.deleteByTableName(schemaName, logicalTableName);
-            }
-        }
+        getSds().removeLogicalTableList(logicalTableNameList);
     }
 
     /**
@@ -705,7 +713,7 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
 
         PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         if (partitionInfoManager.isNewPartDbTable(logicalTableName)) {
-            PartitionPruneStep partitionPruneStep = PartitionPruneStepBuilder.generateFullScanPrueStepInfo(schemaName,
+            PartitionPruneStep partitionPruneStep = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(schemaName,
                 logicalTableName, executionContext);
             PartPrunedResult partPrunedResult =
                 PartitionPruner.doPruningByStepInfo(partitionPruneStep, executionContext);
@@ -757,33 +765,22 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         return autoAnalyzeTask;
     }
 
+    public StatisticDataSource getSds() {
+        return sds;
+    }
+
     public enum AutoAnalyzeState {
         RUNNING,
         WAITING
     }
 
     public void updateAllShardParts(String tableName, String columnName) {
-        try {
-            ndvSketch.updateAllShardParts(tableName, columnName);
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
-    }
-
-    public void updateStockShardParts(String tableName, String columnName) {
-        try {
-            ndvSketch.updateStockShardParts(tableName, columnName);
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
+        getSds().updateColumnCardinality(tableName, columnName);
     }
 
     public void rebuildShardParts(String tableName, String columnName) {
-        try {
-            ndvSketch.reBuildShardParts(tableName, columnName);
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
+        getSds().rebuildColumnCardinality(tableName, columnName);
+        cardinalitySketch.putAll(getSds().syncCardinality());
     }
 
     public String getSchemaName() {

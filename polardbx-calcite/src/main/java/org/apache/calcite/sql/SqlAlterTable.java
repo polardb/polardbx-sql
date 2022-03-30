@@ -16,9 +16,13 @@
 
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRenameTableStatement;
@@ -54,6 +58,9 @@ public class SqlAlterTable extends SqlCreate {
     private final SqlTableOptions tableOptions;
     private final List<SqlAlterSpecification> alters;
     private final SqlIdentifier originTableName;
+
+    private List<String> logicalReferencedTables = null;
+    private List<String> physicalReferencedTables = null;
 
     /**
      * Creates a SqlCreateIndex.
@@ -156,6 +163,26 @@ public class SqlAlterTable extends SqlCreate {
                     print("?");
                     return false;
                 }
+
+                @Override
+                protected void printReferencedTableName(SQLExpr expr) {
+                    if (!ConfigDataMode.isFastMock() && logicalReferencedTables != null) {
+                        String referencedTableName = null;
+                        if (expr instanceof SQLIdentifierExpr) {
+                            referencedTableName = ((SQLIdentifierExpr) expr).getSimpleName();
+                        } else if (expr instanceof SQLPropertyExpr) {
+                            referencedTableName = ((SQLPropertyExpr) expr).getSimpleName();
+                        }
+                        if (TStringUtil.isNotEmpty(referencedTableName) &&
+                            logicalReferencedTables.contains(referencedTableName)) {
+                            print("?");
+                        } else {
+                            super.printReferencedTableName(expr);
+                        }
+                    } else {
+                        super.printReferencedTableName(expr);
+                    }
+                }
             };
             questionarkTableSource.visit(stmt);
             return sql.toString();
@@ -184,6 +211,10 @@ public class SqlAlterTable extends SqlCreate {
     @Override
     public String toString() {
         return prepare();
+    }
+
+    public void setSourceSql(String sourceSql) {
+        this.sourceSql = sourceSql;
     }
 
     public String getSourceSql() {
@@ -218,6 +249,14 @@ public class SqlAlterTable extends SqlCreate {
     @Override
     public boolean createGsi() {
         return addIndex() && ((SqlAddIndex) alters.get(0)).indexDef.isGlobal();
+    }
+
+    public boolean isAllocateLocalPartition() {
+        return alters != null && alters.size() == 1 && alters.get(0) instanceof SqlAlterTableAllocateLocalPartition;
+    }
+
+    public boolean isExpireLocalPartition() {
+        return alters != null && alters.size() == 1 && alters.get(0) instanceof SqlAlterTableExpireLocalPartition;
     }
 
     public boolean createClusteredIndex() {
@@ -280,5 +319,21 @@ public class SqlAlterTable extends SqlCreate {
 
     public boolean isModifyPartitionValues() {
         return alters.size() > 0 && alters.get(0) instanceof SqlAlterTableModifyPartitionValues;
+    }
+
+    public List<String> getLogicalReferencedTables() {
+        return logicalReferencedTables;
+    }
+
+    public void setLogicalReferencedTables(List<String> logicalReferencedTables) {
+        this.logicalReferencedTables = logicalReferencedTables;
+    }
+
+    public List<String> getPhysicalReferencedTables() {
+        return physicalReferencedTables;
+    }
+
+    public void setPhysicalReferencedTables(List<String> physicalReferencedTables) {
+        this.physicalReferencedTables = physicalReferencedTables;
     }
 }

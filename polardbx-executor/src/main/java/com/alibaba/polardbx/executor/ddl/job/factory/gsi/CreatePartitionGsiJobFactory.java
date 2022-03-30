@@ -27,12 +27,16 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMeta
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPreValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertIndexMetaTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import org.apache.calcite.rel.core.DDL;
@@ -40,6 +44,9 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.DELETE_ONLY;
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.WRITE_ONLY;
@@ -54,6 +61,9 @@ import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.WRITE_ONLY;
  */
 public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
 
+    List<Long> tableGroupIds = new ArrayList<>();
+
+    final boolean indexAlignWithPrimaryTableGroup;
     public CreatePartitionGsiJobFactory(CreateGlobalIndexPreparedData globalIndexPreparedData,
                                         PhysicalPlanData physicalPlanData,
                                         ExecutionContext executionContext) {
@@ -67,15 +77,47 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
             globalIndexPreparedData.getComment(),
             globalIndexPreparedData.getIndexType(),
             globalIndexPreparedData.isClusteredIndex(),
+            globalIndexPreparedData.getIndexTablePreparedData() != null
+                && globalIndexPreparedData.getIndexTablePreparedData().isTimestampColumnDefault(),
+            globalIndexPreparedData.getIndexTablePreparedData() != null ?
+                globalIndexPreparedData.getIndexTablePreparedData().getBinaryColumnDefaultValues() :
+                new TreeMap<>(String.CASE_INSENSITIVE_ORDER),
             physicalPlanData,
             executionContext
         );
+        this.indexAlignWithPrimaryTableGroup = globalIndexPreparedData.isIndexAlignWithPrimaryTableGroup();
+    }
+
+    @Override
+    protected void excludeResources(Set<String> resources) {
+        super.excludeResources(resources);
+
+        resources.add(concatWithDot(schemaName, primaryTableName));
+        resources.add(concatWithDot(schemaName, indexTableName));
+
+        TableGroupConfig tgConfig = physicalPlanData.getTableGroupConfig();
+        for (TablePartRecordInfoContext entry : tgConfig.getTables()) {
+            Long tableGroupId = entry.getLogTbRec().getGroupId();
+            if (tableGroupId != null && tableGroupId != -1) {
+                tableGroupIds.add(tableGroupId);
+                OptimizerContext oc =
+                    Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+                TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(tableGroupId);
+                String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
+                resources.add(concatWithDot(schemaName, tgName));
+            }
+        }
     }
 
     @Override
     protected ExecutableDdlJob doCreate() {
+
+        CreateGsiPreValidateTask preValidateTask =
+            new CreateGsiPreValidateTask(schemaName, primaryTableName, indexTableName, tableGroupIds,
+                physicalPlanData.getTableGroupConfig());
         CreateGsiValidateTask validateTask =
-            new CreateGsiValidateTask(schemaName, primaryTableName, indexTableName);
+            new CreateGsiValidateTask(schemaName, primaryTableName, indexTableName, tableGroupIds,
+                physicalPlanData.getTableGroupConfig());
 
         List<String> columns = columnAst2nameStr(this.columns);
         List<String> coverings = columnAst2nameStr(this.coverings);
@@ -104,7 +146,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
         }
         CreateTableAddTablesPartitionInfoMetaTask createTableAddTablesPartitionInfoMetaTask =
             new CreateTableAddTablesPartitionInfoMetaTask(schemaName, indexTableName, physicalPlanData.isTemporary(),
-                physicalPlanData.getTableGroupConfig());
+                physicalPlanData.getTableGroupConfig(), null, indexAlignWithPrimaryTableGroup, primaryTableName);
         CreateTableAddTablesMetaTask addTablesMetaTask =
             new CreateTableAddTablesMetaTask(
                 schemaName,
@@ -115,9 +157,12 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                 physicalPlanData.getTablesExtRecord(),
                 physicalPlanData.isPartitioned(),
                 physicalPlanData.isIfNotExists(),
-                physicalPlanData.getKind()
+                physicalPlanData.getKind(),
+                hasTimestampColumnDefault,
+                binaryColumnDefaultValues
             );
         CreateTableShowTableMetaTask showTableMetaTask = new CreateTableShowTableMetaTask(schemaName, indexTableName);
+        showTableMetaTask = (CreateTableShowTableMetaTask) showTableMetaTask.onExceptionTryRecoveryThenRollback();
         GsiInsertIndexMetaTask addIndexMetaTask =
             new GsiInsertIndexMetaTask(
                 schemaName,
@@ -131,6 +176,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                 IndexStatus.CREATING,
                 clusteredIndex
             );
+        addIndexMetaTask = (GsiInsertIndexMetaTask) addIndexMetaTask.onExceptionTryRecoveryThenRollback();
 
         List<DdlTask> taskList = new ArrayList<>();
         //1. validate
@@ -162,6 +208,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
         result.labelAsHead(validateTask);
         result.labelAsTail(tableSyncTask);
 
+        result.setCreateGsiPreCheckTask(preValidateTask);
         result.setCreateGsiValidateTask(validateTask);
         result.setCreateTableAddTablesPartitionInfoMetaTask(createTableAddTablesPartitionInfoMetaTask);
         result.setCreateTableAddTablesMetaTask(addTablesMetaTask);

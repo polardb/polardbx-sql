@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Matrix;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
@@ -96,6 +97,7 @@ public class OptimizerContext {
         return optimizerContextMap.values().stream()
             .map(x -> getContext(x.getSchemaName()).getMatrix().getGroups())
             .flatMap(Collection::stream)
+            .filter(DbGroupInfoManager::isVisibleGroup)
             .collect(Collectors.toList());
     }
 

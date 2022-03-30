@@ -59,7 +59,8 @@ public class MoveDatabaseSwitchDataSourcesTask extends BaseDdlTask {
             DbTopologyManager
                 .switchGroupStorageInfos(schemaName, entry.getKey(), entry.getValue().getKey(), targetGroup,
                     entry.getValue().getValue(), metaDbConnection);
-            ScaleOutUtils.setGroupTypeByDbAndGroup(schemaName, GroupInfoUtil.buildScaloutGroupName(entry.getKey()),
+
+            ScaleOutUtils.updateGroupType(schemaName, GroupInfoUtil.buildScaloutGroupName(entry.getKey()),
                 DbGroupInfoRecord.GROUP_TYPE_SCALEOUT_FINISHED, metaDbConnection);
         }
         updateSupportedCommands(true, false, metaDbConnection);

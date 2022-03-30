@@ -20,7 +20,11 @@ import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
@@ -29,15 +33,14 @@ import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.context.PhyDdlExecutionRecord;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.BACKTICK;
-import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.COLON;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.EMPTY_CONTENT;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_CANT_DROP_KEY;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_DUPLICATE_KEY;
@@ -50,24 +53,39 @@ import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SQLSTATE_VI
 
 public class GenericPhyObjectRecorder {
 
-    protected final PhyDdlTableOperation physicalDdlPlan;
-    protected final String schemaName;
+    protected static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
+
     protected final ExecutionContext executionContext;
     protected final DdlContext ddlContext;
+
+    protected final PhyDdlTableOperation physicalDdlPlan;
+
+    protected final String schemaName;
+    protected final String groupName;
+    protected final String phyTableName;
+
     protected final PhyDdlExecutionRecord phyDdlExecutionRecord;
 
     public GenericPhyObjectRecorder(RelNode physicalPlan, ExecutionContext executionContext) {
+        this.executionContext = executionContext;
+        this.ddlContext = executionContext.getDdlContext();
+
         String objectSchema;
         if (physicalPlan instanceof PhyDdlTableOperation) {
             this.physicalDdlPlan = (PhyDdlTableOperation) physicalPlan;
             objectSchema = physicalDdlPlan.getSchemaName();
+            Pair<String, String> phyTablePair = DdlHelper.genPhyTablePair(physicalDdlPlan, ddlContext);
+            groupName = phyTablePair.getKey();
+            phyTableName = phyTablePair.getValue();
         } else {
             this.physicalDdlPlan = null;
             objectSchema = null;
+            groupName = null;
+            phyTableName = null;
         }
+
         this.schemaName = TStringUtil.isEmpty(objectSchema) ? executionContext.getSchemaName() : objectSchema;
-        this.executionContext = executionContext;
-        this.ddlContext = executionContext.getDdlContext();
+
         this.phyDdlExecutionRecord = executionContext.getPhyDdlExecutionRecord();
     }
 
@@ -103,13 +121,85 @@ public class GenericPhyObjectRecorder {
         }
 
         if (isCurrentPlanSuccessful()) {
-            String phyObjectInfo = genPhyObjectInfo(true);
-
             if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING) {
-                recordObjectRollback(phyObjectInfo);
+                recordObjectRollback();
             } else {
-                recordObjectNormal(phyObjectInfo, true);
+                recordObjectNormal();
             }
+        }
+    }
+
+    protected boolean isCurrentPlanSuccessful() {
+        boolean successful = true;
+
+        List<ExecutionContext.ErrorMessage> errorMessages =
+            (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
+
+        if (GeneralUtil.isNotEmpty(errorMessages)) {
+            // Copy a new list to avoid conflict since original list may be updated concurrently.
+            List<ExecutionContext.ErrorMessage> currentErrorMessages = new ArrayList<>(errorMessages);
+
+            String tableName = phyTableName.replaceAll(BACKTICK, EMPTY_CONTENT);
+
+            for (ExecutionContext.ErrorMessage errorMessage : currentErrorMessages) {
+                if (errorMessage != null && errorMessage.getMessage() != null) {
+                    String pureErrorMessage = errorMessage.getMessage().replaceAll(BACKTICK, EMPTY_CONTENT);
+                    if (TStringUtil.equalsIgnoreCase(errorMessage.getGroupName(), groupName) &&
+                        TStringUtil.containsIgnoreCase(pureErrorMessage, tableName)) {
+                        // Check if we can ignore the error.
+                        successful = checkIfIgnoreSqlStateAndErrorCode(null, errorMessage.getCode());
+                        if (successful) {
+                            // Record the error message for final determination.
+                            phyDdlExecutionRecord.addErrorIgnored(errorMessage);
+                        } else {
+                            // Check if the physical object is actually done.
+                            successful = checkIfPhyObjectDoneByHashcode();
+                            if (successful) {
+                                // Record the error message for final determination.
+                                phyDdlExecutionRecord.addErrorIgnored(errorMessage);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return successful;
+    }
+
+    protected void recordObjectNormal() {
+        String phyObjectInfo = genPhyObjectInfo();
+        recordObjectNormal(phyObjectInfo, true);
+    }
+
+    protected void recordObjectNormal(String phyObjectInfo, boolean afterPhyDdl) {
+        addPhyObjectDone(phyObjectInfo, afterPhyDdl);
+
+        DdlJobManagerUtils.appendPhyTableDone(phyDdlExecutionRecord, phyObjectInfo, afterPhyDdl);
+
+        printDebugInfo("GenericPhyObjectRecorder.recordObjectNormal() - " + afterPhyDdl,
+            phyDdlExecutionRecord, phyObjectInfo);
+    }
+
+    protected void recordObjectRollback() {
+        resetPhyObjectsDone(genPhyObjectInfo(), true);
+    }
+
+    protected void resetPhyObjectsDone(String phyObjectInfo, boolean afterPhyDdl) {
+        synchronized (GenericPhyObjectRecorder.class) {
+            removePhyObjectDone(phyObjectInfo, afterPhyDdl);
+
+            // Build new object done list.
+            StringBuilder buf = new StringBuilder();
+            phyDdlExecutionRecord.getPhyObjectsDone().stream()
+                .forEach(phyObjectDone -> buf.append(SEMICOLON).append(phyObjectDone));
+
+            String newPhyObjectsDone = buf.length() > 0 ? buf.deleteCharAt(0).toString() : "";
+
+            DdlJobManagerUtils.resetPhyTablesDone(phyDdlExecutionRecord, newPhyObjectsDone);
+
+            printDebugInfo("GenericPhyObjectRecorder.recordObjectRollback() - " + afterPhyDdl,
+                phyDdlExecutionRecord, phyObjectInfo);
         }
     }
 
@@ -137,90 +227,33 @@ public class GenericPhyObjectRecorder {
         return exceptionIgnored;
     }
 
-    protected void recordObjectRollback(String phyObjectInfo) {
-        if (TStringUtil.isEmpty(phyObjectInfo)) {
-            return;
-        }
-
-        synchronized (GenericPhyObjectRecorder.class) {
-            // Get currently new object done info.
-            Set<String> phyObjectsDone = phyDdlExecutionRecord.getPhyObjectsDone();
-
-            removePhyObjectDone(phyObjectInfo, phyObjectsDone);
-
-            // Build new object done list.
-            StringBuilder newPhyObjectsDoneBuf = new StringBuilder();
-            phyObjectsDone.stream()
-                .forEach(phyObjectDone -> newPhyObjectsDoneBuf.append(SEMICOLON).append(phyObjectDone));
-
-            String newPhyObjectsDone =
-                newPhyObjectsDoneBuf.length() > 0 ? newPhyObjectsDoneBuf.deleteCharAt(0).toString() : "";
-
-            phyDdlExecutionRecord.decreasePhyObjsDone();
-
-            DdlJobManagerUtils.resetPhyTablesDone(phyDdlExecutionRecord, newPhyObjectsDone, true);
-        }
-    }
-
-    protected void recordObjectNormal(String phyObjectInfo, boolean withProgress) {
-        if (TStringUtil.isEmpty(phyObjectInfo)) {
-            return;
-        }
-
-        phyDdlExecutionRecord.increasePhyObjsDone();
-
-        DdlJobManagerUtils.appendPhyTableDone(phyDdlExecutionRecord, phyObjectInfo, withProgress);
-    }
-
-    protected boolean isCurrentPlanSuccessful() {
-        boolean successful = true;
-
-        List<ExecutionContext.ErrorMessage> errorMessages =
-            (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
-
-        if (errorMessages != null && errorMessages.size() > 0) {
-            // Copy a new list to avoid conflict since original list may be updated concurrently.
-            List<ExecutionContext.ErrorMessage> currentErrorMessages = new ArrayList<>(errorMessages);
-
-            String phyObjectInfo = genPhyObjectInfo(true);
-
-            String[] objects = phyObjectInfo.split(COLON);
-            String groupName = objects[0].toLowerCase();
-            String tableName = objects[1].toLowerCase().replaceAll(BACKTICK, EMPTY_CONTENT);
-
-            for (ExecutionContext.ErrorMessage errorMessage : currentErrorMessages) {
-                if (errorMessage != null && errorMessage.getMessage() != null) {
-                    String pureErrorMessage = errorMessage.getMessage().replaceAll(BACKTICK, EMPTY_CONTENT);
-                    if (errorMessage.getGroupName().toLowerCase().equalsIgnoreCase(groupName) &&
-                        pureErrorMessage.toLowerCase().contains(tableName)) {
-                        // Check if we can ignore the error.
-                        successful = checkIfIgnoreSqlStateAndErrorCode(null, errorMessage.getCode());
-                        // Record the error message for final determination.
-                        if (successful) {
-                            phyDdlExecutionRecord.addErrorIgnored(errorMessage);
-                        }
-                    }
-                }
-            }
-        }
-
-        return successful;
-    }
-
     // A subclass may need to override the following methods.
 
     protected boolean checkIfPhyObjectDone() {
-        Set<String> phyObjectsDone = phyDdlExecutionRecord.getPhyObjectsDone();
-        String phyObjectInfo = genPhyObjectInfo(false);
-        return phyObjectsDone.contains(phyObjectInfo);
+        String phyObjectInfo = genPhyObjectInfo();
+        return phyDdlExecutionRecord.getPhyObjectsDone().contains(phyObjectInfo);
     }
 
-    protected String genPhyObjectInfo(boolean afterPhyDdl) {
-        return DdlHelper.genPhyTableInfo(schemaName, physicalDdlPlan, false, afterPhyDdl, ddlContext);
+    protected boolean checkIfPhyObjectDoneByHashcode() {
+        return false;
     }
 
-    protected void removePhyObjectDone(String phyObjectInfo, Set<String> phyObjectsDone) {
-        phyObjectsDone.remove(phyObjectInfo);
+    protected void addPhyObjectDone(String phyObjectInfo, boolean afterPhyDdl) {
+        phyDdlExecutionRecord.addPhyObjectDone(phyObjectInfo);
+        if (afterPhyDdl) {
+            phyDdlExecutionRecord.increasePhyObjsDone();
+        }
+    }
+
+    protected void removePhyObjectDone(String phyObjectInfo, boolean afterPhyDdl) {
+        phyDdlExecutionRecord.removePhyObjectDone(phyObjectInfo);
+        if (afterPhyDdl) {
+            phyDdlExecutionRecord.decreasePhyObjsDone();
+        }
+    }
+
+    protected String genPhyObjectInfo() {
+        return DdlHelper.genPhyTableInfo(groupName, phyTableName);
     }
 
     protected boolean checkIfIgnoreSqlStateAndErrorCode(String sqlState, int errorCode) {
@@ -284,6 +317,17 @@ public class GenericPhyObjectRecorder {
         }
 
         return errorIgnored;
+    }
+
+    protected void printDebugInfo(String location, PhyDdlExecutionRecord phyDdlExecutionRecord, String phyObjectInfo) {
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.DDL_SHARD_CHANGE_DEBUG)) {
+            StringBuilder buf = new StringBuilder();
+            buf.append("*** DDL DEBUG ***\n\n");
+            buf.append(location).append("\n\n");
+            buf.append(phyDdlExecutionRecord.toString()).append("\n");
+            buf.append("Current Physical Object Info:\n").append(phyObjectInfo).append("\n\n");
+            LOGGER.info(buf.toString());
+        }
     }
 
 }

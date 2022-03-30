@@ -336,14 +336,6 @@
   plan: |
     LogicalShow(sql="SHOW DDL STATUS")
 
--
-  sql: |
-    show ddl status where STATE = "RUNNING" order by START_TIME desc limit 1,2
-  plan: |
-    TopN(sort="START_TIME DESC", offset=1, fetch=2)
-      Filter(condition="STATE = 'RUNNING'")
-        LogicalShow(sql="SHOW DDL STATUS")
-
 ## show grants
 -
   sql: |
@@ -429,4 +421,13 @@
     show index in optest.op_test from optest
   plan: |
     LogicalShow(sql="SHOW INDEXES FROM `op_test` FROM `optest`")
+
+
+# show slave status
+-
+  sql: |
+    show slave status
+  plan: |
+    LogicalDal(sql="SHOW SLAVE STATUS")
+
 

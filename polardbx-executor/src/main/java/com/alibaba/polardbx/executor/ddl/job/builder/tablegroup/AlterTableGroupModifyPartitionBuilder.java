@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupModifyPartitionPreparedData;
@@ -47,12 +48,26 @@ public class AlterTableGroupModifyPartitionBuilder extends AlterTableGroupBaseBu
         alterTableGroupItemPreparedData.setDefaultPartitionSpec(partitionSpec);
         alterTableGroupItemPreparedData.setGroupDetailInfoExRecords(groupDetailInfoExRecords);
         alterTableGroupItemPreparedData.setTableGroupName(preparedData.getTableGroupName());
-        alterTableGroupItemPreparedData.setNewPhyTables(getNewPhyTables(partitionInfo));
+        alterTableGroupItemPreparedData.setNewPhyTables(getNewPhyTables(tableName));
         //here the oldPartition is tread as the source table of backfill task
         alterTableGroupItemPreparedData.setOldPartitionNames(preparedData.getNewPartitionNames());
         alterTableGroupItemPreparedData.setNewPartitionNames(preparedData.getNewPartitionNames());
         alterTableGroupItemPreparedData.setInvisiblePartitionGroups(preparedData.getInvisiblePartitionGroups());
         alterTableGroupItemPreparedData.setTaskType(preparedData.getTaskType());
+        String primaryTableName;
+        TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
+        if (tableMeta.isGsi()) {
+            //all the gsi table version change will be behavior by primary table
+            assert
+                tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+            primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+        } else {
+            primaryTableName = tableName;
+        }
+        alterTableGroupItemPreparedData.setPrimaryTableName(primaryTableName);
+        alterTableGroupItemPreparedData
+            .setTableVersion(
+                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName).getVersion());
 
         return alterTableGroupItemPreparedData;
     }

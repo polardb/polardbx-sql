@@ -19,11 +19,16 @@ package com.alibaba.polardbx.executor.ddl.job;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -36,11 +41,13 @@ public class MockDdlJob extends DdlJobFactory {
     int expectNodeCount;
     int maxOutEdgeCount;
     int edgeRate;
+    boolean mockSubJob;
 
-    public MockDdlJob(int expectNodeCount, int maxOutEdgeCount, int edgeRate) {
+    public MockDdlJob(int expectNodeCount, int maxOutEdgeCount, int edgeRate, boolean mockSubJob) {
         this.expectNodeCount = expectNodeCount;
         this.maxOutEdgeCount = maxOutEdgeCount;
         this.edgeRate = edgeRate;
+        this.mockSubJob = mockSubJob;
     }
 
     @Override
@@ -50,12 +57,23 @@ public class MockDdlJob extends DdlJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        return generateRandomDag(expectNodeCount, maxOutEdgeCount, edgeRate);
+        ExecutableDdlJob executableDdlJob = generateRandomDag(expectNodeCount, maxOutEdgeCount, edgeRate, mockSubJob);
+        FailPoint.inject(FailPointKey.FP_HIJACK_DDL_JOB_FORMAT, (k, v)->{
+            if(StringUtils.equalsIgnoreCase(v, "SEQUELTIAL")){
+                executableDdlJob.overrideTasks(generateSequentialDag(expectNodeCount, mockSubJob));
+            }else {
+                executableDdlJob.overrideTasks(generateRandomDag(expectNodeCount, maxOutEdgeCount, edgeRate, mockSubJob));
+            }
+        });
+        return executableDdlJob;
     }
 
     @Override
     protected void excludeResources(Set<String> resources) {
-
+        if (!mockSubJob) {
+            String res = "mock_resource_" + ID_GENERATOR.nextId();
+            resources.add(res);
+        }
     }
 
     @Override
@@ -100,20 +118,26 @@ public class MockDdlJob extends DdlJobFactory {
 
     private static final IdGenerator ID_GENERATOR = IdGenerator.getIdGenerator();
 
-    private static ExecutableDdlJob generateRandomDag(int expectNodeCount, int maxOutEdgeCount, int edgeRate) {
+    private static ExecutableDdlJob generateRandomDag(int expectNodeCount, int maxOutEdgeCount, int edgeRate,
+                                                      boolean mockSubJob) {
         int nodeCount = expectNodeCount * 2 / 3 + random.nextInt(expectNodeCount * 4 / 3) + 1;
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 
         List<Integer> oldNode = new ArrayList<>(nodeCount);
-        List<MockDdlTask> foobar = new ArrayList<>(nodeCount);
+        List<DdlTask> foobar = new ArrayList<>(nodeCount);
         StringBuilder sb = new StringBuilder();
         sb.append("digraph {\n");
         for (int i = 0; i < nodeCount; i++) {
             sb.append(String.format("  %d;\n", i));
 
             oldNode.add(i);
-            MockDdlTask task = new MockDdlTask(String.valueOf(i), 1000L);
+            DdlTask task;
+            if (!mockSubJob) {
+                task = new MockDdlTask(String.valueOf(i), 1000L);
+            } else {
+                task = new SubJobTask(String.valueOf(i), FailPointKey.FP_INJECT_SUBJOB, FailPointKey.FP_INJECT_SUBJOB);
+            }
             task.setTaskId(ID_GENERATOR.nextId());
             foobar.add(task);
             executableDdlJob.addTask(task);
@@ -135,6 +159,25 @@ public class MockDdlJob extends DdlJobFactory {
         }
 
         sb.append("}\n");
+        return executableDdlJob;
+    }
+
+    private static ExecutableDdlJob generateSequentialDag(int expectNodeCount, boolean mockSubJob) {
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+
+        List<DdlTask> taskList = new ArrayList<>();
+        for (int i = 0; i < expectNodeCount; i++) {
+            DdlTask task;
+            if (!mockSubJob) {
+                task = new MockDdlTask(String.valueOf(i), 1000L);
+            } else {
+                task = new SubJobTask(String.valueOf(i), FailPointKey.FP_INJECT_SUBJOB, FailPointKey.FP_INJECT_SUBJOB);
+            }
+            task.setTaskId(ID_GENERATOR.nextId());
+            taskList.add(task);
+        }
+
+        executableDdlJob.addSequentialTasks(taskList);
         return executableDdlJob;
     }
 

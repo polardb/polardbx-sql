@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.constants.ServerVariables;
 import com.alibaba.polardbx.common.constants.TransactionAttribute;
+import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.model.Group;
@@ -41,6 +42,7 @@ import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.privilege.ActiveRoles;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
@@ -276,6 +278,34 @@ public final class SetHandler {
                             }
                         }
                         c.getExtraServerVariables().put(key.getName().toLowerCase(), autocommit);
+                    } else if (ConnectionProperties.PURE_ASYNC_DDL_MODE.equalsIgnoreCase(key.getName())) {
+                        Boolean asyncDDLPureMode = false;
+                        String stipVal = StringUtils.strip(RelUtils.stringValue(oriValue), "'\"");
+                        if (oriValue instanceof SqlLiteral
+                            && ((SqlLiteral) oriValue).getTypeName() == SqlTypeName.BOOLEAN) {
+                            asyncDDLPureMode = RelUtils.booleanValue(variable.getValue());
+                        } else if (variable.getValue() instanceof SqlNumericLiteral) {
+                            asyncDDLPureMode = RelUtils.integerValue((SqlLiteral) variable.getValue()) != 0;
+                        } else if (oriValue instanceof SqlSystemVar || oriValue instanceof SqlUserDefVar) {
+                            asyncDDLPureMode = c.getVarBooleanValue(oriValue);
+                        } else if ("ON".equalsIgnoreCase(stipVal)) {
+                            asyncDDLPureMode = true;
+                        } else if ("OFF".equalsIgnoreCase(stipVal)) {
+                            asyncDDLPureMode = false;
+                        } else if ("DEFAULT".equalsIgnoreCase(stipVal)) {
+                            asyncDDLPureMode = false;
+                        } else {
+                            c.writeErrMessage(ErrorCode.ER_WRONG_VALUE_FOR_VAR,
+                                "Variable '" + ConnectionProperties.PURE_ASYNC_DDL_MODE
+                                    + "' can't be set to the value of "
+                                    + RelUtils.stringValue(variable.getValue()));
+                            return;
+                        }
+                        //c.setAsyncDDLPureModeSession(asyncDDLPureMode);
+                        c.getExtraServerVariables().put(key.getName().toLowerCase(), asyncDDLPureMode);
+                        if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
+                            globalCnVariables.add(new Pair<String, String>(key.getName(), asyncDDLPureMode.toString()));
+                        }
                     } else if ("SQL_SAFE_UPDATES".equalsIgnoreCase(key.getName())) {
                         // ignore update不带主键就会报错
                     } else if ("NET_WRITE_TIMEOUT".equalsIgnoreCase(key.getName())) {
@@ -594,6 +624,25 @@ public final class SetHandler {
                             return;
                         } else if (parserValue != IGNORE_VALUE) {
                             c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                        }
+                    } else if (ConnectionProperties.SUPPORT_INSTANT_ADD_COLUMN.equalsIgnoreCase(key.getName())) {
+                        String value = StringUtils.strip(c.getVarStringValue(oriValue), "'\"");
+                        Boolean iacSupported;
+                        if ("ON".equalsIgnoreCase(value)) {
+                            iacSupported = Boolean.TRUE;
+                        } else if ("OFF".equalsIgnoreCase(value)) {
+                            iacSupported = Boolean.FALSE;
+                        } else {
+                            iacSupported = Boolean.FALSE;
+                        }
+                        // global only
+                        if (enableSetGlobal && key.getScope() == VariableScope.GLOBAL) {
+                            globalCnVariables.add(new Pair<>(key.getName(), iacSupported.toString()));
+                            if (TableInfoManager.isXdbInstantAddColumnSupported()) {
+                                SqlSystemVar dnKey = SqlSystemVar.create(key.getScope(),
+                                    Attribute.XDB_VARIABLE_INSTANT_ADD_COLUMN, SqlParserPos.ZERO);
+                                globalDNVariables.add(new Pair<>(dnKey, variable.getValue()));
+                            }
                         }
                     } else if ("block_encryption_mode".equalsIgnoreCase(key.getName())) {
                         BlockEncryptionMode encryptionMode;

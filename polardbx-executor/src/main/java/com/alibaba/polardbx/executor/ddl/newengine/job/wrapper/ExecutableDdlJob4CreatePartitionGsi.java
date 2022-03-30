@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMeta
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesPartitionInfoMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPreValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertIndexMetaTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -29,6 +30,7 @@ import lombok.Data;
 @Data
 public class ExecutableDdlJob4CreatePartitionGsi extends ExecutableDdlJob {
 
+    private CreateGsiPreValidateTask createGsiPreCheckTask;
     private CreateGsiValidateTask createGsiValidateTask;
     private CreateTableAddTablesPartitionInfoMetaTask createTableAddTablesPartitionInfoMetaTask;
     private CreateTableAddTablesMetaTask createTableAddTablesMetaTask;

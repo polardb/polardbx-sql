@@ -16,10 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSetTableGroupPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
-import org.apache.calcite.sql.SqlAlterTableGroup;
+
+import java.util.Objects;
 
 public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
 
@@ -34,11 +39,32 @@ public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
         String tableGroupName = alterTableSetTableGroup.getTableGroupName();
         String tableName = alterTableSetTableGroup.getTableName().toString();
 
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
+        Long curTableGroupId = partitionInfo.getTableGroupId();
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+        TableGroupConfig curTableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(curTableGroupId);
+
         preparedData = new AlterTableSetTableGroupPreparedData();
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(tableName);
         preparedData.setWithHint(targetTablesHintCache != null);
+        preparedData.setOriginalTableGroup(curTableGroupConfig.getTableGroupRecord().getTg_name());
+        String primaryTableName;
+        if (tableMeta.isGsi()) {
+            //all the gsi table version change will be behavior by primary table
+            assert
+                tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+            primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+            tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
+        } else {
+            primaryTableName = tableName;
+        }
+        preparedData.setPrimaryTableName(primaryTableName);
+        preparedData.setTableVersion(tableMeta.getVersion());
     }
 
     public AlterTableSetTableGroupPreparedData getPreparedData() {

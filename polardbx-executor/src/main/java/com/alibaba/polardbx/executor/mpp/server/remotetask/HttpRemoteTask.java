@@ -42,7 +42,7 @@ import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.server.StatementResource;
 import com.alibaba.polardbx.executor.mpp.server.TaskUpdateRequest;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
@@ -199,9 +199,11 @@ public class HttpRemoteTask implements RemoteTask {
         this.runtimeFilterUpdateURI = runtimeFilterUpdateURI;
 
         for (Map.Entry<Integer, Split> entry : requireNonNull(initialSplits, "initialSplits is null").entries()) {
-            ScheduledSplit scheduledSplit =
-                new ScheduledSplit(nextSplitId.getAndIncrement(), entry.getValue());
-            pendingSplits.put(entry.getKey(), scheduledSplit);
+            if (entry.getValue() != Split.EMPTY_SPLIT) {
+                ScheduledSplit scheduledSplit =
+                    new ScheduledSplit(nextSplitId.getAndIncrement(), entry.getValue());
+                pendingSplits.put(entry.getKey(), scheduledSplit);
+            }
             if (isNoMoreSplits) {
                 this.isNoMoreSplits.put(entry.getKey(), true);
                 noMoreSplits.add(entry.getKey());

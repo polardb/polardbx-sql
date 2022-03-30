@@ -27,28 +27,42 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
-import com.alibaba.polardbx.executor.balancer.action.ActionDrainCDCStorage;
+import com.alibaba.polardbx.executor.balancer.action.ActionDrainDatabase;
+import com.alibaba.polardbx.executor.balancer.action.ActionDropBroadcastTable;
 import com.alibaba.polardbx.executor.balancer.action.ActionLockResource;
 import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroup;
 import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroups;
 import com.alibaba.polardbx.executor.balancer.action.ActionMovePartition;
-import com.alibaba.polardbx.executor.balancer.action.ActionUpdateNodeStatus;
+import com.alibaba.polardbx.executor.balancer.action.ActionTaskAdapter;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
+import com.alibaba.polardbx.executor.balancer.action.DropPhysicalDbTask;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CleanRemovedDbGroupMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DrainCDCTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DrainNodeValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropDbGroupHideMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseReleaseXLockTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateGroupInfoTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateNodeStatusTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncThenReleaseXLockTask;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.NodeInfo;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
+import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
@@ -60,14 +74,17 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.calcite.sql.SqlRebalance;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.glassfish.jersey.internal.guava.Sets;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -110,35 +127,63 @@ public class PolicyDrainNode implements BalancePolicy {
         LOG.info(String.format("apply drain_node policy: schemas=%s options=%s \nstats=%s",
             schemaNameList, options, stats));
 
+        boolean ignoreRollback = true;
         BalanceAction updateStatusNotReady =
-            new ActionUpdateNodeStatus(
-                ec.getSchemaName(),
-                new ArrayList<>(dnInstIdList),
-                Collections.emptyList(),
-                StorageInfoRecord.STORAGE_STATUS_NOT_READY);
+            new ActionTaskAdapter(
+                DefaultDbSchema.NAME,
+                new UpdateNodeStatusTask(
+                    DefaultDbSchema.NAME,
+                    new ArrayList<>(dnInstIdList),
+                    Collections.emptyList(),
+                    StorageInfoRecord.STORAGE_STATUS_READY,
+                    StorageInfoRecord.STORAGE_STATUS_NOT_READY,
+                    ignoreRollback)
+            );
 
         BalanceAction updateStatusRemoved =
-            new ActionUpdateNodeStatus(
-                ec.getSchemaName(),
-                new ArrayList<>(dnInstIdList),
-                new ArrayList<>(cnIpPortList),
-                StorageInfoRecord.STORAGE_STATUS_REMOVED);
+            new ActionTaskAdapter(
+                DefaultDbSchema.NAME,
+                new UpdateNodeStatusTask(
+                    DefaultDbSchema.NAME,
+                    new ArrayList<>(dnInstIdList),
+                    new ArrayList<>(cnIpPortList),
+                    StorageInfoRecord.STORAGE_STATUS_NOT_READY,
+                    StorageInfoRecord.STORAGE_STATUS_REMOVED,
+                    ignoreRollback));
 
-        BalanceAction drainCDC = new ActionDrainCDCStorage(ec.getSchemaName(), dnInstIdList);
+        BalanceAction drainCDC =
+            new ActionTaskAdapter(DefaultDbSchema.NAME, new DrainCDCTask(DefaultDbSchema.NAME, dnInstIdList));
 
         String resName = ActionUtils.genRebalanceClusterName();
-        ActionLockResource lock = new ActionLockResource(DefaultDbSchema.NAME, resName);
+        ActionLockResource lock = new ActionLockResource(
+            DefaultDbSchema.NAME,
+            com.google.common.collect.Sets.newHashSet(resName));
 
         List<BalanceAction> moveDataActions = new ArrayList<>();
         moveDataActions.add(lock);
         moveDataActions.add(updateStatusNotReady);
-        moveDataActions.addAll(
-            schemaNameList.stream()
-                .flatMap(schema -> applyToDb(ec, stats.get(schema), options, schema).stream())
-                .collect(Collectors.toList()));
+
+        SqlRebalance node = new SqlRebalance(SqlParserPos.ZERO);
+        node.setRebalanceDatabase();
+        node.setPolicy(options.policy);
+        node.setDrainNode(options.drainNode);
+        node.setLogicalDdl(false);
+        node.setAsync(options.async);
+        node.setDebug(options.debug);
+        node.setExplain(options.explain);
+        node.setMaxActions(options.maxActions);
+        node.setMaxPartitionSize((int) options.maxPartitionSize);
+
+        schemaNameList.stream()
+            .forEach(schema -> moveDataActions.add(new ActionDrainDatabase(schema, node.toString())));
+
         moveDataActions.add(drainCDC);
         moveDataActions.add(updateStatusRemoved);
         return moveDataActions;
+    }
+
+    protected void doValidate(DrainNodeInfo drainNodeInfo) {
+        drainNodeInfo.validate();
     }
 
     /**
@@ -148,8 +193,10 @@ public class PolicyDrainNode implements BalancePolicy {
     public List<BalanceAction> applyToShardingDb(ExecutionContext ec,
                                                  BalanceOptions options,
                                                  BalanceStats stats,
-                                                 String schema) {
+                                                 String schemaName) {
         DrainNodeInfo drainNodeInfo = DrainNodeInfo.parse(options.drainNode);
+        doValidate(drainNodeInfo);
+
         List<PolicyDrainNode.DnDiskInfo> dnDiskInfo = DnDiskInfo.parseToList(options.diskInfo);
         List<GroupStats.GroupsOfStorage> groupList = stats.getGroups();
         if (CollectionUtils.isEmpty(groupList)) {
@@ -199,8 +246,8 @@ public class PolicyDrainNode implements BalancePolicy {
             for (int i = 0; i < moveInDnList.size(); i++) {
                 moveInDnIndex = (moveInDnIndex + 1) % moveInDnList.size();
                 PolicyDrainNode.MoveInDn candidate = moveInDnList.get(moveInDnIndex);
-                if (candidate.moveInGroup(schema, groupName, dataSize)) {
-                    action = new ActionMoveGroup(schema, Arrays.asList(groupName),
+                if (candidate.moveInGroup(schemaName, groupName, dataSize)) {
+                    action = new ActionMoveGroup(schemaName, Arrays.asList(groupName),
                         candidate.getDnDiskInfo().getInstance(), options.debug);
                     break;
                 }
@@ -216,30 +263,49 @@ public class PolicyDrainNode implements BalancePolicy {
             return Lists.newArrayList();
         }
 
-        String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schema);
-        ActionLockResource lock = new ActionLockResource(schema, name);
+        // lock
+        final String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schemaName);
+        final String schemaXLock = schemaName;
+        ActionLockResource lock =
+            new ActionLockResource(schemaName, com.google.common.collect.Sets.newHashSet(name, schemaXLock));
 
-        return Arrays.asList(lock, new ActionMoveGroups(schema, actions));
+        MoveDatabaseReleaseXLockTask
+            moveDatabaseReleaseXLockTask = new MoveDatabaseReleaseXLockTask(schemaName, schemaXLock);
+        ActionTaskAdapter moveDatabaseXLockTaskAction = new ActionTaskAdapter(schemaName, moveDatabaseReleaseXLockTask);
+
+        return Arrays.asList(lock, new ActionMoveGroups(schemaName, actions), moveDatabaseXLockTaskAction);
     }
 
-    private List<MoveInDn> prepareMoveInDns(DrainNodeInfo drainNodeInfo, List<DnDiskInfo> dnDiskInfo,
-                                            List<GroupStats.GroupsOfStorage> groupList) {
+    private List<MoveInDn> prepareMoveInDns(DrainNodeInfo drainNodeInfo, List<DnDiskInfo> dnDiskInfo, String schemaName) {
         List<MoveInDn> moveInDnList;
+        List<GroupDetailInfoExRecord> detailInfoExRecords = TableGroupLocation.getOrderedGroupList(schemaName);
+        Set<String> storageIds = detailInfoExRecords.stream().map(o->o.storageInstId.toLowerCase()).collect(Collectors.toSet());
         if (!dnDiskInfo.isEmpty()) {
             // choose dn list from disk_info
             moveInDnList = dnDiskInfo.stream()
                 .filter(x -> !drainNodeInfo.containsDnInst(x.getInstance()))
                 .map(MoveInDn::new)
                 .collect(Collectors.toList());
+            for (MoveInDn moveInDn:moveInDnList) {
+                if (!storageIds.contains(moveInDn.getDnDiskInfo().getInstance().toLowerCase())) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                        String.format("dn: [%s] is not available for schema: [%s]", moveInDn.getDnDiskInfo().getInstance(),
+                            schemaName));
+                }
+            }
         } else {
             // choose dn list from metadb
-            moveInDnList = groupList
-                .stream()
-                .map(x -> x.storageInst)
-                .distinct()
-                .filter(x -> !drainNodeInfo.containsDnInst(x))
-                .map(MoveInDn::new)
-                .collect(Collectors.toList());
+            moveInDnList =
+                StorageHaManager.getInstance().getMasterStorageList()
+                    .stream()
+                    .filter(StorageInstHaContext::isAllReplicaReady)
+                    .map(StorageInstHaContext::getStorageMasterInstId)
+                    .filter(x -> !drainNodeInfo.containsDnInst(x))
+                    .distinct()
+                    .map(MoveInDn::new)
+                    .collect(Collectors.toList());
+
+            moveInDnList.removeIf(o->!storageIds.contains(o.getDnDiskInfo().getInstance().toLowerCase()));
         }
         if (moveInDnList.isEmpty()) {
             throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, "no available data-node to move in");
@@ -248,7 +314,15 @@ public class PolicyDrainNode implements BalancePolicy {
     }
 
     /**
-     * Drain-out all partitions of a storage instance
+     * Drain-out all partitions of a database
+     * 0: Make the to-removed groups in `BEFORE_REMOVE` status, (To avoid broadcast table access and new-created table locate)
+     * 1. Move out all partitions in this database
+     * 2. Drop broadcast table in the storage instance(drop corresponding partition-group)
+     * 3. Drop groups
+     * 3.0 Make the to-removed groups in `REMOVING` status
+     * 3.1 sync all cn to refresh topology and destroy the to-removed group datasource;
+     * 3.2 drop phy db for all the to-removed groups;
+     * 3.3 clean the meta info for all the to-removed groups.
      */
     @Override
     public List<BalanceAction> applyToPartitionDb(ExecutionContext ec,
@@ -258,50 +332,108 @@ public class PolicyDrainNode implements BalancePolicy {
         List<BalanceAction> actions = new ArrayList<>();
 
         DrainNodeInfo drainNodeInfo = DrainNodeInfo.parse(options.drainNode);
+        doValidate(drainNodeInfo);
+
         Map<String, String> groupToInst = Maps.newHashMap();
         List<PolicyDrainNode.DnDiskInfo> dnDiskInfo = DnDiskInfo.parseToList(options.diskInfo);
-        List<GroupStats.GroupsOfStorage> groupList = stats.getGroups();
-        if (CollectionUtils.isEmpty(groupList)) {
-            return Collections.emptyList();
-        }
-
-        List<MoveInDn> availableInstList = prepareMoveInDns(drainNodeInfo, dnDiskInfo, groupList);
-
-        Set<String> moved = Sets.newHashSet();
-        for (PartitionStat partition : stats.getPartitionStats()) {
-            String inst =
-                getStorageInstOfGroup(groupToInst, partition.getSchema(), partition.getLocation().getGroupKey());
-            if (drainNodeInfo.containsDnInst(inst) && !moved.contains(partition.getPartitionName())) {
-                String targetInst = chooseTargetInst(availableInstList);
-                ActionMovePartition action = ActionMovePartition.createMoveToInst(schemaName, partition, targetInst);
-                actions.add(action);
-                moved.add(partition.getPartitionName());
-            }
-        }
-
-        // remove broadcast tables
-        TableGroupConfig broadcastTg =
-            OptimizerContext.getContext(schemaName).getTableGroupInfoManager().getBroadcastTableGroupConfig();
-        List<TablePartRecordInfoContext> tables = broadcastTg.getTables();
-        LOG.info("remove broadcast tables: " + tables);
 
         Map<String, GroupDetailInfoRecord> groupMap = PolicyUtils.getGroupDetails(schemaName);
-        for (PartitionGroupRecord pg : GeneralUtil.emptyIfNull(broadcastTg.getPartitionGroupRecords())) {
-            String phyDbName = pg.getPhy_db();
-            String groupName = GroupInfoUtil.buildGroupNameFromPhysicalDb(phyDbName);
-            GroupDetailInfoRecord group = groupMap.get(groupName);
-            // // TODO(moyi) remove this partition group
-            if (drainNodeInfo.containsDnInst(group.getStorageInstId())) {
+        List<String> removedGroups =
+            groupMap.values().stream()
+                .filter(x -> drainNodeInfo.containsDnInst(x.getStorageInstId()))
+                .map(GroupDetailInfoRecord::getGroupName)
+                .collect(Collectors.toList());
 
+        // move partitions
+        List<BalanceAction> actionMovePartitions = new ArrayList<>();
+        Set<PartitionStat> moved = Sets.newHashSet();
+        List<MoveInDn> availableInstList = prepareMoveInDns(drainNodeInfo, dnDiskInfo, schemaName);
+        List<Pair<PartitionStat, String>> movePartitions = new ArrayList<>();
+        for (PartitionStat partition : stats.getPartitionStats()) {
+            int tgType = partition.getTableGroupRecord().getTg_type();
+            if (tgType == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG) {
+                continue;
             }
 
-        }
+            String inst = getStorageInstOfGroup(
+                groupToInst,
+                partition.getSchema(),
+                partition.getLocation().getGroupKey());
 
-        // TODO(moyi) remove groups on the storage
-//        for (String groupName : groupMap.keySet()) {
-//            DropStorageGroupTask dropGroup = new DropStorageGroupTask(schemaName, groupName);
-//            actions.add(dropGroup);
-//        }
+            LOG.info(String.format("PartitionStat:%s groupKey=%s, dn=%s \n",
+                partition, partition.getLocation().getGroupKey(), inst));
+
+            if (drainNodeInfo.containsDnInst(inst) && !moved.contains(partition)) {
+                String targetInst = chooseTargetInst(availableInstList);
+                moved.add(partition);
+                movePartitions.add(Pair.of(partition, targetInst));
+            }
+        }
+        GeneralUtil.emptyIfNull(movePartitions).stream()
+            .collect(Collectors.groupingBy(Pair::getValue, Collectors.mapping(Pair::getKey, Collectors.toList())))
+            .forEach((toInst, partList) -> {
+                actionMovePartitions.addAll(ActionMovePartition.createMoveToInsts(schemaName, partList, toInst));
+            });
+
+        // remove broadcast tables
+        ActionDropBroadcastTable dropBroadcastTable =
+            new ActionDropBroadcastTable(schemaName, drainNodeInfo.getDnInstIdList());
+
+        // Hide all the to-removed groups and notify all cn nodes to clean the to-removed group data sources
+        List<String> toRemoveGroupNames = new ArrayList<>();
+        toRemoveGroupNames.addAll(removedGroups);
+        DropDbGroupHideMetaTask hideDbGroupMetaTask = new DropDbGroupHideMetaTask(schemaName, toRemoveGroupNames);
+        ActionTaskAdapter hideToRemovedGroupMetaAction = new ActionTaskAdapter(schemaName, hideDbGroupMetaTask);
+
+        TopologySyncTask topologySyncTask = new TopologySyncTask(schemaName);
+        ActionTaskAdapter syncNewTopologyAction = new ActionTaskAdapter(schemaName, topologySyncTask);
+
+        // remove physical db for all the to-removed groups
+        List<BalanceAction> dropPhyDbActions = removedGroups.stream()
+            .map(x -> new ActionTaskAdapter(schemaName, new DropPhysicalDbTask(schemaName, x)))
+            .collect(Collectors.toList());
+
+        // remove groups on the storage
+        CleanRemovedDbGroupMetaTask cleanRemovedDbGroupMetaTask =
+            new CleanRemovedDbGroupMetaTask(schemaName, toRemoveGroupNames);
+        ActionTaskAdapter cleanRemovedDbGroupMetaAction =
+            new ActionTaskAdapter(schemaName, cleanRemovedDbGroupMetaTask);
+
+        List<TableGroupConfig> tableGroupConfigs = new ArrayList<>();
+        GeneralUtil.emptyIfNull(stats.getTableGroupStats()).stream()
+            .forEach(o -> {
+                tableGroupConfigs.add(o.getTableGroupConfig());
+            });
+        DrainNodeValidateTask drainNodeValidateTask = new DrainNodeValidateTask(schemaName, tableGroupConfigs);
+
+        ActionTaskAdapter drainNodeValidateTaskAdapter = new ActionTaskAdapter(schemaName, drainNodeValidateTask);
+
+        // lock
+        final String name = ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, schemaName);
+        final String schemaXLock = schemaName;
+        ActionLockResource lock =
+            new ActionLockResource(schemaName, com.google.common.collect.Sets.newHashSet(name, schemaXLock));
+
+        // Modify status of group
+        UpdateGroupInfoTask task = new UpdateGroupInfoTask(schemaName,
+            removedGroups,
+            DbGroupInfoRecord.GROUP_TYPE_NORMAL,
+            DbGroupInfoRecord.GROUP_TYPE_BEFORE_REMOVE);
+        ActionTaskAdapter actionUpdateGroupStatus = new ActionTaskAdapter(schemaName, task);
+
+        TopologySyncThenReleaseXLockTask topologySyncThenReleaseXLockTask = new TopologySyncThenReleaseXLockTask(schemaName, schemaXLock);
+        ActionTaskAdapter actionTopologySyncThenReleaseXLockTask = new ActionTaskAdapter(schemaName, topologySyncThenReleaseXLockTask);
+        // combine actions
+        actions.add(lock);
+        actions.add(drainNodeValidateTaskAdapter);
+        actions.add(actionUpdateGroupStatus);
+        actions.add(actionTopologySyncThenReleaseXLockTask);
+        actions.addAll(actionMovePartitions);
+        actions.add(dropBroadcastTable);
+        actions.add(hideToRemovedGroupMetaAction);
+        actions.add(syncNewTopologyAction);
+        actions.addAll(dropPhyDbActions);
+        actions.add(cleanRemovedDbGroupMetaAction);
 
         return actions;
     }
@@ -390,13 +522,23 @@ public class PolicyDrainNode implements BalancePolicy {
             Map<String, StorageInstHaContext> allStorage =
                 StorageHaManager.getInstance().refreshAndGetStorageInstHaContextCache();
 
+            Set<String> nonDeletableStorage;
+            try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+                nonDeletableStorage = DbTopologyManager.getNonDeletableStorageInst(metaDbConn);
+            } catch (Throwable ex) {
+                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, "failed to fetch the non deletable storage list");
+            }
+
             for (String dnInst : dnInstIdList) {
                 StorageInstHaContext storage = allStorage.get(dnInst);
                 if (storage == null) {
                     throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
                         "storage not found: " + dnInst);
                 }
-                if (!storage.isInstanceDeletable()) {
+
+                // check if dn is allowed to be deleted
+                boolean deletable = DbTopologyManager.checkStorageInstDeletable(nonDeletableStorage, dnInst, storage.getStorageKind());
+                if (!deletable) {
                     throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
                         "storage not deletable: " + dnInst);
                 }

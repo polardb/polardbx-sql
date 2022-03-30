@@ -20,6 +20,9 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -40,10 +43,15 @@ public class DropIndexHideMetaTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.hideIndexMeta(metaDbConnection, schemaName, logicalTableName, indexName);
+        FailPoint.injectRandomExceptionFromHint(executionContext);
+        FailPoint.injectRandomSuspendFromHint(executionContext);
     }
 
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.showIndexMeta(metaDbConnection, schemaName, logicalTableName, indexName);
+        // Refresh table meta to make hidden columns visible after rollback.
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        executionContext.refreshTableMeta();
     }
 }

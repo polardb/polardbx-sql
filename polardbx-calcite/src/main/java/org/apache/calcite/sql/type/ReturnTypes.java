@@ -327,6 +327,8 @@ public abstract class ReturnTypes {
      */
     public static final SqlReturnTypeInference VARCHAR_2000 = explicit(SqlTypeName.VARCHAR, 2000);
 
+    public static final SqlReturnTypeInference JSON = explicit(SqlTypeName.JSON);
+
     /**
      * Varchar type with binary character set.
      */

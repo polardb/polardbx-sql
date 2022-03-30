@@ -83,4 +83,8 @@ public class MySQLKeywords {
     public boolean isKeyword(String keyUpperCase) {
         return keywords.containsKey(keyUpperCase);
     }
+
+    public Map<String, MySQLToken> getKeywords() {
+        return keywords;
+    }
 }

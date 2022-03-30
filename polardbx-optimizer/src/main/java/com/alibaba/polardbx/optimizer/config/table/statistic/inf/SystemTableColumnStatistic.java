@@ -24,6 +24,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 
 import java.sql.Connection;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -57,7 +58,7 @@ public interface SystemTableColumnStatistic {
 
     boolean deleteAll(Connection conn);
 
-    void selectAll(StatisticManager statisticManager, long sinceTime);
+    Collection<Row> selectAll(long sinceTime);
 
     void batchReplace(final List<SystemTableColumnStatistic.Row> rowList);
 
@@ -104,6 +105,14 @@ public interface SystemTableColumnStatistic {
          * modify unix time
          */
         private long unixTime;
+
+        public Row(String tableName, String columnName, long unixTime) {
+            this.tableName = tableName;
+            this.columnName = columnName;
+            this.countMinSketch = null;
+            this.sampleRate = 1F;
+            this.unixTime = unixTime;
+        }
 
         public Row(String tableName, String columnName, long cardinality, CountMinSketch countMinSketch,
                    Histogram histogram, TopN topN, long nullCount, float sampleRate, long unixTime) {

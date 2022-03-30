@@ -16,8 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.chunk;
 
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
  *
  */
 public class StringBlock extends AbstractCommonBlock {
+    private static final String EMPTY_STRING = "";
 
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(StringBlock.class).instanceSize();
 
@@ -69,9 +71,9 @@ public class StringBlock extends AbstractCommonBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putString("");
+            sink.putString(EMPTY_STRING);
         } else {
             sink.putString(getString(position));
         }

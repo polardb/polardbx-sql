@@ -19,6 +19,6 @@ package com.alibaba.polardbx.executor.ddl.newengine.job;
 /**
  * TransientDdlJob will return immediately
  */
-public class TransientDdlJob extends ExecutableDdlJob {
+public final class TransientDdlJob extends ExecutableDdlJob {
 
 }

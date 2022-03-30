@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -30,6 +31,7 @@ import org.apache.calcite.rel.core.DDL;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -76,6 +78,8 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
 
     public void constructSubTasks(String schemaName, ExecutableDdlJob executableDdlJob, DdlTask tailTask,
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
+        EmptyTask  emptyTask = new EmptyTask(schemaName);
+        boolean emptyTaskAdded = false;
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             AlterTableGroupSubTaskJobFactory subTaskJobFactory =
                 new AlterTableGroupSubTaskJobFactory(ddl, tablesPrepareData.get(entry.getKey()),
@@ -85,11 +89,25 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
             ExecutableDdlJob subTask = subTaskJobFactory.create();
             executableDdlJob.combineTasks(subTask);
             executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
-            executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
+
+            if (subTaskJobFactory.getCdcTableGroupDdlMarkTask() != null) {
+                if (!emptyTaskAdded) {
+                    executableDdlJob.addTask(emptyTask);
+                    emptyTaskAdded = true;
+                }
+                executableDdlJob.addTask(subTaskJobFactory.getCdcTableGroupDdlMarkTask());
+                executableDdlJob.addTaskRelationship(subTask.getTail(), emptyTask);
+                executableDdlJob.addTaskRelationship(emptyTask, subTaskJobFactory.getCdcTableGroupDdlMarkTask());
+                executableDdlJob.addTaskRelationship(subTaskJobFactory.getCdcTableGroupDdlMarkTask(), bringUpAlterTableGroupTasks.get(0));
+            } else {
+                executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
+            }
+
             DdlTask dropUselessTableTask = ComplexTaskFactory
                 .CreateDropUselessPhyTableTask(schemaName, entry.getKey(), sourceTablesTopology.get(entry.getKey()),
                     executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
+            executableDdlJob.labelAsTail(dropUselessTableTask);
             executableDdlJob
                 .addTaskRelationship(bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1),
                     dropUselessTableTask);
@@ -100,6 +118,10 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
+        for (String relatedPart : preparedData.getRelatedPartitions()) {
+            resources.add(concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()),
+                relatedPart));
+        }
 
     }
 
@@ -107,4 +129,11 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
     protected void sharedResources(Set<String> resources) {
     }
 
+    protected Map<String, Long> getTablesVersion() {
+        Map<String, Long> tablesVersion = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (AlterTableGroupItemPreparedData itemPreparedData : tablesPrepareData.values()) {
+            tablesVersion.putIfAbsent(itemPreparedData.getPrimaryTableName(),itemPreparedData.getTableVersion());
+        }
+        return tablesVersion;
+    }
 }

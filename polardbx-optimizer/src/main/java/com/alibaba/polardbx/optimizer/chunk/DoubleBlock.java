@@ -17,9 +17,10 @@
 package com.alibaba.polardbx.optimizer.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -98,7 +99,7 @@ public class DoubleBlock extends AbstractBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
             sink.putDouble(NULL_VALUE);
         } else {

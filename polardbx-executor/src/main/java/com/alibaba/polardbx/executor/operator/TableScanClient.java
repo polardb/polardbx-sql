@@ -68,7 +68,7 @@ import com.alibaba.polardbx.rpc.result.chunk.BlockDecoder;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.ListenableFuture;

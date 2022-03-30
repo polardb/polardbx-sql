@@ -23,12 +23,13 @@ import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 
 import java.sql.Connection;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 用来描述一个逻辑表由哪些key-val组成的 <br/>
@@ -95,5 +96,19 @@ public interface SchemaManager extends Lifecycle {
 
     default TddlRuleManager getTddlRuleManager() {
         return null;
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList,
+                                   boolean preemtive, long initWait, long interval, TimeUnit timeUnit,
+                                   boolean allowTwoVersion) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList, boolean allowTwoVersion) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionForTableGroup(String tableName, boolean allowTwoVersion) {
+        throw new AssertionError("NOT SUPPORTED");
     }
 }

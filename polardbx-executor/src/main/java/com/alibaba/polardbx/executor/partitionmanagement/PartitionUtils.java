@@ -21,10 +21,14 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -45,11 +49,18 @@ import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
+import org.apache.calcite.sql.SqlBinaryStringLiteral;
+import org.apache.calcite.sql.SqlColumnDeclaration;
+import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlRefreshTopology;
+import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,13 +76,67 @@ import java.util.stream.Collectors;
  */
 public class PartitionUtils {
 
-    public static SqlNode getSqlTemplate(String primaryTableDefinition, ExecutionContext ec) {
-        final SqlNode primaryTableNode = new FastsqlParser()
+    public static SqlNode getSqlTemplate(String schemaName, String logicalTableName, String primaryTableDefinition,
+                                         ExecutionContext ec) {
+        final SqlCreateTable primaryTableNode = (SqlCreateTable)new FastsqlParser()
             .parse(primaryTableDefinition, ec)
             .get(0);
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
+        updateBinaryColumnDefault(primaryTableNode, tableMeta);
+
         ReplaceTableNameWithQuestionMarkVisitor visitor =
             new ReplaceTableNameWithQuestionMarkVisitor(DefaultSchema.getSchemaName(), ec);
         return primaryTableNode.accept(visitor);
+    }
+
+    public static void updateBinaryColumnDefault(SqlCreateTable sqlCreateTable, TableMeta tableMeta) {
+        // Handle binary default value
+        List<Pair<SqlIdentifier, SqlColumnDeclaration>> newColDefs = new ArrayList<>();
+        for (Pair<SqlIdentifier, SqlColumnDeclaration> colDef : GeneralUtil.emptyIfNull(sqlCreateTable.getColDefs())) {
+            String columnName = colDef.getKey().getLastName();
+            ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
+            if (columnMeta.isBinaryDefault()) {
+                // Replace default value with SqlBinaryStringLiteral
+                SqlColumnDeclaration oldColDef = colDef.getValue();
+                SqlBinaryStringLiteral newDefaultVal = SqlLiteral.createBinaryString(columnMeta.getField().getDefault(),
+                    oldColDef.getDefaultVal().getParserPosition());
+                SqlColumnDeclaration newColDef = new SqlColumnDeclaration(oldColDef.getParserPosition(),
+                    oldColDef.getName(),
+                    oldColDef.getDataType(),
+                    oldColDef.getNotNull(),
+                    newDefaultVal,
+                    oldColDef.getDefaultExpr(),
+                    oldColDef.isAutoIncrement(),
+                    oldColDef.getSpecialIndex(),
+                    oldColDef.getComment(),
+                    oldColDef.getColumnFormat(),
+                    oldColDef.getStorage(),
+                    oldColDef.getReferenceDefinition(),
+                    oldColDef.isOnUpdateCurrentTimestamp(),
+                    oldColDef.getAutoIncrementType(),
+                    oldColDef.getUnitCount(),
+                    oldColDef.getUnitIndex(),
+                    oldColDef.getInnerStep());
+                newColDefs.add(new Pair<>(colDef.getKey(), newColDef));
+            } else {
+                newColDefs.add(colDef);
+            }
+        }
+        sqlCreateTable.setColDefs(newColDefs);
+    }
+
+    public static List<GroupDetailInfoExRecord> getGroupDetailInfoByInstIdAndGroupName(String instId,
+                                                                                       String storageInstId,
+                                                                                       String dbName) {
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            GroupDetailInfoAccessor accessor = new GroupDetailInfoAccessor();
+            accessor.setConnection(metaDbConn);
+            return accessor.getCompletedGroupInfosByInstIdAndDbName(instId, storageInstId, dbName);
+        } catch (Throwable e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, e,
+                String.format("Failed to create physical db, dbName=[%s], instId=[]", dbName, instId));
+        }
+
     }
 
     /**
@@ -176,9 +241,11 @@ public class PartitionUtils {
             final SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition =
                 (SqlAlterTableGroupExtractPartition) sqlNode;
             Map<SqlNode, RexNode> rexInfoCtx = sqlAlterTableGroupExtractPartition.getParent().getPartRexInfoCtx();
-            RexNode hotkeyExpress = rexInfoCtx.get(sqlAlterTableGroupExtractPartition.getHotKey());
+            List<RexNode> hotkeyExpress = new ArrayList<>();
+            sqlAlterTableGroupExtractPartition.getHotKeys().forEach(o -> hotkeyExpress.add(rexInfoCtx.get(o)));
+
             PartitionSpec partitionSpec = PartitionTupleRouteInfoBuilder
-                .getPartitionSpecByExprValues(partitionInfo, ImmutableList.of(hotkeyExpress), executionContext);
+                .getPartitionSpecByExprValues(partitionInfo, hotkeyExpress, executionContext);
             assert partitionSpec != null;
             sourcePhyTables.computeIfAbsent(partitionSpec.getLocation().getGroupKey(), k -> new HashSet<String>())
                 .add(partitionSpec.getLocation().getPhyTableName());

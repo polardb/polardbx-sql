@@ -696,11 +696,11 @@ public abstract class AbstractConnection implements NIOConnection {
     private ByteBufferHolder checkReadBuffer(ByteBufferHolder buffer, int offset, int position, boolean resetOffest) {
         // 当偏移量为0时需要扩容，否则移动数据至偏移量为0的位置。
         if (offset == 0) {
-            if (buffer.capacity() >= maxPacketSize) {
+            if (buffer.capacity() >= maxPacketSize + packetHeaderSize) {
                 throw new IllegalArgumentException("Packet size over the limit.");
             }
             int size = buffer.capacity() << 1;
-            size = (size > maxPacketSize) ? maxPacketSize : size;
+            size = (size > maxPacketSize + packetHeaderSize) ? maxPacketSize + packetHeaderSize : size;
             ByteBuffer newBuffer = ByteBuffer.allocate(size);
             buffer.position(offset);
             newBuffer.put(buffer.getBuffer());

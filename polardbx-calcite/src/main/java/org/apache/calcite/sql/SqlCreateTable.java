@@ -16,16 +16,24 @@
  */
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
 import com.alibaba.polardbx.druid.sql.ast.SQLOrderingSpecification;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnPrimaryKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnUniqueKey;
@@ -42,12 +50,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatement
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlOutputVisitor;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.rule.MappingRule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.rule.MappingRule;
+import com.google.common.collect.Lists;
 import org.apache.calcite.linq4j.Enumerator;
 import org.apache.calcite.linq4j.Linq4j;
 import org.apache.calcite.linq4j.QueryProvider;
@@ -135,6 +141,10 @@ public class SqlCreateTable extends SqlCreate {
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> spatialKeys;
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> foreignKeys;
     private List<SqlCall> checks;
+
+    private List<String> logicalReferencedTables = null;
+    private List<String> physicalReferencedTables = null;
+
     /**
      * 应该只有一个CONSTRAINT for primary key
      */
@@ -159,8 +169,11 @@ public class SqlCreateTable extends SqlCreate {
 
     // for PolarDb-X partition management
     private SqlNode sqlPartition = null;
+    private SqlNode localPartition = null;
 
     private SqlNode tableGroupName = null;
+
+    private SQLPartitionByRange localPartitionSuffix;
 
     public void setDefaultCharset(String dc) {
         defaultCharset = dc;
@@ -202,6 +215,14 @@ public class SqlCreateTable extends SqlCreate {
         this.autoIncrement = autoIncrement;
     }
 
+    public SQLPartitionByRange getLocalPartitionSuffix() {
+        return this.localPartitionSuffix;
+    }
+
+    public void setLocalPartitionSuffix(final SQLPartitionByRange localPartitionSuffix) {
+        this.localPartitionSuffix = localPartitionSuffix;
+    }
+
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("CREATE TABLE", SqlKind.CREATE_TABLE);
 
     /**
@@ -210,7 +231,8 @@ public class SqlCreateTable extends SqlCreate {
     SqlCreateTable(SqlParserPos pos, boolean replace, boolean ifNotExists, SqlNode name, SqlNode likeTableName,
                    SqlNodeList columnList, SqlNode query, SqlNode dbpartitionBy, SqlNode dbpartitions,
                    SqlNode tbpartitionBy, SqlNode tbpartitions, String sourceSql, boolean broadcast,
-                   SequenceBean autoIncrement, SqlNode sqlPartition, SqlNode tableGroupName) {
+                   SequenceBean autoIncrement, SqlNode sqlPartition, SqlNode localPartition, SqlNode tableGroupName,
+                   SQLPartitionByRange localPartitionSuffix) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.name = Preconditions.checkNotNull(name);
         this.likeTableName = likeTableName;
@@ -224,7 +246,9 @@ public class SqlCreateTable extends SqlCreate {
         this.broadcast = broadcast;
         this.autoIncrement = autoIncrement;
         this.sqlPartition = sqlPartition;
+        this.localPartition = localPartition;
         this.tableGroupName = tableGroupName;
+        this.localPartitionSuffix = localPartitionSuffix;
     }
 
     public SqlCreateTable(SqlParserPos pos, boolean replace, boolean ifNotExists, SqlNode name, SqlNode likeTableName,
@@ -240,6 +264,7 @@ public class SqlCreateTable extends SqlCreate {
                           List<Pair<SqlIdentifier, SqlIndexDefinition>> spatialKeys,
                           List<Pair<SqlIdentifier, SqlIndexDefinition>> foreignKeys, List<SqlCall> checks,
                           SqlIdentifier primaryKeyConstraint, boolean hasPrimaryKeyConstraint, SqlNode sqlPartition,
+                          SqlNode localPartition,
                           SqlNode tableGroupName) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.name = name;
@@ -270,6 +295,7 @@ public class SqlCreateTable extends SqlCreate {
         this.primaryKeyConstraint = primaryKeyConstraint;
         this.hasPrimaryKeyConstraint = hasPrimaryKeyConstraint;
         this.sqlPartition = sqlPartition;
+        this.localPartition = localPartition;
         this.tableGroupName = tableGroupName;
     }
 
@@ -337,6 +363,14 @@ public class SqlCreateTable extends SqlCreate {
 
     public void setSqlPartition(SqlNode sqlPartition) {
         this.sqlPartition = sqlPartition;
+    }
+
+    public SqlNode getLocalPartition() {
+        return this.localPartition;
+    }
+
+    public void setLocalPartition(final SqlNode localPartition) {
+        this.localPartition = localPartition;
     }
 
     public SqlNode getTableGroupName() {
@@ -555,6 +589,7 @@ public class SqlCreateTable extends SqlCreate {
             primaryKeyConstraint,
             hasPrimaryKeyConstraint,
             sqlPartition,
+            localPartition,
             tableGroupName);
     }
 
@@ -571,10 +606,16 @@ public class SqlCreateTable extends SqlCreate {
         }
         if (shardKeys.size() > 0) {
             // Patch for implicit pk if needed.
-            shardKeys.stream()
-                .filter(name -> name.equalsIgnoreCase(IMPLICIT_COL_NAME))
+            colDefs.stream()
+                .filter(pair -> pair.left.getLastName().equalsIgnoreCase(IMPLICIT_COL_NAME))
+                .map(pair -> pair.left.getLastName())
                 .forEach(name -> {
-                    // Fake one.
+                    // Fake one if not exists in col list.
+                    if (stmt.getColumnDefinitions().stream()
+                        .anyMatch(
+                            col -> SQLUtils.normalizeNoTrim(col.getName().getSimpleName()).equalsIgnoreCase(name))) {
+                        return;
+                    }
                     final SQLColumnDefinition sqlColumnDefinition = new SQLColumnDefinition();
                     sqlColumnDefinition.setDbType(DbType.mysql);
                     sqlColumnDefinition.setName(name);
@@ -592,7 +633,12 @@ public class SqlCreateTable extends SqlCreate {
             colDefs.stream()
                 .filter(pair -> pair.left.getLastName().equalsIgnoreCase(IMPLICIT_COL_NAME))
                 .forEach(pair -> {
-                    // Fake one.
+                    // Fake one if not exists in col list.
+                    if (stmt.getColumnDefinitions().stream()
+                        .anyMatch(col -> SQLUtils.normalizeNoTrim(col.getName().getSimpleName())
+                            .equalsIgnoreCase(pair.left.getLastName()))) {
+                        return;
+                    }
                     final SQLColumnDefinition sqlColumnDefinition = new SQLColumnDefinition();
                     sqlColumnDefinition.setDbType(DbType.mysql);
                     sqlColumnDefinition.setName(pair.left.getLastName());
@@ -604,7 +650,9 @@ public class SqlCreateTable extends SqlCreate {
                     stmt.addColumn(sqlColumnDefinition);
                 });
         }
-
+        if (localPartitionSuffix != null) {
+            addLocalPartitionSuffix(stmt);
+        }
         stmt.setBroadCast(false);
         removeSequenceAndGsi(stmt);
 
@@ -675,6 +723,14 @@ public class SqlCreateTable extends SqlCreate {
         return stmt;
     }
 
+    public void addLocalPartitionSuffix(MySqlCreateTableStatement stmt) {
+        if (stmt == null || localPartitionSuffix == null) {
+            return;
+        }
+        stmt.setOptionHints(
+            Lists.newArrayList(new SQLCommentHint("!50500 PARTITION BY " + localPartitionSuffix.toString())));
+    }
+
     private static void removeSequenceAndGsi(MySqlCreateTableStatement stmt) {
         final Iterator<SQLTableElement> iterator = stmt.getTableElementList().iterator();
         while (iterator.hasNext()) {
@@ -726,6 +782,10 @@ public class SqlCreateTable extends SqlCreate {
             stmt.setPartitioning(null);
         }
 
+        if (localPartitionSuffix != null) {
+            addLocalPartitionSuffix(stmt);
+        }
+
         if (tableGroupName == null) {
             stmt.setTableGroup(null);
         }
@@ -734,22 +794,64 @@ public class SqlCreateTable extends SqlCreate {
             stmt.setAutoSplit(null);
         }
 
+        // Handle default binary value
+        for (Pair<SqlIdentifier, SqlColumnDeclaration> colDef : GeneralUtil.emptyIfNull(colDefs)) {
+            if (colDef.getValue().getDefaultVal() instanceof SqlBinaryStringLiteral) {
+                final String hexString =
+                    ((SqlBinaryStringLiteral) colDef.getValue().getDefaultVal()).getBitString().toHexString();
+                final Iterator<SQLTableElement> it = stmt.getTableElementList().iterator();
+                final String binaryColumnName = colDef.getKey().getLastName();
+                while (it.hasNext()) {
+                    final SQLTableElement tableElement = it.next();
+                    if (tableElement instanceof SQLColumnDefinition) {
+                        final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
+                        final String columnName = SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName());
+                        if (binaryColumnName.equalsIgnoreCase(columnName)) {
+                            SQLHexExpr newDefaultVal = new SQLHexExpr(hexString);
+                            columnDefinition.setDefaultExpr(newDefaultVal);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         final SQLExprTableSource tableSource = stmt.getTableSource();
         if (this.name instanceof SqlDynamicParam) {
             StringBuilder sql = new StringBuilder();
-            MySqlOutputVisitor questionarkTableSource = new MySqlOutputVisitor(sql) {
+            MySqlOutputVisitor questionMarkTableSource = new MySqlOutputVisitor(sql) {
 
                 @Override
                 protected void printTableSourceExpr(SQLExpr expr) {
                     if (!ConfigDataMode.isFastMock()) {
                         print("?");
                     } else {
-                        // validator not support ? for tablename
+                        // validator not support ? for tableName
                         super.printTableSourceExpr(expr);
                     }
                 }
+
+                @Override
+                protected void printReferencedTableName(SQLExpr expr) {
+                    if (!ConfigDataMode.isFastMock() && logicalReferencedTables != null) {
+                        String referencedTableName = null;
+                        if (expr instanceof SQLIdentifierExpr) {
+                            referencedTableName = ((SQLIdentifierExpr) expr).getSimpleName();
+                        } else if (expr instanceof SQLPropertyExpr) {
+                            referencedTableName = ((SQLPropertyExpr) expr).getSimpleName();
+                        }
+                        if (TStringUtil.isNotEmpty(referencedTableName) &&
+                            logicalReferencedTables.contains(referencedTableName)) {
+                            print("?");
+                        } else {
+                            super.printReferencedTableName(expr);
+                        }
+                    } else {
+                        super.printReferencedTableName(expr);
+                    }
+                }
             };
-            questionarkTableSource.visit(stmt);
+            questionMarkTableSource.visit(stmt);
             return sql.toString();
         }
         return stmt.toString();
@@ -887,6 +989,10 @@ public class SqlCreateTable extends SqlCreate {
             }
         }
 
+        // Remove columns which not in def map of index columns. Because we concat PK after index columns,
+        // `unindexedColumns` may contain PK columns which no need to add local `auto_shard` index.
+        unindexedColumns.removeIf(col -> !columnDefMap.containsKey(col));
+
         if (columnDefMap.size() != indexColumns.size()) {
             indexColumns.removeAll(columnDefMap.keySet());
             throw new IllegalArgumentException("Unknown index column " + String.join(",", indexColumns));
@@ -896,7 +1002,9 @@ public class SqlCreateTable extends SqlCreate {
             // For unique index, create unified index with all index columns included
             // Max length of MySQL index name is 64
             if (needAddIndexColumns) {
-                final String suffix = buildUnifyIndexName(indexColumns, 45);
+                // Should keep the order.
+                final Set<String> orderedIndexColumnNames = indexColumnDefMap.keySet();
+                final String suffix = buildUnifyIndexName(orderedIndexColumnNames, 45);
                 final String indexName = buildIndexName(existingIndexNames, suffix);
 
                 final MySqlUnique uniqueIndex = new MySqlUnique();
@@ -906,7 +1014,7 @@ public class SqlCreateTable extends SqlCreate {
                 uniqueIndex.setName(new SQLIdentifierExpr(indexName));
 
                 final List<SQLSelectOrderByItem> indexColumnList =
-                    buildUnifiedIndexColumnDef(indexColumns, indexColumnDefMap, columnDefMap);
+                    buildUnifiedIndexColumnDef(orderedIndexColumnNames, indexColumnDefMap, columnDefMap);
 
                 uniqueIndex.getIndexDefinition().getColumns().addAll(indexColumnList);
 
@@ -1113,7 +1221,7 @@ public class SqlCreateTable extends SqlCreate {
     }
 
     private static String buildIndexName(Set<String> existingIndexes, String suffix) {
-        return buildIndexName(existingIndexes, "auto_shard_key_", suffix);
+        return buildIndexName(existingIndexes, TddlConstants.AUTO_SHARD_KEY_PREFIX, suffix);
     }
 
     private static String buildIndexName(Set<String> existingIndexes, String prefix, String suffix) {
@@ -1324,6 +1432,22 @@ public class SqlCreateTable extends SqlCreate {
 
     public void setChecks(List<SqlCall> checks) {
         this.checks = checks;
+    }
+
+    public List<String> getLogicalReferencedTables() {
+        return logicalReferencedTables;
+    }
+
+    public void setLogicalReferencedTables(List<String> logicalReferencedTables) {
+        this.logicalReferencedTables = logicalReferencedTables;
+    }
+
+    public List<String> getPhysicalReferencedTables() {
+        return physicalReferencedTables;
+    }
+
+    public void setPhysicalReferencedTables(List<String> physicalReferencedTables) {
+        this.physicalReferencedTables = physicalReferencedTables;
     }
 
     @Override

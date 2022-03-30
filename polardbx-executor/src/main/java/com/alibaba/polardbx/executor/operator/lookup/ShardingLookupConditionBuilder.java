@@ -431,23 +431,24 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
                 }
             }
 
-            final TargetDB targetDb = targetDbs.get(0);
-            Collection<String> targetTables;
-            if (shardByTable) {
-                targetTables = targetDb.getTableNames();
-            } else {
-                targetTables = Collections.singleton(DEFAULT_TABLE);
-            }
-            for (String targetTable : targetTables) {
-                shardedTuples.compute(targetDb.getDbIndex(), (db, tableMap) -> {
-                    assert tableMap != null;
-                    tableMap.compute(targetTable, (tb, values) -> {
-                        assert values != null;
-                        values.add(tuple);
-                        return values;
+            for ( TargetDB targetDb : targetDbs) {
+                Collection<String> targetTables;
+                if (shardByTable) {
+                    targetTables = targetDb.getTableNames();
+                } else {
+                    targetTables = Collections.singleton(DEFAULT_TABLE);
+                }
+                for (String targetTable : targetTables) {
+                    shardedTuples.compute(targetDb.getDbIndex(), (db, tableMap) -> {
+                        assert tableMap != null;
+                        tableMap.compute(targetTable, (tb, values) -> {
+                            assert values != null;
+                            values.add(tuple);
+                            return values;
+                        });
+                        return tableMap;
                     });
-                    return tableMap;
-                });
+                }
             }
         }
 

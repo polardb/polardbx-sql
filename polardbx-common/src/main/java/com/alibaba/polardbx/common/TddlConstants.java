@@ -67,4 +67,6 @@ public class TddlConstants {
     public static final String UGSI_PK_INDEX_NAME = "_gsi_pk_idx_";
 
     public static final String AUTO_LOCAL_INDEX_PREFIX = "_local_";
+
+    public static final String AUTO_SHARD_KEY_PREFIX = "auto_shard_key_";
 }

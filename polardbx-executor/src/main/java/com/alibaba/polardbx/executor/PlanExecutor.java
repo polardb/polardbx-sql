@@ -113,8 +113,10 @@ public class PlanExecutor extends AbstractLifecycle {
             }.go(relNode);
 
             List<RelNode> cacheRelNodes = PlannerContext.getPlannerContext(relNode).getCacheNodes();
-            ec.getCacheRelNodeIds()
-                .addAll(cacheRelNodes.stream().map(t -> t.getRelatedId()).collect(Collectors.toSet()));
+            if (!cacheRelNodes.isEmpty()) {
+                ec.getCacheRelNodeIds()
+                    .addAll(cacheRelNodes.stream().map(t -> t.getRelatedId()).collect(Collectors.toSet()));
+            }
             Cursor sc = ExecutorHelper.execute(relNode, ec, true, false);
             if (sc instanceof MppResultCursor && executionPlan.isExplain()) {
                 ((MppResultCursor) sc).waitQueryInfo(true);

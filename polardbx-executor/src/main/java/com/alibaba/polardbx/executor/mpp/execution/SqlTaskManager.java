@@ -36,7 +36,7 @@ import com.alibaba.polardbx.executor.mpp.operator.ExchangeClientSupplier;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.web.ForWorkerInfo;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
-import com.alibaba.polardbx.util.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.http.client.HttpClient;
 import io.airlift.node.NodeInfo;
 import io.airlift.units.DataSize;

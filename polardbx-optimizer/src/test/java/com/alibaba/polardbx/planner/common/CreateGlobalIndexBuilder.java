@@ -550,6 +550,8 @@ public class CreateGlobalIndexBuilder {
             false,
             sequenceBean,
             null,
+            null,
+            null,
             null);
 
         result.setUniqueShardingKey(unique);
@@ -729,6 +731,8 @@ public class CreateGlobalIndexBuilder {
             createIndexTable,
             false,
             sequenceBean,
+            null,
+            null,
             null,
             null);
 

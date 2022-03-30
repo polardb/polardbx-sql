@@ -301,7 +301,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
         Assert.assertEquals(sql.toUpperCase().trim(), result.toString().toUpperCase().trim());
     }
     public void testAlterTableGroupRenamePartition() {
-        String sql = "ALTER TABLEGROUP grp1 rename partition p0 to p00, rename partition p1 to p10";
+        String sql = "ALTER TABLEGROUP grp1 rename partition p0 to p00, p1 to p10";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 

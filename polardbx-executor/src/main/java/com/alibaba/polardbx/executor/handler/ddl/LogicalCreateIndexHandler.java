@@ -16,9 +16,12 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
@@ -27,10 +30,15 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateIndexWithGsiPreparedData;
+import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateTable;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
 
@@ -71,10 +79,22 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
     private DdlJob buildCreateLocalIndexJob(LogicalCreateIndex logicalCreateIndex, ExecutionContext executionContext) {
         logicalCreateIndex.prepareData();
 
-        return CreateIndexJobFactory.createLocalIndex(
+        ExecutableDdlJob localIndexJob = CreateIndexJobFactory.createLocalIndex(
             logicalCreateIndex.relDdl, logicalCreateIndex.getNativeSqlNode(),
             logicalCreateIndex.getCreateLocalIndexPreparedDataList(),
             executionContext);
+        if (localIndexJob != null && GeneralUtil.isNotEmpty(logicalCreateIndex.getCreateLocalIndexPreparedDataList())) {
+            CreateLocalIndexPreparedData preparedData = logicalCreateIndex.getCreateLocalIndexPreparedDataList().get(0);
+            Map<String, Long> tableVersions = new HashMap<>();
+            tableVersions.put(preparedData.getTableName(),
+                preparedData.getTableVersion());
+            ValidateTableVersionTask validateTableVersionTask =
+                new ValidateTableVersionTask(preparedData.getSchemaName(), tableVersions);
+
+            localIndexJob.addTask(validateTableVersionTask);
+            localIndexJob.addTaskRelationship(validateTableVersionTask, localIndexJob.getHead());
+        }
+        return localIndexJob;
     }
 
     private DdlJob buildCreateGsiJob(LogicalCreateIndex logicalCreateIndex, ExecutionContext executionContext) {
@@ -89,6 +109,15 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         ExecutableDdlJob gsiJob = CreatePartitionGsiJobFactory.create(
             logicalCreateIndex.relDdl, globalIndexPreparedData, executionContext);
 
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(globalIndexPreparedData.getPrimaryTableName(),
+            globalIndexPreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(globalIndexPreparedData.getSchemaName(), tableVersions);
+
+        gsiJob.addTask(validateTableVersionTask);
+        gsiJob.addTaskRelationship(validateTableVersionTask, gsiJob.getHead());
+
         ExecutableDdlJob localIndexJob = CreateIndexJobFactory.createLocalIndex(
             logicalCreateIndex.relDdl, logicalCreateIndex.getNativeSqlNode(),
             logicalCreateIndex.getCreateLocalIndexPreparedDataList(),
@@ -96,6 +125,10 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         if (localIndexJob != null) {
             gsiJob.appendJob(localIndexJob);
         }
+        gsiJob.addSequentialTasksAfter(gsiJob.getTail(), Lists.newArrayList(new StatisticSampleTask(
+            globalIndexPreparedData.getSchemaName(),
+            globalIndexPreparedData.getIndexTableName()
+        )));
         return gsiJob;
     }
 

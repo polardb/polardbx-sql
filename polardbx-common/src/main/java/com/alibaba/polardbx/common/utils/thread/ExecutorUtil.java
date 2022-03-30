@@ -60,12 +60,12 @@ public class ExecutorUtil {
             new ThreadPoolExecutor.AbortPolicy());
     }
 
-    public static ThreadPoolExecutor createBufferedExecutor(String name, int poolSize) {
+    public static ThreadPoolExecutor createBufferedExecutor(String name, int poolSize, int queueSize) {
         return new ThreadPoolExecutor(poolSize,
             poolSize,
             1800,
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(poolSize * 2),
+            new LinkedBlockingQueue<>(queueSize),
             new NamedThreadFactory(name, true),
             new ThreadPoolExecutor.AbortPolicy());
     }

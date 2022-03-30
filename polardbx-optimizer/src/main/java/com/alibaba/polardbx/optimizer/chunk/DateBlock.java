@@ -16,11 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.chunk;
 
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.util.bloomfilter.TddlHasher;
+
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -34,7 +35,7 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
  *
  */
 public class DateBlock extends AbstractCommonBlock {
-
+    private static final long NULL_VALUE = 0L;
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(DateBlock.class).instanceSize();
 
     public static final long ZERO_DATE_MILLIS = -1;
@@ -121,9 +122,9 @@ public class DateBlock extends AbstractCommonBlock {
     }
 
     @Override
-    public void addToBloomFilter(TddlHasher sink, int position) {
+    public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putLong(0L);
+            sink.putLong(NULL_VALUE);
         } else {
             sink.putLong(packed[arrayOffset + position]);
         }

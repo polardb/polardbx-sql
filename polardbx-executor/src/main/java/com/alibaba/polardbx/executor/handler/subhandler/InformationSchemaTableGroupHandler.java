@@ -16,96 +16,179 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
-import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.view.InformationSchemaFullTableGroup;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaTableGroup;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 
-import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
+
 /**
  * Created by luoyanxin.
  *
  * @author luoyanxin
  */
-public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassHandler{
+public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassHandler {
+    private static final Logger logger = LoggerFactory.getLogger(InformationSchemaTableGroupHandler.class);
+
     public InformationSchemaTableGroupHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }
 
     @Override
     public boolean isSupport(VirtualView virtualView) {
-        return virtualView instanceof InformationSchemaTableGroup;
+        return virtualView instanceof InformationSchemaFullTableGroup;
     }
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-        TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
-        try (Connection connection = MetaDbUtil.getConnection()) {
-            tableGroupAccessor.setConnection(connection);
-            final List<String> schemaNames = tableGroupAccessor.getDistinctSchemaNames();
-            for (String schemaName : schemaNames) {
-                TableGroupInfoManager tableGroupInfoManager =
-                    OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-                SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
-                final Map<Long, TableGroupConfig> tableGroupConfigMap =
-                    tableGroupInfoManager.getTableGroupConfigInfoCache();
-                if (tableGroupConfigMap != null) {
-                    for (Map.Entry<Long, TableGroupConfig> entry : tableGroupConfigMap.entrySet()) {
-                        StringBuilder sb = new StringBuilder();
-                        TableGroupConfig tableGroupConfig = entry.getValue();
-                        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
-                        String partitionString = "";
-                        if (tableGroupConfig.getTableCount() > 0) {
-                            int tableCount = 0;
-                            for (TablePartRecordInfoContext context : tableGroupConfig
-                                .getAllTables()) {
-                                String tableName = context.getLogTbRec().tableName;
-                                if (tableCount == 0) {
-                                    TableMeta tableMeta = schemaManager.getTable(context.getLogTbRec().tableName);
-                                    partitionString =
-                                        tableMeta.getPartitionInfo().getPartitionBy()
-                                            .normalizePartitionByInfo(tableGroupConfig, true);
-                                } else {
-                                    sb.append(",");
-                                }
-                                sb.append(tableName);
-                                tableCount++;
+        String schemaName = executionContext.getSchemaName();
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (!isNewPart) {
+            throw new UnsupportedOperationException("unsupport command[show tablegroup]");
+        }
+        boolean isNotFull = virtualView instanceof InformationSchemaTableGroup;
+        TableGroupInfoManager tableGroupInfoManager =
+            OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+        SchemaManager schemaManager = executionContext.getSchemaManager();
+        final Map<Long, TableGroupConfig> tableGroupConfigMap =
+            tableGroupInfoManager.getTableGroupConfigInfoCache();
+        if (tableGroupConfigMap != null) {
+            for (Map.Entry<Long, TableGroupConfig> entry : tableGroupConfigMap.entrySet()) {
+                StringBuilder sb = new StringBuilder();
+                TableGroupConfig tableGroupConfig = entry.getValue();
+                TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+                String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
+                String partitionString = "";
+                int partCnt = 0;
+
+                if (isNotFull) {
+                    int logTblCnt = 0;
+                    int idxTblCnt = 0;
+                    int tableCount = tableGroupConfig.getTableCount();
+                    String actualPartStr = "";
+                    String maxPartStr = "";
+                    boolean isSingleTbOrBroadcastTb = false;
+                    if (tableCount > 0) {
+                        List<TablePartRecordInfoContext> tbInfoList = tableGroupConfig.getTables();
+                        for (int i = 0; i < tbInfoList.size(); i++) {
+                            String logTblName = tableGroupConfig.getTables().get(i).getLogTbRec().tableName;
+                            TableMeta tableMeta = schemaManager.getTable(logTblName);
+                            PartitionInfo partInfo = tableMeta.getPartitionInfo();
+                            PartitionTableType tableType = partInfo.getTableType();
+                            if (tableType == PartitionTableType.GSI_TABLE
+                                || tableType == PartitionTableType.GSI_BROADCAST_TABLE
+                                || tableType == PartitionTableType.GSI_SINGLE_TABLE) {
+                                idxTblCnt++;
+                            } else {
+                                logTblCnt++;
                             }
                         }
-                        cursor.addRow(new Object[] {
-                            DataTypes.StringType.convertFrom(schemaName),
-                            DataTypes.LongType.convertFrom(entry.getKey()),
-                            DataTypes.StringType.convertFrom(tableGroupRecord.tg_name),
-                            DataTypes.StringType.convertFrom(tableGroupRecord.locality),
-                            DataTypes.StringType.convertFrom(tableGroupRecord.primary_zone),
-                            DataTypes.IntegerType.convertFrom(tableGroupRecord.manual_create),
-                            DataTypes.StringType.convertFrom(partitionString),
-                            DataTypes.StringType.convertFrom(sb.toString())
-                        });
+                        String firstTblName = tableGroupConfig.getTables().get(0).getLogTbRec().tableName;
+                        TableMeta tableMeta = schemaManager.getTable(firstTblName);
+                        PartitionInfo firstPartInfo = tableMeta.getPartitionInfo();
+                        isSingleTbOrBroadcastTb = firstPartInfo.getTableType() == PartitionTableType.SINGLE_TABLE
+                            || firstPartInfo.getTableType() == PartitionTableType.BROADCAST_TABLE
+                            || firstPartInfo.getTableType() == PartitionTableType.GSI_SINGLE_TABLE
+                            || firstPartInfo.getTableType() == PartitionTableType.GSI_BROADCAST_TABLE;
+
+                        partCnt = tableMeta.getPartitionInfo().getPartitionBy().getPartitions().size();
+                        if (!isSingleTbOrBroadcastTb) {
+                            List<ColumnMeta> maxPartColMeta =
+                                PartitionInfoUtil.getMaxPartColumnMetasInfoForTableGroup(schemaName, tgName);
+                            List<ColumnMeta> actualPartColMeta =
+                                PartitionInfoUtil.getActualPartColumnMetasInfoForTableGroup(schemaName, tgName);
+
+                            actualPartStr =
+                                tableMeta.getPartitionInfo().getPartitionBy()
+                                    .normalizePartitionKeyIgnoreColName(actualPartColMeta.size());
+                            maxPartStr =
+                                tableMeta.getPartitionInfo().getPartitionBy()
+                                    .normalizePartitionKeyIgnoreColName(maxPartColMeta.size());
+                        } else {
+                            actualPartStr = "NO_PART_KEY";
+                            maxPartStr = "NO_PART_KEY";
+                        }
                     }
+
+                    cursor.addRow(new Object[] {
+                        DataTypes.StringType.convertFrom(schemaName),
+                        DataTypes.LongType.convertFrom(entry.getKey()),
+                        DataTypes.StringType.convertFrom(tableGroupRecord.tg_name),
+                        DataTypes.StringType.convertFrom(tableGroupRecord.locality),
+                        DataTypes.StringType.convertFrom(tableGroupRecord.primary_zone),
+                        DataTypes.IntegerType.convertFrom(tableGroupRecord.manual_create),
+                        DataTypes.StringType.convertFrom(actualPartStr),
+                        DataTypes.StringType.convertFrom(maxPartStr),
+                        DataTypes.LongType.convertFrom(partCnt),
+                        DataTypes.LongType.convertFrom(logTblCnt),
+                        DataTypes.LongType.convertFrom(idxTblCnt),
+                    });
+                } else {
+                    if (tableGroupConfig.getTableCount() > 0) {
+                        int tableCount = 0;
+                        for (TablePartRecordInfoContext context : tableGroupConfig
+                            .getAllTables()) {
+                            String tableName = context.getLogTbRec().tableName;
+                            if (tableCount == 0) {
+                                try {
+                                    TableMeta tableMeta = schemaManager.getTable(context.getLogTbRec().tableName);
+                                    PartitionInfo partInfo = tableMeta.getPartitionInfo();
+                                    int actualPartColCnt = PartitionInfoUtil.getActualPartitionColumns(partInfo).size();
+                                    if (partInfo.getPartitionBy().getStrategy() == PartitionStrategy.HASH) {
+                                        actualPartColCnt = 1;
+                                    }
+                                    partitionString =
+                                        tableMeta.getPartitionInfo().getPartitionBy()
+                                            .normalizePartitionByInfo(tableGroupConfig, true, actualPartColCnt);
+                                } catch (Throwable t) {
+                                    logger.error(t);
+                                    continue;
+                                }
+                            } else {
+                                sb.append(",");
+                            }
+                            sb.append(tableName);
+                            tableCount++;
+                        }
+                    }
+                    cursor.addRow(new Object[] {
+                        DataTypes.StringType.convertFrom(schemaName),
+                        DataTypes.LongType.convertFrom(entry.getKey()),
+                        DataTypes.StringType.convertFrom(tableGroupRecord.tg_name),
+                        DataTypes.StringType.convertFrom(tableGroupRecord.locality),
+                        DataTypes.StringType.convertFrom(tableGroupRecord.primary_zone),
+                        DataTypes.IntegerType.convertFrom(tableGroupRecord.manual_create),
+                        DataTypes.StringType.convertFrom(partitionString),
+                        DataTypes.StringType.convertFrom(sb.toString())
+                    });
                 }
+
             }
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
         }
+
         return cursor;
     }
 }
+
 

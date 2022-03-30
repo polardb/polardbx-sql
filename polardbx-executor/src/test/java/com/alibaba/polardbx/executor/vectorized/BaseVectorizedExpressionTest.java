@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.SimpleSchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -151,12 +152,7 @@ public class BaseVectorizedExpressionTest {
 
         OptimizerContext.loadContext(optimizerContext);
 
-        StatisticManager statisticManager = new StatisticManager(APP_NAME,
-            null,
-            null,
-            null,
-            null,
-            new HashMap<>());
+        StatisticManager statisticManager = new StatisticManager(APP_NAME, new MockStatisticDatasource());
 
         optimizerContext.setStatisticManager(statisticManager);
 

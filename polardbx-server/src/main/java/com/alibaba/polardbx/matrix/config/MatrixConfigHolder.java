@@ -17,6 +17,10 @@
 package com.alibaba.polardbx.matrix.config;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.TddlNode;
+import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.lock.LockingFunctionManager;
@@ -43,10 +47,12 @@ import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlPlanScheduler;
 import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.executor.gms.TableListListener;
 import com.alibaba.polardbx.executor.gsi.GsiManager;
 import com.alibaba.polardbx.executor.planmanagement.BaselineSyncController;
+import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.statistic.MysqlStatisticCollector;
@@ -72,11 +78,15 @@ import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.table.RepoSchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticDataSource;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticDataTableSource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchService;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
+import com.alibaba.polardbx.optimizer.context.AsyncDDLContext;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
@@ -100,6 +110,8 @@ import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
 import com.alibaba.polardbx.rule.TddlRule;
+import com.alibaba.polardbx.rule.database.util.TddlRuleParam;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.transaction.AutoCommitTransaction;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
@@ -108,6 +120,8 @@ import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Objects;
@@ -151,7 +165,9 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
     private VariableManager variableManager;
     private InternalTimeZone shardRouterDefaultTimeZone;
     private DdlEngineScheduler ddlEngineScheduler;
+    private DdlPlanScheduler ddlPlanScheduler;
     private TableGroupInfoManager tableGroupInfoManager;
+    private ScheduledJobsManager scheduledJobsManager;
 
     @Override
     public void doInit() {
@@ -233,6 +249,7 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
             // Initialize the DDL engine before plan manager because of dependency.
             ddlEngineInit();
         }
+        schedulerInit();
 
         /* init StatisticManager */
         MyDataSourceGetter myDataSourceGetter = new MyDataSourceGetter(this.schemaName);
@@ -258,12 +275,10 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
         systemTableView = new PolarDbXSystemTableView(defaultDataSource, schemaName);
         oc.setParamManager(new ParamManager(dataSource.getConnectionProperties()));
 
-        this.statisticManager = new StatisticManager(schemaName,
-            systemTableTableStatistic,
-            systemTableColumnStatistic,
-            systemTableNDVSketchStatistic,
-            ndvSketch,
-            dataSource.getConnectionProperties());
+        StatisticDataSource sds =
+            new StatisticDataTableSource(schemaName, systemTableTableStatistic, systemTableColumnStatistic,
+                systemTableNDVSketchStatistic, ndvSketch, dataSource.getConnectionProperties());
+        this.statisticManager = new StatisticManager(schemaName, sds);
         this.statisticManager.init();
         this.statisticManager.startCollectForeverAsync(new MysqlStatisticCollector(schemaName,
             dataSource.getConnectionProperties(),
@@ -281,7 +296,7 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
             systemTablePlanInfo,
             new BaselineSyncController(),
             planCache,
-            new MyParametricQueryAdvisor(SimilarityAlgo.valueOf(
+            new MyParametricQueryAdvisor(schemaName, SimilarityAlgo.valueOf(
                 GeneralUtil.getPropertyString(dataSource.getConnectionProperties(), PARAMETRIC_SIMILARITY_ALGO,
                     SimilarityAlgo.EUCLIDEAN.name()))),
             dataSource.getConnectionProperties());
@@ -548,7 +563,8 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
             partitionInfoManager.setTableMetaFetcher(new TableMetaFetcher() {
                 @Override
                 public TableMeta getTableMeta(String schemaName, String appName, String tableName) {
-                    return GmsTableMetaManager.fetchTableMeta(schemaName, tableName, null, true, true);
+                    return GmsTableMetaManager.fetchTableMeta(null, schemaName, tableName, null, null, true,
+                        true);
                 }
             });
             rule.init();
@@ -619,6 +635,8 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
         // Register new DDL Engine Scheduler.
         ddlEngineScheduler = DdlEngineScheduler.getInstance();
         ddlEngineScheduler.register(schemaName, dataSource.borrowExecutorService());
+
+        ddlPlanScheduler = DdlPlanScheduler.getINSTANCE();
     }
 
     public void ddlEngineDestroy() {
@@ -651,7 +669,7 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
         }
     }
 
-    public void restoreDDL(String schemaName, Long jobId) {
+    public DdlContext restoreDDL(String schemaName, Long jobId) {
         ITransaction autoCommitTrans = null;
         try (TConnection conn = (TConnection) dataSource.getConnection()) {
             ExecutionContext executionContext = conn.getExecutionContext();
@@ -664,9 +682,12 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
             executionContext.setStats(dataSource.getStatistics());
             executionContext.setPhysicalRecorder(dataSource.getPhysicalRecorder());
             executionContext.setConnection(conn);
+            // fastchecker 中需要共享readview
+            conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
             executionContext.setShareReadView(conn.getShareReadView());
 
             DdlEngineDagExecutor.restoreAndRun(schemaName, jobId, executionContext);
+            return executionContext.getDdlContext();
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
                 "Failed to get a TConnection to perform the DDL. Caused by: " + e.getMessage(), e);
@@ -674,6 +695,74 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
             if (autoCommitTrans != null) {
                 autoCommitTrans.close();
             }
+        }
+    }
+
+    public void executeBackgroundSql(String sql, String schema, InternalTimeZone timeZone) {
+        try (TConnection conn = (TConnection) dataSource.getConnection()) {
+            if(timeZone != null){
+                conn.setTimeZone(timeZone);
+            }
+            ExecutionContext executionContext = conn.getExecutionContext();
+            executionContext.setSchemaName(schema);
+            executionContext.setPrivilegeMode(false);
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate(sql);
+            }
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public long submitRebalanceDDL(String schema, String ddlSql) {
+        try (TConnection conn = (TConnection) dataSource.getConnection()) {
+            ExecutionContext executionContext = conn.getExecutionContext();
+            executionContext.setSchemaName(schema);
+            executionContext.setPrivilegeMode(false);
+
+            SQLRecorderLogger.ddlEngineLogger.info(String.format("submit job, schemaName:[%s], ddlSql:[%s]", schema, ddlSql));
+
+            try (Statement stmt = conn.createStatement()) {
+                ResultSet resultSet = stmt.executeQuery(ddlSql);
+                if (resultSet.next()){
+                    return resultSet.getLong(DdlConstants.JOB_ID);
+                } else {
+                    //todo guxu 如果返回的是0条记录怎么办？
+                    throw new TddlNestableRuntimeException("Submit Rebalance error");
+                }
+            }
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public long submitSubDDL(String schema, long parentJobId, long parentTaskId, boolean forRollback, String ddlSql) {
+        try (TConnection conn = (TConnection) dataSource.getConnection()) {
+            ExecutionContext executionContext = conn.getExecutionContext();
+            executionContext.setSchemaName(schema);
+            executionContext.setPrivilegeMode(false);
+            DdlContext ddlContext = new DdlContext();
+            ddlContext.setIsSubJob(true);
+            ddlContext.setParentJobId(parentJobId);
+            ddlContext.setParentTaskId(parentTaskId);
+            ddlContext.setForRollback(forRollback);
+            executionContext.setDdlContext(ddlContext);
+
+            SQLRecorderLogger.ddlEngineLogger.info(String.format(
+                "submit sub job, schemaName:[%s], parentJobId:[%s], parentTaskId:[%s], forRollback:[%s], ddlSql:[%s]",
+                schema, parentJobId, parentTaskId, forRollback, ddlSql
+            ));
+
+            try (Statement stmt = conn.createStatement()) {
+                ResultSet resultSet = stmt.executeQuery(ddlSql);
+                if (resultSet.next()){
+                    return resultSet.getLong(DdlConstants.JOB_ID);
+                } else {
+                    throw new TddlNestableRuntimeException("Submit SubJob error");
+                }
+            }
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
         }
     }
 
@@ -702,6 +791,12 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
         }
 
         optimizerContext.setSchemaManager(schemaManager);
+    }
+
+    public void schedulerInit(){
+        if (!ConfigDataMode.isFastMock()) {
+            scheduledJobsManager = ScheduledJobsManager.getINSTANCE();
+        }
     }
 
     public void propertiesInit() {

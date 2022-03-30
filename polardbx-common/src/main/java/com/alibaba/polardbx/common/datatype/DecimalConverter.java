@@ -403,6 +403,21 @@ public class DecimalConverter {
 
     public static int parseString(byte[] decimalAsBytes, final int offset, final int length, DecimalStructure result,
                                   boolean fixed) {
+        final int error = doParseString(decimalAsBytes, offset, length, result, fixed);
+        // check overflow
+        if (error == E_DEC_OVERFLOW) {
+            boolean isNeg = result.isNeg();
+            DecimalBounds.maxValue(MAX_DECIMAL_PRECISION, 0).copyTo(result);
+            result.setNeg(isNeg);
+        }
+        if (error != E_DEC_DIV_ZERO && result.isNeg() && result.isZero()) {
+            result.setNeg(false);
+        }
+        return error;
+    }
+
+    private static int doParseString(byte[] decimalAsBytes, final int offset, final int length, DecimalStructure result,
+                                     boolean fixed) {
         int pos = offset;
         int len = length;
         int error = E_DEC_BAD_NUM;
@@ -523,8 +538,10 @@ public class DecimalConverter {
             long[] parseResults = StringNumericParser.parseString(decimalAsBytes, endPos + 1, decimalAsBytes.length);
             int strError = (int) parseResults[StringNumericParser.ERROR_INDEX];
             long exponent = parseResults[StringNumericParser.NUMERIC_INDEX];
+            long currentPos = parseResults[StringNumericParser.POSITION_INDEX];
 
-            if (offset + length != endPos + 1) {
+            // If at least one digit
+            if (currentPos != endPos + 1) {
                 if (strError > 0) {
                     error = E_DEC_BAD_NUM;
                     result.toZero();

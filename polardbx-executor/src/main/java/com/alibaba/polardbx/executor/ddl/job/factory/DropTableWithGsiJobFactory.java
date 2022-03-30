@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropTableWithGsiBuilder
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.DropGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropGsi;
@@ -31,6 +32,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropTableWithGsiPrep
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -84,6 +86,10 @@ public class DropTableWithGsiJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         ExecutableDdlJob result = new ExecutableDdlJob();
+        Map<String, Long> tableVersions = new HashMap<>();
+
+        tableVersions.put(preparedData.getPrimaryTablePreparedData().getTableName(),
+            preparedData.getPrimaryTablePreparedData().getTableVersion());
 
         PhysicalPlanData physicalPlanData =
             DdlJobDataConverter.convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans);
@@ -105,7 +111,15 @@ public class DropTableWithGsiJobFactory extends DdlJobFactory {
                     dropGsiJob.getFinalSyncTask()
                 )
             );
+            tableVersions.put(gsiPreparedData.getTableName(),
+                gsiPreparedData.getTableVersion());
         }
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(preparedData.getPrimaryTablePreparedData().getSchemaName(), tableVersions);
+
+        result.addTask(validateTableVersionTask);
+        result.addTaskRelationship(validateTableVersionTask, dropPrimaryTableJob.getHead());
+
         return result;
     }
 

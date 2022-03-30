@@ -125,7 +125,7 @@ public class PushFilterRule extends RelOptRule {
     }
 
     public static boolean doNotPush(RexNode condition, LogicalView logicalView) {
-        if (RexUtils.containsUnPushableFunction(condition)) {
+        if (RexUtils.containsUnPushableFunction(condition, false)) {
             return true;
         }
 

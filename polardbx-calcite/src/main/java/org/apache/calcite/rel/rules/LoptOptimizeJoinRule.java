@@ -927,7 +927,7 @@ public class LoptOptimizeJoinRule extends RelOptRule {
     // a full outer join
     if (rel instanceof Join) {
       assert ((Join) rel).getJoinType() != JoinRelType.FULL;
-      return true;
+      return false;
     } else {
       return false;
     }
@@ -1983,15 +1983,7 @@ public class LoptOptimizeJoinRule extends RelOptRule {
       LoptJoinTree right,
       boolean selfJoin) {
     boolean swap = false;
-
-    if (selfJoin) {
-      return !multiJoin.isLeftFactorInRemovableSelfJoin(
-          ((LoptJoinTree.Leaf) left.getFactorTree()).getId());
-    }
-    else {
-      //we should disable swap else otherwise it may not generate left deep tree
-      return false;
-    }
+    return swap;
 /*
     final Double leftRowCount = mq.getRowCount(left.getJoinTree());
     final Double rightRowCount = mq.getRowCount(right.getJoinTree());

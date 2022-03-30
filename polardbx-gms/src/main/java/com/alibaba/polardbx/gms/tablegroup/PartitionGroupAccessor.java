@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.SQLException;
@@ -79,6 +80,9 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
     private static final String GET_TABLE_GROUP_BY_PG_ID =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP + " where id=?";
+
+    private static final String GET_TABLE_GROUP_BY_PHY_DB =
+        "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP + " where phy_db=?";
 
     private static final String GET_ALL_PARTITION_GROUP =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP;
@@ -188,6 +192,19 @@ public class PartitionGroupAccessor extends AbstractAccessor {
         }
     }
 
+    public List<PartitionGroupRecord> getPartitionGroupsByPhyDb(String phyDb) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, phyDb);
+
+            return MetaDbUtil.query(GET_TABLE_GROUP_BY_PHY_DB, params, PartitionGroupRecord.class, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + GmsSystemTables.PARTITION_GROUP, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
     public int[] addNewPartitionGroups(List<PartitionGroupRecord> partitionGroupRecords)
         throws SQLException {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>();
@@ -207,6 +224,7 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
             paramsBatch.add(params);
         }
+        DdlMetaLogUtil.logSql(INSERT_IGNORE_PARTITION_GROUP, paramsBatch);
 
         int[] ret = MetaDbUtil.insert(INSERT_IGNORE_PARTITION_GROUP, paramsBatch, this.connection);
         return ret;
@@ -246,6 +264,8 @@ public class PartitionGroupAccessor extends AbstractAccessor {
                 stmtStr = useUpsert ? UPSERT_PARTITION_GROUP : INSERT_IGNORE_PARTITION_GROUP;
             }
 
+            DdlMetaLogUtil.logSql(stmtStr, paramsBatch);
+
             return MetaDbUtil.insertAndRetureLastInsertId(
                 stmtStr, paramsBatch,
                 this.connection);
@@ -281,7 +301,9 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tgId);
-            MetaDbUtil.update(fromDeltaTable ? DELETE_PART_GROUP_DELTA_BY_TG_ID : DELETE_PART_GROUP_BY_TG_ID, params,
+            String sql = fromDeltaTable ? DELETE_PART_GROUP_DELTA_BY_TG_ID : DELETE_PART_GROUP_BY_TG_ID;
+            DdlMetaLogUtil.logSql(sql, params);
+            MetaDbUtil.update(sql, params,
                 connection);
             return;
         } catch (Exception e) {
@@ -296,6 +318,8 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, id);
+            DdlMetaLogUtil.logSql(DELETE_PART_GROUP_BY_ID, params);
+
             MetaDbUtil.update(DELETE_PART_GROUP_BY_ID, params, connection);
             return;
         } catch (Exception e) {
@@ -325,6 +349,8 @@ public class PartitionGroupAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newPhyDb);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, id);
 
+            DdlMetaLogUtil.logSql(UPDATE_PHY_DB_BY_ID, params);
+
             MetaDbUtil.update(UPDATE_PHY_DB_BY_ID, params, connection);
             return;
         } catch (Exception e) {
@@ -339,6 +365,8 @@ public class PartitionGroupAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, newPartitionName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, id);
+
+            DdlMetaLogUtil.logSql(UPDATE_PARTITION_NAME_BY_ID, params);
 
             MetaDbUtil.update(UPDATE_PARTITION_NAME_BY_ID, params, connection);
             return;
@@ -402,6 +430,8 @@ public class PartitionGroupAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, gid);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setString, partitionName);
+            DdlMetaLogUtil.logSql(DELETE_TEMP_PART_GROUP_BY_TID_AND_NAME_FROM_DELTA, params);
+
             MetaDbUtil.update(DELETE_TEMP_PART_GROUP_BY_TID_AND_NAME_FROM_DELTA, params, connection);
             return;
         } catch (Exception e) {
@@ -432,6 +462,8 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
                 paramsBatch.add(params);
             }
+            DdlMetaLogUtil.logSql(INSERT_OUTDATE_PATITION_INTO_PARTITION_GROUP_DELTA, paramsBatch);
+
             return MetaDbUtil.insert(
                 INSERT_OUTDATE_PATITION_INTO_PARTITION_GROUP_DELTA, paramsBatch,
                 this.connection);
@@ -453,6 +485,9 @@ public class PartitionGroupAccessor extends AbstractAccessor {
                 MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, partitionGroupId);
                 paramsBatch.add(params);
             }
+
+            DdlMetaLogUtil.logSql(DELETE_OUTDATE_PART_GROUP_BY_ID, paramsBatch);
+
             return MetaDbUtil.update(
                 DELETE_OUTDATE_PART_GROUP_BY_ID, paramsBatch,
                 this.connection);
@@ -475,6 +510,9 @@ public class PartitionGroupAccessor extends AbstractAccessor {
                 MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, newPartitionName);
                 paramsBatch.add(params);
             }
+
+            DdlMetaLogUtil.logSql(DELETE_NEW_PART_GROUP_BY_TG_ID_AND_PART_NAME, paramsBatch);
+
             return MetaDbUtil.update(
                 DELETE_NEW_PART_GROUP_BY_TG_ID_AND_PART_NAME, paramsBatch,
                 this.connection);

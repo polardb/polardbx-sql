@@ -28,6 +28,11 @@ public interface ICdcManager {
 
     String NOT_IGNORE_GSI_JOB_TYPE_FLAG = "NOT_IGNORE_GSI_JOB_TYPE_FLAG";
 
+    /**
+     * 通知CdcManager，是否在打标记录中重新构建为CDC Meta模块提供的物理表建表SQL
+     */
+    String REFRESH_CREATE_SQL_4_PHY_TABLE = "REFRESH_CREATE_SQL_4_PHY_TABLE";
+
     enum InstructionType {
 
         CdcStart,

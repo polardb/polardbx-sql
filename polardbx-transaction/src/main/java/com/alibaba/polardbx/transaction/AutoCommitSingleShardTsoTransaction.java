@@ -102,13 +102,9 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
 
     @Override
     public void tryClose(IConnection conn, String groupName) throws SQLException {
-        try {
-            if (conn.isWrapperFor(XConnection.class)) {
-                super.tryClose(conn, groupName);
-                return;
-            }
-        } catch (SQLException ignored) {
-            // Is jdbc connection
+        if (conn.isWrapperFor(XConnection.class)) {
+            super.tryClose(conn, groupName);
+            return;
         }
 
         lock.lock();

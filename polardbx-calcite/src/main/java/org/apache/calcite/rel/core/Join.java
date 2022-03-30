@@ -22,6 +22,7 @@ import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.BiRel;
+import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.metadata.RelMdUtil;
@@ -49,6 +50,7 @@ import org.checkerframework.checker.nullness.qual.EnsuresNonNullIf;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -214,7 +216,10 @@ public abstract class Join extends BiRel {
         .itemIf(
             "systemFields",
             getSystemFieldList(),
-            !getSystemFieldList().isEmpty());
+            !getSystemFieldList().isEmpty())
+        .itemIf("variablesSet",
+            variablesSet,
+            variablesSet != null && variablesSet.size() > 0);
   }
 
 //  @API(since = "1.24", status = API.Status.INTERNAL)

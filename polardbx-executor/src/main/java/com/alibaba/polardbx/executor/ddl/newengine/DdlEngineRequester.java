@@ -39,6 +39,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.time.Duration;
 import java.util.List;
@@ -52,7 +53,7 @@ public class DdlEngineRequester {
     private static final Logger LOGGER = LoggerFactory.getLogger(DdlEngineRequester.class);
 
     /**
-     * Keep ddl result for 2 hours, and set a capacity to avoid too much memory footprint
+     * Keep ddl result for 12 hours, and set a capacity to avoid too much memory footprint
      */
     private final static Cache<Long, Response> RESPONSES = CacheBuilder.newBuilder()
         .expireAfterAccess(Duration.ofHours(12))
@@ -64,19 +65,31 @@ public class DdlEngineRequester {
     private final DdlJobManager ddlJobManager;
     private final ExecutionContext executionContext;
 
-    private DdlEngineRequester(DdlJob ddlJob, ExecutionContext executionContext) {
+    public DdlEngineRequester(DdlJob ddlJob, ExecutionContext ec, DdlContext dc) {
         this.ddlJob = ddlJob;
-        this.ddlContext = executionContext.getDdlContext();
+        this.ddlContext = dc;
         this.ddlJobManager = new DdlJobManager();
-        this.executionContext = executionContext;
+        this.executionContext = ec;
     }
 
+    /**
+     * Create a requester from existed job
+     */
     public static DdlEngineRequester create(DdlJob ddlJob, ExecutionContext executionContext) {
         if (ddlJob != null && executionContext != null && executionContext.getDdlContext() != null) {
-            return new DdlEngineRequester(ddlJob, executionContext);
+            return new DdlEngineRequester(ddlJob, executionContext, executionContext.getDdlContext());
         } else {
             throw DdlHelper.logAndThrowError(LOGGER, "The DDL job and contexts must not be null");
         }
+    }
+
+    /**
+     * Execute the subjob
+     */
+    public long executeSubJob(long parentJobId, long parentTaskId, boolean forRollback) {
+        ddlContext.setResources(ddlJob.getExcludeResources());
+        // Create a new job and put it in the queue.
+        return ddlJobManager.storeSubJob(parentJobId, parentTaskId, ddlJob, ddlContext, forRollback);
     }
 
     public void execute() {
@@ -86,7 +99,7 @@ public class DdlEngineRequester {
         ddlJobManager.storeJob(ddlJob, ddlContext);
 
         // Request the leader to perform the job.
-        DdlRequest ddlRequest = notifyLeader();
+        DdlRequest ddlRequest = notifyLeader(ddlContext.getSchemaName(), Lists.newArrayList(ddlContext.getJobId()));
 
         // Wait for response from the leader, then respond to the client.
         if (ddlContext.isAsyncMode()) {
@@ -95,10 +108,9 @@ public class DdlEngineRequester {
         respond(ddlRequest, ddlJobManager, executionContext, true);
     }
 
-    private DdlRequest notifyLeader() {
+    public static DdlRequest notifyLeader(String schemaName, List<Long> jobId) {
         // Build a new DDL request.
-        String schemaName = ddlContext.getSchemaName();
-        DdlRequest ddlRequest = ddlJobManager.buildRequest(ddlContext);
+        DdlRequest ddlRequest = DdlJobManager.buildRequest(jobId, schemaName);
 
         // Notify the leader of new DDL request.
         if (ExecUtils.hasLeadership(null)) {
@@ -167,7 +179,7 @@ public class DdlEngineRequester {
             // Wait for a moment since leader is probably performing the job(s).
             totalWaitingTime += DdlHelper.waitToContinue(LESS_WAITING_TIME);
             if (Thread.interrupted()) {
-                pauseJobThenExit(jobIds, ddlJobManager);
+                exit();
             }
 
             // Only a worker checks if the job(s) are paused or failed, but leader
@@ -214,42 +226,42 @@ public class DdlEngineRequester {
         return Lists.newArrayList(RESPONSES.asMap().values());
     }
 
-    private static void pauseJobThenExit(List<Long> jobIds, DdlJobManager ddlJobManager) {
-        List<DdlEngineRecord> records = ddlJobManager.fetchRecords(jobIds);
-        int countDone = 0;
-        for (DdlEngineRecord record : records) {
-            if (DdlState.RUNNING == DdlState.valueOf(record.state)) {
-                if (ddlJobManager.tryUpdateDdlState(
-                    record.schemaName,
-                    record.jobId,
-                    DdlState.RUNNING,
-                    DdlState.PAUSED)) {
-                    countDone++;
-                    DdlRequest ddlRequest = new DdlRequest(record.schemaName, Lists.newArrayList(record.jobId));
-                    GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), record.schemaName);
-                }
-            } else if (DdlState.ROLLBACK_RUNNING == DdlState.valueOf(record.state)) {
-                if (ddlJobManager.tryUpdateDdlState(
-                    record.schemaName,
-                    record.jobId,
-                    DdlState.ROLLBACK_RUNNING,
-                    DdlState.ROLLBACK_PAUSED)) {
-                    countDone++;
-                    DdlRequest ddlRequest = new DdlRequest(record.schemaName, Lists.newArrayList(record.jobId));
-                    GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), record.schemaName);
-                }
+    public static void pauseJob(Long jobId) {
+        if(jobId == null){
+            return;
+        }
+        if(!ExecUtils.hasLeadership(null)){
+            return;
+        }
+        DdlJobManager ddlJobManager = new DdlJobManager();
+        List<DdlEngineRecord> records = ddlJobManager.fetchRecords(Lists.newArrayList(jobId));
+        if(CollectionUtils.isEmpty(records)){
+            return;
+        }
+        DdlEngineRecord record = records.get(0);
+        if (DdlState.RUNNING == DdlState.valueOf(record.state)) {
+            if (ddlJobManager.tryUpdateDdlState(
+                record.schemaName,
+                record.jobId,
+                DdlState.RUNNING,
+                DdlState.PAUSED)) {
+                DdlRequest ddlRequest = new DdlRequest(record.schemaName, Lists.newArrayList(record.jobId));
+                GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), record.schemaName);
+            }
+        } else if (DdlState.ROLLBACK_RUNNING == DdlState.valueOf(record.state)) {
+            if (ddlJobManager.tryUpdateDdlState(
+                record.schemaName,
+                record.jobId,
+                DdlState.ROLLBACK_RUNNING,
+                DdlState.ROLLBACK_PAUSED)) {
+                DdlRequest ddlRequest = new DdlRequest(record.schemaName, Lists.newArrayList(record.jobId));
+                GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), record.schemaName);
             }
         }
+    }
 
-        if (countDone == 0) {
-            throw new TddlRuntimeException(
-                ErrorCode.ERR_GMS_GENERIC,
-                "No job has been paused. Use 'show full ddl' to check DDL info");
-        }
-
-        throw new TddlRuntimeException(
-            ErrorCode.ERR_GMS_GENERIC,
-            String.format("%s jobs paused. Use 'show full ddl' to check DDL info", countDone));
+    private static void exit(){
+        throw new TddlRuntimeException(ErrorCode.ERR_USER_CANCELED, "Query was canceled");
     }
 
 }

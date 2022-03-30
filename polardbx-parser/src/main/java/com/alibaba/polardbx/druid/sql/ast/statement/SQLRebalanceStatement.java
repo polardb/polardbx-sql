@@ -37,6 +37,7 @@ public class SQLRebalanceStatement extends SQLStatementImpl {
     private RebalanceTarget target;
     private SQLExprTableSource tableSource;
     private List<SQLAssignItem> options = new ArrayList<SQLAssignItem>();
+    private boolean logicalDdl = false;
 
     public SQLRebalanceStatement() {
         super (DbType.mysql);
@@ -102,6 +103,14 @@ public class SQLRebalanceStatement extends SQLStatementImpl {
 
     public void setOptions(List<SQLAssignItem> options) {
         this.options = options;
+    }
+
+    public boolean isLogicalDdl() {
+        return logicalDdl;
+    }
+
+    public void setLogicalDdl(boolean logicalDdl) {
+        this.logicalDdl = logicalDdl;
     }
 
     @Override

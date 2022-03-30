@@ -94,6 +94,7 @@ public class PreemptiveMdlContextStamped extends MdlContextStamped {
                     logger.warn(String.format("try parse frontend connId to Long but failed. connIdStr:[%s]", connIdStr));
                     continue;
                 }
+                logger.warn(String.format("Preempt mdl by kill connection: %s ", connIdStr));
                 killByFrontendConnId(connId);
             }
         }catch (Throwable t){

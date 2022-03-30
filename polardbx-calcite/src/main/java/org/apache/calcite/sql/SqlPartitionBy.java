@@ -16,16 +16,17 @@
 
 package org.apache.calcite.sql;
 
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlPartitionByKey;
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlPartitionByKey;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.Litmus;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -67,10 +68,12 @@ public class SqlPartitionBy extends SqlCall {
         // Validate all the part cols of PartitionBy
         List<RelDataType> partColTypes = new ArrayList<>();
         boolean isColumnsPartition = false;
+        boolean isHash = false;
         Object partByObj = this;
         if (partByObj instanceof MySqlPartitionByKey) {
             isColumnsPartition = true;
         } else if (partByObj instanceof SqlPartitionByHash) {
+            isHash = true;
             isColumnsPartition = ((SqlPartitionByHash)partByObj).isKey();
         } else if(partByObj instanceof SqlPartitionByRange){
             isColumnsPartition = ((SqlPartitionByRange)partByObj).isColumns();
@@ -92,7 +95,7 @@ public class SqlPartitionBy extends SqlCall {
                             partCol.toString()));
                 }
             } else {
-                if (!SqlTypeName.INT_TYPES.contains(typeName)) {
+                if (!SqlTypeName.INT_TYPES.contains(typeName) && !isHash) {
                     throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String
                         .format("The datatype[%s] of column[%s] is not supported", typeName.getName(),
                             partCol.toString()));
@@ -100,8 +103,41 @@ public class SqlPartitionBy extends SqlCall {
             }
             partColTypes.add(dataType);
         }
+        int partColCnt = partColTypes.size();
 
-        List<SqlNode> partDefs = this.getPartitions();
+        // Validate partitions
+        SqlPartitionBy.validatePartitionDefs(validator, scope, this.getPartitions(), partColCnt, false);
+
+        // Validate partitionsCount
+        SqlNode partCnt = this.partitionsCount;
+        SqlPartitionBy.validatePartitionCount(validator, scope, partCnt);
+
+        // Validate subPartitionBy
+        // To be impl
+    }
+
+    public static void validatePartitionCount(SqlValidator validator,
+                                        SqlValidatorScope scope,
+                                        SqlNode partCnt) {
+        if (partCnt != null) {
+            RelDataType dataType = validator.deriveType(scope, partCnt);
+            if (dataType == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                    "The partition count value is invalid"));
+            } else {
+                SqlTypeName typeName = dataType.getSqlTypeName();
+                if (!SqlTypeName.INT_TYPES.contains(typeName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                        "The partition count value must be an integer"));
+                }
+            }
+        }
+    }
+
+    public static void validatePartitionDefs(SqlValidator validator,
+                                    SqlValidatorScope scope,
+                                    List<SqlNode> partDefs,
+                                    int partColCnt, boolean allowNoPartBndVal) {
         Set<String> partNameSet = new HashSet<>();
         for (int i = 0; i < partDefs.size(); i++) {
             SqlPartition partDef = (SqlPartition) partDefs.get(i);
@@ -122,62 +158,61 @@ public class SqlPartitionBy extends SqlCall {
             }
 
             SqlPartitionValue bndVal = partDef.getValues();
+            if (bndVal == null) {
+                if (!allowNoPartBndVal) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                        String.format("found invalid partition values of partition[%s] ", partNameStr));
+                }
+                return;
+            }
             List<SqlPartitionValueItem> items = bndVal.getItems();
             for (int j = 0; j < items.size(); j++) {
                 SqlPartitionValueItem partitionValueItem = items.get(j);
                 if (partitionValueItem.isMaxValue()) {
                     continue;
                 }
+                boolean containMaxValue = false;
                 SqlNode valItem = partitionValueItem.getValue();
+                if (valItem.getKind() == SqlKind.ROW) {
+                    List<SqlNode> opList = ((SqlCall) valItem).getOperandList();
+                    for (int k = 0; k < opList.size(); k++) {
+                        SqlNode v = opList.get(k);
+                        if (v instanceof SqlIdentifier) {
+                            String str = ((SqlIdentifier)v).getLastName();
+                            if (str != null && str.toLowerCase().contains("maxvalue")) {
+                                containMaxValue = true;
+                                break;
+                            }
+                        }
+                    }
+                } else if (valItem instanceof SqlIdentifier) {
+                    String str = ((SqlIdentifier)valItem).getLastName();
+                    if (str != null && str.toLowerCase().contains("maxvalue")) {
+                        containMaxValue = true;
+                    }
+                }
+                if (containMaxValue && bndVal.getOperator() == SqlPartitionValue.Operator.In) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format("cannot use 'maxvalue' as value in VALUES IN"));
+                }
+
                 RelDataType valItemDt = validator.deriveType(scope, valItem);
                 if (valItemDt.isStruct()) {
                     // valItem is row expr
                     List<RelDataTypeField> valItemTypeFlds = valItemDt.getFieldList();
-                    assert valItemTypeFlds.size() == partColTypes.size();
-                    for (int k = 0; k < valItemTypeFlds.size(); k++) {
-                        RelDataTypeField fld = valItemTypeFlds.get(k);
-                        RelDataType valItemRelDt = fld.getType();
-                        if (!valItemRelDt.getFamily().equals(partColTypes.get(k).getFamily())) {
-//                            throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
-//                                "The datatype[%s] of boundValue [%s] of partition[%s] is conflict to its partition column",
-//                                valItemRelDt.getSqlTypeName().getName(), valItem.toString(), partNameStr));
-                        }
+                    if ( partColCnt > 0 && valItemTypeFlds.size() != partColCnt) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
+                                "the bound value of partition[%s] must match the partition columns", partNameStr));
                     }
                 } else {
                     // valItem is single col or func(col) expr
                     RelDataType dataType = validator.deriveType(scope, valItem);
                     if (dataType.getSqlTypeName() != SqlTypeName.NULL) {
                         Preconditions.checkNotNull(dataType);
-                        if (!dataType.getFamily().equals(partColTypes.get(0).getFamily())) {
-//                            throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
-//                                "The datatype[%s] of boundValue [%s] of partition[%s] is conflict to its partition column",
-//                                dataType.getSqlTypeName().getName(), valItem.toString(), partNameStr));
-                        }
                     }
-
                 }
             }
             bndVal.validate(validator, scope);
         }
-
-        // Validate partitionsCount
-        if (this.partitionsCount != null) {
-            RelDataType dataType = validator.deriveType(scope, this.partitionsCount);
-            if (dataType == null) {
-                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
-                    "The partition count value is invalid"));
-            } else {
-                SqlTypeName typeName = dataType.getSqlTypeName();
-                if (!SqlTypeName.INT_TYPES.contains(typeName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, String.format(
-                        "The partition count value must be an integer"));
-                }
-            }
-        }
-
-
-        // Validate subPartitionBy
-        // To be impl
     }
 
     public List<SqlNode> getColumns() {
@@ -233,5 +268,36 @@ public class SqlPartitionBy extends SqlCall {
         writer.sep("PARTITION BY");
         writer.sep(sourceSql);
         writer.endList(frame);
+    }
+
+    @Override
+    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+        if (this == node) {
+            return true;
+        }
+
+        if (node == null) {
+            return false;
+        }
+
+        if (node.getClass() != this.getClass()) {
+            return false;
+        }
+
+        SqlPartitionBy objPartBy = (SqlPartitionBy) node;
+
+        if (!equalDeep(this.subPartitionBy, objPartBy.subPartitionBy, litmus)) {
+            return false;
+        }
+
+        if (!equalDeep(this.partitionsCount, objPartBy.partitionsCount, litmus)) {
+            return false;
+        }
+
+        if (!equalDeep(this.partitions, objPartBy.partitions, litmus)) {
+            return false;
+        }
+
+        return equalDeep(this.columns, objPartBy.columns, litmus);
     }
 }

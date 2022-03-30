@@ -20,6 +20,8 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
@@ -65,6 +67,7 @@ public class CreateTableShowTableMetaTask extends BaseGmsTask {
     @Override
     public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.hideTableMeta(metaDbConnection, schemaName, logicalTableName);
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
     }
 
 }

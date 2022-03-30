@@ -59,4 +59,13 @@ public class StatisticResult {
         this.source = source;
         return this;
     }
+
+    @Override
+    public String toString() {
+        if (this == EMPTY) {
+            return "empty";
+        }
+        return value + ":" + source.name();
+    }
+
 }

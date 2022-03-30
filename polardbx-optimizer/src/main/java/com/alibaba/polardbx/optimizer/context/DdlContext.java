@@ -22,9 +22,14 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,11 +47,16 @@ public class DdlContext {
     private String schemaName;
     private String objectName;
     private String traceId;
-    private Set<String> resources;
+    private Set<String> resources = new HashSet<>();
     private String ddlStmt;
+    private transient boolean isSubJob = false;
+    private transient long parentJobId = 0;
+    private transient long parentTaskId = 0;
+    private transient boolean forRollback = false;
 
     private ConcurrentHashMap<Long, AtomicBoolean> physicalDdlInjectionFlag = new ConcurrentHashMap<>();
 
+    private transient AtomicReference<Boolean>  clientConnectionReset = new AtomicReference<>(false);
     /**
      * Get current DDL state.
      */
@@ -124,7 +134,45 @@ public class DdlContext {
         boolean asyncMode = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE);
         ddlContext.setAsyncMode(asyncMode);
 
+        if(executionContext.getDdlContext() != null && executionContext.getDdlContext().isSubJob()){
+            ddlContext.setIsSubJob(executionContext.getDdlContext().isSubJob());
+            ddlContext.setParentJobId(executionContext.getDdlContext().getParentJobId());
+            ddlContext.setParentTaskId(executionContext.getDdlContext().getParentTaskId());
+            ddlContext.setForRollback(executionContext.getDdlContext().isForRollback());
+        }
+
         return ddlContext;
+    }
+
+    public DdlContext copy() {
+        DdlContext res = new DdlContext();
+        res.setJobId(getJobId());
+        res.setDdlType(getDdlType());
+        res.setSchemaName(getSchemaName());
+        res.setObjectName(getObjectName());
+        res.setTraceId(getTraceId());
+        res.setDdlStmt(getDdlStmt());
+
+        GeneralUtil.addAllIfNotEmpty(getResources(), res.resources);
+        GeneralUtil.addAllIfNotEmpty(physicalDdlInjectionFlag, res.physicalDdlInjectionFlag);
+        res.state.set(getState());
+        res.interrupted.set(isInterrupted());
+
+        res.setEnableTrace(isEnableTrace());
+        res.setResponseNode(getResponseNode());
+        res.setAsyncMode(isAsyncMode());
+        res.setUsingWarning(isUsingWarning());
+
+        GeneralUtil.addAllIfNotEmpty(getDataPassed(), res.dataPassed);
+        GeneralUtil.addAllIfNotEmpty(getServerVariables(), res.serverVariables);
+        GeneralUtil.addAllIfNotEmpty(getUserDefVariables(), res.userDefVariables);
+        GeneralUtil.addAllIfNotEmpty(getExtraServerVariables(), res.extraServerVariables);
+        GeneralUtil.addAllIfNotEmpty(getExtraCmds(), res.extraCmds);
+
+        res.setEncoding(getEncoding());
+        res.setTimeZone(getTimeZone());
+
+        return res;
     }
 
     public long getJobId() {
@@ -267,6 +315,15 @@ public class DdlContext {
         this.state.set(update);
     }
 
+
+    public Boolean isClientConnectionReset(){
+        return this.clientConnectionReset.get();
+    }
+
+    public void setClientConnectionResetAsTrue(){
+        this.clientConnectionReset.set(true);
+    }
+
     /**
      * true:  current DDL JOB is interrupted, all tasks should stop
      * false: everything is cool
@@ -296,12 +353,44 @@ public class DdlContext {
     public void setEncoding(String encoding) {
         this.encoding = encoding;
     }
-    
+
     public String getTimeZone() {
         return timeZone;
     }
 
     public void setTimeZone(String timeZone) {
         this.timeZone = timeZone;
+    }
+
+    public boolean isSubJob() {
+        return this.isSubJob;
+    }
+
+    public void setIsSubJob(boolean value) {
+        this.isSubJob = value;
+    }
+
+    public long getParentJobId() {
+        return this.parentJobId;
+    }
+
+    public void setParentJobId(final long parentJobId) {
+        this.parentJobId = parentJobId;
+    }
+
+    public long getParentTaskId() {
+        return this.parentTaskId;
+    }
+
+    public void setParentTaskId(final long parentTaskId) {
+        this.parentTaskId = parentTaskId;
+    }
+
+    public boolean isForRollback() {
+        return this.forRollback;
+    }
+
+    public void setForRollback(final boolean forRollback) {
+        this.forRollback = forRollback;
     }
 }

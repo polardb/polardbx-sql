@@ -57,7 +57,9 @@ public class DdlConstants {
     public static final String DDL_DISPATCHER_NAME = "DDL-Engine-Dispatcher";
     public static final String DDL_SCHEDULER_NAME = "DDL-Engine-Scheduler";
     public static final String DDL_EXECUTORS_NAME = "DDL-Engine-Executor-";
-
+    public static final String DDL_ARCHIVE_CLEANER_NAME = "DDL-Engine-Archive-Cleaner-";
+    public static final int DEFAULT_RUNNING_DDL_RESCHEDULE_INTERVAL_IN_MINUTES = 1;
+    //默认每隔120分钟，重新调度失败的任务
     public static final int DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES = 120;
 
     public static final int MAX_TABLE_NAME_LENGTH_MYSQL_ALLOWS = 64;
@@ -86,4 +88,11 @@ public class DdlConstants {
 
     public static final String TYPE_ON_GSI = "GSI";
 
+    public static final String PARENT_TASK_ID = "ParentTaskId";
+    public static final String SUB_JOB_ID = "SubJobId";
+    public static final String JOB_ID = "JOB_ID";
+
+    public static final long TRANSIENT_SUB_JOB_ID = -1L;
+
+    public static final String SUB_JOB_RETRY_ERRER_MESSAGE = "please retry this command";
 }

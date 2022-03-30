@@ -16,64 +16,81 @@
 
 package com.alibaba.polardbx.gms.partition;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.Connection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author chenghui.lch
  */
 public class TablePartitionConfigUtil {
 
-    public static List<TablePartitionConfig> getAllTablePartitionConfigs(String dbName) {
-
-        List<TablePartitionConfig> result = null;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
+    public static List<TablePartitionConfig> getAllTablePartitionConfigs(Connection metaDbConn, String dbName) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
             TablePartitionAccessor tpa = new TablePartitionAccessor();
             tpa.setConnection(conn);
-            result = tpa.getAllTablePartitionConfigs(dbName);
-            conn.setAutoCommit(true);
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return result;
+            return tpa.getAllTablePartitionConfigs(dbName);
+        });
+    }
+
+    public static List<TablePartitionConfig> getAllTablePartitionConfigs(String dbName) {
+        return getAllTablePartitionConfigs(null, dbName);
+    }
+
+    public static TablePartitionConfig getTablePartitionConfig(Connection metaDbConn,
+                                                               String dbName, String tbName,
+                                                               boolean fromDeltaTable) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
+            TablePartitionAccessor tpa = new TablePartitionAccessor();
+            tpa.setConnection(conn);
+            return tpa.getTablePartitionConfig(dbName, tbName, fromDeltaTable);
+        });
     }
 
     public static TablePartitionConfig getTablePartitionConfig(String dbName, String tbName, boolean fromDeltaTable) {
+        return getTablePartitionConfig(null, dbName, tbName, fromDeltaTable);
+    }
 
-        TablePartitionConfig result = null;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
+    public static TablePartitionConfig getPublicTablePartitionConfig(Connection metaDbConn,
+                                                                     String dbName, String tbName,
+                                                                     boolean fromDeltaTable) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
             TablePartitionAccessor tpa = new TablePartitionAccessor();
             tpa.setConnection(conn);
-            result = tpa.getTablePartitionConfig(dbName, tbName, fromDeltaTable);
-            conn.setAutoCommit(true);
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return result;
+            return tpa.getPublicTablePartitionConfig(dbName, tbName);
+        });
     }
 
     public static TablePartitionConfig getPublicTablePartitionConfig(String dbName, String tbName,
                                                                      boolean fromDeltaTable) {
+        return getPublicTablePartitionConfig(null, dbName, tbName, fromDeltaTable);
+    }
 
-        TablePartitionConfig result = null;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            conn.setAutoCommit(false);
+    public static Map<String, TablePartitionConfig> getPublicTablePartitionConfigs(Connection metaDbConn,
+                                                                                   String dbName,
+                                                                                   List<String> tableNames,
+                                                                                   boolean fromDeltaTable) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
+            Map<String, TablePartitionConfig> result = new HashMap<>();
             TablePartitionAccessor tpa = new TablePartitionAccessor();
             tpa.setConnection(conn);
-            result = tpa.getPublicTablePartitionConfig(dbName, tbName);
-            conn.setAutoCommit(true);
-        } catch (Throwable ex) {
-            MetaDbLogUtil.META_DB_LOG.error(ex);
-            throw GeneralUtil.nestedException(ex);
-        }
-        return result;
+
+            for (String tableName : tableNames) {
+                TablePartitionConfig tableConfig = tpa.getPublicTablePartitionConfig(dbName, tableName);
+                result.put(tableName, tableConfig);
+            }
+
+            return result;
+        });
     }
+
+    public static Map<String, TablePartitionConfig> getPublicTablePartitionConfigs(String dbName,
+                                                                                   List<String> tableNames,
+                                                                                   boolean fromDeltaTable) {
+        return getPublicTablePartitionConfigs(null, dbName, tableNames, fromDeltaTable);
+    }
+
 }

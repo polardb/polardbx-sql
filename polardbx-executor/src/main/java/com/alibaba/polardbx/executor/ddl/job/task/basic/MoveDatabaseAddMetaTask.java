@@ -88,7 +88,7 @@ public class MoveDatabaseAddMetaTask extends BaseDdlTask {
             ComplexTaskMetaManager
                 .deleteComplexTaskByJobIdAndObjName(getJobId(), schemaName, objectName, metaDbConnection);
             if (subTask == 1) {
-                tableInfoManager.updateVersion(schemaName, objectName);
+                tableInfoManager.updateVersionAndNotify(schemaName, objectName);
             }
         }
     }

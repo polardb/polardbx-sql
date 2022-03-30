@@ -22,5 +22,5 @@ import com.alibaba.polardbx.rule.TableRule;
  * Writer for broadcast table
  */
 public interface BroadcastWriter extends Writer {
-    TableRule getTableRule();
+
 }

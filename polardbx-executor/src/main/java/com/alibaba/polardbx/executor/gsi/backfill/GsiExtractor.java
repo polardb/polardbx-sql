@@ -19,20 +19,13 @@ package com.alibaba.polardbx.executor.gsi.backfill;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import org.apache.calcite.sql.SqlSelect;
 
-import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Lock, Read, Feed to consumer
@@ -68,12 +61,15 @@ public class GsiExtractor extends Extractor {
             speedMin,
             speedLimit,
             parallelism,
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 false, true, SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 true, false,
                 SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
                 true, true,
                 SqlSelect.LockMode.SHARED_LOCK),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),

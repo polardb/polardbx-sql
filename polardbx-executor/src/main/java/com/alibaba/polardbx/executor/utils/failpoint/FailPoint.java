@@ -138,7 +138,6 @@ public class FailPoint {
             int percentage = Integer.valueOf(v);
             int val = RandomUtils.nextInt(100);
             if (val <= percentage) {
-                //todo guxu
 //                throw new RuntimeException("injected failure from " + key);
             }
         });
@@ -149,7 +148,6 @@ public class FailPoint {
             int percentage = Integer.valueOf(v);
             int val = RandomUtils.nextInt(100);
             if (val <= percentage) {
-                //todo guxu
 //                throw new RuntimeException("injected failure from " + key);
             }
         });

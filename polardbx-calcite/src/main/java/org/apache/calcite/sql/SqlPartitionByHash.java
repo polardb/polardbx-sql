@@ -17,6 +17,7 @@
 package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.util.Litmus;
 
 /**
  * Created by luoyanxin.
@@ -40,5 +41,15 @@ public class SqlPartitionByHash extends SqlPartitionBy {
 
     public boolean isUnique() {
         return unique;
+    }
+
+    @Override
+    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+        if (!super.equalsDeep(node, litmus)) {
+            return false;
+        }
+        SqlPartitionByHash objPartBy = (SqlPartitionByHash) node;
+
+        return key == objPartBy.key && unique == objPartBy.unique;
     }
 }

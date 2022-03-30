@@ -20,6 +20,7 @@ import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Lists;
@@ -85,6 +86,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
 import org.apache.calcite.rex.RexProgram;
 import org.apache.calcite.rex.RexShuttle;
+import org.apache.calcite.rex.RexSimplify;
 import org.apache.calcite.rex.RexSqlStandardConvertletTable;
 import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.rex.RexToSqlNodeConverter;
@@ -130,6 +132,8 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeSet;
+
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.AND;
 
 /**
  * <code>RelOptUtil</code> defines static utility methods for use in optimizing
@@ -3231,6 +3235,81 @@ public abstract class RelOptUtil {
     return projectFactory.createProject(rel, exprList, outputNameList);
   }
 
+  /**
+   * test whether the project has subquery or not
+   * @param project the project to be tested
+   * @return true if
+   */
+  static boolean notSubquery(LogicalProject project) {
+    for (RexNode r : project.getProjects()) {
+      if (RexUtil.containsCorrelation(r)) { return false; }
+      if (RexUtil.hasSubQuery(r)) { return false;}
+    }
+    return true;
+  }
+
+  /**
+   * push filters down projects and merge filters all
+   * @param relNode the node trying to push
+   * @return a rooted tree which doesn't contain the following patterns
+   * 1) filter(project()) unless the project has subquery
+   * 2) filter(filter())
+   */
+  public static RelNode filterProject(RelNode relNode, RelBuilder relBuilder, RexSimplify simplify) {
+    RelNode child;
+    if (relNode instanceof LogicalProject) {
+      LogicalProject project = (LogicalProject)relNode;
+      child = project.getInput();
+      RelNode newChild = filterProject(child, relBuilder, simplify);
+
+      //the input of project may change when the input was a filter
+      if (child != newChild) {
+        return project.copy(project.getTraitSet(), newChild,
+            project.getProjects(), project.getRowType());
+      }
+    }
+    if (relNode instanceof LogicalFilter) {
+      LogicalFilter filter = (LogicalFilter) relNode;
+      child = filter.getInput();
+      //make sure input doesn't contain any subquery
+      if (child instanceof LogicalProject && notSubquery((LogicalProject)child)) {
+        //push filter down project
+        LogicalProject project = (LogicalProject) child;
+        RexNode newCondition =
+            pushPastProject(filter.getCondition(), project);
+        LogicalFilter newFilterRel = LogicalFilter.create(project.getInput(), newCondition,
+            ImmutableSet.<CorrelationId>builder().addAll(project.getVariablesSet()).build());
+
+        //try to push the filter further
+        RelNode newChild = filterProject(newFilterRel, relBuilder, simplify);
+        return project.copy(project.getTraitSet(), newChild,
+            project.getProjects(), project.getRowType());
+      }
+
+      //child is a filter
+      if (child instanceof LogicalFilter) {
+        //merge the two filters
+        LogicalFilter childFilter = (LogicalFilter) child;
+        List<RexNode> newConditions = new ArrayList<>(2);
+        RexBuilder rb = relBuilder.getRexBuilder();
+
+        newConditions.add(filter.getCondition());
+        newConditions.add(childFilter.getCondition());
+
+        RexNode newCondition = RexUtil.flatten(rb, rb.makeCall(AND, newConditions));
+        LogicalFilter newFilterRel = LogicalFilter.create(childFilter.getInput(), newCondition,
+            ImmutableSet.<CorrelationId>builder().
+                addAll(childFilter.getVariablesSet()).addAll(filter.getVariablesSet()).build());
+
+        //try to push the new filter
+        return filterProject(newFilterRel, relBuilder, simplify);
+      }
+      // try to transform child
+      RelNode newChild = filterProject(child, relBuilder, simplify);
+      return filter.copy(filter.getTraitSet(), newChild, simplify.simplify(filter.getCondition()));
+    }
+    return relNode;
+  }
     /** Policies for handling two- and three-valued boolean logic. */
   public enum Logic {
     /** Three-valued boolean logic. */

@@ -36,6 +36,7 @@ import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
@@ -212,6 +213,17 @@ public class ScaleOutPlanUtil {
         return null;
     }
 
+    public static boolean storageInstIsReady(String storageInstId) {
+        Map<String, StorageInstHaContext> storageInstHaCtxCache =
+            StorageHaManager.getInstance().refreshAndGetStorageInstHaContextCache();
+        StorageInstHaContext ctx = storageInstHaCtxCache.get(storageInstId);
+        if (ctx == null || !ctx.isAllReplicaReady()) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
     public static DbGroupInfoRecord getDbGroupInfoByGroupName(String groupName) {
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             GroupDetailInfoAccessor detailInfoAccessor = new GroupDetailInfoAccessor();
@@ -319,23 +331,26 @@ public class ScaleOutPlanUtil {
                         }
                     }
                 }
-                //check ongoing ddl in new ddl engine
-                List<DdlEngineRecord> ddlEngineRecords = getDdlEngineRecords(schemaName);
-                if (GeneralUtil.isNotEmpty(ddlEngineRecords)) {
-                    List<DdlEngineRecord> otherDdl =
-                        ddlEngineRecords.stream().filter(
-                            o -> !o.ddlType.equalsIgnoreCase(DdlType.MOVE_DATABASE.name()) && !o.state
-                                .equalsIgnoreCase(DdlState.COMPLETED.toString()))
-                            .collect(
-                                Collectors.toList());
-                    if (GeneralUtil.isNotEmpty(otherDdl)) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
-                            "it's not allow to execute the move database when other ddl is not finish in schema:"
-                                + schemaName);
-                    }
-                }
+//                //check ongoing ddl in new ddl engine
+//                List<DdlEngineRecord> ddlEngineRecords = getDdlEngineRecords(schemaName);
+//                if (GeneralUtil.isNotEmpty(ddlEngineRecords)) {
+//                    List<DdlEngineRecord> otherDdl =
+//                        ddlEngineRecords.stream().filter(
+//                            // is not move database or rebalance
+//                            o ->
+//                                !o.ddlType.equalsIgnoreCase(DdlType.MOVE_DATABASE.name())
+//                                    && !o.state.equalsIgnoreCase(DdlState.COMPLETED.toString())
+//                                    && !o.ddlType.equalsIgnoreCase(DdlType.REBALANCE.name())
+//                        ).collect(
+//                            Collectors.toList());
+//                    if (GeneralUtil.isNotEmpty(otherDdl)) {
+//                        throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
+//                            "it's not allow to execute the move database when other ddl is not finish in schema:"
+//                                + schemaName);
+//                    }
+//                }
             }
-            if (!checkStorageIdExistence(entry.getKey())) {
+            if (!storageInstIsReady(entry.getKey())) {
                 throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
                     entry.getKey() + " is not a valid storage instance id");
             }
@@ -351,17 +366,17 @@ public class ScaleOutPlanUtil {
     public static void checkDDLPermission(ExecutionPlan plan, ExecutionContext context) {
         String schemaName = context.getSchemaName();
         final SqlNode sqlNode = plan.getAst();
-        if (sqlNode != null && SqlKind.DDL.contains(sqlNode.getKind())) {
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (sqlNode != null && SqlKind.DDL.contains(sqlNode.getKind()) && !isNewPartDb) {
             if (context.getParamManager().getBoolean(ConnectionParams.ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE)
-                && sqlNode instanceof SqlDropDatabase || SqlKind.MOVE_DATABASE == sqlNode.getKind()
-                || SqlKind.ALTER_TABLEGROUP == sqlNode.getKind()) {
+                && sqlNode instanceof SqlDropDatabase || SqlKind.MOVE_DATABASE == sqlNode.getKind()) {
                 return;
             }
             List<ComplexTaskOutlineRecord> unfinishTask =
                 ComplexTaskMetaManager.getAllUnFinishParentComlexTask(schemaName);
             if (GeneralUtil.isNotEmpty(unfinishTask)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
-                    "it's not allow to run the ddl command when ScaleOut/repartition task is in progress");
+                    "it's not allow to run the ddl command when ScaleOut task is in progress");
             }
         }
     }

@@ -34,7 +34,8 @@ public class FetchReactorPerfSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         ArrayResultCursor resultCursor = buildResultCursor();
-        String serverInfo = TddlNode.getNodeIndex() + ":" + TddlNode.getNodeId() + ":" + TddlNode.getHost();
+        String serverInfo =
+            TddlNode.getNodeIndex() + ":" + TddlNode.getNodeId() + ":" + TddlNode.getHost() + ":" + TddlNode.getPort();
 
         List<ReactorPerfItem> items = new ArrayList<>();
         XConnectionManager.getInstance().gatherReactorPerf(items);

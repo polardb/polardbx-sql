@@ -38,9 +38,7 @@ public class LogicalMoveDatabases extends BaseDdlOperation {
     public void preparedData() {
         MoveDatabase moveDatabase = (MoveDatabase) relDdl;
         SqlMoveDatabase sqlMoveDatabase = (SqlMoveDatabase) moveDatabase.sqlNode;
-
         ScaleOutPlanUtil.preCheckAndRemoveDuplicatedKeyForMoveDatabase(sqlMoveDatabase);
-
         preparedData =
             new MoveDatabasesPreparedData(sqlMoveDatabase.getLogicalDbStorageGroups(), sqlMoveDatabase.getSql());
         preparedData.setSchemaName(getSchemaName());

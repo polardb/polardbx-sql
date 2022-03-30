@@ -123,7 +123,31 @@ public class SqlPartitionValue extends SqlNode {
 
     @Override
     public boolean equalsDeep(SqlNode node, Litmus litmus) {
-        return false;
+        if (this == node) {
+            return true;
+        }
+
+        if (this.getClass() != node.getClass()) {
+            return false;
+        }
+
+        SqlPartitionValue sqlPart = (SqlPartitionValue) node;
+
+        if (operator != sqlPart.operator) {
+            return false;
+        }
+
+        for (int i = 0; i < items.size(); ++i) {
+            if (!items.get(i).equalsDeep(sqlPart.items.get(i), litmus)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public Operator getOperator() {
+        return operator;
     }
 
     public enum Operator {

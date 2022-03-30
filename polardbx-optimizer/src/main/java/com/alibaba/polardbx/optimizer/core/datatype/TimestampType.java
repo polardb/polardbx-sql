@@ -350,4 +350,14 @@ public class TimestampType extends AbstractDataType<java.sql.Timestamp> {
     public MySQLStandardFieldType fieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_TIMESTAMP;
     }
+
+    @Override
+    public boolean equalDeeply(DataType that) {
+        if (that == null || that.getClass() != this.getClass()) {
+            return false;
+        }
+
+        TimestampType thatType = (TimestampType) that;
+        return thatType.scale == this.scale;
+    }
 }

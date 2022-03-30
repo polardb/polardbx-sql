@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -31,6 +32,8 @@ import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -43,6 +46,9 @@ import java.util.Properties;
  */
 public class SystemDefaultPropertyHelper {
     private final static Logger logger = LoggerFactory.getLogger(SystemDefaultPropertyHelper.class);
+
+    private final static String countContainShardingTypeLogDbSql = String.format("select count(1) from db_info where db_type=%s",
+        DbInfoRecord.DB_TYPE_PART_DB);
 
     public static void initDefaultInstConfig() {
 
@@ -206,11 +212,57 @@ public class SystemDefaultPropertyHelper {
     }
 
     private static void prepareDefaultPropertiesForPartitionManagementProperties(Properties sysDefaultProperties) {
+
+        boolean enableAutoPartModeAsDefault = checkNeedEnableAutoPartitionMode();
+        if (enableAutoPartModeAsDefault) {
+//            sysDefaultProperties.put(ConnectionProperties.DEFAULT_PARTITION_MODE,
+//                "auto");
+            /**
+             * Use drds as the default partition mode even if there are no any logigcal db with mode='auto'
+             */
+            sysDefaultProperties.put(ConnectionProperties.DEFAULT_PARTITION_MODE,
+                "drds");
+        } else {
+            sysDefaultProperties.put(ConnectionProperties.DEFAULT_PARTITION_MODE,
+                "auto");
+        }
+
+        sysDefaultProperties.put(ConnectionProperties.AUTO_PARTITION_PARTITIONS,
+            String.valueOf(DbTopologyManager.decideAutoPartitionCount()));
         sysDefaultProperties.put(ConnectionProperties.SHOW_HASH_PARTITIONS_BY_RANGE,
             ConnectionParams.SHOW_HASH_PARTITIONS_BY_RANGE.getDefault());
         sysDefaultProperties
             .put(ConnectionProperties.SHOW_TABLE_GROUP_NAME, ConnectionParams.SHOW_TABLE_GROUP_NAME.getDefault());
         sysDefaultProperties.put(ConnectionProperties.MAX_PHYSICAL_PARTITION_COUNT,
             ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.MAX_PARTITION_COLUMN_COUNT,
+            ConnectionParams.MAX_PARTITION_COLUMN_COUNT.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.PARTITION_PRUNING_STEP_COUNT_LIMIT,
+            ConnectionParams.PARTITION_PRUNING_STEP_COUNT_LIMIT.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.ENABLE_AUTO_MERGE_INTERVALS_IN_PRUNING,
+            ConnectionParams.ENABLE_AUTO_MERGE_INTERVALS_IN_PRUNING.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.ENABLE_INTERVAL_ENUMERATION_IN_PRUNING,
+            ConnectionParams.ENABLE_INTERVAL_ENUMERATION_IN_PRUNING.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.MAX_ENUMERABLE_INTERVAL_LENGTH,
+            ConnectionParams.MAX_ENUMERABLE_INTERVAL_LENGTH.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.USE_FAST_SINGLE_POINT_INTERVAL_MERGING,
+            ConnectionParams.USE_FAST_SINGLE_POINT_INTERVAL_MERGING.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.ENABLE_CONST_EXPR_EVAL_CACHE,
+            ConnectionParams.ENABLE_CONST_EXPR_EVAL_CACHE.getDefault());;
+
+    }
+
+    protected static Boolean checkNeedEnableAutoPartitionMode() {
+        int shardingDbCnt = 0;
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection();Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(countContainShardingTypeLogDbSql)){
+            if (rs != null) {
+                rs.next();
+                shardingDbCnt = rs.getInt(1);
+            }
+        } catch (Throwable ex) {
+            logger.warn("Failed to count the sharding type logical db",ex);
+        }
+        return shardingDbCnt == 0;
     }
 }

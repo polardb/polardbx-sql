@@ -18,10 +18,15 @@ package org.apache.calcite.rel.rules;
 
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
+import org.apache.calcite.plan.hep.HepRelVertex;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.core.SemiJoin;
+import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rel.logical.LogicalSemiJoin;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.tools.RelBuilderFactory;
 
 /**
@@ -54,18 +59,38 @@ public class SemiJoinFilterTransposeRule extends RelOptRule {
 
   //~ Methods ----------------------------------------------------------------
 
+  @Override
+  public boolean matches(RelOptRuleCall call) {
+    final LogicalSemiJoin semiJoin = call.rel(0);
+    //don't pull filters above scalar join, otherwise it will be a filter above project, or we can say a new subquery.
+    return semiJoin.getJoinType() == JoinRelType.SEMI || semiJoin.getJoinType() == JoinRelType.ANTI;
+  }
+
   // implement RelOptRule
   public void onMatch(RelOptRuleCall call) {
     SemiJoin semiJoin = call.rel(0);
     LogicalFilter filter = call.rel(1);
 
+    // can't pull correlated condition
+    if (RexUtil.containsCorrelation(filter.getCondition())) { return; }
+
+    //can't pull having
+    RelNode filterInput = filter.getInput();
+    if (filterInput instanceof HepRelVertex) {
+      filterInput = ((HepRelVertex) filterInput).getCurrentRel();
+    }
+    if (filterInput instanceof LogicalAggregate) {
+      return;
+    }
+
     RelNode newSemiJoin =
-        SemiJoin.create(filter.getInput(),
-            semiJoin.getRight(),
+        semiJoin.copy(
+            semiJoin.getTraitSet(),
             semiJoin.getCondition(),
-            semiJoin.getLeftKeys(),
-            semiJoin.getRightKeys(),
-            semiJoin.getHints());
+            filter.getInput(),
+            semiJoin.getRight(),
+            semiJoin.getJoinType(),
+            semiJoin.isSemiJoinDone());
 
     final RelFactories.FilterFactory factory =
         RelFactories.DEFAULT_FILTER_FACTORY;

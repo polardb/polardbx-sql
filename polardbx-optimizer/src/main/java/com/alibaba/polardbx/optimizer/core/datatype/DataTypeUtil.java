@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.datatype;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.jdbc.ZeroTime;
 import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
@@ -801,5 +802,14 @@ public class DataTypeUtil {
         }
         // for all strange values
         return 100;
+    }
+
+    public static boolean equals(DataType type1, DataType type2, boolean deep) {
+        boolean equalsSemantically = equalsSemantically(type1, type2);
+        if (!deep || !equalsSemantically) {
+            return equalsSemantically;
+        } else {
+            return type1.equalDeeply(type2);
+        }
     }
 }

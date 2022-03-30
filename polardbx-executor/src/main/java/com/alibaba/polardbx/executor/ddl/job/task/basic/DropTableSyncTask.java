@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.executor.ddl.job.task.util.info.DeveloperWarning;
 import com.alibaba.polardbx.executor.sync.DropTableSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -27,7 +26,6 @@ import lombok.Getter;
 @Getter
 @TaskName(name = "DropTableSyncTask")
 @Deprecated
-@DeveloperWarning(message = "just use TableSyncTask")
 public class DropTableSyncTask extends BaseSyncTask {
 
     final String logicalTableName;

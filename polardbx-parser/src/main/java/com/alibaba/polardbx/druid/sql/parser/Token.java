@@ -12,6 +12,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * limitations under the License
  */
 package com.alibaba.polardbx.druid.sql.parser;
 
@@ -47,8 +48,8 @@ public enum Token {
     NOT("NOT"), 
     DISTINCT("DISTINCT"),
 
-    TABLE("TABLE"), 
-    TABLESPACE("TABLESPACE"), 
+    TABLE("TABLE"),
+    TABLESPACE("TABLESPACE"),
     VIEW("VIEW"), 
     SEQUENCE("SEQUENCE"), 
     TRIGGER("TRIGGER"), 

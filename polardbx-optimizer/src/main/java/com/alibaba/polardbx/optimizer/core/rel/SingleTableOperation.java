@@ -116,26 +116,6 @@ public class SingleTableOperation extends BaseTableOperation {
         return new Pair<>(dbIndexAndTableName.getKey(), buildParam(dbIndexAndTableName.getValue(), param));
     }
 
-    private Map<Integer, ParameterContext> buildParam(String tableName, Map<Integer, ParameterContext> param) {
-        Map<Integer, ParameterContext> newParam = new HashMap<>();
-        /**
-         * 添加 TableName
-         */
-        int index = 1;
-        for (int i : paramIndex) {
-            if (i == PlannerUtils.TABLE_NAME_PARAM_INDEX) {
-                newParam.put(index, PlannerUtils.buildParameterContextForTableName(tableName, index));
-            } else {
-                final ParameterContext parameterContext = param.get(i + 1);
-                if (null != parameterContext) {
-                    newParam.put(index, PlannerUtils.changeParameterContextIndex(parameterContext, index));
-                }
-            }
-            index++;
-        }
-        return newParam;
-    }
-
     @Override
     protected ExplainInfo buildExplainInfo(Map<Integer, ParameterContext> params, ExecutionContext executionContext) {
         if (MapUtils.isEmpty(params)) {

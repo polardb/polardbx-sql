@@ -16,12 +16,19 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime;
 
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
+import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
+import io.airlift.slice.Slices;
 
+import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.util.List;
 
@@ -39,15 +46,21 @@ public class TimeFormat extends AbstractScalarFunction {
             }
         }
 
-        java.sql.Time time = DataTypes.TimeType.convertFrom(args[0]);
+        Object timeObj = args[0];
+        MysqlDateTime t =
+            DataTypeUtil.toMySQLDatetimeByFlags(timeObj, Types.TIME, TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+
         String format = DataTypes.StringType.convertFrom(args[1]);
+        if (t == null || format == null || format.length() == 0) {
+            return null;
+        }
 
-        // 这里其实是沿用了以往的错误做法
-        // date format 没有设置时区，只能把utc epoch millis 转成默认时区的时间
-        java.sql.Time timeInDefaultZone = java.sql.Time.valueOf(time.toString());
+        t.setYear(0);
+        t.setMonth(0);
+        t.setDay(0);
 
-        SimpleDateFormat dateFormat = new SimpleDateFormat(DateFormat.convertToJavaDataFormat(format));
-        return dateFormat.format(timeInDefaultZone);
+        byte[] res = StringTimeParser.makeFormat(t, format.getBytes());
+        return res == null ? null : Slices.wrappedBuffer(res);
     }
 
     @Override

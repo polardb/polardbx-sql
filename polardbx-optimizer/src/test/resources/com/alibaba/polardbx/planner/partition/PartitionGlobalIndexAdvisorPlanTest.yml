@@ -131,7 +131,7 @@
   plan: |
     Project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment")
       bkajoin(condition="o_orderkey = o_orderkey", type="inner")
-        IndexScan(tables="orders__what_if_gsi_o_custkey[p3]", sql="SELECT `o_custkey`, `o_orderkey` FROM `orders__what_if_gsi_o_custkey` AS `orders__what_if_gsi_o_custkey` WHERE (`o_custkey` = 1)")
+        IndexScan(tables="orders__what_if_gsi_o_custkey[p4]", sql="SELECT `o_custkey`, `o_orderkey` FROM `orders__what_if_gsi_o_custkey` AS `orders__what_if_gsi_o_custkey` WHERE (`o_custkey` = 1)")
         Gather(concurrent=true)
           LogicalView(tables="orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `o_orderkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` FROM `orders` AS `orders` WHERE ((`o_custkey` = 1) AND (`o_orderkey` IN (...)))")
 
@@ -261,7 +261,7 @@
     Project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5", k20="k20", value0="value0")
       BKAJoin(condition="id0 = id", type="inner")
         BKAJoin(condition="k2 = k1", type="inner")
-          LogicalView(tables="test_index[p3]", sql="SELECT `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (`id` = 1)")
+          LogicalView(tables="test_index[p4]", sql="SELECT `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (`id` = 1)")
           Gather(concurrent=true)
             IndexScan(tables="test_index__what_if_gsi_k2[p1,p2,p3,p4]", shardCount=4, sql="SELECT `id`, `k2` FROM `test_index__what_if_gsi_k2` AS `test_index__what_if_gsi_k2` WHERE (`k2` IN (...))")
         Gather(concurrent=true)

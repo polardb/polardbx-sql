@@ -133,6 +133,7 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
         String createTableStr = AlterTableGroupUtils
             .fetchCreateTableDefinition(relDdl, executionContext, location.getGroupKey(), location.getPhyTableName(),
                 preparedData.getSchemaName());
-        sqlTemplate = AlterTableGroupUtils.getSqlTemplate(createTableStr, executionContext);
+        sqlTemplate = AlterTableGroupUtils.getSqlTemplate(preparedData.getSchemaName(), preparedData.getTableName(),
+            createTableStr, executionContext);
     }
 }

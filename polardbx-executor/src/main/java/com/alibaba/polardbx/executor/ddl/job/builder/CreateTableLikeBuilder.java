@@ -31,6 +31,8 @@ import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.commons.lang.StringUtils;
 
+import java.util.ArrayList;
+
 public abstract class CreateTableLikeBuilder {
 
     private final static String CREATE_TABLE = "CREATE TABLE";
@@ -76,17 +78,22 @@ public abstract class CreateTableLikeBuilder {
                 .execByExecPlanNode(showRel, executionContext);
 
         String createTableDdl = null;
-        Row showCreateResult = showCreateResultCursor.next();
-        if (showCreateResult != null && showCreateResult.getString(1) != null) {
-            createTableDdl = showCreateResult.getString(1);
-        } else {
-            GeneralUtil.nestedException("Get reference table architecture failed.");
+        try {
+            Row showCreateResult = showCreateResultCursor.next();
+            if (showCreateResult != null && showCreateResult.getString(1) != null) {
+                createTableDdl = showCreateResult.getString(1);
+            } else {
+                GeneralUtil.nestedException("Get reference table architecture failed.");
+            }
+
+            //if (((SqlCreateTable) logicalCreateTable.sqlDdl).isIfNotExists()) {
+            //    createTableDdl = createTableDdl.replace(CREATE_TABLE, CREATE_TABLE_IF_NOT_EXISTS);
+            //}
+        } finally {
+            if (showCreateResultCursor != null) {
+                showCreateResultCursor.close(new ArrayList<>());
+            }
         }
-
-        //if (((SqlCreateTable) logicalCreateTable.sqlDdl).isIfNotExists()) {
-        //    createTableDdl = createTableDdl.replace(CREATE_TABLE, CREATE_TABLE_IF_NOT_EXISTS);
-        //}
-
         return createTableDdl;
     }
 }

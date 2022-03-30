@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DropPhyTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.AlterTableGroupBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.MoveTableBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlTask;
@@ -28,30 +29,34 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseCleanupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseSwitchDataSourcesTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateTablesVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMoveDatabaseDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterComplexTaskUpdateJobStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupCleanupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupMovePartitionRefreshMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupRefreshMetaBaseTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableSetTableGroupRefreshMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabasePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlKind;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 
 public class ComplexTaskFactory {
@@ -63,19 +68,31 @@ public class ComplexTaskFactory {
                                                   String logicalTableName,
                                                   Map<String, Set<String>> sourcePhyTables,
                                                   Map<String, Set<String>> targetPhyTables,
+                                                  boolean stayAtCreating,
+                                                  boolean stayAtDeleteOnly,
+                                                  boolean stayAtWriteOnly,
+                                                  boolean stayAtWriteReorg,
                                                   boolean skipBackFill, ExecutionContext executionContext) {
         List<DdlTask> taskList = new ArrayList<>();
 
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTableName);
+        List<String> relatedTables = new ArrayList<>();
+        if (tableMeta.isGsi()) {
+            //all the gsi table version change will be behavior by primary table
+            assert
+                tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+            relatedTables.add(tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName);
+        } else {
+            relatedTables.add(logicalTableName);
+        }
 
-        //sync for creating status
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
         AlterComplexTaskUpdateJobStatusTask deleteOnlyTask =
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.CREATING,
                 ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
@@ -85,7 +102,7 @@ public class ComplexTaskFactory {
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
@@ -95,7 +112,7 @@ public class ComplexTaskFactory {
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG,
@@ -105,26 +122,49 @@ public class ComplexTaskFactory {
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG,
                 ComplexTaskMetaManager.ComplexTaskStatus.READY_TO_PUBLIC,
                 null,
                 null);
 
+        //sync for creating status
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+        if (stayAtCreating) {
+            return taskList;
+        }
         taskList.add(deleteOnlyTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+        if (stayAtDeleteOnly) {
+            return taskList;
+        }
+
         taskList.add(writeOnlyTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+
+        if (stayAtWriteOnly) {
+            return taskList;
+        }
 
         if (!skipBackFill) {
             taskList
                 .add(new AlterTableGroupBackFillTask(schemaName, logicalTableName, sourcePhyTables, targetPhyTables));
         }
         taskList.add(writeReOrgTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
+
+        if (stayAtWriteReorg) {
+            return taskList;
+        }
+
         taskList.add(readyToPublicTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
         return taskList;
     }
 
@@ -135,10 +175,31 @@ public class ComplexTaskFactory {
                                                        ExecutionContext executionContext) {
 
         List<String> logicalTableNames = new ArrayList<>();
+        // not include GSI tables
+        Set<String> primaryLogicalTables = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            logicalTableNames.add(tablePartRecordInfoContext.getLogTbRec().getTableName());
+        if (complexTaskType != ComplexTaskMetaManager.ComplexTaskType.SET_TABLEGROUP) {
+            for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
+                String logicalTable = tablePartRecordInfoContext.getLogTbRec().getTableName();
+                TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTable);
+                if (tableMeta.isGsi()) {
+                    //all the gsi table version change will be behavior by primary table
+                    assert
+                        tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+                    logicalTable = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+                }
+                if (!primaryLogicalTables.contains(logicalTable)) {
+                    logicalTableNames.add(logicalTable);
+                    primaryLogicalTables.add(logicalTable);
+                }
+            }
+        } else {
+            // for alter table set tableGroup, only need to care about the table in "alter table" only
+            if (!primaryLogicalTables.contains(tableName)) {
+                logicalTableNames.add(tableName);
+                primaryLogicalTables.add(tableName);
+            }
         }
 
         List<DdlTask> taskList = new ArrayList<>();
@@ -167,18 +228,37 @@ public class ComplexTaskFactory {
                 ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY);
 
         AlterTableGroupRefreshMetaBaseTask alterTableGroupRefreshTableGroupMetaTask;
+        List<BaseDdlTask> synTableGroupTasks = new ArrayList<>();
         if (complexTaskType == ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION) {
             alterTableGroupRefreshTableGroupMetaTask =
                 new AlterTableGroupMovePartitionRefreshMetaTask(schemaName, tableGroupName);
+            BaseDdlTask synTableGroup =
+                new TableGroupSyncTask(schemaName, tableGroupName);
+            synTableGroupTasks.add(synTableGroup);
         } else if (complexTaskType == ComplexTaskMetaManager.ComplexTaskType.SET_TABLEGROUP) {
             PartitionInfo partitionInfo =
                 OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
+            OptimizerContext oc =
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " corrupted");
+            TableGroupConfig sourceTableGroupConfigInfo =
+                oc.getTableGroupInfoManager().getTableGroupConfigById(partitionInfo.getTableGroupId());
+            assert sourceTableGroupConfigInfo != null && sourceTableGroupConfigInfo.getTableGroupRecord() != null;
+
             alterTableGroupRefreshTableGroupMetaTask =
                 new AlterTableSetTableGroupRefreshMetaTask(schemaName, tableGroupName, partitionInfo.getTableGroupId(),
                     tableName);
+            BaseDdlTask synTargetTableGroup =
+                new TableGroupSyncTask(schemaName, tableGroupName);
+            BaseDdlTask synSourceTableGroup =
+                new TableGroupSyncTask(schemaName, sourceTableGroupConfigInfo.getTableGroupRecord().getTg_name());
+            synTableGroupTasks.add(synTargetTableGroup);
+            synTableGroupTasks.add(synSourceTableGroup);
         } else {
             alterTableGroupRefreshTableGroupMetaTask =
                 new AlterTableGroupRefreshMetaBaseTask(schemaName, tableGroupName);
+            BaseDdlTask synTableGroup =
+                new TableGroupSyncTask(schemaName, tableGroupName);
+            synTableGroupTasks.add(synTableGroup);
         }
 
         AlterTableGroupCleanupTask alterTableGroupCleanupTask = new AlterTableGroupCleanupTask(schemaName);
@@ -191,8 +271,14 @@ public class ComplexTaskFactory {
             .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
 
         taskList.add(alterTableGroupRefreshTableGroupMetaTask);
+        taskList.addAll(synTableGroupTasks);
+        DdlTask updateTablesVersionTask = new UpdateTablesVersionTask(schemaName, logicalTableNames);
+        taskList.add(updateTablesVersionTask);
+
+        // make sure the tablegroup is reload before table, we can't update table version inside TablesSyncTask
         taskList
             .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
+
         taskList.add(alterTableGroupCleanupTask);
 
         return taskList;
@@ -233,8 +319,8 @@ public class ComplexTaskFactory {
             new MoveDatabaseSwitchDataSourcesTask(schemaName, preparedData.getGroupAndStorageInstId(),
                 preparedData.getSourceTargetGroupMap());
 
-        CdcMoveDatabaseDdlMarkTask cdcMoveDatabaseDdlMarkTask = new CdcMoveDatabaseDdlMarkTask(schemaName,
-            SqlKind.MOVE_DATABASE);
+        CdcMoveDatabaseDdlMarkTask cdcMoveDatabaseDdlMarkTask =
+            new CdcMoveDatabaseDdlMarkTask(schemaName, SqlKind.MOVE_DATABASE, preparedData.getSourceSql());
 
         AlterComplexTaskUpdateJobStatusTask toPublicTask =
             new AlterComplexTaskUpdateJobStatusTask(
@@ -258,11 +344,10 @@ public class ComplexTaskFactory {
         taskList
             .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
         taskList.add(moveDatabaseSwitchDataSourcesTask);
-        taskList.add(cdcMoveDatabaseDdlMarkTask);
-        taskList.add(toPublicTask);
         taskList
             .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
-
+        taskList.add(cdcMoveDatabaseDdlMarkTask);
+        taskList.add(toPublicTask);
         taskList
             .add(new TablesSyncTask(schemaName, logicalTableNames, true, initWait, interval, TimeUnit.MILLISECONDS));
         taskList.add(moveDatabaseCleanupTask);
@@ -284,11 +369,21 @@ public class ComplexTaskFactory {
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTableName);
+        List<String> relatedTables = new ArrayList<>();
+        if (tableMeta.isGsi()) {
+            //all the gsi table version change will be behavior by primary table
+            assert
+                tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+            relatedTables.add(tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName);
+        } else {
+            relatedTables.add(logicalTableName);
+        }
         AlterComplexTaskUpdateJobStatusTask deleteOnlyTask =
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.CREATING,
                 ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
@@ -298,7 +393,7 @@ public class ComplexTaskFactory {
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
@@ -308,7 +403,7 @@ public class ComplexTaskFactory {
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG,
@@ -318,7 +413,7 @@ public class ComplexTaskFactory {
             new AlterComplexTaskUpdateJobStatusTask(
                 schemaName,
                 logicalTableName,
-                ImmutableList.of(logicalTableName),
+                relatedTables,
                 true,
                 ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG,
                 ComplexTaskMetaManager.ComplexTaskStatus.READY_TO_PUBLIC,
@@ -326,17 +421,20 @@ public class ComplexTaskFactory {
                 null);
 
         //sync for creating status
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
         if (stayAtCreating) {
             return taskList;
         }
         taskList.add(deleteOnlyTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
         if (stayAtDeleteOnly) {
             return taskList;
         }
         taskList.add(writeOnlyTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
         if (stayAtWriteOnly) {
             return taskList;
         }
@@ -345,13 +443,15 @@ public class ComplexTaskFactory {
             .add(new MoveTableBackFillTask(schemaName, logicalTableName, sourcePhyTables, targetPhyTables,
                 sourceAndTargetGroupMap));
         taskList.add(writeReOrgTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
 
         if (stayAtWriteReorg) {
             return taskList;
         }
         taskList.add(readyToPublicTask);
-        taskList.add(new TableSyncTask(schemaName, logicalTableName, true, initWait, interval, TimeUnit.MILLISECONDS));
+        taskList.add(
+            new TableSyncTask(schemaName, relatedTables.get(0), true, initWait, interval, TimeUnit.MILLISECONDS));
         return taskList;
     }
 

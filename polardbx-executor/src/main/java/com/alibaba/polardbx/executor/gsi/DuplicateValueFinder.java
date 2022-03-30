@@ -31,6 +31,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Pair;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -120,7 +121,7 @@ public class DuplicateValueFinder {
         return distinctValueIndices;
     }
 
-    public List<Pair<Integer, List<Object>>> getDuplicateRows() {
+    public Collection<Pair<Integer, List<Object>>> getDuplicateRows() {
         if (duplicateRows == null) {
             findDuplicate();
         }

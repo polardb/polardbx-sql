@@ -18,7 +18,6 @@ package com.alibaba.polardbx.gms.metadb.misc;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
-import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -31,6 +30,7 @@ import com.alibaba.polardbx.gms.metadb.record.CountRecord;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.base.Preconditions;
+import org.apache.commons.lang.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -48,6 +48,8 @@ public class DdlEngineAccessor extends AbstractAccessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(DdlEngineAccessor.class);
 
     public static final String DDL_ENGINE_TABLE = wrap(GmsSystemTables.DDL_ENGINE);
+
+    public static final String DDL_ENGINE_TABLE_ARCHIVE = wrap(GmsSystemTables.DDL_ENGINE_ARCHIVE);
 
     private static final String INSERT_DATA =
         "insert into " + DDL_ENGINE_TABLE
@@ -118,6 +120,21 @@ public class DdlEngineAccessor extends AbstractAccessor {
 
     private static final String DELETE_BY_SCHEMA_NAME = DELETE_BASE + WHERE_SCHEMA;
 
+    private static final String SELECT_ARCHIVE_SPECIFIC = SELECT_FULL + " from " + DDL_ENGINE_TABLE_ARCHIVE + WHERE_JOB_ID;
+
+    private static final String DELETE_ARCHIVE_BASE = "delete from " + DDL_ENGINE_TABLE_ARCHIVE;
+
+    private static final String DELETE_ARCHIVE_BY_JOB_ID = DELETE_ARCHIVE_BASE + WHERE_JOB_ID;
+
+    private static final String DELETE_ARCHIVE_BY_SCHEMA_NAME = DELETE_ARCHIVE_BASE + WHERE_SCHEMA;
+
+    private static final String ARCHIVE_BASE = "insert into " + DDL_ENGINE_TABLE_ARCHIVE + " select * from " + DDL_ENGINE_TABLE;
+
+    private static final String ARCHIVE_SPECIFIC = ARCHIVE_BASE + WHERE_JOB_ID;
+
+    private static final String CLEAN_ARCHIVE_IN_MINUTS =
+        "DELETE j,t FROM `ddl_engine_archive` j JOIN `ddl_engine_task_archive` t ON j.job_id=t.job_id where j.gmt_modified <= ?";
+
     public int insert(DdlEngineRecord record) {
         try {
             DdlMetaLogUtil.logSql(INSERT_DATA, record.buildParams());
@@ -185,6 +202,23 @@ public class DdlEngineAccessor extends AbstractAccessor {
             return null;
         } catch (Exception e) {
             throw logAndThrow("Failed to query from " + DDL_ENGINE_TABLE, "query from", e);
+        }
+    }
+
+    public DdlEngineRecord queryArchive(long jobId) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
+
+            List<DdlEngineRecord> records =
+                MetaDbUtil.query(SELECT_ARCHIVE_SPECIFIC, params, DdlEngineRecord.class, connection);
+
+            if (records != null && records.size() > 0) {
+                return records.get(0);
+            }
+            return null;
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + DDL_ENGINE_TABLE_ARCHIVE, "query from", e);
         }
     }
 
@@ -304,6 +338,8 @@ public class DdlEngineAccessor extends AbstractAccessor {
             final Map<Integer, ParameterContext> params =
                 MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
             DdlMetaLogUtil.logSql(DELETE_SPECIFIC, params);
+            deleteArchive(jobId);
+            archive(jobId);
             return MetaDbUtil.delete(DELETE_SPECIFIC, params, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to delete from " + DDL_ENGINE_TABLE + " for job " + jobId, "delete from", e);
@@ -319,6 +355,53 @@ public class DdlEngineAccessor extends AbstractAccessor {
         } catch (Exception e) {
             throw logAndThrow("Failed to delete from " + DDL_ENGINE_TABLE + " for schemaName " + schemaName,
                 "delete from", e);
+        }
+    }
+
+    public int deleteArchive(long jobId) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
+            DdlMetaLogUtil.logSql(DELETE_ARCHIVE_BY_JOB_ID, params);
+            return MetaDbUtil.delete(DELETE_ARCHIVE_BY_JOB_ID, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to delete from " + DDL_ENGINE_TABLE + " for job " + jobId, "delete from", e);
+        }
+    }
+
+    public int deleteAllArchive(String schemaName) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setString, new String[] {schemaName});
+            DdlMetaLogUtil.logSql(DELETE_ARCHIVE_BY_SCHEMA_NAME, params);
+            return MetaDbUtil.delete(DELETE_ARCHIVE_BY_SCHEMA_NAME, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to delete from " + DDL_ENGINE_TABLE_ARCHIVE + " for schemaName " + schemaName,
+                "delete from", e);
+        }
+    }
+
+    public int archive(long jobId){
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Long[] {jobId});
+            DdlMetaLogUtil.logSql(ARCHIVE_SPECIFIC, params);
+            return MetaDbUtil.delete(ARCHIVE_SPECIFIC, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to copy record from " + DDL_ENGINE_TABLE + " for job " + jobId, "archive", e);
+        }
+    }
+
+    public int cleanUpArchive(long minutes) {
+        try {
+            LocalDateTime.now().minusMinutes(minutes);
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(params.size() + 1, params, ParameterMethod.setLong,
+                System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(minutes));
+
+            return MetaDbUtil.delete(CLEAN_ARCHIVE_IN_MINUTS, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to clean archive from " + DDL_ENGINE_TABLE_ARCHIVE, "delete from", e);
         }
     }
 
@@ -345,11 +428,7 @@ public class DdlEngineAccessor extends AbstractAccessor {
     }
 
     private String concatIds(List<Long> ids) {
-        StringBuilder buf = new StringBuilder();
-        for (Long id : ids) {
-            buf.append(DdlConstants.COMMA).append(id);
-        }
-        return buf.deleteCharAt(0).toString();
+        return StringUtils.join(ids, DdlConstants.COMMA);
     }
 
 }

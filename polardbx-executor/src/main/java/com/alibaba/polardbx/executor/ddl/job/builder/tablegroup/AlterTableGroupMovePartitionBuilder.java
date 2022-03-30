@@ -16,12 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
-import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMovePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
 
@@ -36,8 +35,11 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
     }
 
     @Override
-    public List<String> getNewPhyTables(PartitionInfo partitionInfo) {
+    public List<String> getNewPhyTables(String tableName) {
         List<String> newPhyTables = new ArrayList<>();
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
+                .getPartitionInfo(tableName);
         List<PartitionSpec> partitionSpecs = partitionInfo.getPartitionBy().getPartitions();
         for (PartitionGroupRecord partitionGroupRecord : preparedData.getInvisiblePartitionGroups()) {
             PartitionSpec partitionSpec =

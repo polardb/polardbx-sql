@@ -18,19 +18,13 @@ package com.alibaba.polardbx.executor.scaleout.backfill;
 
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import org.apache.calcite.sql.SqlSelect;
 
-import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Created by luoyanxin.
@@ -49,11 +43,11 @@ public class MoveTableExtractor extends com.alibaba.polardbx.executor.backfill.E
                                  PhyTableOperation planSelectWithMin,
                                  PhyTableOperation planSelectWithMinAndMax,
                                  PhyTableOperation planSelectMaxPk,
-                                 List<Integer> primaryKeys,
+                                 List<Integer> primaryKeysId,
                                  Map<String, Set<String>> sourcePhyTables) {
         super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
             planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeys);
+            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
     }
 
@@ -61,7 +55,9 @@ public class MoveTableExtractor extends com.alibaba.polardbx.executor.backfill.E
                                    long speedMin, long speedLimit, long parallelism,
                                    Map<String, Set<String>> sourcePhyTables,
                                    ExecutionContext ec) {
+
         ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, sourceTableName);
+
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         return new MoveTableExtractor(schemaName,
@@ -71,13 +67,14 @@ public class MoveTableExtractor extends com.alibaba.polardbx.executor.backfill.E
             speedMin,
             speedLimit,
             parallelism,
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
-                false, true, SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
-                true, false,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(), false, true,
                 SqlSelect.LockMode.SHARED_LOCK),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
-                true, true,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(), true, false,
+                SqlSelect.LockMode.SHARED_LOCK),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(), true, true,
                 SqlSelect.LockMode.SHARED_LOCK),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
             info.getPrimaryKeysId(),

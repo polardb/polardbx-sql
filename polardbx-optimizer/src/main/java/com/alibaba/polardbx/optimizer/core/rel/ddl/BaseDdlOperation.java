@@ -16,9 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -40,6 +43,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.HashMap;
 import java.util.List;
@@ -78,6 +82,9 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             this.tableName = Util.last(tableName.names);
             this.schemaName = schemaName;
         }
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = DefaultSchema.getSchemaName();
+        }
     }
 
     @Override
@@ -113,6 +120,38 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
     @Override
     public SqlKind getKind() {
         return relDdl.sqlNode.getKind();
+    }
+
+    // TODO implement it in subclass
+    public DdlType getDdlType() {
+        switch (getKind()) {
+        case CREATE_TABLE:
+            return DdlType.CREATE_TABLE;
+        case ALTER_TABLE:
+            return DdlType.ALTER_TABLE;
+        case RENAME_TABLE:
+            return DdlType.RENAME_TABLE;
+        case TRUNCATE_TABLE:
+            return DdlType.TRUNCATE_TABLE;
+        case DROP_TABLE:
+            return DdlType.DROP_TABLE;
+        case CREATE_INDEX:
+            return DdlType.CREATE_INDEX;
+        case DROP_INDEX:
+            return DdlType.DROP_INDEX;
+        case CHECK_GLOBAL_INDEX:
+            return DdlType.CHECK_GLOBAL_INDEX;
+        case MOVE_DATABASE:
+            return DdlType.MOVE_DATABASE;
+        case ALTER_TABLEGROUP:
+            return DdlType.ALTER_TABLEGROUP;
+        case REBALANCE:
+            return DdlType.REBALANCE;
+        case REFRESH_TOPOLOGY:
+            return DdlType.REFRESH_TOPOLOGY;
+        default:
+            return DdlType.UNSUPPORTED;
+        }
     }
 
     public Map<String, List<List<String>>> getTargetTablesHintCache() {

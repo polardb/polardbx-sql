@@ -22,7 +22,6 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -41,6 +40,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
+import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.core.Join;
@@ -74,8 +74,6 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -102,7 +100,9 @@ public class RexUtils {
         TddlOperatorTable.RELEASE_ALL_LOCKS,
         TddlOperatorTable.IS_FREE_LOCK,
         TddlOperatorTable.IS_USED_LOCK,
-        TddlOperatorTable.ASSIGNMENT
+        TddlOperatorTable.ASSIGNMENT,
+        TddlOperatorTable.VERSION,
+        TddlOperatorTable.PART_ROUTE
     );
 
     private final static RelDataTypeFactory FACTORY = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
@@ -166,20 +166,6 @@ public class RexUtils {
         visitor.setBloomFilters(bloomfilters);
         visitor.setDynamicExpressions(dynamicExpressions);
         return rexNode.accept(visitor);
-    }
-
-    /**
-     * For FilterExec / VectorizedFilterExec, we must ensure the root of the node is in type of BIGINT / BOOLEAN.
-     */
-    private static RexNode rewriteRoot(RexNode rexNode, boolean isFilterExec) {
-        if (isFilterExec && !SqlTypeUtil.isNumeric(rexNode.getType()) && !SqlTypeUtil.isBoolean(rexNode.getType())) {
-            return REX_BUILDER.makeCall(
-                FACTORY.createSqlType(SqlTypeName.BIGINT),
-                TddlOperatorTable.IS_TRUE,
-                ImmutableList.of(rexNode));
-        } else {
-            return rexNode;
-        }
     }
 
     private static Object getDynamicParam(RexDynamicParam rexDynamicParam, Map<Integer, ParameterContext> paramMap) {
@@ -308,6 +294,8 @@ public class RexUtils {
                 Object value = evalFunc.apply(getRexCall.apply(callParam));
                 if (value instanceof Slice) {
                     value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                } else if (value instanceof ByteString) {
+                    value = ((ByteString) value).getBytes();
                 }
                 final ParameterContext newPc = new ParameterContext(ParameterMethod.setObject1, new Object[] {
                     paramIndex + 1, value});
@@ -323,6 +311,8 @@ public class RexUtils {
             Object value = evalFunc.apply(getRexCall.apply(callParam));
             if (value instanceof Slice) {
                 value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+            } else if (value instanceof ByteString) {
+                value = ((ByteString) value).getBytes();
             }
             final ParameterContext newPc = new ParameterContext(ParameterMethod.setObject1, new Object[] {
                 paramIndex + 1, value});
@@ -850,7 +840,7 @@ public class RexUtils {
      * @param node a RexNode tree
      */
     public static boolean containsUnPushableFunction(
-        RexNode node) {
+        RexNode node, boolean postPlanner) {
         // test if the root of RexNode tree is IMPLICIT_CAST.
         if (RexUtil.containsRootImplicitCast(node)) {
             return true;
@@ -862,6 +852,11 @@ public class RexUtils {
                     public Void visitCall(RexCall call) {
                         if (UN_PUSHABLE_FUNCTION.contains(call.op)) {
                             throw new Util.FoundOne(call);
+                        }
+                        if (!postPlanner) {
+                            if (TddlOperatorTable.ASSIGNMENT == call.getOperator()) {
+                                throw new Util.FoundOne(call);
+                            }
                         }
                         super.visitCall(call);
                         return null;
@@ -1067,7 +1062,9 @@ public class RexUtils {
 
             if (call instanceof RexCallParam) {
                 RexNode rexCall = ((RexCallParam) call).getRexCall();
-                rexCall = super.visitCall((RexCall) rexCall);
+                if (rexCall instanceof RexCall) {
+                    rexCall = super.visitCall((RexCall) rexCall);
+                }
                 return new RexCallParam(call.getType(), newIndex, rexCall);
             } else {
                 paramMapping.put(curIndex, newIndex);
@@ -1098,15 +1095,6 @@ public class RexUtils {
             }
             return super.visitCall(call);
         }
-    }
-
-    public static boolean canConvertToVectorizedExpression(ExecutionContext context, RexNode... rexNodes) {
-        return canConvertToVectorizedExpression(context, Arrays.asList(rexNodes));
-    }
-
-    public static boolean canConvertToVectorizedExpression(ExecutionContext context, Collection<RexNode> rexNodes) {
-        return context.getParamManager().getBoolean(ConnectionParams.ENABLE_EXPRESSION_VECTORIZATION)
-            && rexNodes.stream().allMatch(Rex2VectorizedExpressionChecker::check);
     }
 
     public enum RestrictType {

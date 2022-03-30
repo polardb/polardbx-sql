@@ -60,7 +60,7 @@ public class PartitionLocator {
         long valInterval = 2 * (maxVal / partitionCount);
         long lastBoundVal = maxVal;
 
-        upBoundValArr[partitionCount-1] = lastBoundVal;
+        upBoundValArr[partitionCount - 1] = lastBoundVal;
         for (int j = partitionCount - 2; j >= 0; j--) {
             lastBoundVal = lastBoundVal - valInterval;
             upBoundValArr[j] = lastBoundVal;
@@ -85,6 +85,9 @@ public class PartitionLocator {
         return location;
     }
 
+    /**
+     * Only for tests
+     */
     protected PartitionLocation computeLocationForRange(String dbName, String tbName, PartitionSpec partitionSpec,
                                                         String groupKey) {
         PartitionLocation location = null;

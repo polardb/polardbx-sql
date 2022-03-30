@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -37,12 +38,15 @@ import java.sql.Connection;
 @Getter
 @Setter
 public class CdcMoveDatabaseDdlMarkTask extends BaseDdlTask {
+
     private SqlKind sqlKind;
+    private String ddlStmt;
 
     @JSONCreator
-    public CdcMoveDatabaseDdlMarkTask(String schemaName, SqlKind sqlKind) {
+    public CdcMoveDatabaseDdlMarkTask(String schemaName, SqlKind sqlKind, String ddlStmt) {
         super(schemaName);
         this.sqlKind = sqlKind;
+        this.ddlStmt = ddlStmt;
     }
 
     @Override
@@ -56,8 +60,8 @@ public class CdcMoveDatabaseDdlMarkTask extends BaseDdlTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         CdcManagerHelper.getInstance()
-            .notifyDdlNew(schemaName, "", sqlKind.name(), ddlContext.getDdlStmt(),
-                ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
+            .notifyDdlNew(schemaName, "", sqlKind.name(), ddlStmt, DdlType.MOVE_DATABASE,
+                ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
                 executionContext.getExtraCmds(), false, null);
     }
 }

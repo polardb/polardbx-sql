@@ -112,6 +112,36 @@
         </sift>
     </appender>
 
+    <appender name="SLOW_DETAIL" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <discriminator>
+            <Key>app</Key>
+            <DefaultValue>tddl</DefaultValue>
+        </discriminator>
+        <sift>
+            <appender name="SLOW_DETAIL-{app}"
+                      class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <File>${loggerRoot:-..}/logs/${app}/slow_detail.log</File>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!-- rollover daily -->
+                    <fileNamePattern>${loggerRoot:-..}/logs/${app}/%d{yyyy-MM-dd}/slow_detail-%d{yyyy-MM-dd}-%i.log.gz
+                    </fileNamePattern>
+                    <timeBasedFileNamingAndTriggeringPolicy
+                            class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <!-- or whenever the file size reaches 100MB -->
+                        <maxFileSize>512MB</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>10GB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <pattern>
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} - [%X{CONNECTION}] %msg%n
+                    </pattern>
+                </encoder>
+            </appender>
+        </sift>
+    </appender>
+
     <appender name="DIAGNOSE" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
             <Key>app</Key>
@@ -595,7 +625,7 @@
                 </rollingPolicy>
                 <encoder>
                     <pattern>
-                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{56} - [%X{CONNECTION}] %msg%n
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{56} - [%X{JOB_ID}] [%X{TASK_ID}] %msg%n
                     </pattern>
                 </encoder>
             </appender>
@@ -626,7 +656,7 @@
                 </rollingPolicy>
                 <encoder>
                     <pattern>
-                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{56} - [%X{CONNECTION}] %msg%n
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{56} - [%X{JOB_ID}] [%X{TASK_ID}] %msg%n
                     </pattern>
                 </encoder>
             </appender>
@@ -672,7 +702,7 @@
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %p %m%n</pattern>
         </encoder>
     </appender>
-    
+
     <appender name="TXC" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
             <Key>app</Key>
@@ -827,6 +857,10 @@
         <level value="info"/>
         <appender-ref ref="SLOW"/>
     </logger>
+    <logger name="slow_detail" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="SLOW_DETAIL"/>
+    </logger>
     <logger name="physical_slow" additivity="false">
         <level value="info"/>
         <appender-ref ref="PHYSICAL_SLOW"/>
@@ -946,7 +980,7 @@
         <level value="INFO"/>
         <appender-ref ref="EVENT"/>
     </logger>
-    
+
     <logger name="spm" additivity="false">
         <level value="INFO"/>
         <appender-ref ref="SPM"/>

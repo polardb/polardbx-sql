@@ -16,24 +16,40 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.rel.ddl.CreateTable;
+import org.apache.calcite.sql.SqlBinaryStringLiteral;
+import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
+import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlPartitionByRange;
 import org.apache.calcite.util.Pair;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class LogicalCreateTable extends LogicalTableOperation {
 
@@ -69,6 +85,10 @@ public class LogicalCreateTable extends LogicalTableOperation {
         this.createTableSqlForLike = createTableSqlForLike;
     }
 
+    public String getCreateTableSqlForLike() {
+        return this.createTableSqlForLike;
+    }
+
     public CreateTablePreparedData getCreateTablePreparedData() {
         return createTablePreparedData;
     }
@@ -77,9 +97,9 @@ public class LogicalCreateTable extends LogicalTableOperation {
         return createTableWithGsiPreparedData;
     }
 
-    public void prepareData() {
+    public void prepareData(ExecutionContext executionContext) {
         // A normal logical table or a primary table with GSIs.
-        createTablePreparedData = preparePrimaryData();
+        createTablePreparedData = preparePrimaryData(executionContext);
 
         final boolean isAutoPartition = sqlCreateTable.isAutoPartition();
 
@@ -136,13 +156,25 @@ public class LogicalCreateTable extends LogicalTableOperation {
         }
     }
 
-    private CreateTablePreparedData preparePrimaryData() {
+    private CreateTablePreparedData preparePrimaryData(ExecutionContext executionContext) {
         if (sqlCreateTable.getLikeTableName() != null) {
             prepareCreateTableLikeData();
         }
 
         final TableMeta tableMeta = TableMetaParser.parse(sqlCreateTable);
         tableMeta.setSchemaName(schemaName);
+
+        LocalPartitionDefinitionInfo localPartitionDefinitionInfo = LocalPartitionDefinitionInfo.create(
+                schemaName,
+                tableMeta.getTableName(),
+                (SqlPartitionByRange) sqlCreateTable.getLocalPartition()
+            );
+        if(localPartitionDefinitionInfo!=null){
+            SQLPartitionByRange sqlPartitionByRange = LocalPartitionDefinitionInfo.generateLocalPartitionStmtForCreate(
+                localPartitionDefinitionInfo,
+                localPartitionDefinitionInfo.evalPivotDate(executionContext));
+            sqlCreateTable.setLocalPartitionSuffix(sqlPartitionByRange);
+        }
 
         CreateTablePreparedData res = prepareCreateTableData(tableMeta,
             sqlCreateTable.isShadow(),
@@ -153,8 +185,29 @@ public class LogicalCreateTable extends LogicalTableOperation {
             sqlCreateTable.getTbpartitionBy(),
             sqlCreateTable.getTbpartitions(),
             sqlCreateTable.getSqlPartition(),
+            localPartitionDefinitionInfo,
             sqlCreateTable.getTableGroupName(),
             ((CreateTable) relDdl).getPartBoundExprInfo());
+
+        boolean hasTimestampColumnDefault = false;
+        for (Pair<SqlIdentifier, SqlColumnDeclaration> colDef : GeneralUtil.emptyIfNull(sqlCreateTable.getColDefs())) {
+            if (isTimestampColumnWithDefault(colDef.getValue())) {
+                hasTimestampColumnDefault = true;
+                break;
+            }
+        }
+        res.setTimestampColumnDefault(hasTimestampColumnDefault);
+
+        Map<String, String> binaryColumnDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (Pair<SqlIdentifier, SqlColumnDeclaration> colDef : GeneralUtil.emptyIfNull(sqlCreateTable.getColDefs())) {
+            if (colDef.getValue().getDefaultVal() instanceof SqlBinaryStringLiteral) {
+                String columnName = colDef.getKey().getLastName();
+                String hexValue =
+                    ((SqlBinaryStringLiteral) colDef.getValue().getDefaultVal()).getBitString().toHexString();
+                binaryColumnDefaultValues.put(columnName, hexValue);
+            }
+        }
+        res.setBinaryColumnDefaultValues(binaryColumnDefaultValues);
 
         // create table with locality
         if (TStringUtil.isNotBlank(sqlCreateTable.getLocality())) {
@@ -170,16 +223,11 @@ public class LogicalCreateTable extends LogicalTableOperation {
     private void prepareCreateTableLikeData() {
         // For `create table like xx` statement, we create a new "Create Table" AST for the target table
         // based on the LIKE table, then execute it as normal flow.
-        SqlCreateTable createTableAst = (SqlCreateTable) new FastsqlParser().parse(createTableSqlForLike).get(0);
+        SqlCreateTable createTableAst = (SqlCreateTable) new FastsqlParser().parse(createTableSqlForLike, new ExecutionContext(schemaName)).get(0);
 
         SqlIdentifier tableName = (SqlIdentifier) getTableNameNode();
 
-        MySqlCreateTableStatement stmt =
-            (MySqlCreateTableStatement) SQLUtils.parseStatements(createTableSqlForLike, JdbcConstants.MYSQL).get(0);
-        stmt.getTableSource().setSimpleName(SqlIdentifier.surroundWithBacktick(tableName.getLastName()));
-
         createTableAst.setTargetTable(tableName);
-        createTableAst.setSourceSql(stmt.toString());
 
         if (createTableAst.getAutoIncrement() != null) {
             createTableAst.getAutoIncrement().setStart(null);
@@ -220,6 +268,7 @@ public class LogicalCreateTable extends LogicalTableOperation {
                 indexDef.getTbPartitionBy(),
                 indexDef.getTbPartitions(),
                 indexDef.getPartitioning(),
+                createTablePreparedData.getLocalPartitionDefinitionInfo(),
                 isUnique,
                 indexDef.isClustered(),
                 null,

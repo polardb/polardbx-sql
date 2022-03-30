@@ -29,7 +29,7 @@ import java.util.Random;
  */
 public class HistogramTest {
     /**
-     * test binary serach
+     * test binary search
      */
     @Test
     public void testFindBucket() throws Exception {

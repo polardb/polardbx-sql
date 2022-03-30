@@ -36,6 +36,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.TableRuleUtil;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlIndexDefinition;
@@ -244,7 +245,7 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
             indexColumns.stream().map(name -> whatIfTableMeta.getColumnIgnoreCase(name))
                 .collect(Collectors.toList()),
             whatIfTableMeta.getPrimaryIndex(), gsiSecondaryIndexes,
-            whatIfTableMeta.isHasPrimaryKey(), TableStatus.PUBLIC, Long.MAX_VALUE);
+            whatIfTableMeta.isHasPrimaryKey(), TableStatus.PUBLIC, Long.MAX_VALUE, 1);
 
         GsiMetaManager.GsiTableMetaBean gsiTableMetaBean =
             new GsiMetaManager.GsiTableMetaBean(
@@ -278,7 +279,8 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
             getSecondaryIndexesWithWhatIf(tableMeta, candidateIndexSet),
             tableMeta.isHasPrimaryKey(),
             tableMeta.getStatus(),
-            tableMeta.getVersion());
+            tableMeta.getVersion(),
+            tableMeta.getFlag());
 
         List<CandidateIndex> candidateGsiSet = candidateIndexSet.stream()
             .map(candidateIndex -> tableMeta.isAutoPartition() ? candidateIndex.copyAsGsi() : candidateIndex)

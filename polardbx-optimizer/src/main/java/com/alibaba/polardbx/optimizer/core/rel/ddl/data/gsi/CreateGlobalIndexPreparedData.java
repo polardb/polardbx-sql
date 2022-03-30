@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
+import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.rex.RexNode;
@@ -35,6 +37,7 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
     }
 
     private CreateTablePreparedData indexTablePreparedData;
+    private RepartitionPrepareData repartitionPrepareData;
 
     private String primaryTableName;
     private String indexType;
@@ -57,6 +60,7 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
     private SqlNode partitioning;
     private SqlNode tableGroupName;
     private Map<SqlNode, RexNode> partBoundExprInfo;
+    private boolean indexAlignWithPrimaryTableGroup;
 
     /**************************************************************************/
 
@@ -66,6 +70,14 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setIndexTablePreparedData(CreateTablePreparedData indexTablePreparedData) {
         this.indexTablePreparedData = indexTablePreparedData;
+    }
+
+    public RepartitionPrepareData getRepartitionPrepareData() {
+        return repartitionPrepareData;
+    }
+
+    public void setRepartitionPrepareData(RepartitionPrepareData repartitionPrepareData) {
+        this.repartitionPrepareData = repartitionPrepareData;
     }
 
     public String getPrimaryTableName() {
@@ -229,7 +241,16 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     public List<String> getShardColumns() {
         if (indexPartitionInfo != null) {
-            return indexPartitionInfo.getPartitionColumns();
+            // Legacy code may invoke this to generate auto shard key, so force keep order here.
+            return indexPartitionInfo.getPartitionColumnsNotReorder();
+        } else {
+            return indexTableRule.getShardColumns();
+        }
+    }
+
+    public List<String> getShardColumnsNotReorder() {
+        if (indexPartitionInfo != null) {
+            return indexPartitionInfo.getPartitionColumnsNotReorder();
         } else {
             return indexTableRule.getShardColumns();
         }
@@ -241,5 +262,13 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setClusteredIndex(final boolean clusteredIndex) {
         this.clusteredIndex = clusteredIndex;
+    }
+
+    public boolean isIndexAlignWithPrimaryTableGroup() {
+        return indexAlignWithPrimaryTableGroup;
+    }
+
+    public void setIndexAlignWithPrimaryTableGroup(boolean indexAlignWithPrimaryTableGroup) {
+        this.indexAlignWithPrimaryTableGroup = indexAlignWithPrimaryTableGroup;
     }
 }

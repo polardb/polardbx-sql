@@ -22,7 +22,6 @@ import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -31,8 +30,6 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.util.Pair;
 
-import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +60,7 @@ public class MoveTableChecker extends Checker {
                             SqlSelect planSelectWithInTemplate,
                             PhyTableOperation planSelectWithIn,
                             PhyTableOperation planSelectMaxPk,
-                            List<String> indexColumns, List<Integer> primaryKeys,
+                            List<String> indexColumns, List<Integer> primaryKeysId,
                             Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator,
                             Map<String, Set<String>> sourceTargetTables,
                             Map<String, Set<String>> targetTargetTables,
@@ -72,7 +69,7 @@ public class MoveTableChecker extends Checker {
             parallelism,
             primaryLock, gsiLock, planSelectWithMaxPrimary, planSelectWithMaxGsi, planSelectWithMinAndMaxPrimary,
             planSelectWithMinAndMaxGsi, planSelectWithInTemplate, planSelectWithIn, planSelectMaxPk, indexColumns,
-            primaryKeys, rowComparator);
+            primaryKeysId, rowComparator);
         this.sourceTargetTables = sourceTargetTables;
         this.targetTargetTables = targetTargetTables;
         this.sourceTargetGroupMap = sourceTargetGroupMap;
@@ -97,10 +94,12 @@ public class MoveTableChecker extends Checker {
             .collect(Collectors.toList());
 
         Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName);
+
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
-            .buildSelectWithInForChecker(baseTableMeta, indexColumns, info.getPrimaryKeys(), true);
+            .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(),
+                indexTableMeta.hasGsiImplicitPrimaryKey() ? null : "PRIMARY");
 
         final List<DataType> columnTypes = indexTableMeta.getAllColumns()
             .stream()
@@ -121,7 +120,7 @@ public class MoveTableChecker extends Checker {
         return new MoveTableChecker(schemaName,
             tableName,
             indexName,
-            baseTableMeta,
+            info.getSourceTableMeta(),
             indexTableMeta,
             batchSize,
             speedMin,
@@ -129,14 +128,14 @@ public class MoveTableChecker extends Checker {
             parallelism,
             primaryLock,
             gsiLock,
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
-                false, true, primaryLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
-                false, true, gsiLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
-                true, true, primaryLock),
-            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),info.getPrimaryKeys(),
-                true, true, gsiLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(), false, true, primaryLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(), false, true, gsiLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(), true, true, primaryLock),
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(), true, true, gsiLock),
             selectWithIn.getKey(),
             selectWithIn.getValue(),
             builder.buildSelectMaxPkForBackfill(baseTableMeta, info.getPrimaryKeys()),

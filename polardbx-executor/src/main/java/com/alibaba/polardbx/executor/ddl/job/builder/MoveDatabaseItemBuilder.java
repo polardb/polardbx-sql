@@ -117,31 +117,40 @@ public class MoveDatabaseItemBuilder extends DdlPhyPlanBuilder {
     @Override
     protected void buildSqlTemplate() {
 
-        Cursor cursor = ExecutorHelper.execute(
-            new PhyShow(relDdl.getCluster(),
-                relDdl.getTraitSet(),
-                SqlShowCreateTable
-                    .create(SqlParserPos.ZERO,
-                        new SqlIdentifier(defaultGroupAndPhyTable.getValue(), SqlParserPos.ZERO)),
-                relDdl.getRowType(),
-                defaultGroupAndPhyTable.getKey(),
-                defaultGroupAndPhyTable.getValue(),
-                preparedData.getSchemaName()), executionContext);
+        Cursor cursor = null;
+        try {
+            cursor = ExecutorHelper.execute(
+                new PhyShow(relDdl.getCluster(),
+                    relDdl.getTraitSet(),
+                    SqlShowCreateTable
+                        .create(SqlParserPos.ZERO,
+                            new SqlIdentifier(defaultGroupAndPhyTable.getValue(), SqlParserPos.ZERO)),
+                    relDdl.getRowType(),
+                    defaultGroupAndPhyTable.getKey(),
+                    defaultGroupAndPhyTable.getValue(),
+                    preparedData.getSchemaName()), executionContext);
 
-        Row row = null;
-        String primaryTableDefinition = null;
-        if ((row = cursor.next()) != null) {
-            primaryTableDefinition = row.getString(1);
-            assert primaryTableDefinition.substring(0, 13).trim().equalsIgnoreCase("CREATE TABLE");
-            primaryTableDefinition =
-                primaryTableDefinition.trim().substring(0, 13) + " IF NOT EXISTS " + primaryTableDefinition.trim()
-                    .substring(13);
-        } else {
-            throw new AssertionError(
-                "the table " + defaultGroupAndPhyTable.getValue() + " is not found in " + defaultGroupAndPhyTable
-                    .getKey());
+            Row row = null;
+            String primaryTableDefinition = null;
+            if ((row = cursor.next()) != null) {
+                primaryTableDefinition = row.getString(1);
+                assert primaryTableDefinition.substring(0, 13).trim().equalsIgnoreCase("CREATE TABLE");
+                primaryTableDefinition =
+                    primaryTableDefinition.trim().substring(0, 13) + " IF NOT EXISTS " + primaryTableDefinition.trim()
+                        .substring(13);
+            } else {
+                throw new AssertionError(
+                    "the table " + defaultGroupAndPhyTable.getValue() + " is not found in " + defaultGroupAndPhyTable
+                        .getKey());
+            }
+            assert primaryTableDefinition != null;
+            sqlTemplate = AlterTableGroupUtils.getSqlTemplate(preparedData.getSchemaName(), preparedData.getTableName(),
+                primaryTableDefinition, executionContext);
+        } finally {
+            if (cursor != null) {
+                cursor.close(new ArrayList<>());
+            }
         }
-        assert primaryTableDefinition != null;
-        sqlTemplate = AlterTableGroupUtils.getSqlTemplate(primaryTableDefinition, executionContext);
+
     }
 }
