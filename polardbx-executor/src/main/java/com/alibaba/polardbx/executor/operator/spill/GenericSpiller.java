@@ -19,7 +19,7 @@ package com.alibaba.polardbx.executor.operator.spill;
 import com.google.common.io.Closer;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;

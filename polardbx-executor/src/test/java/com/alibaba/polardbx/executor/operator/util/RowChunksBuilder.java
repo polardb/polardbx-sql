@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.operator.util;
 
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.BucketMockExec;
 import com.alibaba.polardbx.executor.operator.MockExec;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;

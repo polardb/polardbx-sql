@@ -179,6 +179,7 @@ public class DRDSRelJsonReader {
             relatedId = null;
         }
         Constructor constructor = relJson.getConstructor(type);
+        DRDSRelJsonReader that = this;
         RelInput input = new RelInput() {
             public RelOptCluster getCluster() {
                 return cluster;
@@ -490,6 +491,13 @@ public class DRDSRelJsonReader {
                     return ImmutableSet.of();
                 }
             }
+
+            public void setLastRel(RelNode relNode) {
+                that.setLastRel(relNode);
+            }
+            public RelNode getLastRel() {
+                return that.getLastRel();
+            }
         };
         try {
             final RelNode rel = (RelNode) constructor.newInstance(input);
@@ -541,6 +549,7 @@ public class DRDSRelJsonReader {
 
     private RelInput makeEmptyRelInput() {
         Map<String, Object> jsonRel = new HashMap<>();
+        DRDSRelJsonReader that = this;
         return new RelInput() {
             public RelOptCluster getCluster() {
                 return cluster;
@@ -788,6 +797,13 @@ public class DRDSRelJsonReader {
                     return ImmutableSet.of();
                 }
             }
+
+            public void setLastRel(RelNode relNode) {
+                that.setLastRel(relNode);
+            }
+            public RelNode getLastRel() {
+                return that.getLastRel();
+            }
         };
     }
 
@@ -825,6 +841,12 @@ public class DRDSRelJsonReader {
         return list;
     }
 
+    public RelNode getLastRel() {
+        return lastRel;
+    }
+    public void setLastRel(RelNode lastRel) {
+        this.lastRel = lastRel;
+    }
 }
 
 // End RelJsonReader.java

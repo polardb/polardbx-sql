@@ -63,6 +63,10 @@ public class GmsSystemTables {
     public static final String PARTITION_GROUP = "partition_group";
     public static final String PARTITION_GROUP_DELTA = "partition_group_delta";
     public static final String TABLE_PARTITIONS_DELTA = "table_partitions_delta";
+    public static final String FILES = "files";
+    public static final String COLUMN_METAS = "column_metas";
+    public static final String FILE_STORAGE_INFO = "file_storage_info";
+    public static final String FILE_STORAGE_FILES_META = "file_storage_files_meta";
     public static final String TABLE_LOCAL_PARTITIONS = "table_local_partitions";
 
     /**
@@ -197,6 +201,9 @@ public class GmsSystemTables {
         register(TABLES);
         register(TABLES_EXT);
         register(VIEWS);
+        register(FILES);
+        register(COLUMN_METAS);
+        register(FILE_STORAGE_INFO);
         register(COLUMNS);
         register(INDEXES);
         register(KEY_COLUMN_USAGE);
@@ -261,6 +268,7 @@ public class GmsSystemTables {
         register(COMPLEX_TASK_OUTLINE);
         register(VARIABLE_CONFIG);
         register(DDL_PLAN);
+        register(FILE_STORAGE_FILES_META);
     }
 
     static {

@@ -17,11 +17,11 @@
 package com.alibaba.polardbx.executor.operator.frame;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 
 import java.math.BigInteger;
 import java.util.List;

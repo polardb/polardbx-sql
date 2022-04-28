@@ -111,6 +111,7 @@ public class RelJsonReader {
     String id = (String) jsonRel.get("id");
     String type = (String) jsonRel.get("relOp");
     Constructor constructor = relJson.getConstructor(type);
+    RelJsonReader that = this;
     RelInput input = new RelInput() {
       public RelOptCluster getCluster() {
         return cluster;
@@ -338,6 +339,14 @@ public class RelJsonReader {
           return ImmutableSet.of();
         }
       }
+
+      public void setLastRel(RelNode relNode) {
+        that.setLastRel(relNode);
+      }
+
+      public RelNode getLastRel() {
+        return that.getLastRel();
+      }
     };
     try {
       final RelNode rel = (RelNode) constructor.newInstance(input);
@@ -375,6 +384,13 @@ public class RelJsonReader {
           + " for relational expression");
     }
     return node;
+  }
+
+  public RelNode getLastRel() {
+    return lastRel;
+  }
+  public void setLastRel(RelNode lastRel) {
+    this.lastRel = lastRel;
   }
 }
 

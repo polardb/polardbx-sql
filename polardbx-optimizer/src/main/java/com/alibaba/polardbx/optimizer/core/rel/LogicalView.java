@@ -210,7 +210,7 @@ public class LogicalView extends TableScan {
     private volatile RelNode mysqlNodeCache = null;
 
     private boolean expandView = false;
-    private boolean newPartDbTbl = false;
+    protected boolean newPartDbTbl = false;
     private BaseQueryOperation queryOperation;
 
     /**
@@ -242,6 +242,7 @@ public class LogicalView extends TableScan {
         this.schemaName = relInput.getString("schemaName");
         this.newPartDbTbl = checkIfNewPartDbTbl(this.tableNames);
         this.partitions = extractPartitionsFromStrList(relInput.getStringList("partitions"));
+        this.flashback = relInput.getExpression("flashback");
         isMGetEnabled = relInput.getBoolean("isMGetEnabled", false);
         Map<String, Object> pushDownOptParams = (Map) relInput.get("pushDownOpt");
         DRDSRelJsonReader drdsRelJsonReader = new DRDSRelJsonReader(relInput.getCluster(),
@@ -265,7 +266,7 @@ public class LogicalView extends TableScan {
 
     public LogicalView(TableScan scan, LockMode lockMode) {
         super(scan.getCluster(), scan.getTraitSet(), scan.getTable(), scan.getHints(), scan.getIndexNode(),
-            scan.getPartitions());
+            scan.getFlashback(), scan.getPartitions());
         this.dbType = DbType.MYSQL;
         this.tableNames.add(Util.last(table.getQualifiedName()));
         this.schemaName = table.getQualifiedName().size() == 2 ? table.getQualifiedName().get(0) :
@@ -286,6 +287,7 @@ public class LogicalView extends TableScan {
             newLogicalView.getTable(),
             newLogicalView.getHints(),
             newLogicalView.getIndexNode(),
+            newLogicalView.getFlashback(),
             newLogicalView.getPartitions());
         this.dbType = newLogicalView.getDbType();
         this.tableNames.addAll(newLogicalView.getTableNames());
@@ -442,6 +444,7 @@ public class LogicalView extends TableScan {
             .item("schemaName", schemaName)
             .itemIf("isMGetEnabled", isMGetEnabled, isMGetEnabled)
             .item("partitions", convertPartitionsToStrList())
+            .item("flashback", flashback)
             ;
     }
 
@@ -587,7 +590,7 @@ public class LogicalView extends TableScan {
         }
     }
 
-    private void filterPrunedResultBySelectedPartitions(List<PartPrunedResult> resultList) {
+    protected void filterPrunedResultBySelectedPartitions(List<PartPrunedResult> resultList) {
         if (this.partitions != null && resultList.size() > 1) {
             throw GeneralUtil
                 .nestedException(new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
@@ -962,23 +965,25 @@ public class LogicalView extends TableScan {
         return pushDownOpt.aggIsPushed();
     }
 
+    public RelWriter explainLogicalView(RelWriter pw) {
+        pw.item(RelDrdsWriter.REL_NAME, explainNodeName());
+        if (join != null) {
+            Index index = getLookupJoin().getLookupIndex();
+            if (index != null) {
+                pw.item("joinIndex", index.getIndexMeta().getPhysicalIndexName());
+            }
+        }
+        List<RelNode> relList = new ArrayList<>();
+        relList.add(getMysqlNode());
+        pw.item(RelDrdsWriter.LV_INPUTS, relList);
+        return pw;
+    }
+
     @Override
     public RelWriter explainTermsForDisplay(RelWriter pw) {
 
         if (PlannerContext.getPlannerContext(this).getParamManager().getBoolean(ConnectionParams.EXPLAIN_LOGICALVIEW)) {
-            pw.item(RelDrdsWriter.REL_NAME, explainNodeName());
-
-            if (join != null) {
-                Index index = getLookupJoin().getLookupIndex();
-                if (index != null) {
-                    pw.item("joinIndex", index.getIndexMeta().getPhysicalIndexName());
-                }
-            }
-
-            List<RelNode> relList = new ArrayList<>();
-            relList.add(getMysqlNode());
-            pw.item(RelDrdsWriter.LV_INPUTS, relList);
-            return pw;
+            return explainLogicalView(pw);
         }
 
         pw.item(RelDrdsWriter.REL_NAME, explainNodeName());
@@ -1391,6 +1396,17 @@ public class LogicalView extends TableScan {
                 // params might be clear, pass
             }
         }
+        totalShardCount += getTotalShardCount();
+        return PlannerUtils.guessShardCount(shardColumns, getRelShardInfo(), totalShardCount);
+    }
+
+    protected int getTotalShardCount() {
+        TddlRuleManager ruleManager =
+            PlannerContext.getPlannerContext(this).getExecutionContext().getSchemaManager(schemaName)
+                .getTddlRuleManager();
+        PartitionInfoManager partitionInfoManager = ruleManager.getPartitionInfoManager();
+        String logTb = getShardingTable();
+        int totalShardCount = 0;
         if (!partitionInfoManager.isNewPartDbTable(logTb)) {
             TableRule tr = ruleManager.getTableRule(logTb);
             Map<String, Set<String>> actualTopology = tr.getActualTopology();
@@ -1405,7 +1421,7 @@ public class LogicalView extends TableScan {
             totalShardCount = partInfo.getAllPhysicalPartitionCount();
         }
 
-        return PlannerUtils.guessShardCount(shardColumns, getRelShardInfo(), totalShardCount);
+        return totalShardCount;
     }
 
     public boolean isSingleGroupSingleTable() {
@@ -1636,7 +1652,7 @@ public class LogicalView extends TableScan {
         return smallerCost;
     }
 
-    private List<String> collectTableNames() {
+    protected List<String> collectTableNames() {
         final List<String> tables = new ArrayList<>();
         getNativeSqlNode().accept(new ReplaceTableNameWithSomethingVisitor(schemaName,
             PlannerContext.getPlannerContext(this).getExecutionContext()) {
@@ -1720,6 +1736,7 @@ public class LogicalView extends TableScan {
         final LogicalView logicalView = new LogicalView(this, lockMode);
         logicalView.setScalarList(scalarList);
         logicalView.correlateVariableScalar.addAll(correlateVariableScalar);
+        logicalView.flashback = this.flashback;
         return logicalView;
     }
 
@@ -1733,6 +1750,7 @@ public class LogicalView extends TableScan {
         newLogicalView.traitSet = traitSet;
         newLogicalView.newPartDbTbl = this.newPartDbTbl;
         newLogicalView.pushDownOpt = pushDownOpt.copy(newLogicalView, this.getPushedRelNode());
+        newLogicalView.flashback = this.flashback;
         return newLogicalView;
     }
 

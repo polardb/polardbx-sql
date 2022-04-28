@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.vectorized;
 import com.alibaba.polardbx.common.utils.ClassFinder;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionConstructor;
+import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionPriority;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignature;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.google.common.collect.Lists;
@@ -68,13 +69,28 @@ public class VectorizedExpressionRegistry {
         for (@SuppressWarnings("unchecked") Class<? extends VectorizedExpression> klass : classes) {
             for (ExpressionSignature expressionSignature : ExpressionSignature.from(klass)) {
                 if (EXPRESSIONS.containsKey(expressionSignature)) {
-                    Class<?> existingClass = EXPRESSIONS.get(expressionSignature).getDeclaringClass();
-                    throw new IllegalStateException(
-                        "Expression signature " + expressionSignature + " has been defined by class: " + existingClass
-                            + " , but redefined in class: " + klass);
-                }
+                    // for repeated class, check it's priority.
+                    ExpressionPriority priority = ExpressionSignature.priorityFrom(klass);
 
-                EXPRESSIONS.put(expressionSignature, ExpressionConstructor.of(klass));
+                    Class<?> existingClass = EXPRESSIONS.get(expressionSignature).getDeclaringClass();
+                    ExpressionPriority existingClassPriority = ExpressionSignature.priorityFrom(existingClass);
+
+                    if (priority == existingClassPriority) {
+                        throw new IllegalStateException(
+                            "Expression signature " + expressionSignature + " has been defined by class: "
+                                + existingClass
+                                + " , but redefined in class: " + klass);
+                    } else if (priority == ExpressionPriority.NORMAL
+                        && existingClassPriority == ExpressionPriority.SPECIAL) {
+                        // Ignore.
+                    } else if (priority == ExpressionPriority.SPECIAL
+                        && existingClassPriority == ExpressionPriority.NORMAL) {
+                        EXPRESSIONS.put(expressionSignature, ExpressionConstructor.of(klass));
+                    }
+
+                } else {
+                    EXPRESSIONS.put(expressionSignature, ExpressionConstructor.of(klass));
+                }
             }
         }
     }

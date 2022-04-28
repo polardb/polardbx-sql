@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
@@ -111,6 +112,8 @@ public class AlterTableGroupValidateTask extends BaseValidateTask {
         for (String group : GeneralUtil.emptyIfNull(targetPhysicalGroups)) {
             TableGroupValidator.validatePhysicalGroupIsNormal(schemaName, group);
         }
+        CheckOSSArchiveUtil.checkTableGroupWithoutOSSGMS(schemaName, tableGroupName);
+
     }
 
     @Override

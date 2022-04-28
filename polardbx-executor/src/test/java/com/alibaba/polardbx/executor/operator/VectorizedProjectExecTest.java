@@ -18,11 +18,11 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.TddlJavaTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;

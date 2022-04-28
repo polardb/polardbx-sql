@@ -148,7 +148,7 @@ public class CheckTableUtil {
             }
 
             if (ex != null) {
-                GeneralUtil.nestedException(ex);
+                throw GeneralUtil.nestedException(ex);
             }
         }
 
@@ -231,7 +231,7 @@ public class CheckTableUtil {
                 logger.error(e);
             }
             if (ex != null) {
-                GeneralUtil.nestedException(ex);
+                throw GeneralUtil.nestedException(ex);
             }
         }
         return localPartitionMap;

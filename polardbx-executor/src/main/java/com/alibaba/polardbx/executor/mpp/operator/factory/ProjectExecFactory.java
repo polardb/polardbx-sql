@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.ProjectExec;
 import com.alibaba.polardbx.executor.operator.VectorizedProjectExec;

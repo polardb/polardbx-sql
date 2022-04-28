@@ -129,7 +129,7 @@ public class CharsetFactoryImpl implements CharsetFactory {
                 return CollationHandlers.COLLATION_HANDLER_ASCII_BIN.getCharsetHandler();
             }
         default:
-            throw new UnsupportedOperationException();
+            return DEFAULT_CHARSET_HANDLER;
         }
     }
 
@@ -201,7 +201,7 @@ public class CharsetFactoryImpl implements CharsetFactory {
         case ASCII_BIN:
             return CollationHandlers.COLLATION_HANDLER_ASCII_BIN;
         default:
-            throw new UnsupportedOperationException();
+            return CollationHandlers.COLLATION_HANDLER_UTF8MB4_GENERAL_CI;
         }
     }
 

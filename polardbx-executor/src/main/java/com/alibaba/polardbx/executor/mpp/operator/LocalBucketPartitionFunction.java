@@ -29,7 +29,7 @@
  */
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 
 import java.util.Arrays;

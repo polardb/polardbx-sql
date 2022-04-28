@@ -22,7 +22,7 @@ import com.google.common.io.RecursiveDeleteOption;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.spill.AsyncFileSingleStreamSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SyncFileCleaner;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;

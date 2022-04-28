@@ -16,17 +16,22 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.DecimalBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.chunk.ReferenceBlock;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InputRefVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ReferenceBlock;
+import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.google.common.base.Preconditions;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.clearspring.analytics.util.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -55,6 +60,11 @@ public class VectorizedProjectExec extends AbstractExecutor {
      */
     private final int[] mappedColumnIndex;
 
+    /**
+     * pair of {k-th expression - v-th block}
+     */
+    private Pair<Integer, Integer>[] commonSubExpressions;
+
     public VectorizedProjectExec(Executor input, List<VectorizedExpression> expressions,
                                  List<MutableChunk> preAllocatedChunks,
                                  List<DataType> dataTypes,
@@ -64,6 +74,7 @@ public class VectorizedProjectExec extends AbstractExecutor {
         this.expressions = expressions;
         this.mappedColumnIndex = new int[expressions.size()];
         this.preAllocatedChunks = preAllocatedChunks;
+        this.commonSubExpressions = new Pair[expressions.size()];
         this.dataTypes = dataTypes;
         Preconditions.checkArgument(expressions.size() == dataTypes.size());
     }
@@ -72,9 +83,58 @@ public class VectorizedProjectExec extends AbstractExecutor {
     void doOpen() {
         this.outputBlocks = new Block[dataTypes.size()];
 
+        if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE)) {
+            for(int i = 0; i < expressions.size(); i++) {
+                this.commonSubExpressions[i] = null;
+                VectorizedExpression e = expressions.get(i);
+
+                if (e instanceof InputRefVectorizedExpression) {
+                    continue;
+                }
+
+                DataType outputDataType = e.getOutputDataType();
+
+                // find common sub-expression for other expression.
+                for (int j = 0; j < i; j++) {
+                    VectorizedExpression otherExpression = expressions.get(j);
+                    if (otherExpression instanceof InputRefVectorizedExpression) {
+                        continue;
+                    }
+
+                    int outputIndex = otherExpression.getOutputIndex();
+                    List<Integer> otherInputIndexes = VectorizedExpressionUtils.getInputIndex(otherExpression);
+                    DataType otherOutputDataType = otherExpression.getOutputDataType();
+
+                    for(int k = 0; k < e.getChildren().length; k++) {
+                        VectorizedExpression child = e.getChildren()[k];
+
+                        if (child.getOutputIndex() == outputIndex && DataTypeUtil.equalsSemantically(outputDataType, otherOutputDataType)) {
+                            List<Integer> inputIndexes = VectorizedExpressionUtils.getInputIndex(child);
+                            if (!otherInputIndexes.equals(inputIndexes)) {
+                                break;
+                            }
+
+                            // reset expression to input ref
+                            e.getChildren()[k] = new InputRefVectorizedExpression(
+                                child.getOutputDataType(),
+                                child.getOutputIndex(),
+                                child.getOutputIndex());
+
+                            // set result block
+                            this.commonSubExpressions[i] = Pair.of(j, outputIndex);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+
         for (int i = 0; i < expressions.size(); i++) {
+            VectorizedExpression e = expressions.get(i);
+
             // Check the kind of expression, and optimize input ref only block
-            if (expressions.get(i) instanceof InputRefVectorizedExpression) {
+            if (e instanceof InputRefVectorizedExpression) {
                 mappedColumnIndex[i] = expressions.get(i).getOutputIndex();
             } else {
                 // Create the block builder if the expression will be evaluated.
@@ -120,7 +180,17 @@ public class VectorizedProjectExec extends AbstractExecutor {
         }
 
         // Allocate the memory of output vector at runtime.
-        preAllocatedChunk.reallocate(chunkSize, blockCount);
+        if (this.commonSubExpressions[index] == null) {
+            preAllocatedChunk.reallocate(chunkSize, blockCount);
+        } else {
+            // for common sub expression
+            Pair<Integer, Integer> subExpressionInfo = this.commonSubExpressions[index];
+            int expressionIndex = subExpressionInfo.getKey();
+            int commonBlockIndex = subExpressionInfo.getValue();
+            preAllocatedChunk.reallocate(chunkSize, commonBlockIndex + 1);
+            preAllocatedChunk.setSlotAt((RandomAccessBlock) this.outputBlocks[expressionIndex], commonBlockIndex);
+        }
+
 
         // Evaluation & Result Output.
         EvaluationContext evaluationContext = new EvaluationContext(preAllocatedChunk, this.context);
@@ -140,6 +210,11 @@ public class VectorizedProjectExec extends AbstractExecutor {
             int[] selection = preAllocatedChunk.selection();
             if (selectionInUse && selection != null) {
                 ((RandomAccessBlock) outputBlock).compact(selection);
+            }
+
+            // check simple for decimals
+            if (outputBlock instanceof DecimalBlock) {
+                ((DecimalBlock) outputBlock).collectDecimalInfo();
             }
         }
         outputBlocks[index] = outputBlock;

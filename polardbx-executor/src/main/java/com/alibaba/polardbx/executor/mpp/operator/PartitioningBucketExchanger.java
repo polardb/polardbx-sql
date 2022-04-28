@@ -17,11 +17,11 @@
 package com.alibaba.polardbx.executor.mpp.operator;
 
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkBuilder;
-import com.alibaba.polardbx.optimizer.chunk.ChunkConverter;
-import com.alibaba.polardbx.optimizer.chunk.Converters;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
+import com.alibaba.polardbx.executor.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.mpp.operator.PartitionedOutputCollector.HashBucketFunction;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;

@@ -35,6 +35,10 @@ public abstract class AbstractCollationHandler implements CollationHandler {
     }
 
     public static int codepointOfUTF8(SliceInput buff) {
+        if (!buff.isReadable()) {
+            return INVALID_CODE;
+        }
+
         byte c1 = buff.readByte();
 
         if (Byte.toUnsignedInt(c1) < 0x80) {
@@ -81,6 +85,16 @@ public abstract class AbstractCollationHandler implements CollationHandler {
                 (Byte.toUnsignedInt(c3) ^ 0x80) << 6) | (Byte.toUnsignedInt(c4) ^ 0x80);
         }
         return INVALID_CODE;
+    }
+
+    public static int codepointOfUTF8(SliceInput buff, long[] positions) {
+        // mark begin position
+        positions[0] = buff.position();
+        int codePoint = codepointOfUTF8(buff);
+        // mark end position, and reset position to begin position
+        positions[1] = buff.position();
+        buff.setPosition(positions[0]);
+        return codePoint;
     }
 
     public static void codepointOfUTF8(byte[] buff, int begin, int end, int[] results) {

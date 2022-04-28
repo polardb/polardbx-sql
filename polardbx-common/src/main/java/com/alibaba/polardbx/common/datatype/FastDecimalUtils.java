@@ -39,90 +39,129 @@ public class FastDecimalUtils {
     }
 
     public static int add(DecimalStructure from1, DecimalStructure from2, DecimalStructure to) {
-        if (from1 == to) {
+        return add(from1, from2, to, false);
+    }
 
+    public static int add(DecimalStructure from1, DecimalStructure from2, DecimalStructure to, boolean needReset) {
+        if (from1 == to) {
+            // copy as new decimal object
             from1 = to.copy();
         }
         if (from2 == to) {
-
+            // copy as new decimal object
             from2 = to.copy();
         }
-
-        to.reset();
+        // clear status of to
+        if (needReset) {
+            to.reset();
+        }
 
         to.setDerivedFractions(Math.max(from1.getDerivedFractions(), from2.getDerivedFractions()));
         if (from1.isNeg() == from2.isNeg()) {
             return doAdd(from1, from2, to);
         } else {
             return doSub(from1, from2, to)[1];
+        }
+    }
+
+    public static int sub(DecimalStructure from1, DecimalStructure from2, DecimalStructure to, boolean needReset) {
+        if (from1 == to) {
+            // copy as new decimal object
+            from1 = to.copy();
+        }
+        if (from2 == to) {
+            // copy as new decimal object
+            from2 = to.copy();
+        }
+        // clear status of to
+        if (needReset) {
+            to.reset();
+        }
+
+        to.setDerivedFractions(Math.max(from1.getDerivedFractions(), from2.getDerivedFractions()));
+        if (from1.isNeg() == from2.isNeg()) {
+            return doSub(from1, from2, to)[1];
+        } else {
+            return doAdd(from1, from2, to);
         }
     }
 
     public static int sub(DecimalStructure from1, DecimalStructure from2, DecimalStructure to) {
-        if (from1 == to) {
-
-            from1 = to.copy();
-        }
-        if (from2 == to) {
-
-            from2 = to.copy();
-        }
-
-        to.reset();
-
-        to.setDerivedFractions(Math.max(from1.getDerivedFractions(), from2.getDerivedFractions()));
-        if (from1.isNeg() == from2.isNeg()) {
-            return doSub(from1, from2, to)[1];
-        } else {
-            return doAdd(from1, from2, to);
-        }
+        return sub(from1, from2, to, false);
     }
 
-    public static int mul(DecimalStructure from1, DecimalStructure from2, DecimalStructure to) {
+    public static int mul(DecimalStructure from1, DecimalStructure from2, DecimalStructure to, boolean needReset) {
         if (from1 == to) {
-
+            // copy as new decimal object
             from1 = to.copy();
         }
         if (from2 == to) {
-
+            // copy as new decimal object
             from2 = to.copy();
         }
-
-        to.reset();
+        // clear status of to
+        if (needReset) {
+            to.reset();
+        }
 
         to.setDerivedFractions(
             Math.min(from1.getDerivedFractions() + from2.getDerivedFractions(), DecimalTypeBase.MAX_DECIMAL_SCALE));
         return doMul(from1, from2, to);
     }
 
+    public static int mul(DecimalStructure from1, DecimalStructure from2, DecimalStructure to) {
+        return mul(from1, from2, to, false);
+    }
 
+    /**
+     * Fast Decimal division
+     *
+     * @param from1 dividend
+     * @param from2 divisor
+     * @param to quotient
+     * @param scaleIncr Set by div_precision_increment. the number of digits by which to increase the scale of the result of division operations performed with the / operator. The default value is 4.
+     * @return E_DEC_OK / E_DEC_TRUNCATED / E_DEC_OVERFLOW / E_DEC_DIV_ZERO
+     */
     public static int div(DecimalStructure from1, DecimalStructure from2, DecimalStructure to, int scaleIncr) {
-        if (from1 == to) {
+        return div(from1, from2, to, scaleIncr, false);
+    }
 
+    public static int div(DecimalStructure from1, DecimalStructure from2, DecimalStructure to, int scaleIncr,
+                          boolean needReset) {
+        if (from1 == to) {
+            // copy as new decimal object
             from1 = to.copy();
         }
         if (from2 == to) {
-
+            // copy as new decimal object
             from2 = to.copy();
         }
-
-        to.reset();
+        // clear status of to
+        if (needReset) {
+            to.reset();
+        }
 
         to.setDerivedFractions(Math.min(from1.getDerivedFractions() + scaleIncr, DecimalTypeBase.MAX_DECIMAL_SCALE));
         return doDiv(from1, from2, to, null, scaleIncr);
     }
 
     public static int mod(DecimalStructure from1, DecimalStructure from2, DecimalStructure to) {
-        if (from1 == to) {
+        return mod(from1, from2, to, false);
+    }
 
+    public static int mod(DecimalStructure from1, DecimalStructure from2, DecimalStructure to, boolean needReset) {
+        if (from1 == to) {
+            // copy as new decimal object
             from1 = to.copy();
         }
         if (from2 == to) {
-
+            // copy as new decimal object
             from2 = to.copy();
         }
-
-        to.reset();
+        // clear status of to
+        if (needReset) {
+            to.reset();
+        }
 
         to.setDerivedFractions(Math.max(from1.getDerivedFractions(), from2.getDerivedFractions()));
         return doDiv(from1, from2, null, to, 0);
@@ -137,11 +176,12 @@ public class FastDecimalUtils {
 
     public static int round(DecimalStructure from, DecimalStructure to, int scale, DecimalRoundMod mode) {
         if (from == to) {
-
+            // copy as new decimal object
             from = to.copy();
         }
-
+        // clear status of to
         to.reset();
+
         return doDecimalRound(from, to, scale, mode);
     }
 
@@ -155,7 +195,7 @@ public class FastDecimalUtils {
         int toFracWords = Math.max(from1FracWords, from2FracWords);
 
         int bufPos1, bufPos2, bufEndPos, bufEndPos2;
-
+        // is there a need for extra word because of carry ?
         int x;
         if (from1IntWords > from2IntWords) {
             x = from1.getBuffValAt(0);
@@ -169,7 +209,7 @@ public class FastDecimalUtils {
             to.setBuffValAt(0, 0);
         }
 
-
+        // fix intg and frac error
         if (toIntWords + toFracWords > DecimalTypeBase.WORDS_LEN) {
             if (toIntWords > DecimalTypeBase.WORDS_LEN) {
                 toIntWords = DecimalTypeBase.WORDS_LEN;
@@ -183,7 +223,7 @@ public class FastDecimalUtils {
             error = DecimalTypeBase.E_DEC_OK;
         }
         if (error == DecimalTypeBase.E_DEC_OVERFLOW) {
-
+            // get max decimal from this precision & scale.
             DecimalStructure max = DecimalBounds.maxValue(WORDS_LEN * DIG_PER_DEC1, 0);
             max.copyTo(to);
             return error;
@@ -212,7 +252,7 @@ public class FastDecimalUtils {
         }
 
         DecimalStructure dec1 = from1, dec2 = from2;
-
+        /* part 1 - max(frac) ... min (frac) */
         if (from1FracWords > from2FracWords) {
             bufPos1 = from1IntWords + from1FracWords;
             bufEndPos = from1IntWords + from2FracWords;
@@ -232,10 +272,10 @@ public class FastDecimalUtils {
             to.setBuffValAt(toIndex, dec1.getBuffValAt(bufPos1));
         }
 
-
+        /* part 2 - min(frac) ... min(intg) */
         int carry = 0;
         while (bufPos1 > bufEndPos2) {
-
+            // add adds a and b and carry, returns the sum and new carry.
             int sum = dec1.getBuffValAt(--bufPos1) + dec2.getBuffValAt(--bufPos2) + carry;
             if (sum >= DecimalTypeBase.DIG_BASE) {
                 carry = 1;
@@ -246,7 +286,7 @@ public class FastDecimalUtils {
             to.setBuffValAt(--toIndex, sum);
         }
 
-
+        /* part 3 - min(intg) ... max(intg) */
         bufEndPos = 0;
         if (from1IntWords > from2IntWords) {
             bufPos1 = from1IntWords - from2IntWords;
@@ -256,7 +296,7 @@ public class FastDecimalUtils {
             dec1 = from2;
         }
         while (bufPos1 > bufEndPos) {
-
+            // add a and b and carry, returns the sum and new carry.
             int sum = dec1.getBuffValAt(--bufPos1) + 0 + carry;
             if (sum >= DecimalTypeBase.DIG_BASE) {
                 carry = 1;
@@ -288,7 +328,7 @@ public class FastDecimalUtils {
         int tmp1 = toIntWords;
         int tmp2 = toFracWords;
 
-
+        // fix integers & fractions error.
         if (toIntWords + toFracWords > DecimalTypeBase.WORDS_LEN) {
             if (toIntWords > DecimalTypeBase.WORDS_LEN) {
                 toIntWords = DecimalTypeBase.WORDS_LEN;
@@ -302,7 +342,7 @@ public class FastDecimalUtils {
             error = DecimalTypeBase.E_DEC_OK;
         }
 
-
+        // ensure the field values of result decimal.
         to.setNeg(from1.isNeg() != from2.isNeg());
         to.setFractions(from1.getFractions() + from2.getFractions());
         if (to.getFractions() > DecimalTypeBase.NOT_FIXED_DEC) {
@@ -313,7 +353,7 @@ public class FastDecimalUtils {
             return error;
         }
 
-
+        // for error
         if (error != DecimalTypeBase.E_DEC_OK) {
             if (to.getFractions() > toFracWords * DIG_PER_DEC1) {
                 to.setFractions(toFracWords * DIG_PER_DEC1);
@@ -369,12 +409,12 @@ public class FastDecimalUtils {
                 if (toPos < 0) {
                     return DecimalTypeBase.E_DEC_OVERFLOW;
                 }
-
+                // add a and b and carry, returns the sum and new carry.
                 carry = add(to, toPos, 0, carry);
             }
         }
 
-
+        /* Now we have to check for -0.000 case */
         if (to.isNeg()) {
             int idx = 0;
             int end = toIntWords + toFracWords;
@@ -383,7 +423,7 @@ public class FastDecimalUtils {
                     break;
                 }
                 idx++;
-
+                /* We got decimal zero */
                 if (idx == end) {
                     to.toZero();
                     break;
@@ -407,7 +447,10 @@ public class FastDecimalUtils {
         return error;
     }
 
-
+    /**
+     * to=from1-from2.
+     * if to==null, return -1/0/+1 - the result of the comparison
+     */
     protected static int[] doSub(DecimalStructure from1, DecimalStructure from2, DecimalStructure to) {
         int error;
         int from1IntWords = DecimalTypeBase.roundUp(from1.getIntegers());
@@ -416,7 +459,7 @@ public class FastDecimalUtils {
         int from2FracWords = DecimalTypeBase.roundUp(from2.getFractions());
         int toFracWords = Math.max(from1FracWords, from2FracWords);
 
-
+        /* let carry:=1 if from2 > from1 */
         int start1 = 0, start2 = 0;
         int stop1 = from1IntWords, stop2 = from2IntWords;
         int bufPos1 = 0, bufPos2 = 0;
@@ -460,7 +503,7 @@ public class FastDecimalUtils {
                     carry = 0;
                 }
             } else {
-
+                /* short-circuit everything: from1 == from2 */
                 if (bufPos2 <= end2) {
                     carry = 1;
                 } else {
@@ -474,7 +517,7 @@ public class FastDecimalUtils {
         }
 
         if (to == null) {
-            if ((carry > 0) == from1.isNeg()) {
+            if ((carry > 0) == from1.isNeg()) { // from2 is negative too.
                 return new int[] {1, 1};
             }
             return new int[] {-1, 1};
@@ -482,6 +525,7 @@ public class FastDecimalUtils {
 
         to.setNeg(from1.isNeg());
 
+        /* ensure that always from1 > from2 (and intg1 >= intg2) */
         if (carry > 0) {
             Object tmp = from1;
             from1 = from2;
@@ -502,6 +546,7 @@ public class FastDecimalUtils {
             to.setNeg(!to.isNeg());
         }
 
+        // fix intg and frac error
         if (from1IntWords + toFracWords > DecimalTypeBase.WORDS_LEN) {
             if (from1IntWords > DecimalTypeBase.WORDS_LEN) {
                 from1IntWords = DecimalTypeBase.WORDS_LEN;
@@ -537,6 +582,7 @@ public class FastDecimalUtils {
         }
         carry = 0;
 
+        /* part 1 - max(frac) ... min (frac) */
         if (from1FracWords > from2FracWords) {
             bufPos1 = start1 + from1IntWords + from1FracWords;
             stop1 = start1 + from1IntWords + from2FracWords;
@@ -561,10 +607,12 @@ public class FastDecimalUtils {
             }
         }
 
+        /* part 2 - min(frac) ... intg2 */
         while (bufPos2 > start2) {
             carry = sub(to, --bufPos0, from1.getBuffValAt(--bufPos1), from2.getBuffValAt(--bufPos2), carry);
         }
 
+        /* part 3 - intg2 ... intg1 */
         while (carry > 0 && bufPos1 > start1) {
             carry = sub(to, --bufPos0, from1.getBuffValAt(--bufPos1), 0, carry);
         }
@@ -577,9 +625,31 @@ public class FastDecimalUtils {
         return new int[] {0, error};
     }
 
+    /**
+     * naive division algorithm (Knuth's Algorithm D in 4.3.1) -
+     * it's ok for short numbers
+     * <p>
+     * XXX if this library is to be used with huge numbers of thousands of
+     * digits, fast division must be implemented
+     *
+     * @param from1 dividend
+     * @param from2 divisor
+     * @param to quotient
+     * @param mod mod
+     * @param scaleIncr increment of fraction
+     * @return E_DEC_OK / E_DEC_TRUNCATED / E_DEC_OVERFLOW / E_DEC_DIV_ZERO
+     */
     protected static int doDiv(DecimalStructure from1, DecimalStructure from2, DecimalStructure to,
                                DecimalStructure mod, int scaleIncr) {
         int error = DecimalTypeBase.E_DEC_OK;
+
+        //    frac* - number of digits in fractional part of the number
+        //    prec* - precision of the number
+        //    intg* - number of digits in the integer part
+        //    buf* - buffer having the actual number
+        //    All variables ending with 0 - like frac0, intg0 etc are
+        //    for the final result. Similarly frac1, intg1 etc are for
+        //    the first number and frac2, intg2 etc are for the second number
 
         int from1Fractions = DecimalTypeBase.roundUp(from1.getFractions()) * DIG_PER_DEC1;
         int from1Precision = from1.getIntegers() + from1Fractions;
@@ -590,6 +660,8 @@ public class FastDecimalUtils {
             to = mod;
         }
 
+        // removing all the leading zeroes in the second number. Leading zeroes are
+        // added later to the result.
         int i = ((from2Precision - 1) % DIG_PER_DEC1) + 1;
         int bufPos2 = 0;
         while (from2Precision > 0 && from2.getBuffValAt(bufPos2) == 0) {
@@ -598,12 +670,17 @@ public class FastDecimalUtils {
             bufPos2++;
         }
         if (from2Precision <= 0) {
-
+            /* short-circuit everything: from2 == 0 */
             return DecimalTypeBase.E_DEC_DIV_ZERO;
         }
 
+        // Remove the remanining zeroes . For ex: for 0.000000000001
+        // the above while loop removes 9 zeroes and the result will have 0.0001
+        // these remaining zeroes are removed here
         from2Precision -= countLeadingZeros((from2Precision - 1) % DIG_PER_DEC1, from2.getBuffValAt(bufPos2));
 
+        // Do the same for the first number. Remove the leading zeroes.
+        // Check if the number is actually 0. Then remove the remaining zeroes.
         i = ((from1Precision - 1) % DIG_PER_DEC1) + 1;
         int bufPos1 = 0;
         while (from1Precision > 0 && from1.getBuffValAt(bufPos1) == 0) {
@@ -612,12 +689,13 @@ public class FastDecimalUtils {
             bufPos1++;
         }
         if (from1Precision <= 0) {
-
+            /* short-circuit everything: from1 == 0 */
             to.toZero();
             return DecimalTypeBase.E_DEC_OK;
         }
         from1Precision -= countLeadingZeros((from1Precision - 1) % DIG_PER_DEC1, from1.getBuffValAt(bufPos1));
 
+        // let's fix scaleIncr, taking into account frac1,frac2 increase
         scaleIncr -= (from1Fractions - from1.getFractions() + from2Fractions - from2.getFractions());
 
         if (scaleIncr < 0) {
@@ -638,13 +716,20 @@ public class FastDecimalUtils {
         }
 
         if (mod != null) {
-
+            // we're calculating N1 % N2. The result will have
+            // frac=max(frac1, frac2), as for subtraction intg=intg2
             to.setNeg(from1.isNeg());
             to.setFractions(Math.max(from1.getFractions(), from2.getFractions()));
         } else {
-
+            // we're calculating N1/N2. N1 is in the buf1, has prec1 digits
+            // N2 is in the buf2, has prec2 digits. Scales are frac1 and
+            // frac2 accordingly. Thus, the result will have
+            //         frac = ROUND_UP(frac1+frac2+scale_incr)
+            //      and
+            //         intg = (prec1-frac1) - (prec2-frac2) + 1
+            //         prec = intg+frac
             toFracWords = DecimalTypeBase.roundUp(from1Fractions + from2Fractions + scaleIncr);
-
+            // fix intg and frac error
             if (toIntWords + toFracWords > DecimalTypeBase.WORDS_LEN) {
                 if (toIntWords > DecimalTypeBase.WORDS_LEN) {
                     toIntWords = DecimalTypeBase.WORDS_LEN;
@@ -688,11 +773,19 @@ public class FastDecimalUtils {
         int start2 = bufPos2;
         int stop2 = bufPos2 + DecimalTypeBase.roundUp(from2Precision) - 1;
 
+        /* removing end zeroes */
         while (from2.getBuffValAt(stop2) == 0 && stop2 >= start2) {
             stop2--;
         }
         int len2 = stop2 - start2;
         stop2++;
+
+        //     calculating norm2 (normalized *start2) - we need *start2 to be large
+        //    (at least > DIG_BASE/2), but unlike Knuth's Alg. D we don't want to
+        //    normalize input numbers (as we don't make a copy of the divisor).
+        //    Thus we normalize first dec1 of buf2 only, and we'll normalize *start1
+        //    on the fly for the purpose of guesstimation only.
+        //    It's also faster, as we're saving on normalization of buf2
 
         long normFactor = DecimalTypeBase.DIG_BASE / (long) (from2.getBuffValAt(start2) + 1);
         int norm2 = (int) (normFactor * (long) (from2.getBuffValAt(start2)));
@@ -705,13 +798,14 @@ public class FastDecimalUtils {
             start1++;
         }
 
+        // main loop
         long guess;
         for (; toBufPos < stopTo; toBufPos++) {
-
+            // short-circuit, if possible
             if (dcarry == 0 && tmp1[start1] < from2.getBuffValAt(start2)) {
                 guess = 0;
             } else {
-
+                /* D3: make a guess */
                 long x = (long) (tmp1[start1]) + (long) (dcarry) * DecimalTypeBase.DIG_BASE;
                 long y = (long) (tmp1[start1 + 1]);
                 guess = (normFactor * x + normFactor * y / DecimalTypeBase.DIG_BASE) / (long) (norm2);
@@ -720,7 +814,7 @@ public class FastDecimalUtils {
                 }
 
                 if (len2 > 0) {
-
+                    // removed normalization here
                     if ((from2.getBuffValAt(start2 + 1) * guess
                         > (x - guess * (from2.getBuffValAt(start2))) * DecimalTypeBase.DIG_BASE + y)) {
                         guess--;
@@ -731,6 +825,7 @@ public class FastDecimalUtils {
                     }
                 }
 
+                /* D4: multiply and subtract */
                 bufPos2 = stop2;
                 bufPos1 = start1 + len2;
                 int carry;
@@ -749,8 +844,9 @@ public class FastDecimalUtils {
                     carry = 0;
                 }
 
+                /* D5: check the remainder */
                 if (carry > 0) {
-
+                    /* D6: correct the guess */
                     guess--;
                     bufPos2 = stop2;
                     bufPos1 = start1 + len2;
@@ -767,7 +863,11 @@ public class FastDecimalUtils {
             start1++;
         }
         if (mod != null) {
-
+            // now the result is in tmp1, it has
+            // intg=prec1-frac1  if there were no leading zeroes.
+            // If leading zeroes were present, they have been removed
+            // earlier. We need to now add them back to the result.
+            //  frac=max(frac1, frac2)=to->frac
             if (dcarry != 0) {
                 start1--;
                 tmp1[start1] = dcarry;
@@ -776,7 +876,7 @@ public class FastDecimalUtils {
 
             toIntegers = from1Precision - from1Fractions - start1 * DIG_PER_DEC1;
             if (toIntegers < 0) {
-
+                // If leading zeroes in the fractional part were earlier stripped
                 toIntWords = toIntegers / DIG_PER_DEC1;
             } else {
                 toIntWords = DecimalTypeBase.roundUp(toIntegers);
@@ -823,6 +923,7 @@ public class FastDecimalUtils {
             }
         }
 
+        // remove leading zeros
         int[] removedResults = to.removeLeadingZeros();
         toBufPos = removedResults[0];
         to.setIntegers(removedResults[1]);
@@ -840,6 +941,13 @@ public class FastDecimalUtils {
         return error;
     }
 
+    /**
+     * short-circuit from do sub.
+     *
+     * @param from1 compare from
+     * @param from2 compare to
+     * @return -1/0/1
+     */
     protected static int doCompare(DecimalStructure from1, DecimalStructure from2) {
         int from1IntWords = DecimalTypeBase.roundUp(from1.getIntegers());
         int from1FracWords = DecimalTypeBase.roundUp(from1.getFractions());
@@ -849,6 +957,7 @@ public class FastDecimalUtils {
         int bufPos1 = 0, bufPos2 = 0;
         int bufEndPos1 = from1IntWords, bufEndPos2 = from2IntWords;
 
+        // remove leading zeros
         if (from1.getBuffValAt(bufPos1) == 0) {
             while (bufPos1 < bufEndPos1 && from1.getBuffValAt(bufPos1) == 0) {
                 bufPos1++;
@@ -894,26 +1003,28 @@ public class FastDecimalUtils {
         }
 
         if ((carry > 0) == from1.isNeg()) {
-
+            // from2 is negative too.
             return 1;
         }
         return -1;
     }
 
     protected static int doShift(DecimalStructure dec, int shift) {
-
+        // index of first non zero digit (all indexes from 0)
         int beg = 0;
-
+        // index of position after last decimal digit
         int end = 0;
 
+        // index of digit position just after point
         int point = DecimalTypeBase.roundUp(dec.getIntegers()) * DIG_PER_DEC1;
-
+        // new point position
         int newPoint = point + shift;
 
+        // number of digits in result
         int integers, fractions;
-
+        // length of result and new fraction in big digits
         int newLen, newFracLen;
-
+        // return code
         int err = E_DEC_OK;
         int newFront;
 
@@ -945,20 +1056,22 @@ public class FastDecimalUtils {
             int diff;
 
             if (newFracLen < lack) {
-
+                // lack more then we have in fraction
                 return E_DEC_OVERFLOW;
             }
 
+            // cat off fraction part to allow new number to fit in our buffer
             err = E_DEC_TRUNCATED;
             newFracLen -= lack;
             diff = fractions - (newFracLen * DIG_PER_DEC1);
-
+            // Make rounding method as parameter?
             doDecimalRound(dec, dec, end - point - diff, HALF_UP);
             end -= diff;
             fractions = newFracLen * DIG_PER_DEC1;
 
             if (end <= beg) {
-
+                // we lost all digits (they will be shifted out of buffer), so we can
+                // just return 0
                 dec.toZero();
                 return E_DEC_TRUNCATED;
             }
@@ -968,15 +1081,17 @@ public class FastDecimalUtils {
             int lMiniShift, rMiniShift, miniShift;
             boolean doLeft;
 
+            // Calculate left/right shift to align decimal digits inside our bug digits correctly
             if (shift > 0) {
                 lMiniShift = shift % DIG_PER_DEC1;
                 rMiniShift = DIG_PER_DEC1 - lMiniShift;
-
+                // It is left shift so prefer left shift, but if we have not place from
+                // left, we have to have it from right, because we checked length of result
                 doLeft = lMiniShift <= beg;
             } else {
                 rMiniShift = (-shift) % DIG_PER_DEC1;
                 lMiniShift = DIG_PER_DEC1 - rMiniShift;
-
+                // see comment above
                 doLeft = !((WORDS_LEN * DIG_PER_DEC1 - end) >= rMiniShift);
             }
             if (doLeft) {
@@ -988,24 +1103,26 @@ public class FastDecimalUtils {
             }
             newPoint += miniShift;
 
+            // If number is shifted and correctly aligned in buffer we can finish
             if ((shift += miniShift) == 0 && (newPoint - integers) < DIG_PER_DEC1) {
                 dec.setIntegers(integers);
                 dec.setFractions(fractions, true);
-
+                // already shifted as it should be
                 return err;
             }
             beg += miniShift;
             end += miniShift;
         }
 
+        // if new 'decimal front' is in first digit, we do not need move digits
         if ((newFront = (newPoint - integers)) >= DIG_PER_DEC1 ||
             newFront < 0) {
-
+            // need to move digits
             int dShift;
             int toPos;
             int barierPos;
             if (newFront > 0) {
-
+                // move left
                 dShift = newFront / DIG_PER_DEC1;
                 toPos = roundUp(beg + 1) - 1 - dShift;
                 barierPos = roundUp(end) - 1 - dShift;
@@ -1018,7 +1135,7 @@ public class FastDecimalUtils {
                 }
                 dShift = -dShift;
             } else {
-
+                // move right
                 dShift = (1 - newFront) / DIG_PER_DEC1;
                 toPos = roundUp(end) - 1 + dShift;
                 barierPos = roundUp(beg + 1) - 1 + dShift;
@@ -1036,9 +1153,12 @@ public class FastDecimalUtils {
             newPoint += dShift;
         }
 
+        // If there are gaps then fill ren with 0.
+        // Only one of following 'for' loops will work because beg <= end
         beg = roundUp(beg + 1) - 1;
         end = roundUp(end) - 1;
 
+        // We don't want negative new_point below
         if (newPoint != 0) {
             newPoint = roundUp(newPoint) - 1;
         }
@@ -1057,6 +1177,15 @@ public class FastDecimalUtils {
         return err;
     }
 
+    /**
+     * Rounds the decimal to "scale" digits
+     *
+     * @param from decimal to round
+     * @param to result buffer. from == to is allowed
+     * @param scale to what position to round. can be negative.
+     * @param mode round to nearest even or truncate
+     * @return error code = E_DEC_OK / E_DEC_TRUNCATED
+     */
     protected static int doDecimalRound(DecimalStructure from, DecimalStructure to, int scale, DecimalRoundMod mode) {
         int frac0 = scale > 0 ? roundUp(scale) : (scale + 1) / DIG_PER_DEC1,
             frac1 = roundUp(from.getFractions()),
@@ -1086,6 +1215,8 @@ public class FastDecimalUtils {
         default:
         }
 
+        // For my_decimal we always use len == DECIMAL_BUFF_LENGTH == 9
+        // For internal testing here (ifdef MAIN) we always use len == 100/4
         if (frac0 + intg0 > len) {
             frac0 = len - intg0;
             scale = frac0 * DIG_PER_DEC1;
@@ -1174,7 +1305,12 @@ public class FastDecimalUtils {
 
             to.setBuffValAt(buf1Pos, POW_10[pos] * (x - y));
         }
-
+        // In case we're rounding e.g. 1.5e9 to 2.0e9, the decimal_digit_t's inside
+        // the buffer are as follows.
+        // Before <1, 5e8>
+        // After  <2, 5e8>
+        // Hence we need to set the 2nd field to 0.
+        // The same holds if we round 1.5e-9 to 2e-9.
         if (frac0 < frac1) {
             int bufPos = (scale == 0 && intg0 == 0) ? 1 : intg0 + frac0;
             int endPos = len;
@@ -1192,14 +1328,14 @@ public class FastDecimalUtils {
             }
 
             if (carry != 0) {
-
+                // shifting the number to create space for new digit
                 if (frac0 + intg0 >= len) {
                     frac0--;
                     scale = frac0 * DIG_PER_DEC1;
                     error = E_DEC_TRUNCATED;
                 }
                 for (buf1Pos = intg0 + Math.max(frac0, 0); buf1Pos > 0; buf1Pos--) {
-
+                    // Avoid out-of-bounds write.
                     if (buf1Pos < len) {
                         to.setBuffValAt(buf1Pos, to.getBuffValAt(buf1Pos - 1));
                     } else {
@@ -1208,7 +1344,7 @@ public class FastDecimalUtils {
 
                 }
                 to.setBuffValAt(buf1Pos, 1);
-
+                // We cannot have more than 9 * 9 = 81 digits.
                 if (to.getIntegers() < len * DIG_PER_DEC1) {
                     to.setIntegers(to.getIntegers() + 1);
                 } else {
@@ -1222,7 +1358,7 @@ public class FastDecimalUtils {
                     break;
                 }
                 if (buf1Pos-- == 0) {
-
+                    // making 'zero' with the proper scale
                     int p0 = frac0 + 1;
                     to.setIntegers(1);
                     to.setFractions(Math.max(scale, 0), true);
@@ -1235,6 +1371,7 @@ public class FastDecimalUtils {
             }
         }
 
+        // Here we  check 999.9 -> 1000 case when we need to increase intg
         int firstDig = to.getIntegers() % DIG_PER_DEC1;
         if (firstDig != 0 && (to.getBuffValAt(buf1Pos) >= POW_10[firstDig])) {
             to.setIntegers(to.getIntegers() + 1);
@@ -1247,6 +1384,14 @@ public class FastDecimalUtils {
         return error;
     }
 
+    /**
+     * Left shift for alignment of data in buffer
+     *
+     * @param dec decimal number which have to be shifted
+     * @param shift number of decimal digits on which it should be shifted
+     * @param beg bounds of decimal digits
+     * @param last bounds of decimal digits
+     */
     protected static void doMiniLeftShift(DecimalStructure dec, int shift, int beg, int last) {
         int fromPos = roundUp(beg + 1) - 1;
         int endPos = roundUp(last) - 1;
@@ -1264,6 +1409,14 @@ public class FastDecimalUtils {
         dec.setBuffValAt(fromPos, (dec.getBuffValAt(fromPos) % POW_10[cShift]) * POW_10[shift]);
     }
 
+    /**
+     * Right shift for alignment of data in buffer
+     *
+     * @param dec decimal number which have to be shifted
+     * @param shift number of decimal digits on which it should be shifted
+     * @param beg bounds of decimal digits
+     * @param last bounds of decimal digits
+     */
     protected static void doMiniRightShift(DecimalStructure dec, int shift, int beg, int last) {
         int fromPos = roundUp(last) - 1;
         int endPos = roundUp(beg + 1) - 1;
@@ -1280,6 +1433,12 @@ public class FastDecimalUtils {
         dec.setBuffValAt(fromPos, dec.getBuffValAt(fromPos) / POW_10[shift]);
     }
 
+    /**
+     * Return bounds of decimal digits in the number.
+     *
+     * @param from decimal value to check.
+     * @return array[0] = start, array[1] = end.
+     */
     static int[] digitsBounds(DecimalStructure from) {
         int startResult, endResult;
 
@@ -1288,17 +1447,19 @@ public class FastDecimalUtils {
         final int endPos = roundUp(from.getIntegers()) + roundUp(from.getFractions());
         int bufEndPos = endPos - 1;
 
+        // find non-zero digit from number begining
         while (bufBegPos < endPos && from.getBuffValAt(bufBegPos) == 0) {
             bufBegPos++;
         }
 
         if (bufBegPos >= endPos) {
-
+            // it is zero
             startResult = 0;
             endResult = 0;
             return new int[] {startResult, endResult};
         }
 
+        // find non-zero decimal digit from number beginning
         if (bufBegPos == 0 && from.getIntegers() != 0) {
             start = DIG_PER_DEC1 - (i = ((from.getIntegers() - 1) % DIG_PER_DEC1 + 1));
             i--;
@@ -1310,12 +1471,14 @@ public class FastDecimalUtils {
             start += countLeadingZeros(i, from.getBuffValAt(bufBegPos));
         }
 
+        // index of first decimal digit (from 0)
         startResult = start;
 
+        // find non-zero digit at the end
         while (bufEndPos > bufBegPos && from.getBuffValAt(bufEndPos) == 0) {
             bufEndPos--;
         }
-
+        // find non-zero decimal digit from the end
         if (bufEndPos == endPos - 1 && from.getFractions() != 0) {
             stop = bufEndPos * DIG_PER_DEC1 +
                 (i = ((from.getFractions() - 1) % DIG_PER_DEC1 + 1));
@@ -1326,6 +1489,7 @@ public class FastDecimalUtils {
         }
         stop -= countTrailingZeros(i, from.getBuffValAt(bufEndPos));
 
+        // index of position after last decimal digit (from 0)
         endResult = stop;
         return new int[] {startResult, endResult};
     }
@@ -1427,52 +1591,52 @@ public class FastDecimalUtils {
             if ((val % 1) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 1:
             if ((val % 10) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 2:
             if ((val % 100) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 3:
             if ((val % 1000) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 4:
             if ((val % 10000) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 5:
             if ((val % 100000) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 6:
             if ((val % 1000000) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 7:
             if ((val % 10000000) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 8:
             if ((val % 100000000) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 9:
             if ((val % 1000000000) != 0) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         default:
         }
         return ret;
@@ -1485,52 +1649,52 @@ public class FastDecimalUtils {
             if (val >= 1000000000) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 8:
             if (val >= 100000000) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 7:
             if (val >= 10000000) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 6:
             if (val >= 1000000) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 5:
             if (val >= 100000) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 4:
             if (val >= 10000) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 3:
             if (val >= 1000) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 2:
             if (val >= 100) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 1:
             if (val >= 10) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         case 0:
             if (val >= 1) {
                 break;
             }
-            ++ret;
+            ++ret;  // Fall through.
         default:
         }
         return ret;

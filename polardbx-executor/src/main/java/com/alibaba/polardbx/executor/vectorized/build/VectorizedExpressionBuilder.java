@@ -18,9 +18,9 @@ package com.alibaba.polardbx.executor.vectorized.build;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
@@ -48,7 +48,7 @@ public class VectorizedExpressionBuilder {
     /**
      * For FilterExec / VectorizedFilterExec, we must ensure the root of the node is in type of BIGINT / BOOLEAN.
      */
-    private static RexNode rewriteRoot(RexNode rexNode, boolean isFilterExec) {
+    public static RexNode rewriteRoot(RexNode rexNode, boolean isFilterExec) {
         if (isFilterExec && !SqlTypeUtil.isNumeric(rexNode.getType()) && !SqlTypeUtil.isBoolean(rexNode.getType())) {
             return REX_BUILDER.makeCall(
                 FACTORY.createSqlType(SqlTypeName.BIGINT),

@@ -110,6 +110,11 @@ public class MetaDbUtil {
         return executeBatch(updateSql, paramsBatch, connection);
     }
 
+    public static int truncate(String truncateSql, Connection connection) throws SQLException {
+        validate(truncateSql);
+        return execute(truncateSql, null, connection);
+    }
+
     public static int delete(String deleteSql, Connection connection) throws SQLException {
         validate(deleteSql);
         return execute(deleteSql, null, connection);

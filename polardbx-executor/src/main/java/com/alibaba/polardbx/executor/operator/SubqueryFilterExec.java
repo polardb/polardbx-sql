@@ -3,7 +3,7 @@
 //import com.google.common.base.Preconditions;
 //import com.google.common.util.concurrent.ListenableFuture;
 //import GeneralUtil;
-//import com.alibaba.polardbx.optimizer.chunk.Chunk;
+//import com.alibaba.polardbx.executor.chunk.Chunk;
 //import com.alibaba.polardbx.executor.operator.util.BloomFilterExpression;
 //import com.alibaba.polardbx.executor.utils.ConditionUtils;
 //import com.alibaba.polardbx.executor.utils.SubqueryApply;

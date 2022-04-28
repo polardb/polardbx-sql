@@ -22,7 +22,9 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.executor.vectorized.BenchmarkVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.BuiltInFunctionVectorizedExpression;
@@ -76,12 +78,15 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static org.apache.calcite.sql.type.SqlTypeName.BIGINT;
 import static org.apache.calcite.sql.type.SqlTypeName.BIGINT_UNSIGNED;
@@ -136,15 +141,21 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
     private final Map<RexCall, RexCall> callsInFilterMode = new IdentityHashMap<>();
     private final ExecutionContext executionContext;
     private final List<DataType<?>> outputDataTypes = new ArrayList<>(64);
+    private final boolean fallback;
+    private final boolean enableCSE;
     private int currentOutputIndex;
 
     public Rex2VectorizedExpressionVisitor(ExecutionContext executionContext, int startIndex) {
         super(false);
         this.executionContext = executionContext;
         this.currentOutputIndex = startIndex;
+        this.fallback =
+            !executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_EXPRESSION_VECTORIZATION);
+        this.enableCSE =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE);
     }
 
-    private RexCall rewrite(RexCall call) {
+    private RexCall rewrite(RexCall call, boolean isScalar) {
         Preconditions.checkNotNull(call);
         if (TddlOperatorTable.CONTROL_FLOW_VECTORIZED_OPERATORS.contains(call.op)) {
             return rewriteControlFlowFunction(call);
@@ -198,9 +209,247 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
                 return newCall;
             }
 
+        } else if (!isScalar && !fallback && call.op == TddlOperatorTable.IN) {
+            List<RexNode> operands = call.getOperands();
+            List<RexNode> newOperandList = new ArrayList<>();
+            RexNode left = operands.get(0);
+            RexNode right = operands.get(1);
+            newOperandList.add(left);
+            if (right instanceof RexCall
+                && ((RexCall) right).op == TddlOperatorTable.ROW
+                && RexUtil.isConstant(right)) {
+                for (RexNode operand : ((RexCall) right).getOperands()) {
+                    newOperandList.add(operand);
+                }
+            }
+            RexCall newCall = (RexCall) REX_BUILDER.makeCall(
+                call.getType(),
+                call.op,
+                newOperandList
+            );
+            return newCall;
+        } else if (enableCSE && call.op == TddlOperatorTable.OR) {
+            return rewriteOr(call);
+        } else if (enableCSE && call.op == TddlOperatorTable.AND) {
+            return rewriteAnd(call);
         }
         return call;
     }
+
+    private RexCall rewriteOr(RexCall call) {
+        Preconditions.checkArgument(call.op == TddlOperatorTable.OR);
+        if (isDNF(call)) {
+            call = refineAndFromOr(call);
+        }
+        boolean needMerge = needMergeBetweenFromOr(call);
+        if (needMerge) {
+            call = mergeBetweenFromOr(call);
+        }
+        return call;
+    }
+    private boolean isDNF(RexCall call) {
+        // check if or-expression is DNF
+        return call.op == TddlOperatorTable.OR
+            && call.getOperands().size() > 1
+            && call.getOperands().stream()
+            .allMatch(child -> child instanceof RexCall && ((RexCall) child).op == TddlOperatorTable.AND);
+    }
+    private boolean needMergeBetweenFromOr(RexCall call) {
+        return call.op == TddlOperatorTable.OR
+            && call.getOperands().size() == 3
+            && call.getOperands().stream()
+            .allMatch(
+                child ->
+                    child instanceof RexCall
+                        && ((RexCall) child).op == TddlOperatorTable.BETWEEN
+                        && ((RexCall) child).getOperands().size() == 3
+                        && ((RexCall) child).getOperands().get(0) instanceof RexInputRef
+                        && ((RexCall) child).getOperands().get(1).getType().getSqlTypeName() == BIGINT
+                        && ((RexCall) child).getOperands().get(2).getType().getSqlTypeName() == BIGINT
+                        && ((RexCall) child).getOperands().get(1).getClass() == ((RexCall) child).getOperands()
+                        .get(2).getClass()
+            );
+    }
+    private RexCall mergeBetweenFromOr(RexCall call) {
+        RexInputRef inputRef = null;
+        long lowerBound = Long.MAX_VALUE;
+        long upperBound = Long.MIN_VALUE;
+        for (int i = 0; i < call.getOperands().size(); i++) {
+            RexCall child = (RexCall) call.getOperands().get(i);
+            RexInputRef current = (RexInputRef) child.getOperands().get(0);
+            if (inputRef == null) {
+                inputRef = current;
+            } else if (current.getIndex() != inputRef.getIndex()) {
+                return call;
+            }
+            RexNode operandValue1 = child.getOperands().get(1);
+            RexNode operandValue2 = child.getOperands().get(2);
+            if (operandValue1 instanceof RexDynamicParam) {
+                lowerBound =
+                    Math.min(lowerBound, DataTypes.LongType.convertFrom(extractValue((RexDynamicParam) operandValue1)));
+                upperBound =
+                    Math.max(upperBound, DataTypes.LongType.convertFrom(extractValue((RexDynamicParam) operandValue2)));
+            } else if (operandValue2 instanceof RexLiteral) {
+                lowerBound =
+                    Math.min(lowerBound, DataTypes.LongType.convertFrom(((RexLiteral) operandValue1).getValue3()));
+                upperBound =
+                    Math.max(upperBound, DataTypes.LongType.convertFrom(((RexLiteral) operandValue2).getValue3()));
+            } else {
+                return call;
+            }
+        }
+        RexCall newBetween = (RexCall) REX_BUILDER.makeCall(
+            TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT),
+            TddlOperatorTable.BETWEEN,
+            ImmutableList.of(
+                // input ref
+                inputRef,
+                // lower value
+                REX_BUILDER.makeLiteral(lowerBound, TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT), BIGINT),
+                // upper value
+                REX_BUILDER.makeLiteral(upperBound, TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT), BIGINT)
+            )
+        );
+        return newBetween;
+    }
+    private RexCall refineAndFromOr(RexCall call) {
+        // collect all the expression node
+        Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
+        final int andCount = call.getOperands().size();
+        Set<CommonExpressionNode>[] nodeSets = new Set[andCount];
+        for (int i = 0; i < andCount; i++) {
+            nodeSets[i] = new HashSet<>();
+            RexCall andExpression = (RexCall) call.getOperands().get(i);
+            andExpression.getOperands().stream()
+                .map(e -> new CommonExpressionNode(e, params))
+                .forEach(nodeSets[i]::add);
+        }
+        // find intersection of all and-expressions
+        Stream<CommonExpressionNode> stream = nodeSets[0].stream();
+        for (int i = 1; i < andCount; i++) {
+            stream = stream.filter(nodeSets[i]::contains);
+        }
+        Set<CommonExpressionNode> intersection = stream.collect(Collectors.toSet());
+        if (intersection.isEmpty()) {
+            return call;
+        }
+        // remove node from intersection for each and-expression,
+        // and then construct new or-expression
+        List<RexNode> newOrExpressionOperands = new ArrayList<>();
+        for (int i = 0; i < andCount; i++) {
+            RexCall andExpression = (RexCall) call.getOperands().get(i);
+            List<RexNode> newOperandList = nodeSets[i].stream().filter(e -> !intersection.contains(e))
+                .map(CommonExpressionNode::getRexNode).collect(Collectors.toList());
+            RexCall newAndExpression = (RexCall) REX_BUILDER.makeCall(
+                andExpression.type,
+                andExpression.op,
+                newOperandList
+            );
+            // merge between from and-expression
+            newAndExpression = rewriteAnd(newAndExpression);
+            newOrExpressionOperands.add(newAndExpression);
+        }
+        RexCall newOrExpression = (RexCall) REX_BUILDER.makeCall(
+            TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT),
+            TddlOperatorTable.OR,
+            newOrExpressionOperands
+        );
+        // merge between from or-expression
+        if (needMergeBetweenFromOr(newOrExpression)) {
+            newOrExpression = mergeBetweenFromOr(newOrExpression);
+        }
+        // construct new and-expression.
+        List<RexNode> refinedAnd =
+            intersection.stream()
+                .map(commonExpressionNode -> commonExpressionNode.getRexNode())
+                .collect(Collectors.toList());
+        RexCall newCall = (RexCall) REX_BUILDER.makeCall(
+            TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT),
+            TddlOperatorTable.AND,
+            ImmutableList.<RexNode>builder().addAll(refinedAnd).add(newOrExpression).build()
+        );
+        return newCall;
+    }
+    // merge (>= and <=) to between
+    private RexCall rewriteAnd(RexCall call) {
+        Preconditions.checkArgument(call.op == TddlOperatorTable.AND);
+        if (call.getOperands().size() < 2) {
+            return call;
+        }
+        Set<Pair<Integer, Integer>> betweenPairSet = new HashSet<>();
+        // collect lower && upper bounds call
+        boolean[] unreachable = new boolean[call.getOperands().size()];
+        boolean needMerge = false;
+        for (int i = 0; i < call.getOperands().size(); i++) {
+            for (int j = i + 1; j < call.getOperands().size(); j++) {
+                if (call.getOperands().get(i) instanceof RexCall && call.getOperands().get(j) instanceof RexCall) {
+                    RexCall call1 = (RexCall) call.getOperands().get(i);
+                    RexCall call2 = (RexCall) call.getOperands().get(j);
+                    if (!unreachable[i]
+                        && !unreachable[j]
+                        && call1.getOperands().size() == call2.getOperands().size()
+                        && call1.getOperands().size() == 2
+                        && call1.getOperands().get(0) instanceof RexInputRef
+                        && call2.getOperands().get(0) instanceof RexInputRef
+                        && (call1.getOperands().get(1) instanceof RexLiteral || call1.getOperands()
+                        .get(1) instanceof RexDynamicParam)
+                        && (call2.getOperands().get(1) instanceof RexLiteral || call2.getOperands()
+                        .get(1) instanceof RexDynamicParam)
+                        && ((RexInputRef) call1.getOperands().get(0)).getIndex() == ((RexInputRef) call2.getOperands()
+                        .get(0)).getIndex()
+                    ) {
+                        if (call1.op == TddlOperatorTable.GREATER_THAN_OR_EQUAL
+                            && call2.op == TddlOperatorTable.LESS_THAN_OR_EQUAL) {
+                            betweenPairSet.add(Pair.of(i, j));
+                            unreachable[i] = true;
+                            unreachable[j] = true;
+                            needMerge = true;
+                        } else if (call2.op == TddlOperatorTable.GREATER_THAN_OR_EQUAL
+                            && call1.op == TddlOperatorTable.LESS_THAN_OR_EQUAL) {
+                            betweenPairSet.add(Pair.of(j, i));
+                            unreachable[i] = true;
+                            unreachable[j] = true;
+                            needMerge = true;
+                        }
+                    }
+                }
+            }
+        }
+        if (!needMerge) {
+            return call;
+        }
+        List<RexNode> reachableOperands = IntStream.range(0, call.getOperands().size())
+            .filter(i -> !unreachable[i]).mapToObj(i -> call.getOperands().get(i)).collect(Collectors.toList());
+        List<RexNode> betweenCalls = betweenPairSet.stream()
+            .map(pair -> {
+                RexCall lower = (RexCall) call.getOperands().get(pair.getKey());
+                RexCall upper = (RexCall) call.getOperands().get(pair.getValue());
+                RexCall newBetween = (RexCall) REX_BUILDER.makeCall(
+                    TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT),
+                    TddlOperatorTable.BETWEEN,
+                    ImmutableList.of(
+                        lower.getOperands().get(0), // input ref
+                        lower.getOperands().get(1), // lower value
+                        upper.getOperands().get(1) // upper value
+                    )
+                );
+                return newBetween;
+            })
+            .collect(Collectors.toList());
+        RexCall newAnd;
+        if (reachableOperands.isEmpty() && betweenCalls.size() == 1) {
+            // and-expression has only one operand
+            return (RexCall) betweenCalls.get(0);
+        } else {
+            newAnd = (RexCall) REX_BUILDER.makeCall(
+                TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT),
+                TddlOperatorTable.AND,
+                ImmutableList.<RexNode>builder().addAll(betweenCalls).addAll(reachableOperands).build()
+            );
+        }
+        return newAnd;
+    }
+
 
     private RexCall rewriteControlFlowFunction(RexCall rexCall) {
         final List<RexNode> exprList = rexCall.getOperands();
@@ -344,7 +593,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
 
     @Override
     public VectorizedExpression visitCall(RexCall call) {
-        if (!isSpecialFunction(call)) {
+        if (!fallback && !isSpecialFunction(call)) {
             Optional<VectorizedExpression> expression = createVectorizedExpression(call);
             if (expression.isPresent()) {
                 return expression.get();
@@ -366,7 +615,14 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             throw new IllegalStateException("Subquery not supported yet!");
         }
 
-        Object value = Optional.ofNullable(executionContext.getParams())
+        Object value = extractValue(dynamicParam);
+
+        DataType<?> dataType = DataTypeUtil.calciteToDrdsType(dynamicParam.getType());
+        return new LiteralVectorizedExpression(dataType, value, addOutput(dataType));
+    }
+
+    private Object extractValue(RexDynamicParam dynamicParam) {
+        return Optional.ofNullable(executionContext.getParams())
             .map(Parameters::getCurrentParameter)
             .flatMap(m -> Optional.ofNullable(m.get(dynamicParam.getIndex() + 1)))
             .map(ParameterContext::getValue)
@@ -377,13 +633,11 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
                     return v;
                 }
             }).orElse(null);
-
-        DataType<?> dataType = DataTypeUtil.calciteToDrdsType(dynamicParam.getType());
-        return new LiteralVectorizedExpression(dataType, value, addOutput(dataType));
     }
 
+
     private VectorizedExpression createGeneralVectorizedExpression(RexCall call) {
-        call = rewrite(call);
+        call = rewrite(call, true);
 
         String functionName = call.getOperator().getName();
         if (call.getKind().equals(SqlKind.MINUS_PREFIX)) {
@@ -421,7 +675,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
         Preconditions.checkNotNull(call);
         Optional<ExpressionConstructor<?>> constructor;
         // rewrite the RexNode Tree.
-        call = rewrite(call);
+        call = rewrite(call, false);
 
         if (SPECIAL_VECTORIZED_EXPRESSION_MAPPING.containsKey(call.op)) {
             // special class binding.
@@ -449,6 +703,30 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
 
             VectorizedExpression[] children =
                 call.getOperands().stream().map(node -> node.accept(this)).toArray(VectorizedExpression[]::new);
+
+            if (!isInFilterMode) {
+                boolean reused = false;
+                // reuse output vector
+                if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_REUSE_VECTOR)
+                    && dataType instanceof DecimalType) {
+                    for (int i = 0; i < children.length; i++) {
+                        RexNode operand = call.getOperands().get(i);
+                        VectorizedExpression child = children[i];
+                        if (operand instanceof RexCall
+                            && getOutputDataType((RexCall) operand) instanceof DecimalType) {
+                            //         decimal call
+                            //       /             \
+                            // decimal call      other call
+                            outputIndex = child.getOutputIndex();
+                            reused = true;
+                            break;
+                        }
+                    }
+                }
+                if (!reused) {
+                    outputIndex = addOutput(dataType);
+                }
+            }
 
             try {
                 VectorizedExpression vecExpr = constructor.get().build(dataType, outputIndex, children);

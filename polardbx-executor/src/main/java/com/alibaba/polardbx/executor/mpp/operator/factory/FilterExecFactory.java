@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.FilterExec;
 import com.alibaba.polardbx.executor.operator.VectorizedFilterExec;
@@ -24,7 +25,6 @@ import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterConsum
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;

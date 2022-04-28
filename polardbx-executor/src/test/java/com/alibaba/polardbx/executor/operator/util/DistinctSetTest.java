@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.IntegerBlock;
-import com.alibaba.polardbx.optimizer.chunk.StringBlock;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.StringBlock;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.server.handler;
 
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseClear;
+import com.alibaba.polardbx.server.response.ClearOSSCache;
 import com.alibaba.polardbx.server.response.ClearPlanCache;
 import com.alibaba.polardbx.server.response.ClearSQLSlow;
 import com.alibaba.polardbx.server.util.LogUtils;
@@ -38,6 +39,9 @@ public final class ClearHandler {
                 break;
             case ServerParseClear.PLANCACHE:
                 ClearPlanCache.response(c, hasMore);
+                break;
+            case ServerParseClear.OSSCACHE:
+                ClearOSSCache.response(c, hasMore);
                 break;
             default:
                 c.execute(stmt, hasMore);

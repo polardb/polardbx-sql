@@ -16,11 +16,12 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkBuilder;
-import com.alibaba.polardbx.optimizer.chunk.ChunkConverter;
-import com.alibaba.polardbx.optimizer.chunk.Converters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
+import com.alibaba.polardbx.executor.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.mpp.operator.PartitionedOutputCollector.HashBucketFunction;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
@@ -85,19 +86,28 @@ public class PartitioningExchanger extends LocalExchanger {
             partitionAssignments[partition].add(position);
         }
 
+        final boolean enableDelay =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE);
+
         // build a page for each partition
         Map<Integer, Chunk> partitionChunks = new HashMap<>();
         for (int partition = 0; partition < executors.size(); partition++) {
             List<Integer> positions = partitionAssignments[partition];
             if (!positions.isEmpty()) {
                 ChunkBuilder builder = new ChunkBuilder(types, positions.size(), context);
-                for (Integer pos : positions) {
-                    builder.declarePosition();
-                    for (int i = 0; i < chunk.getBlockCount(); i++) {
-                        builder.appendTo(chunk.getBlock(i), i, pos);
+                Chunk partitionedChunk;
+                if (enableDelay) {
+                    partitionedChunk = builder.fromPartition(positions, chunk);
+                } else {
+                    for (Integer pos : positions) {
+                        builder.declarePosition();
+                        for (int i = 0; i < chunk.getBlockCount(); i++) {
+                            builder.appendTo(chunk.getBlock(i), i, pos);
+                        }
                     }
+                    partitionedChunk = builder.build();
                 }
-                partitionChunks.put(partition, builder.build());
+                partitionChunks.put(partition, partitionedChunk);
             }
         }
         if (asyncConsume) {

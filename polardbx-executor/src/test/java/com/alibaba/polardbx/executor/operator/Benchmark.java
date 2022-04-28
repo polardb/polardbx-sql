@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.optimizer.chunk.LongBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;

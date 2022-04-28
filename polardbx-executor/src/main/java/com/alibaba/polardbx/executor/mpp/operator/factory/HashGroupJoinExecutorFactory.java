@@ -21,7 +21,7 @@ import com.alibaba.polardbx.executor.operator.HashGroupJoinExec;
 import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinUtils;

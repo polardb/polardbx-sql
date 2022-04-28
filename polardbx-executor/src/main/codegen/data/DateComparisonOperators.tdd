@@ -1,0 +1,52 @@
+{
+    operators: [
+        {
+            classHeader: "GT",
+            functionNames: "\"GT\",\">\"",
+            op: ">",
+            types: [
+                {constType: "Char"}
+            ]
+        },
+        {
+            classHeader: "GE",
+            functionNames: "\"GE\",\">=\"",
+            op: ">=",
+            types: [
+                {constType: "Char"}
+            ]
+        },
+        {
+            classHeader: "LT",
+            functionNames: "\"LT\",\"<\"",
+            op: "<",
+            types: [
+                {constType: "Char"}
+            ]
+        },
+        {
+            classHeader: "LE",
+            functionNames: "\"LE\",\"<=\"",
+            op: "<=",
+            types: [
+                {constType: "Char"}
+            ]
+        },
+        {
+            classHeader: "EQ",
+            functionNames: "\"EQ\",\"=\"",
+            op: "==",
+            types: [
+                {constType: "Char"}
+            ]
+        },
+        {
+            classHeader: "NE",
+            functionNames: "\"NE\",\"!=\",\"<>\"",
+            op: "!=",
+            types: [
+                {constType: "Char"}
+            ]
+        }
+    ]
+}

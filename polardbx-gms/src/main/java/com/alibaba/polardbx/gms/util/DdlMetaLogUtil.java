@@ -42,6 +42,8 @@ public class DdlMetaLogUtil {
         ddlTables.add(GmsSystemTables.TABLES);
         ddlTables.add(GmsSystemTables.TABLES_EXT);
         ddlTables.add(GmsSystemTables.VIEWS);
+        ddlTables.add(GmsSystemTables.FILES);
+        ddlTables.add(GmsSystemTables.COLUMN_METAS);
         ddlTables.add(GmsSystemTables.COLUMNS);
         ddlTables.add(GmsSystemTables.INDEXES);
         ddlTables.add(GmsSystemTables.KEY_COLUMN_USAGE);

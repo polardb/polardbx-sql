@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.executor.vectorized;
 
-import com.alibaba.polardbx.optimizer.chunk.LongBlock;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang.StringUtils;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class VectorizedExpressionUtils {
     /**
@@ -285,6 +288,22 @@ public class VectorizedExpressionUtils {
                 .append(expression.getOutputIndex()).append(" }\n");
 
             return builder.toString();
+        }
+    }
+
+    public static List<Integer> getInputIndex(VectorizedExpression vectorizedExpression) {
+        List<Integer> inputIndex = new ArrayList<>();
+        getInputIndex(vectorizedExpression, inputIndex);
+        return inputIndex;
+    }
+    public static void getInputIndex(VectorizedExpression vectorizedExpression, List<Integer> inputIndex) {
+        VectorizedExpression[] children = vectorizedExpression.getChildren();
+        if (children == null || children.length == 0) {
+            inputIndex.add(vectorizedExpression.getOutputIndex());
+            return;
+        }
+        for (int i = 0; i < children.length; i++) {
+            getInputIndex(children[i], inputIndex);
         }
     }
 }

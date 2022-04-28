@@ -55,6 +55,7 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
         if (partitionInfo == null) {
             partitionInfo = buildPartitionInfo();
         }
+        this.tableTopology = PartitionInfoUtil.buildTargetTablesFromPartitionInfo(partitionInfo);
         return partitionInfo;
     }
 

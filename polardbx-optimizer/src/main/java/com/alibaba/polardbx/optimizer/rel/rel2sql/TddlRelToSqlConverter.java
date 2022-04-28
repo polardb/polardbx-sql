@@ -29,13 +29,16 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.rel2sql.RelToSqlConverter;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
@@ -64,7 +67,27 @@ public class TddlRelToSqlConverter extends RelToSqlConverter {
             SqlParserPos.ZERO,
             null,
             e.getIndexNode());
-        Result result = result(identifier, ImmutableList.of(Clause.FROM), e, null);
+
+        Result result;
+        final RexNode flashback = e.getFlashback();
+        if (flashback != null) {
+            // table_factor: {
+            //    tbl_name [{PARTITION (partition_names) | AS OF expr}]
+            //        [[AS] alias] [index_hint_list]
+            //  | table_subquery [AS] alias
+            //  | ( table_references )
+            //}
+            // MySQL only support syntax showed above.
+            // So that we must put AS OF in front of alias and index_hint_list behind alias
+            final SqlIdentifier tsIdentifier =
+                new SqlIdentifier(identifier.names, null, SqlParserPos.ZERO, null, identifier.indexNode,
+                    identifier.partitions,
+                    new SqlDynamicParam(((RexDynamicParam) flashback).getIndex(), SqlTypeName.TIMESTAMP,
+                        SqlParserPos.ZERO));
+            result = result(tsIdentifier, ImmutableList.of(Clause.FROM), e, null);
+        } else {
+            result = result(identifier, ImmutableList.of(Clause.FROM), e, null);
+        }
 
         final List<SqlNode> selectList = new ArrayList<>();
 

@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.utils;
 
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.utils.memory.ObjectSizeUtils;
-import com.alibaba.polardbx.optimizer.chunk.ChunkUtil;
+import com.alibaba.polardbx.executor.chunk.ChunkUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;

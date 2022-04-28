@@ -21,6 +21,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
@@ -76,6 +77,18 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
 
     public MySqlCreateTableStatement() {
         super(DbType.mysql);
+    }
+
+    public void setEngine(String engineName) {
+        if (this.tableOptions != null) {
+            for (SQLAssignItem item : this.tableOptions) {
+                if ("ENGINE".equalsIgnoreCase(item.getTarget().toString())) {
+                    SQLCharExpr charExpr = new SQLCharExpr(engineName);
+                    item.setValue(charExpr);
+                    break;
+                }
+            }
+        }
     }
 
     public List<SQLCommentHint> getHints() {

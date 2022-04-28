@@ -16,15 +16,17 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.*;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Long2DecimalSum;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Sum0;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;

@@ -92,13 +92,11 @@
     select avg(id) ,name from tddl_users u group by name order by avg(id)
 
   plan: |
-
-    Project(avg(id)="avg(id)", name="name")
-      LogicalSort(sort="avg(id) ASC")
-        Project(name="name", avg(id)="$f1 / $f2")
-          LogicalAgg(group="name", $f1="SUM($f1)", $f2="SUM($f2)")
-            LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `name`, SUM(`id`) AS `$f1`, COUNT(`id`) AS `$f2` FROM `tddl_users` AS `tddl_users` GROUP BY `name`")
-
+    project(avg(id)="avg(id)", name="name")
+      logicalsort(sort="avg(id) asc")
+        project(name="name", avg(id)="$f1 / $f2")
+          logicalagg(group="name", $f1="sum($f1)", $f2="sum($f2)")
+            logicalview(tables="[0000-0003].tddl_users_[00-11]", shardcount=12, sql="select `name`, sum(`id`) as `$f1`, count(*) as `$f2` from `tddl_users` as `tddl_users` group by `name`")
 - sql: |
     SELECT * FROM tddl_users as u join tddl_address as a on u.id=a.user_id
 
@@ -144,11 +142,9 @@
     select avg(id)  from tddl_users u
 
   plan: |
-
-    Project(avg(id)="$f0 / $f1")
-      LogicalAgg($f0="SUM($f0)", $f1="SUM($f1)")
-        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT SUM(`id`) AS `$f0`, COUNT(`id`) AS `$f1` FROM `tddl_users` AS `tddl_users`")
-
+    project(avg(id)="$f0 / $f1")
+      logicalagg($f0="sum($f0)", $f1="sum($f1)")
+        logicalview(tables="[0000-0003].tddl_users_[00-11]", shardcount=12, sql="select sum(`id`) as `$f0`, count(*) as `$f1` from `tddl_users` as `tddl_users`")
 - sql: |
     select count(*) from tddl_users u group by name;
 
@@ -178,10 +174,9 @@
     select avg(id) ,name from tddl_users u group by name
 
   plan: |
-
-    Project(avg(id)="$f1 / $f2", name="name")
-      LogicalAgg(group="name", $f1="SUM($f1)", $f2="SUM($f2)")
-        LogicalView(tables="[0000-0003].tddl_users_[00-11]", shardCount=12, sql="SELECT `name`, SUM(`id`) AS `$f1`, COUNT(`id`) AS `$f2` FROM `tddl_users` AS `tddl_users` GROUP BY `name`")
+    project(avg(id)="$f1 / $f2", name="name")
+      logicalagg(group="name", $f1="sum($f1)", $f2="sum($f2)")
+        logicalview(tables="[0000-0003].tddl_users_[00-11]", shardcount=12, sql="select `name`, sum(`id`) as `$f1`, count(*) as `$f2` from `tddl_users` as `tddl_users` group by `name`")
 
 - sql: |
     select count(*) from tddl_users u;

@@ -51,7 +51,7 @@
   plan: |
     hashagg(count(a.id)="sum(count(a.id))")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select count(`apple`.`id`) as `count(a.id)` from `apple` as `apple` inner join (`boy` as `boy` inner join `car` as `car` on ((`boy`.`id` = `car`.`id`) and (`boy`.`name` <> `car`.`name`))) on (((`apple`.`id` = `car`.`id`) and (`apple`.`id` = `boy`.`id`)) and (`apple`.`size` < `boy`.`height`)) where ((`boy`.`money` > 8) and (`apple`.`pick_date` < 15))")
+        logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select count(*) as `count(a.id)` from `apple` as `apple` inner join (`boy` as `boy` inner join `car` as `car` on ((`boy`.`id` = `car`.`id`) and (`boy`.`name` <> `car`.`name`))) on (((`apple`.`id` = `car`.`id`) and (`apple`.`id` = `boy`.`id`)) and (`apple`.`size` < `boy`.`height`)) where ((`boy`.`money` > 8) and (`apple`.`pick_date` < 15))")
 
 - sql: |
     select /*+TDDL:cmd_extra(enable_push_join=true enable_lv_subquery_unwrap=true)*/ a.name

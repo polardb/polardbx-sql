@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.AggHashMap;
 import com.alibaba.polardbx.executor.operator.util.AggResultIterator;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
 

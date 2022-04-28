@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.executor.operator.util;
 
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilders;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.BlockBuilders;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 

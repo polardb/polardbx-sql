@@ -45,6 +45,13 @@ public class NullableDecimalGroupState implements GroupState {
         this.decimals = new ObjectWithClassSegmentArrayList(capacity, Decimal.class);
     }
 
+    public NullableDecimalGroupState(
+        BooleanSegmentArrayList valueIsNull,
+        ObjectWithClassSegmentArrayList<Decimal> decimals) {
+        this.valueIsNull = valueIsNull;
+        this.decimals = decimals;
+    }
+
     public void set(int groupId, Decimal value) {
         if (value == null) {
             valueIsNull.set(groupId, true);

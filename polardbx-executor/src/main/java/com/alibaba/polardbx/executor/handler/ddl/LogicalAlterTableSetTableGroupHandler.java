@@ -78,7 +78,7 @@ public class LogicalAlterTableSetTableGroupHandler extends LogicalCommonDdlHandl
         TableValidator
             .validateTableExistence(executionContext.getSchemaName(), logicalDdlPlan.relDdl.getTableName().toString(),
                 executionContext);
-        return false;
+        return super.validatePlan(logicalDdlPlan, executionContext);
     }
 
 }

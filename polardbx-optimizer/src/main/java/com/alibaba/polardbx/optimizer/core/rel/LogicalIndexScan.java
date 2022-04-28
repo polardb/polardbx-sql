@@ -21,6 +21,7 @@ import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect.LockMode;
 
@@ -30,10 +31,12 @@ import org.apache.calcite.sql.SqlSelect.LockMode;
 public class LogicalIndexScan extends LogicalView {
     public LogicalIndexScan(RelOptTable indexTable, TableScan primaryScan, LockMode lockMode) {
         super(primaryScan, indexTable, primaryScan.getHints(), lockMode, null);
+        this.flashback = primaryScan.getFlashback();
     }
 
-    public LogicalIndexScan(RelNode rel, RelOptTable table, SqlNodeList hints, LockMode lockMode) {
+    public LogicalIndexScan(RelNode rel, RelOptTable table, SqlNodeList hints, LockMode lockMode, RexNode flashback) {
         super(rel, table, hints, lockMode, null);
+        this.flashback = flashback;
     }
 
     public LogicalIndexScan(LogicalView logicalView) {

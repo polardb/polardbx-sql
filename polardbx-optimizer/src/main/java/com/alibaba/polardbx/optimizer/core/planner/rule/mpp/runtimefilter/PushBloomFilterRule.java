@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -35,7 +36,9 @@ import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.fun.SqlRuntimeFilterFunction;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.alibaba.polardbx.optimizer.core.planner.rule.PushFilterRule.doNotPush;
 
@@ -66,6 +69,7 @@ public class PushBloomFilterRule extends RelOptRule {
         List<RexNode> conditions = RelOptUtil.conjunctions(filter.getCondition());
 
         List<RexNode> pushToLogicalViewConditions = new ArrayList<>(conditions.size());
+        Set<Integer> pushToLogicalViewRuntimeFilterIdSet = new HashSet<>();
         List<RexNode> reservedConditions = new ArrayList<>(conditions.size());
 
         for (RexNode condition : conditions) {
@@ -78,7 +82,8 @@ public class PushBloomFilterRule extends RelOptRule {
                     .map(RexSlot::getIndex)
                     .map(idx -> filterInput.getRowType().getFieldList().get(idx).getType())
                     .map(DataTypeUtil::calciteToDrdsType)
-                    .allMatch(RuntimeFilterUtil::canPushRuntimeFilterToMysql);
+                    .allMatch(logicalView instanceof OSSTableScan ? RuntimeFilterUtil::canPushRuntimeFilterToOss : RuntimeFilterUtil::canPushRuntimeFilterToMysql);
+                pushToLogicalViewRuntimeFilterIdSet.add(((SqlRuntimeFilterFunction) ((RexCall) condition).getOperator()).getId());
             }
 
             if (canPushDown) {
@@ -99,7 +104,22 @@ public class PushBloomFilterRule extends RelOptRule {
             filter.copy(filter.getTraitSet(),
                 filter.getInput(), RexUtil.composeConjunction(filter.getCluster().getRexBuilder(),
                     pushToLogicalViewConditions, false));
-        newLogicalView.push(newFilter);
+        if (logicalView instanceof OSSTableScan) {
+            if (newLogicalView.getBloomFilters().containsAll(pushToLogicalViewRuntimeFilterIdSet)) {
+                return;
+            }
+            ((OSSTableScan) newLogicalView).pushRuntimeFilter(newFilter.getCondition());
+            // with agg, we can't push runtime filter
+            if (((OSSTableScan)newLogicalView).withAgg()) {
+                return;
+            }
+            result = filter.copy(filter.getTraitSet(), newLogicalView,
+                RexUtil.composeConjunction(filter.getCluster().getRexBuilder(), conditions, false));
+            call.transformTo(result);
+            return;
+        } else {
+            newLogicalView.push(newFilter);
+        }
 
         if (!reservedConditions.isEmpty()) {
             result = filter.copy(filter.getTraitSet(), newLogicalView,

@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime;
 
+import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
@@ -94,9 +98,21 @@ public class UnixTimestamp extends AbstractScalarFunction {
             }
 
             long epochSec = zonedDateTime.toInstant().getEpochSecond();
-            double rem = t.getSecondPart() / (MySQLTimeTypeUtil.SEC_TO_NANO * 1.0D);
-            double d = epochSec + rem;
-            return d;
+            DecimalStructure dec = new DecimalStructure();
+            DecimalConverter.longToDecimal(epochSec, dec);
+
+            if (t.getSecondPart() > 0) {
+                // second part <= 1000_000_000
+                int rem = (int) t.getSecondPart();
+                int bufPos = DecimalTypeBase.roundUp(dec.getIntegers());
+                dec.setBuffValAt(bufPos, rem);
+                dec.setFractions(6);
+            }
+
+            if (t.isNeg()) {
+                dec.setNeg(true);
+            }
+            return new Decimal(dec);
         }
     }
 

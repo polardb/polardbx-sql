@@ -23,6 +23,11 @@ function usage() {
         echo "	-s instanceId	  server instance id"
         echo "	-i idc			    server idc name"
         echo "	-w wisp			    enable jvm wisp"
+        echo "  -e engine       the engine of cold data(OSS or LOCAL_DISK)"
+        echo "	--uri uri		    uri of cold file"
+        echo "	--ep endpoint		endpoint of oss"
+        echo "	--ak accessKey 	access key ID of oss"
+        echo "	--sk secretKey	access key secret of oss"
         echo "  -f conf			    conf file, Default conf file is $BASE/conf/server.properties"
         echo "  -a key=value[;] args config, Example: -a k1=v1;k2=v2"
         echo "Examples:"
@@ -68,6 +73,11 @@ vDnPasswordKey=
 dnList=
 rootPasswd=
 polarxRootUser=
+engine=
+uri=
+endpoint=
+accessKey=
+secretKey=
 polarxRootPasswd=
 forceCleanup=false
 
@@ -76,7 +86,7 @@ logback_configurationFile=$base/conf/logback.xml
 base_log=$base/logs/tddl
 pidfile=$base/bin/tddl.pid
 KERNEL_VERSION=`uname -r`
-enable_bianque=true
+enable_bianque=false
 
 checkuser=`whoami`
 if [ x"$checkuser" = x"root" ];then
@@ -84,7 +94,7 @@ if [ x"$checkuser" = x"root" ];then
    exit 1;
 fi
 
-TEMP=`getopt -o q:d:b:p:l:m:c:a:f:i:w:s:r:u:S:A:P:hDMIF -- "$@"`
+TEMP=`getopt -o q:d:b:p:l:m:c:a:f:i:w:s:r:u:S:A:P:e:hDMIF --long uri:,ep:,ak:,sk: -- "$@"`
 eval set -- "$TEMP"
 while true ; do
   case "$1" in
@@ -104,6 +114,11 @@ while true ; do
         -m) managerPort=$2; shift 2 ;;
         -b) debugPort=$2; shift 2;;
         -q) fast_mock=$2; shift 2;;
+        -e) engine=$2; shift 2;;
+        --uri) uri=$2; shift 2;;
+        --ep) endpoint=$2; shift 2;;
+        --ak) accessKey=$2; shift 2;;
+        --sk) secretKey=$2; shift 2;;
         -i) idc=`echo $2|sed "s/'//g"`; shift 2 ;;
         -w) wisp=`echo $2|sed "s/'//g"`; shift 2 ;;
         -c) cluster=`echo $2|sed "s/'//g"`; shift 2 ;;
@@ -126,6 +141,39 @@ while true ; do
             ;;
   esac
 done
+
+if [[ -n $engine ]]; then
+  if [[ "$engine" == "LOCAL_DISK" ]]; then
+    oss=0
+    if ! [[ -n $uri ]]; then
+      echo "-uri should be set!"
+      exit
+    fi
+  else
+    if [[ "$engine" == "OSS" ]]; then
+      oss=0
+      if [[ -n $uri ]]; then
+        oss=$((oss+1))
+      fi
+      if [[ -n $endpoint ]]; then
+          oss=$((oss+1))
+      fi
+      if [[ -n $accessKey ]]; then
+        oss=$((oss+1))
+      fi
+      if [[ -n $secretKey ]]; then
+        oss=$((oss+1))
+      fi
+      if ! [[ $oss -eq 4 ]];then
+        echo "-uri -ep -ak -sk should be set at the same time!"
+        exit
+      fi
+    else
+      echo "-e should be OSS or LOCAL_DISK, but is $engine!"
+      exit
+    fi
+  fi
+fi
 
 source /etc/profile
 # load env for polardbx by server_env.sh
@@ -267,6 +315,26 @@ if [ x"$idc" != "x" ]; then
 	TDDL_OPTS=" $TDDL_OPTS -Didc=$idc"
 fi
 
+if [ x"$engine" != "x" ]; then
+	TDDL_OPTS=" $TDDL_OPTS -Dengine=$engine"
+fi
+
+if [ x"$uri" != "x" ]; then
+	TDDL_OPTS=" $TDDL_OPTS -Duri=$uri"
+fi
+
+if [ x"$endpoint" != "x" ]; then
+	TDDL_OPTS=" $TDDL_OPTS -Dendpoint=$endpoint"
+fi
+
+if [ x"$accessKey" != "x" ]; then
+	TDDL_OPTS=" $TDDL_OPTS -DaccessKey=$accessKey"
+fi
+
+if [ x"$secretKey" != "x" ]; then
+	TDDL_OPTS=" $TDDL_OPTS -DsecretKey=$secretKey"
+fi
+
 if [ x"$enable_bianque" == "xtrue" ]; then
   BIANQUE_LIB_FILEPATH="/home/admin/bianquejavaagent/output/lib/libjava_bianque_agent.so"
   BIANQUE_SERVER_PORT=9874
@@ -300,8 +368,12 @@ else
 fi
 
 if [ -f $pidfile ] ; then
-	echo "found $pidfile , Please run shutdown.sh first ,then startup.sh" 2>&2
+  if [[ -n $engine ]]; then
+    echo "init file storage"
+  else
+    echo "found $pidfile , Please run shutdown.sh first ,then startup.sh" 2>&2
     exit 1
+  fi
 fi
 
 str=`file -L $JAVA | grep 64-bit`
@@ -399,7 +471,7 @@ fi
 	echo CLASSPATH :$CLASSPATH
 	echo JAVA_OPTS :$JAVA_OPTS
 	echo TDDL_OPTS :$TDDL_OPTS
-	if [[ $initializeGms == true ]]; then
+	if [[ $initializeGms == true || x"$engine" != "x" ]]; then
 	  echo "initializing polardb-x"
     $TASKSET $JAVA $JAVA_OPTS $JAVA_DEBUG_OPT $TDDL_OPTS \
     -classpath .:$CLASSPATH com.alibaba.polardbx.server.TddlLauncher

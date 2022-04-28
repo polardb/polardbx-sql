@@ -33,7 +33,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterators;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.alibaba.polardbx.common.properties.MppConfig;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeFactory;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;

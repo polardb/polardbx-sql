@@ -48,6 +48,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.SqlCollation;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 
@@ -811,5 +812,30 @@ public class DataTypeUtil {
         } else {
             return type1.equalDeeply(type2);
         }
+    }
+
+    public static DataType aggResultTypeOf(DataType dataType, SqlKind sqlKind) {
+        switch (sqlKind) {
+        case COUNT:
+            return DataTypes.LongType;
+        case MIN:
+        case MAX:
+            return dataType;
+        case SUM:
+        case SUM0:
+            switch (dataType.fieldType()) {
+            case MYSQL_TYPE_LONGLONG:
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_SHORT:
+            case MYSQL_TYPE_TINY:
+                // long value (18 slot) as decimal.
+                return new DecimalType(18, 0);
+            case MYSQL_TYPE_DOUBLE:
+            case MYSQL_TYPE_FLOAT:
+                return DataTypes.DoubleType;
+            }
+        }
+        throw new UnsupportedOperationException();
     }
 }

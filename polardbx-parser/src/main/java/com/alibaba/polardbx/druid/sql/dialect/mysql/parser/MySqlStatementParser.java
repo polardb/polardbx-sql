@@ -84,6 +84,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropClusteringK
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropColumnItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropExtPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropFile;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropForeignKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropKey;
@@ -195,8 +196,11 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlRepeatStatem
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlSelectIntoStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CobarShowStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePartition;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePurgeBeforeTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableSingle;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsBaselineStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCancelDDLJob;
@@ -233,6 +237,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowMoveDa
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowScheduleResultStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTableGroup;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsUnArchiveStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySql8ShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterDatabaseKillJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterDatabaseSetOption;
@@ -322,6 +327,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowEngin
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowEnginesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowErrorsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowEventsStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowFilesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowFunctionCodeStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowFunctionStatusStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowHMSMetaStatement;
@@ -2015,6 +2021,12 @@ public class MySqlStatementParser extends SQLStatementParser {
             return true;
         }
 
+        if (lexer.identifierEquals("UNARCHIVE")) {
+            SQLStatement stmt = parseUnArchiveJob();
+            statementList.add(stmt);
+            return true;
+        }
+
         if (lexer.identifierEquals(FnvHash.Constants.EXPORT)) {
             lexer.nextToken();
             if (lexer.token() == Token.TABLE) {
@@ -2736,6 +2748,27 @@ public class MySqlStatementParser extends SQLStatementParser {
             result.add(new SQLAssignItem(name, value));
         }
         return result;
+    }
+
+    private SQLStatement parseUnArchiveJob() {
+        lexer.nextToken();
+        DrdsUnArchiveStatement stmt = new DrdsUnArchiveStatement();
+        if (lexer.token() == Token.TABLE) {
+            accept(Token.TABLE);
+            SQLName name = this.exprParser.name();
+            stmt.setTable(new SQLExprTableSource(name));
+        } else if (lexer.token() == Token.DATABASE) {
+            accept(DATABASE);
+            SQLName name = this.exprParser.name();
+            stmt.setDatabase(name);
+        } else if (lexer.identifierEquals(FnvHash.Constants.TABLEGROUP)) {
+            lexer.nextToken();
+            SQLName name = this.exprParser.name();
+            stmt.setTableGroup(name);
+        } else {
+            throw new ParserException("only UNARCHIVE DATABASE/TABLEGROUP/TABLE supported");
+        }
+        return stmt;
     }
 
     private SQLStatement parseArchive() {
@@ -4956,6 +4989,16 @@ public class MySqlStatementParser extends SQLStatementParser {
             return stmt;
         }
 
+        if (lexer.identifierEquals("FILES")) {
+            lexer.nextToken();
+            MySqlShowFilesStatement stmt = new MySqlShowFilesStatement();
+            if (lexer.token() == Token.FROM) {
+                lexer.nextToken();
+            }
+            stmt.setName(exprParser.name());
+            return stmt;
+        }
+
         if (lexer.identifierEquals(FnvHash.Constants.PLANCACHE)) {
             lexer.nextToken();
 
@@ -6613,6 +6656,11 @@ public class MySqlStatementParser extends SQLStatementParser {
             return parseAlterTableGroup();
         }
 
+        if (lexer.identifierEquals("FILESTORAGE")) {
+            lexer.reset(mark);
+            return parseAlterFileStorage();
+        }
+
         if (lexer.identifierEquals("SYSTEM")) {
             lexer.reset(mark);
             return parseAlterSystem();
@@ -7200,6 +7248,35 @@ public class MySqlStatementParser extends SQLStatementParser {
         }
         accept(Token.RPAREN);
 
+        return stmt;
+    }
+
+    protected SQLStatement parseAlterFileStorage() {
+        if (lexer.token() == Token.ALTER) {
+            lexer.nextToken();
+        }
+        acceptIdentifier("FileStorage");
+        SQLName name = this.exprParser.name();
+        DrdsAlterFileStorageStatement stmt = new DrdsAlterFileStorageStatement();
+        stmt.setName(name);
+        if (lexer.token() == Token.AS) {
+            accept(Token.AS);
+            accept(Token.OF);
+            stmt.setAsOf(true);
+            acceptIdentifier("TIMESTAMP");
+            SQLExpr timestamp = this.exprParser.expr();
+            stmt.setTimestamp(timestamp);
+        } else if (lexer.identifierEquals("BACKUP")) {
+            acceptIdentifier("BACKUP");
+            stmt.setBackup(true);
+        } else {
+            acceptIdentifier("PURGE");
+            acceptIdentifier("BEFORE");
+            stmt.setPurgeBefore(true);
+            acceptIdentifier("TIMESTAMP");
+            SQLExpr timestamp = this.exprParser.expr();
+            stmt.setTimestamp(timestamp);
+        }
         return stmt;
     }
 
@@ -8264,6 +8341,13 @@ public class MySqlStatementParser extends SQLStatementParser {
                 item.setHotKeys(hotKeys);
                 accept(Token.RPAREN);
                 stmt.addItem(item);
+            } else if (lexer.identifierEquals("PURGE")) {
+                lexer.nextToken();
+                acceptIdentifier("BEFORE");
+                acceptIdentifier("TIMESTAMP");
+                SQLExpr timeStamp = this.exprParser.expr();
+                stmt.addItem(new DrdsAlterTablePurgeBeforeTimeStamp(timeStamp));
+                return true;
             }
             break;
 
@@ -8522,6 +8606,14 @@ public class MySqlStatementParser extends SQLStatementParser {
             }
 
             return true;
+        case AS: {
+            lexer.nextToken();
+            accept(Token.OF);
+            acceptIdentifier("TIMESTAMP");
+            SQLExpr timeStamp = this.exprParser.expr();
+            stmt.addItem(new DrdsAlterTableAsOfTimeStamp(timeStamp));
+            return true;
+        }
         case PARTITION: {
             Lexer.SavePoint mark = lexer.mark();
             lexer.nextToken();
@@ -9715,6 +9807,19 @@ public class MySqlStatementParser extends SQLStatementParser {
                 extPartitionItem.setExPartition(partitionDef);
                 stmt.addItem(extPartitionItem);
                 accept(Token.RPAREN);
+            } else if (lexer.identifierEquals(FnvHash.Constants.FILE)) {
+                lexer.nextToken();
+                SQLAlterTableDropFile item = new SQLAlterTableDropFile();
+                for (;;) {
+                    SQLExpr file = this.exprParser.expr();
+                    item.addFile(file);
+                    if (lexer.token() == COMMA) {
+                        lexer.nextToken();
+                        continue;
+                    }
+                    break;
+                }
+                stmt.addItem(item);
             } else {
                 SQLAlterTableDropColumnItem item = new SQLAlterTableDropColumnItem();
 

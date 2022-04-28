@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.ImmutableList;
@@ -241,6 +242,10 @@ public class LogicalJoinToBKAJoinRule extends RelOptRule {
             logicalView = call.rel(1);
         } else {
             logicalView = call.rel(2);
+        }
+
+        if (logicalView instanceof OSSTableScan) {
+            return;
         }
 
         RexUtils.RestrictType restrictType;

@@ -34,6 +34,7 @@ import org.apache.calcite.rel.rel2sql.SqlImplementor;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlAsOfOperator;
 import org.apache.calcite.sql.SqlAsOperator;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
@@ -494,6 +495,13 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
         }
 
         SqlNode leftNode = call.getOperandList().get(0);
+        SqlNode rightNode = null;
+        boolean unwrapTablename = false;
+        if (leftNode instanceof SqlCall && ((SqlCall) leftNode).getOperator() instanceof SqlAsOfOperator) {
+            rightNode = ((SqlCall) leftNode).getOperandList().get(1);
+            leftNode = ((SqlCall) leftNode).getOperandList().get(0);
+            unwrapTablename = true;
+        }
         // 子查询
         if (leftNode instanceof SqlSelect) {
             leftNode = visit((SqlSelect) leftNode);
@@ -506,13 +514,19 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
                 // remove force index with gsi
                 sqlIdentifier.indexNode = null;
             }
-            leftNode = buildSth(leftNode);
+            leftNode = buildFlashback(leftNode, buildSth(leftNode));
         } else if (leftNode instanceof SqlCall) {
             leftNode = visit((SqlCall) leftNode);
         } else if (leftNode instanceof SqlDynamicParam) {
 
         } else {
             throw new TddlNestableRuntimeException("should not be here");
+        }
+        if (unwrapTablename) {
+            leftNode = new SqlBasicCall(SqlStdOperatorTable.AS_OF, new SqlNode[] {
+                leftNode,
+                rightNode,
+            }, SqlParserPos.ZERO);
         }
 
         return SqlStdOperatorTable.AS.createCall(SqlParserPos.ZERO, leftNode, sqlIdentifier);
@@ -599,10 +613,11 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             this.tableNames.add(Util.last(identifier.names));
         }
 
-        final SqlNode clone = buildSth(identifier).clone(SqlParserPos.ZERO);
+        SqlNode clone = buildSth(identifier).clone(SqlParserPos.ZERO);
         if (clone instanceof SqlIdentifier) {
             ((SqlIdentifier) clone).indexNode = null;
         }
+        clone = buildFlashback(identifier, clone);
         SqlIdentifier asName = new SqlIdentifier(ImmutableList
             .of(Util.last(identifier.names)), null, identifier.getParserPosition(), null, indexNode);
         return SqlStdOperatorTable.AS.createCall(identifier.getParserPosition(), clone, asName);
@@ -654,5 +669,13 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     protected boolean addAliasForDelete(SqlNode delete) {
         return false;
+    }
+
+    protected SqlNode buildFlashback(SqlNode origin, SqlNode converted) {
+        if (origin instanceof SqlIdentifier && ((SqlIdentifier) origin).flashback != null) {
+            return new SqlBasicCall(SqlStdOperatorTable.AS_OF,
+                new SqlNode[] {converted, ((SqlIdentifier) origin).flashback}, SqlParserPos.ZERO);
+        }
+        return converted;
     }
 }

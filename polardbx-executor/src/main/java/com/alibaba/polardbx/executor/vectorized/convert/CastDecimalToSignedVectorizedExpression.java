@@ -20,12 +20,12 @@ import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalRoundMod;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
-import com.alibaba.polardbx.optimizer.chunk.DecimalBlock;
-import com.alibaba.polardbx.optimizer.chunk.LongBlock;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.chunk.DecimalBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
@@ -57,7 +57,6 @@ public class CastDecimalToSignedVectorizedExpression extends AbstractVectorizedE
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        Slice input = ((DecimalBlock) inputVectorSlot).getMemorySegments();
         long[] output = ((LongBlock) outputVectorSlot).longArray();
 
         DecimalStructure tmpDecimal = new DecimalStructure();
@@ -71,7 +70,7 @@ public class CastDecimalToSignedVectorizedExpression extends AbstractVectorizedE
                 int fromIndex = j * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(input.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(j));
 
                 tmpDecimal.reset();
                 FastDecimalUtils.round(fromValue, tmpDecimal, 0, DecimalRoundMod.HALF_UP);
@@ -83,7 +82,7 @@ public class CastDecimalToSignedVectorizedExpression extends AbstractVectorizedE
                 int fromIndex = i * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(input.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(i));
 
                 tmpDecimal.reset();
                 FastDecimalUtils.round(fromValue, tmpDecimal, 0, DecimalRoundMod.HALF_UP);

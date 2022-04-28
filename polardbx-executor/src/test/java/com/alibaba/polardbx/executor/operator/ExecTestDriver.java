@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 
 import java.util.List;
 

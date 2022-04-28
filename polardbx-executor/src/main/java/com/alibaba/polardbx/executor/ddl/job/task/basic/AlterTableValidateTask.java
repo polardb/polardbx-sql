@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
@@ -143,6 +144,7 @@ public class AlterTableValidateTask extends BaseValidateTask {
         for (SqlAlterSpecification alterItem : sqlAlterTable.getAlters()) {
             switch (alterItem.getKind()) {
             case ADD_COLUMN:
+                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 checkColumnNotExists(columns, ((SqlAddColumn) alterItem).getColName().getLastName());
                 if (((SqlAddColumn) alterItem).getAfterColumn() != null) {
                     checkColumnExists(columns, ((SqlAddColumn) alterItem).getAfterColumn().getLastName());
@@ -152,6 +154,7 @@ public class AlterTableValidateTask extends BaseValidateTask {
                 break;
 
             case DROP_COLUMN:
+                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 String columnName = ((SqlDropColumn) alterItem).getColName().getLastName();
                 checkColumnExists(columnsBeforeDdl, columnName);
                 if (existsPrimary) {
@@ -163,6 +166,7 @@ public class AlterTableValidateTask extends BaseValidateTask {
                 break;
 
             case MODIFY_COLUMN:
+                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 checkColumnExists(columnsBeforeDdl, ((SqlModifyColumn) alterItem).getColName().getLastName());
                 if (((SqlModifyColumn) alterItem).getAfterColumn() != null) {
                     checkColumnExists(columns, ((SqlModifyColumn) alterItem).getAfterColumn().getLastName());
@@ -170,11 +174,14 @@ public class AlterTableValidateTask extends BaseValidateTask {
                 break;
 
             case ALTER_COLUMN_DEFAULT_VAL:
+                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
                 checkColumnExists(columnsBeforeDdl,
                     ((SqlAlterColumnDefaultVal) alterItem).getColumnName().getLastName());
                 break;
 
             case CHANGE_COLUMN:
+                CheckOSSArchiveUtil.checkWithoutOSSGMS(schemaName, tableName);
+
                 checkColumnExists(columnsBeforeDdl, ((SqlChangeColumn) alterItem).getOldName().getLastName());
                 columns.remove(((SqlChangeColumn) alterItem).getOldName().getLastName());
                 checkColumnNotExists(columns, ((SqlChangeColumn) alterItem).getNewName().getLastName());

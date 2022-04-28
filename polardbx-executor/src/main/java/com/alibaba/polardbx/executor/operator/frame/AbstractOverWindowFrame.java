@@ -17,14 +17,7 @@
 package com.alibaba.polardbx.executor.operator.frame;
 
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
-import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkConverter;
-import com.alibaba.polardbx.optimizer.chunk.Converters;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
-import org.apache.calcite.util.Util;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 
 import java.util.List;
 

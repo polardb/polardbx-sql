@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
@@ -181,7 +182,9 @@ public class LogicalSemiJoinToSemiBKAJoinRule extends RelOptRule {
         final LogicalSemiJoin join = call.rel(0);
         RelNode left = call.rel(1);
         final LogicalView logicalView = call.rel(2);
-
+        if (logicalView instanceof OSSTableScan) {
+            return;
+        }
         RexNode newCondition =
             JoinConditionSimplifyRule.simplifyCondition(join.getCondition(), join.getCluster().getRexBuilder());
 

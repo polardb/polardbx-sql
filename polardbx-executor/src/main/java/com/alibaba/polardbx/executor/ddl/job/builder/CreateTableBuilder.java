@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -151,6 +152,7 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
         super.buildSqlTemplate();
 
         final SqlCreateTable sqlTemplate = (SqlCreateTable) this.sqlTemplate;
+        Engine engine = sqlTemplate.getEngine();
 
         this.sqlTemplate = SqlDdlNodes.createTable(
             sqlTemplate.getParserPosition(),
@@ -173,6 +175,7 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
             sqlTemplate.getLocalPartitionSuffix()
         );
 
+        ((SqlCreateTable) this.sqlTemplate).setEngine(engine);
         ((SqlCreateTable) this.sqlTemplate).setTemporary(sqlTemplate.isTemporary());
         validatePartitionColumnInUkForLocalPartition(sqlTemplate);
 

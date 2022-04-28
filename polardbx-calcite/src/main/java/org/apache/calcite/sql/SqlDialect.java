@@ -414,6 +414,10 @@ public class SqlDialect {
     }
   }
 
+  protected boolean allowsAsOf() {
+      return true;
+  }
+
   // -- behaviors --
   protected boolean requiresAliasForFromItems() {
     return false;

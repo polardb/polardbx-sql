@@ -17,11 +17,13 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalTableScan;
+import org.apache.calcite.rex.RexNode;
 
 /**
  * @author dylan
@@ -49,13 +51,16 @@ public class MysqlTableScanRule extends RelOptRule {
         if (withFilter) {
             LogicalFilter logicalFilter = call.rel(0);
             LogicalTableScan logicalTableScan = call.rel(1);
-            mysqlTableScan = MysqlTableScan.create(logicalTableScan.getCluster(),
-                logicalTableScan.getTable(), logicalFilter.getChildExps(), logicalTableScan.getHints(),
-                logicalTableScan.getIndexNode(), logicalTableScan.getPartitions());
+            mysqlTableScan = MysqlTableScan
+                .create(logicalTableScan.getCluster(), logicalTableScan.getTable(), logicalFilter.getChildExps(),
+                    logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                    logicalTableScan.getPartitions());
         } else {
             LogicalTableScan logicalTableScan = call.rel(0);
-            mysqlTableScan = MysqlTableScan.create(logicalTableScan.getCluster(), logicalTableScan.getTable(),
-                logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getPartitions());
+            mysqlTableScan = MysqlTableScan
+                .create(logicalTableScan.getCluster(), logicalTableScan.getTable(), ImmutableList.of(),
+                    logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                    logicalTableScan.getPartitions());
         }
         call.transformTo(mysqlTableScan);
     }

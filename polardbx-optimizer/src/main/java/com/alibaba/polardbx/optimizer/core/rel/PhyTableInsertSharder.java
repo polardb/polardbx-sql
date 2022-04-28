@@ -503,7 +503,6 @@ public class PhyTableInsertSharder {
 
             TableMeta tableMeta =
                 executionContext.getSchemaManager(parent.getSchemaName()).getTable(logicalTableName);
-            assert tableMeta.getNewPartitionInfo() != null;
             PartitionTupleRouteInfo tupleRouting =
                 isGetShardResultForReplicationTable ?
                     parent.getReplicationTupleRoutingInfo(tableMeta.getNewPartitionInfo()) :

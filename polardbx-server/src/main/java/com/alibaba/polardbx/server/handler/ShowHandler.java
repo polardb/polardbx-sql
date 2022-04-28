@@ -18,9 +18,12 @@ package com.alibaba.polardbx.server.handler;
 
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseShow;
+import com.alibaba.polardbx.server.response.ShowArchive;
+import com.alibaba.polardbx.server.response.ShowCacheStats;
 import com.alibaba.polardbx.server.response.ShowConnection;
 import com.alibaba.polardbx.server.response.ShowDatabases;
 import com.alibaba.polardbx.server.response.ShowErrors;
+import com.alibaba.polardbx.server.response.ShowFileStorage;
 import com.alibaba.polardbx.server.response.ShowGitCommit;
 import com.alibaba.polardbx.server.response.ShowHelp;
 import com.alibaba.polardbx.server.response.ShowMpp;
@@ -89,6 +92,15 @@ public final class ShowHandler {
                 break;
             case ServerParseShow.PARAMETRIC:
                 ShowParametric.response(c);
+                break;
+            case ServerParseShow.CACHE_STATS:
+                ShowCacheStats.execute(c);
+                break;
+            case ServerParseShow.ARCHIVE:
+                ShowArchive.execute(c);
+                break;
+            case ServerParseShow.FILE_STORAGE:
+                ShowFileStorage.execute(c);
                 break;
             default:
                 c.execute(stmt, hasMore);

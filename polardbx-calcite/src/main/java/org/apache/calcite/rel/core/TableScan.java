@@ -22,7 +22,6 @@ import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
-import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
@@ -40,7 +39,6 @@ import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.ImmutableIntList;
 
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -57,6 +55,27 @@ public abstract class TableScan extends AbstractRelNode {
   protected final RelOptTable table;
 
   protected SqlNode indexNode;
+
+  /**
+   * This is the timestamp expression for flashback query
+   * <pre>
+   *     Syntax:
+   *
+   *     table_factor: {
+   *         tbl_name [{PARTITION (partition_names) | AS OF expr}]
+   *             [[AS] alias] [index_hint_list]
+   *       | table_subquery [AS] alias
+   *       | ( table_references )
+   *     }
+   *
+   *     For statement like
+   *
+   *     SELECT * FROM employees AS OF timestamp "2022-02-17 14:40:40"
+   *
+   *     the flashback is the expression after "AS OF", which is a RexLiteral of 'timestamp "2022-02-17 14:40:40"' here
+   * </pre>
+   */
+  protected RexNode flashback;
 
   /**
    * This tableName identifier's partitions of mysql partition selection syntax
@@ -88,26 +107,27 @@ public abstract class TableScan extends AbstractRelNode {
 
   protected TableScan(RelOptCluster cluster, RelTraitSet traitSet,
                       RelOptTable table, SqlNodeList hints, SqlNode indexNode) {
-    this(cluster, traitSet, table, hints, indexNode, null);
+    this(cluster, traitSet, table, hints, indexNode, null, null);
   }
 
-  protected TableScan(RelOptCluster cluster, RelTraitSet traitSet,
-                      RelOptTable table, SqlNodeList hints, SqlNode indexNode, SqlNode partitions) {
+  protected TableScan(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table, SqlNodeList hints,
+                      SqlNode indexNode, RexNode flashback, SqlNode partitions) {
     super(cluster, traitSet);
     this.table = table;
     this.hints = hints;
     this.indexNode = indexNode;
-    this.partitions = partitions;
     if (table.getRelOptSchema() != null) {
       cluster.getPlanner().registerSchema(table.getRelOptSchema());
     }
+    this.flashback = flashback;
+    this.partitions = partitions;
   }
-
   /**
    * Creates a TableScan by parsing serialized output.
    */
   protected TableScan(RelInput input) {
     this(input.getCluster(), input.getTraitSet(), input.getTable("table"));
+    this.flashback = input.getExpression("flashback");
   }
 
   //~ Methods ----------------------------------------------------------------
@@ -146,7 +166,9 @@ public abstract class TableScan extends AbstractRelNode {
 
   @Override public RelWriter explainTerms(RelWriter pw) {
     return super.explainTerms(pw)
-        .item("table", table.getQualifiedName());
+        .item("table", table.getQualifiedName())
+        .item("flashback", flashback)
+        ;
   }
 
   /**
@@ -230,6 +252,14 @@ public abstract class TableScan extends AbstractRelNode {
 
   protected boolean emptyHints(){
     return null == this.hints || this.hints.size() <= 0;
+  }
+
+  public RexNode getFlashback() {
+    return flashback;
+  }
+
+  public void setFlashback(RexNode flashback) {
+    this.flashback = flashback;
   }
 
   public SqlNode getPartitions() {

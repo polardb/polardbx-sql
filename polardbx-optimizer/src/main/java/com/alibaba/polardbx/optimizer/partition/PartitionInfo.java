@@ -299,6 +299,10 @@ public class PartitionInfo {
         this.partFlags = partFlags;
     }
 
+    public Map<String, List<PhysicalPartitionInfo>> getPhysicalPartitionTopology(List<String> partitionNames, boolean throwException) {
+        return getPhysicalPartitionTopology(partitionNames, throwException, false);
+    }
+
     /**
      * <pre>
      *  key:    groupKey
@@ -309,7 +313,9 @@ public class PartitionInfo {
      *          return the dedicated partitions(given by the input parameter) topology
      * </pre>
      */
-    public Map<String, List<PhysicalPartitionInfo>> getPhysicalPartitionTopology(List<String> partitionNames) {
+    public Map<String, List<PhysicalPartitionInfo>> getPhysicalPartitionTopology(List<String> partitionNames,
+                                                                                 boolean throwException,
+                                                                                 boolean ignoreInvalid) {
 
         /**
          * Key: phy group
@@ -324,7 +330,7 @@ public class PartitionInfo {
             if (containTargetPartition) {
 
                 final PartitionLocation location = partitionSpec.getLocation();
-                if (location != null && location.isValidLocation()) {
+                if (location != null && (!throwException || location.isValidLocation())) {
 
                     PhysicalPartitionInfo phyPartInfo = new PhysicalPartitionInfo();
                     phyPartInfo.setPartId(partitionSpec.getId());
@@ -342,6 +348,9 @@ public class PartitionInfo {
                         topology.put(location.getGroupKey(), phyPartInfos);
                     }
                 } else {
+                    if (ignoreInvalid && location != null && !location.isValidLocation()) {
+                        continue;
+                    }
                     throw GeneralUtil
                         .nestedException(new NotSupportException("Not support to get topology with subpartitions"));
                 }
@@ -350,8 +359,22 @@ public class PartitionInfo {
         return topology;
     }
 
+    public Map<String, List<PhysicalPartitionInfo>> getPhysicalPartitionTopologyIgnore(List<String> partitionNames) {
+        return getPhysicalPartitionTopology(partitionNames, true, true);
+    }
+
+    public Map<String, List<PhysicalPartitionInfo>> getPhysicalPartitionTopology(List<String> partitionNames) {
+        return getPhysicalPartitionTopology(partitionNames, true, false);
+    }
+
     public Map<String, Set<String>> getTopology() {
-        Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology = getPhysicalPartitionTopology(null);
+        return getTopology(false);
+    }
+
+    public Map<String, Set<String>> getTopology(boolean ignoreInvalid) {
+        Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology =
+            ignoreInvalid ? getPhysicalPartitionTopologyIgnore(null)
+                : getPhysicalPartitionTopology(null);
         Map<String, Set<String>> topology = new HashMap<>();
         for (Map.Entry<String, List<PhysicalPartitionInfo>> entry : physicalPartitionTopology.entrySet()) {
             topology.put(entry.getKey(),

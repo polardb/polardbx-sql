@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -43,6 +44,11 @@ public class PushSemiJoinRule extends PushJoinRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        final LogicalView leftView = (LogicalView)call.rels[1];
+        final LogicalView rightView = (LogicalView)call.rels[2];
+        if (leftView instanceof OSSTableScan || rightView instanceof OSSTableScan) {
+            return false;
+        }
         return PlannerContext.getPlannerContext(call).getParamManager().getBoolean(ConnectionParams.ENABLE_PUSH_JOIN)
             && !PlannerContext.getPlannerContext(call).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_LV_SUBQUERY_UNWRAP);

@@ -27,7 +27,8 @@ public enum PartitionTableType {
     SINGLE_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_SINGLE_TABLE),
     BROADCAST_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_BROADCAST_TABLE),
     GSI_BROADCAST_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_BROADCAST_TABLE),
-    GSI_SINGLE_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_SINGLE_TABLE);
+    GSI_SINGLE_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_SINGLE_TABLE),
+    OSS_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_OSS_TABLE);
 
     private int tblTypeVal;
     private String tableTypeName;

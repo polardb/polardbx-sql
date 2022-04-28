@@ -68,7 +68,8 @@ public class PartitionInfoMocker {
         partitionInfo.metaVersion = 1L;
 
         partitionInfo.partitionBy = new PartitionByDefinition();
-        TableMeta tableMeta = TableMetaParser.parse(createTable);
+
+        TableMeta tableMeta = TableMetaParser.parse(tbName, createTable);
         RelDataType shardKeyRelDataType = null;
         for (int i = 0; i < tableMeta.getAllColumns().size(); i++) {
             ColumnMeta cm = tableMeta.getAllColumns().get(i);

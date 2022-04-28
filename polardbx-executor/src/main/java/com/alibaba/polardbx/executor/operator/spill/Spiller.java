@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.executor.operator.spill;
 
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 
 import java.io.Closeable;
 import java.util.Iterator;

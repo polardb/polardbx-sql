@@ -43,7 +43,7 @@ public class MySqlSelectQueryBlock extends SQLSelectQueryBlock implements MySqlO
     private List<SQLExpr>        procedureArgumentList;
     private boolean              lockInShareMode;
     private SQLName              forcePartition; // for petadata
-    private SQLTimestampExpr     asOfTimestamp;
+    private SQLExpr              asOfTimestamp;
 
     public MySqlSelectQueryBlock(){
         dbType = DbType.mysql;
@@ -166,11 +166,11 @@ public class MySqlSelectQueryBlock extends SQLSelectQueryBlock implements MySqlO
         this.calcFoundRows = calcFoundRows;
     }
 
-    public SQLTimestampExpr getAsOfTimestamp() {
+    public SQLExpr getAsOfTimestamp() {
         return asOfTimestamp;
     }
 
-    public void setAsOfTimestamp(SQLTimestampExpr asOfTimestamp) {
+    public void setAsOfTimestamp(SQLExpr asOfTimestamp) {
         this.asOfTimestamp = asOfTimestamp;
     }
 

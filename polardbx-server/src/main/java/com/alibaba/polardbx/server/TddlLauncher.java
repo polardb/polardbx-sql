@@ -17,12 +17,22 @@
 package com.alibaba.polardbx.server;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.config.SystemConfig;
 import com.alibaba.polardbx.config.loader.ServerLoader;
+import com.alibaba.polardbx.gms.engine.CachePolicy;
+import com.alibaba.polardbx.gms.engine.DeletePolicy;
+import com.alibaba.polardbx.gms.engine.FileStorageInfoAccessor;
+import com.alibaba.polardbx.gms.engine.FileStorageInfoRecord;
+import com.alibaba.polardbx.gms.engine.FileSystemManager;
+import com.alibaba.polardbx.gms.engine.FileSystemUtils;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.schema.SchemaChangeManager;
 import com.alibaba.polardbx.gms.privilege.AccountType;
@@ -30,13 +40,17 @@ import com.alibaba.polardbx.gms.privilege.PolarAccount;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
+import com.alibaba.polardbx.gms.topology.ConfigListenerAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.util.GmsJdbcUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
+import com.alibaba.polardbx.server.util.StringUtil;
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang.exception.ExceptionUtils;
+import org.apache.hadoop.fs.FileSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,9 +59,16 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 启动server
@@ -68,10 +89,33 @@ public final class TddlLauncher {
                 initUserAccount(config);
                 initGms(config);
                 initPolarxRootUser(config);
+                initOssAddress(config);
                 System.err.println("Initialize polardbx success");
                 System.exit(0);
-            } catch (SQLException e) {
-                logger.error("initialize gms failed due to: " + e);
+            } catch (Exception e) {
+                logger.error("Initialize gms failed due to: " + e);
+                System.err.println("Initialize gms failed due to: " + e);
+                System.exit(1);
+            }
+        }
+        // init oss
+        if (!StringUtil.isEmpty(config.getEngine())) {
+            try {
+                MetaDbDataSource.initMetaDbDataSource(
+                    config.getMetaDbAddr(),
+                    config.getMetaDbName(),
+                    config.getMetaDbProp(),
+                    config.getMetaDbUser(),
+                    config.getMetaDbPasswd());
+                // Do schema change
+                SchemaChangeManager.getInstance().handle();
+                initOssAddress(config);
+                System.err.println("Initialize oss success");
+                System.exit(0);
+            } catch (Exception e) {
+                logger.error("Initialize oss failed due to:\n{}",
+                    ExceptionUtils.getFullStackTrace(e));
+                System.err.println("Initialize oss failed due to:\n "+ ExceptionUtils.getFullStackTrace(e));
                 System.exit(1);
             }
         }
@@ -303,6 +347,72 @@ public final class TddlLauncher {
                     "VALUES (null, now(), now(), '%s', 'test_grp', null, null, '*.*.*.*')",
                 InstIdUtil.getInstId());
             stmt.executeUpdate(insertQuarantine);
+        }
+    }
+
+    private static void initOssAddress(SystemConfig config) throws Exception {
+        if (StringUtil.isEmpty(config.getEngine())) {
+            return;
+        }
+        MetaDbDataSource metaDb = MetaDbDataSource.getInstance();
+        try (Connection conn = metaDb.getConnection()){
+            FileStorageInfoAccessor fileStorageInfoAccessor = new FileStorageInfoAccessor();
+            fileStorageInfoAccessor.setConnection(conn);
+
+            FileStorageInfoRecord record1 = new FileStorageInfoRecord();
+            record1.instId = "";
+            record1.engine = config.getEngine();
+            String uri = config.getFileUri().trim();
+            if (!uri.endsWith("/")) {
+                uri = uri + "/";
+            }
+            record1.fileSystemConf = "";
+            record1.priority = 1;
+            record1.regionId = "";
+            record1.availableZoneId = "";
+            record1.cachePolicy = CachePolicy.META_AND_DATA_CACHE.getValue();
+            record1.deletePolicy = DeletePolicy.MASTER_ONLY.getValue();
+            record1.status = 1;
+            record1.fileUri = uri;
+            if ("oss".equalsIgnoreCase(record1.engine)) {
+                record1.externalEndpoint = config.getEndPoint();
+                record1.internalClassicEndpoint = config.getEndPoint();
+                record1.internalVpcEndpoint = config.getEndPoint();
+                record1.accessKeyId = config.getAccessKey();
+                record1.accessKeySecret = PasswdUtil.encrypt(config.getSecretKey());
+
+                // check the endpoint is right
+                int wait = 10;
+                List<String> unexpectedErrors = new ArrayList<>();
+                try (FileSystem master = FileSystemManager.buildFileSystem(record1)){
+                    ExecutorService executor = Executors.newFixedThreadPool(1);
+                    Future future = executor.submit(() -> {
+                        try {
+                            master.exists(FileSystemUtils.buildPath(master, "1.orc"));
+                        } catch (Exception e) {
+                            unexpectedErrors.add(e.getMessage());
+                        }
+                    });
+                    future.get(wait, TimeUnit.SECONDS);
+                } catch (TimeoutException ex) {
+                    // check the endpoint is right
+                    throw new TddlRuntimeException(ErrorCode.ERR_OSS_CONNECT,
+                        "Failed to connect to oss in " + wait + " seconds!");
+                } finally {
+                    if (!unexpectedErrors.isEmpty()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_OSS_CONNECT, unexpectedErrors.get(0));
+                    }
+                }
+            }
+
+            if (fileStorageInfoAccessor.query(Engine.of(config.getEngine())).size() != 0) {
+                fileStorageInfoAccessor.delete(Engine.of(config.getEngine()));
+            }
+            fileStorageInfoAccessor.insertIgnore(ImmutableList.of(record1));
+
+            ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();
+            configListenerAccessor.setConnection(conn);
+            configListenerAccessor.updateOpVersion(MetaDbDataIdBuilder.getFileStorageInfoDataId());
         }
     }
 }

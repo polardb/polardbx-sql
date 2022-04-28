@@ -758,6 +758,16 @@ public class ConnectionParams {
         -1L,
         false);
 
+    /**
+     * batch size for oss check data procedure
+     */
+    public static final LongConfigParam CHECK_OSS_BATCH_SIZE = new LongConfigParam(
+        ConnectionProperties.CHECK_OSS_BATCH_SIZE,
+        1L,
+        8192L,
+        4096L,
+        false);
+
     public static final LongConfigParam GSI_BACKFILL_BATCH_SIZE = new LongConfigParam(
         ConnectionProperties.GSI_BACKFILL_BATCH_SIZE,
         16L,
@@ -1076,7 +1086,7 @@ public class ConnectionParams {
         ConnectionProperties.LOOKUP_JOIN_MIN_BATCH_SIZE, 10, 300, 100, false);
 
     public static final IntConfigParam CHUNK_SIZE = new IntConfigParam(
-        ConnectionProperties.CHUNK_SIZE, 10, 100000, 1024, true);
+        ConnectionProperties.CHUNK_SIZE, 10, 100000, 1000, true);
 
     public static final IntConfigParam INDEX_ADVISOR_BROADCAST_THRESHOLD = new IntConfigParam(
         ConnectionProperties.INDEX_ADVISOR_BROADCAST_THRESHOLD,
@@ -1968,5 +1978,96 @@ public class ConnectionParams {
 
     public static final IntConfigParam LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE = new IntConfigParam(
         ConnectionProperties.LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE, 1, 1024, 4, false);
+
+    public static final BooleanConfigParam ENABLE_OSS_INDEX_SELECTION = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_OSS_INDEX_SELECTION,
+        true,
+        true);
+
+    public static final LongConfigParam WORKLOAD_OSS_NET_THRESHOLD = new LongConfigParam(
+        ConnectionProperties.WORKLOAD_OSS_NET_THRESHOLD, 0L, null, 2L, true);
+
+    /* ================ For OSS Table ORC File ================ */
+    public static final IntConfigParam OSS_BACKFILL_PARALLELISM = new IntConfigParam(
+        ConnectionProperties.OSS_BACKFILL_PARALLELISM, 1, 32, 32, true);
+    public static final LongConfigParam OSS_ORC_INDEX_STRIDE = new LongConfigParam(
+        ConnectionProperties.OSS_ORC_INDEX_STRIDE, 1000L, 1000_000L, 1000L, true);
+    public static final FloatConfigParam OSS_BLOOM_FILTER_FPP = new FloatConfigParam(
+        ConnectionProperties.OSS_BLOOM_FILTER_FPP, .01f, .05f, .01f, true);
+    public static final LongConfigParam OSS_MAX_ROWS_PER_FILE = new LongConfigParam(
+        ConnectionProperties.OSS_MAX_ROWS_PER_FILE, 1_000L, 1000_000_000L, 5_000_000L, true);
+    public static final BooleanConfigParam OSS_REMOVE_TMP_FILES = new BooleanConfigParam(
+        ConnectionProperties.OSS_REMOVE_TMP_FILES, true, true);
+    public static final StringConfigParam OSS_ORC_COMPRESSION = new StringConfigParam(
+        ConnectionProperties.OSS_ORC_COMPRESSION, "LZ4", true);
+    /* ================ For OSS Table File System (unused) ================ */
+    public static final BooleanConfigParam OSS_FS_CACHING_ENABLE = new BooleanConfigParam(
+        ConnectionProperties.OSS_FS_CACHING_ENABLE, true, true);
+    public static final BooleanConfigParam OSS_FS_VALIDATION_ENABLE = new BooleanConfigParam(
+        ConnectionProperties.OSS_FS_VALIDATION_ENABLE, false, true);
+    public static final LongConfigParam OSS_FS_CACHE_TTL = new LongConfigParam(
+        ConnectionProperties.OSS_FS_CACHE_TTL, 1 * 1000L, 2 * 24 * 3600 * 1000L, 2 * 24 * 3600 * 1000L, true);
+    public static final LongConfigParam OSS_FS_MAX_CACHED_ENTRIES = new LongConfigParam(
+        ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES, 1L, 4096L, 2048L, true);
+    public static final LongConfigParam OSS_FS_HOT_CACHE_TTL = new LongConfigParam(
+        ConnectionProperties.OSS_FS_HOT_CACHE_TTL, 1 * 1000L, 2 * 24 * 3600 * 1000L, 3 * 1000L, true);
+    public static final LongConfigParam OSS_FS_MAX_HOT_CACHED_ENTRIES = new LongConfigParam(
+        ConnectionProperties.OSS_FS_MAX_HOT_CACHED_ENTRIES, 1L, 4096L, 2048L, true);
+    public static final LongConfigParam OSS_ORC_MAX_MERGE_DISTANCE = new LongConfigParam(ConnectionProperties.OSS_ORC_MAX_MERGE_DISTANCE, 0L, 2L * 1024 * 1024 * 1024, 64L * 1024, true);
+    public static final BooleanConfigParam FLASHBACK_RENAME = new BooleanConfigParam(
+        ConnectionProperties.FLASHBACK_RENAME, false, true);
+    public static final BooleanConfigParam PURGE_FILE_STORAGE_TABLE = new BooleanConfigParam(
+        ConnectionProperties.PURGE_FILE_STORAGE_TABLE, false, true);
+    public static final StringConfigParam FILE_LIST = new StringConfigParam(
+        ConnectionProperties.FILE_LIST, "ALL", true);
+    public static final StringConfigParam FILE_PATTERN = new StringConfigParam(
+        ConnectionProperties.FILE_PATTERN, "", true);
+    public static final BooleanConfigParam ENABLE_FILE_STORE_CHECK_TABLE = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_FILE_STORE_CHECK_TABLE, false, true);
+    public static final BooleanConfigParam ENABLE_OSS_BUFFER_POOL = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_OSS_BUFFER_POOL, false, true);
+    public static final BooleanConfigParam ENABLE_OSS_DELAY_MATERIALIZATION = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_OSS_DELAY_MATERIALIZATION, false, true);
+    public static final BooleanConfigParam ENABLE_OSS_ZERO_COPY = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_OSS_ZERO_COPY, false, true);
+    public static final BooleanConfigParam ENABLE_OSS_COMPATIBLE = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_OSS_COMPATIBLE, true, true);
+    public static final BooleanConfigParam ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE, false, true);
+    public static final BooleanConfigParam ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN, false, true);
+    public static final BooleanConfigParam ENABLE_REUSE_VECTOR = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_REUSE_VECTOR, false, true);
+    public static final BooleanConfigParam ENABLE_DECIMAL_FAST_VEC = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_DECIMAL_FAST_VEC, false, true);
+    public static final BooleanConfigParam ENABLE_UNIQUE_HASH_KEY = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_UNIQUE_HASH_KEY, false, true);
+    public static final IntConfigParam BLOCK_BUILDER_CAPACITY = new IntConfigParam(
+        ConnectionProperties.BLOCK_BUILDER_CAPACITY, 1, Integer.MAX_VALUE, 4, true);
+    public static BooleanConfigParam ENABLE_HASH_TABLE_BLOOM_FILTER = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_HASH_TABLE_BLOOM_FILTER, true, true);
+    public static final BooleanConfigParam ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE, false, true);
+    public static final StringConfigParam OSS_FILE_ORDER = new StringConfigParam(ConnectionProperties.OSS_FILE_ORDER,
+        null,
+        true);
+
+    /**
+     * Allow re-binding a new archive table to ttl table, replacing the old archive table.
+     */
+    public static final BooleanConfigParam ALLOW_REPLACE_ARCHIVE_TABLE = new BooleanConfigParam(
+        ConnectionProperties.ALLOW_REPLACE_ARCHIVE_TABLE, false, true);
+    /**
+     * Allow create table like a file-store table.
+     */
+    public static final BooleanConfigParam ALLOW_CREATE_TABLE_LIKE_FILE_STORE = new BooleanConfigParam(
+        ConnectionProperties.ALLOW_CREATE_TABLE_LIKE_FILE_STORE, false, true);
+
+    public static final StringConfigParam PURGE_OSS_FILE_CRON_EXPR =  new StringConfigParam(
+        ConnectionProperties.PURGE_OSS_FILE_CRON_EXPR, "0 0 1 ? * WED", true);
+    public static final IntConfigParam PURGE_OSS_FILE_BEFORE_DAY = new IntConfigParam(
+        ConnectionProperties.PURGE_OSS_FILE_BEFORE_DAY, 1, Integer.MAX_VALUE, 60, true);
+    public static final IntConfigParam FILE_STORAGE_FILES_META_QUERY_PARALLELISM = new IntConfigParam(
+        ConnectionProperties.FILE_STORAGE_FILES_META_QUERY_PARALLELISM, 1, Integer.MAX_VALUE, 8, true);
 
 }

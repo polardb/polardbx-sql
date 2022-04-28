@@ -221,6 +221,12 @@ public class ConfigDataMode {
         ConfigDataMode.supportSingleDbMultiTbs = supportSingleDbMultiTbs;
     }
 
+    // ========= The DB type of Server =========
+    public static boolean isPolarDbX() {
+        // PolarDbX load configs by GMS/MetaDB
+        return configServerMode == Mode.GMS;
+    }
+
     public static boolean isSupportDropAutoSeq() {
         return supportDropAutoSeq;
     }

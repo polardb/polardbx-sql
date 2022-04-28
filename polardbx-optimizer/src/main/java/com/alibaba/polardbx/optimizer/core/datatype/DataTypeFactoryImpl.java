@@ -78,7 +78,7 @@ public class DataTypeFactoryImpl implements DataTypeFactory {
         case UNSIGNED:
             return DataTypes.ULongType;
         case DECIMAL:
-            return DataTypes.DecimalType;
+            return new DecimalType(precision, scale);
         case FLOAT:
             return DataTypes.FloatType;
         case DOUBLE:

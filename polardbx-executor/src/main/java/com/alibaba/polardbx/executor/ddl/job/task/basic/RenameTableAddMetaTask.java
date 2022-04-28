@@ -49,7 +49,7 @@ public class RenameTableAddMetaTask extends BaseGmsTask {
         TableMetaChanger.addNewTableName(metaDbConnection, schemaName, logicalTableName, newLogicalTableName);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        CommonMetaChanger.finalOperationsOnSuccess(schemaName, logicalTableName);
+        CommonMetaChanger.renameFinalOperationsOnSuccess(schemaName, logicalTableName, newLogicalTableName);
     }
 
     @Override

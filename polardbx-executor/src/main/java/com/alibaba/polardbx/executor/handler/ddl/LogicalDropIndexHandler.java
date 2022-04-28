@@ -72,7 +72,8 @@ public class LogicalDropIndexHandler extends LogicalCommonDdlHandler {
         final String indexName = sqlDropIndex.getIndexName().getLastName();
         IndexValidator.validateIndexExistence(logicalDdlPlan.getSchemaName(), tableName, indexName);
         IndexValidator.validateDropPrimaryKey(indexName);
-        return false;
+        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
+        return super.validatePlan(logicalDdlPlan, executionContext);
     }
 
     public DdlJob buildDropLocalIndexJob(LogicalDropIndex logicalDropIndex, ExecutionContext executionContext) {

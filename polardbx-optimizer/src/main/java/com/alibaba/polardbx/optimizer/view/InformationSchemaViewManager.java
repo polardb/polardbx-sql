@@ -19,11 +19,8 @@ package com.alibaba.polardbx.optimizer.view;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
-import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
-import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
-import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.Arrays;
 import java.util.List;
@@ -489,6 +486,68 @@ public class InformationSchemaViewManager extends ViewManager {
                 + MetaDbSchema.NAME + "." + GmsSystemTables.COLUMN_STATISTICS + " S "
                 + "on C.TABLE_SCHEMA = S.SCHEMA_NAME and C.TABLE_NAME = S.TABLE_NAME "
                 + "and C.COLUMN_NAME = S.COLUMN_NAME");
+
+        defineView("FILES", new String[] {
+            "FILE_ID",
+            "FILE_NAME",
+            "FILE_TYPE",
+            "TABLESPACE_NAME",
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "LOGFILE_GROUP_NAME",
+            "LOGFILE_GROUP_NUMBER",
+            "ENGINE",
+            "FULLTEXT_KEYS",
+            "DELETED_ROWS",
+            "UPDATE_COUNT",
+            "FREE_EXTENTS",
+            "TOTAL_EXTENTS",
+            "EXTENT_SIZE",
+            "INITIAL_SIZE",
+            "MAXIMUM_SIZE",
+            "AUTOEXTEND_SIZE",
+            "CREATION_TIME",
+            "LAST_UPDATE_TIME",
+            "LAST_ACCESS_TIME",
+            "RECOVER_TIME",
+            "TRANSACTION_COUNTER",
+            "VERSION",
+            "ROW_FORMAT",
+            "TABLE_ROWS",
+            "AVG_ROW_LENGTH",
+            "DATA_LENGTH",
+            "MAX_DATA_LENGTH",
+            "INDEX_LENGTH",
+            "DATA_FREE",
+            "CREATE_TIME",
+            "UPDATE_TIME",
+            "CHECK_TIME",
+            "CHECKSUM",
+            "STATUS",
+            "EXTRA",
+            "TASK_ID",
+            "LIFE_CYCLE",
+            "LOCAL_PATH",
+            "LOGICAL_SCHEMA_NAME",
+            "LOGICAL_TABLE_NAME",
+            "COMMIT_TS",
+            "REMOVE_TS"
+        }, "select FILE_ID, FILE_NAME, FILE_TYPE, TABLESPACE_NAME, TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, LOGFILE_GROUP_NAME, LOGFILE_GROUP_NUMBER, ENGINE, FULLTEXT_KEYS, DELETED_ROWS, UPDATE_COUNT, FREE_EXTENTS, TOTAL_EXTENTS, EXTENT_SIZE, INITIAL_SIZE, MAXIMUM_SIZE, AUTOEXTEND_SIZE, CREATION_TIME, LAST_UPDATE_TIME, LAST_ACCESS_TIME, RECOVER_TIME, TRANSACTION_COUNTER, VERSION, ROW_FORMAT, TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, CREATE_TIME, UPDATE_TIME, CHECK_TIME, CHECKSUM, STATUS, EXTRA, task_id, life_cycle, local_path, logical_schema_name, logical_table_name, commit_ts, remove_ts from " + MetaDbSchema.NAME + ".files where life_cycle != 2");
+
+        defineVirtualView(VirtualViewType.FILE_STORAGE, new String[] {
+            "URI",
+            "ENGINE",
+            "ROLE",
+            "READ_LOCK_COUNT",
+            "WRITE_LOCK_COUNT"
+        });
+        defineVirtualView(VirtualViewType.FILE_STORAGE_FILES_META, new String[] {
+            "ENGINE",
+            "DATA_PATH",
+            "COMMIT_TS",
+            "REMOVE_TS",
+        });
     }
 
     private void defineCommonView() {
@@ -666,47 +725,6 @@ public class InformationSchemaViewManager extends ViewManager {
             "COLUMN_NAME",
             "PRIVILEGE_TYPE",
             "IS_GRANTABLE"
-        });
-
-        defineVirtualView(VirtualViewType.FILES, new String[] {
-            "FILE_ID",
-            "FILE_NAME",
-            "FILE_TYPE",
-            "TABLESPACE_NAME",
-            "TABLE_CATALOG",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "LOGFILE_GROUP_NAME",
-            "LOGFILE_GROUP_NUMBER",
-            "ENGINE",
-            "FULLTEXT_KEYS",
-            "DELETED_ROWS",
-            "UPDATE_COUNT",
-            "FREE_EXTENTS",
-            "TOTAL_EXTENTS",
-            "EXTENT_SIZE",
-            "INITIAL_SIZE",
-            "MAXIMUM_SIZE",
-            "AUTOEXTEND_SIZE",
-            "CREATION_TIME",
-            "LAST_UPDATE_TIME",
-            "LAST_ACCESS_TIME",
-            "RECOVER_TIME",
-            "TRANSACTION_COUNTER",
-            "VERSION",
-            "ROW_FORMAT",
-            "TABLE_ROWS",
-            "AVG_ROW_LENGTH",
-            "DATA_LENGTH",
-            "MAX_DATA_LENGTH",
-            "INDEX_LENGTH",
-            "DATA_FREE",
-            "CREATE_TIME",
-            "UPDATE_TIME",
-            "CHECK_TIME",
-            "CHECKSUM",
-            "STATUS",
-            "EXTRA"
         });
 
         defineVirtualView(VirtualViewType.GLOBAL_STATUS, new String[] {
@@ -1568,6 +1586,47 @@ public class InformationSchemaViewManager extends ViewManager {
                 "RETRANSMIT",
                 "USE_CACHE"
             });
+
+        defineVirtualView(VirtualViewType.FILES, new String[] {
+            "FILE_ID",
+            "FILE_NAME",
+            "FILE_TYPE",
+            "TABLESPACE_NAME",
+            "TABLE_CATALOG",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "LOGFILE_GROUP_NAME",
+            "LOGFILE_GROUP_NUMBER",
+            "ENGINE",
+            "FULLTEXT_KEYS",
+            "DELETED_ROWS",
+            "UPDATE_COUNT",
+            "FREE_EXTENTS",
+            "TOTAL_EXTENTS",
+            "EXTENT_SIZE",
+            "INITIAL_SIZE",
+            "MAXIMUM_SIZE",
+            "AUTOEXTEND_SIZE",
+            "CREATION_TIME",
+            "LAST_UPDATE_TIME",
+            "LAST_ACCESS_TIME",
+            "RECOVER_TIME",
+            "TRANSACTION_COUNTER",
+            "VERSION",
+            "ROW_FORMAT",
+            "TABLE_ROWS",
+            "AVG_ROW_LENGTH",
+            "DATA_LENGTH",
+            "MAX_DATA_LENGTH",
+            "INDEX_LENGTH",
+            "DATA_FREE",
+            "CREATE_TIME",
+            "UPDATE_TIME",
+            "CHECK_TIME",
+            "CHECKSUM",
+            "STATUS",
+            "EXTRA"
+        });
 
             defineVirtualView(VirtualViewType.DDL_PLAN, new String[] {
                 "ID",

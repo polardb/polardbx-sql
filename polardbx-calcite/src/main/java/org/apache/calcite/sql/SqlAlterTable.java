@@ -336,4 +336,12 @@ public class SqlAlterTable extends SqlCreate {
     public void setPhysicalReferencedTables(List<String> physicalReferencedTables) {
         this.physicalReferencedTables = physicalReferencedTables;
     }
+
+    public boolean isExchangePartition() {
+        return alters != null && alters.size() == 1 && alters.get(0) instanceof SqlAlterTableExchangePartition;
+    }
+
+    public boolean isDropFile() {
+        return alters.size() > 0 && alters.get(0) instanceof SqlAlterTableDropFile;
+    }
 }

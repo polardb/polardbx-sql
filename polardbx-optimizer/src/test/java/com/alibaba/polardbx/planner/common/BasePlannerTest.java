@@ -362,13 +362,11 @@ public abstract class BasePlannerTest {
         String key = appName.equals(getAppName()) ? "defaltxxAPPName.isNew" : appName + ".isNew";
         if (configMaps.containsKey(key)) {
             useNewPartDb = (boolean) configMaps.get(key);
-            configMaps.remove(key);
         }
         key = appName.equals(getAppName()) ? "defaltxxAPPName.dbNumber" : appName + ".dbNumber";
         int dbNumber = 4;
         if (configMaps.containsKey(key)) {
             dbNumber = ((Number) configMaps.get(key)).intValue();
-            configMaps.remove(key);
         }
         context = initOptiContext(appName, dbNumber);
         appNameOptiContextMaps.put(appName, context);

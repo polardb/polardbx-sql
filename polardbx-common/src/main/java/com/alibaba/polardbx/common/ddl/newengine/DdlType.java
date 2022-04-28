@@ -37,6 +37,7 @@ public enum DdlType {
 
     MOVE_DATABASE,
     REBALANCE,
+    UNARCHIVE,
 
     ALTER_TABLEGROUP,
     REFRESH_TOPOLOGY,

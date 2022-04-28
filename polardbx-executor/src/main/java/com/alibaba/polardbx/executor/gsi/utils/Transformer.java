@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.gsi.utils;
 
+import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
@@ -33,6 +34,7 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.base.Preconditions;
 import com.google.common.io.BaseEncoding;
+import io.airlift.slice.Slice;
 import org.apache.commons.lang3.StringUtils;
 
 import java.math.BigInteger;
@@ -144,9 +146,12 @@ public class Transformer {
             columnType = row.getParentCursorMeta().getColumnMeta(i).getDataType();
             value = row.getObject(i);
 
-            if (value instanceof ZeroDate || value instanceof ZeroTimestamp || value instanceof ZeroTime) {
+            if (value instanceof ZeroDate || value instanceof ZeroTimestamp || value instanceof ZeroTime || value instanceof Decimal) {
                 // 针对 0000-00-00 的时间类型 setObject 会失败，setString 没问题
                 value = value.toString();
+                method = ParameterMethod.setString;
+            } else if (value instanceof Slice) {
+                value = ((Slice) value).toStringUtf8();
                 method = ParameterMethod.setString;
             } else if (value instanceof EnumValue) {
                 value = ((EnumValue) value).value;

@@ -124,6 +124,12 @@ public class PartitionPruneStepBuilder {
         PartitionInfo partInfo = tableMeta.getPartitionInfo();
 
         RelDataType tbRelRowType = tableMeta.getRowType(PartitionPrunerUtils.getTypeFactory());
+        return generatePointSelectPruneStepInfo(pointValue, pointValueOpTypes, ec, newEcOutput, partInfo, tbRelRowType);
+    }
+
+    public static PartitionPruneStep generatePointSelectPruneStepInfo(List<Object> pointValue, List<DataType> pointValueOpTypes,
+                                                                      ExecutionContext ec, ExecutionContext[] newEcOutput,
+                                                                      PartitionInfo partInfo, RelDataType tbRelRowType) {
         RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
 
         List<ColumnMeta> partColFldList = partInfo.getPartitionBy().getPartitionFieldList();
@@ -227,7 +233,7 @@ public class PartitionPruneStepBuilder {
         return finalStep;
     }
 
-    protected static PartitionPruneStep generatePartitionPruneStepInfo(PartitionInfo partInfo,
+    public static PartitionPruneStep generatePartitionPruneStepInfo(PartitionInfo partInfo,
                                                                        RelDataType relRowType,
                                                                        RexNode partPredInfo,
                                                                        ExecutionContext ec) {

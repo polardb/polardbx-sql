@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.BlockEncoding;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.BlockEncoding;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.clearspring.analytics.util.AbstractIterator;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceInput;

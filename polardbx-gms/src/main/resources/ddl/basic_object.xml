@@ -289,6 +289,63 @@
         ]]></Create>
     </SystemTable>
 
+    <SystemTable name="files">
+        <Create><![CDATA[
+        create table if not exists `files` (
+            `file_id` bigint auto_increment,
+            `file_name` varchar(4000) default null,
+            `file_type` varchar(20) not null default '',
+            `file_meta` longblob default null,
+            `tablespace_name` varchar(64) default null,
+            `table_catalog` varchar(64) not null default '',
+            `table_schema` varchar(64) default null,
+            `table_name` varchar(64) default null,
+            `logfile_group_name` varchar(64) default null,
+            `logfile_group_number` bigint(4) default null,
+            `engine` varchar(64) not null default '',
+            `fulltext_keys` varchar(64) default null,
+            `deleted_rows` bigint(4) default null,
+            `update_count` bigint(4) default null,
+            `free_extents` bigint(4) default null,
+            `total_extents` bigint(4) default null,
+            `extent_size` bigint(4) not null default '0',
+            `initial_size` bigint(21) unsigned default null,
+            `maximum_size` bigint(21) unsigned default null,
+            `autoextend_size` bigint(21) unsigned default null,
+            `creation_time` datetime default null,
+            `last_update_time` datetime default null,
+            `last_access_time` datetime default null,
+            `recover_time` bigint(4) default null,
+            `transaction_counter` bigint(4) default null,
+            `version` bigint(21) unsigned default null,
+            `row_format` varchar(10) default null,
+            `table_rows` bigint(21) unsigned default null,
+            `avg_row_length` bigint(21) unsigned default null,
+            `data_length` bigint(21) unsigned default null,
+            `max_data_length` bigint(21) unsigned default null,
+            `index_length` bigint(21) unsigned default null,
+            `data_free` bigint(21) unsigned default null,
+            `create_time` datetime default current_timestamp,
+            `update_time` datetime default current_timestamp on update current_timestamp,
+            `check_time` datetime default null,
+            `checksum` bigint(21) unsigned default null,
+            `status` varchar(20) not null default '',
+            `extra` varchar(255) default null,
+            `task_id` bigint(21) unsigned not null,
+            `life_cycle` bigint(21) unsigned not null comment '0: creating, 1: ready, 2: deleted',
+            `local_path` varchar(4000) default null comment 'local path of orc file',
+            `logical_schema_name` varchar(255) not null,
+            `logical_table_name` varchar(255) not null,
+            `commit_ts` bigint(21) unsigned default null,
+            `remove_ts` bigint(21) unsigned default null,
+            key `table_index`(`table_schema`, `table_name`),
+            key `task_id` (`task_id`),
+            KEY `file_name`(`file_name`(255)),
+            primary key (`file_id`)
+         ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
     <SystemTable name="table_local_partitions">
         <Create><![CDATA[
         create table if not exists `table_local_partitions` (
@@ -304,9 +361,57 @@
               `expire_after_count` int not null comment '-1:wont expire',
               `pre_allocate_count` int not null,
               `pivot_date_expr` varchar(512) not null,
+              `archive_table_name` varchar(255) default null,
+              `archive_table_schema` varchar(255) default null,
                unique key `uk_scheme_table`(`table_schema`,`table_name`)
         ) charset=utf8
         ]]></Create>
+        <Change><![CDATA[
+            alter table `table_local_partitions` add column `archive_table_name` varchar(255) default null
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `table_local_partitions` add column `archive_table_schema` varchar(255) default null
+        ]]> </Change>
+    </SystemTable>
+
+    <SystemTable name="column_metas">
+        <Create><![CDATA[
+        create table if not exists `column_metas` (
+            `column_meta_id` bigint auto_increment,
+            `table_file_name` varchar(1000) not null,
+            `table_schema` varchar(255) not null,
+            `table_name` varchar(255) not null,
+            `stripe_index` bigint not null,
+            `stripe_offset` bigint not null,
+            `stripe_length` bigint not null,
+            `column_name` varchar(255) not null,
+            `column_index` bigint not null,
+            `bloom_filter_path` varchar(255) not null,
+            `bloom_filter_offset` bigint not null,
+            `bloom_filter_length` bigint not null,
+            `is_merged` bigint not null default 0 comment '1: column index data merged in one file',
+            `create_time` datetime default current_timestamp,
+            `update_time` datetime default current_timestamp on update current_timestamp,
+            `task_id` bigint unsigned not null,
+            `life_cycle` bigint(21) unsigned not null comment '0: creating, 1: ready, 2: deleted',
+            `engine` varchar(50) default 'OSS',
+            `logical_schema_name` varchar(255) not null,
+            `logical_table_name` varchar(255) not null,
+            key `table_index`(`table_schema`, `table_name`),
+            key `task_id` (`task_id`),
+            key `column_meta_index`(`table_file_name`, `column_index`, `stripe_index`),
+            primary key (`column_meta_id`)
+        ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `column_metas` add column `bloom_filter_offset` bigint not null
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `column_metas` add column `bloom_filter_length` bigint not null
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `column_metas` add column `is_merged` bigint not null default 0 comment '1: column index data merged in one file'
+        ]]> </Change>
     </SystemTable>
 
     <SystemTable name="scheduled_jobs">
@@ -359,6 +464,61 @@
         <Change><![CDATA[
             alter table `fired_scheduled_jobs` add column `gmt_modified` timestamp not null default current_timestamp on update current_timestamp
         ]]> </Change>
+    </SystemTable>
+
+    <SystemTable name="file_storage_info">
+        <Create><![CDATA[
+            CREATE TABLE `file_storage_info` (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `inst_id` varchar(128) NOT NULL COMMENT 'polardb-x instance id',
+              `engine` varchar(255) NOT NULL COMMENT 'engine name',
+              `external_endpoint` varchar(255) NOT NULL COMMENT '外网访问',
+              `internal_classic_endpoint` varchar(255) NOT NULL COMMENT 'ECS 的经典网络访问（内网）',
+              `internal_vpc_endpoint` varchar(255) NOT NULL COMMENT 'ECS 的 VPC 网络访问（内网）',
+              `file_uri` varchar(255) NOT NULL,
+              `file_system_conf` text,
+              `access_key_id` varchar(255) NOT NULL,
+              `access_key_secret` varchar(255) NOT NULL,
+              `priority` bigint(11) NOT NULL COMMENT 'the record with the max priority will be chosen to be engine s uri',
+              `region_id` varchar(128) DEFAULT NULL,
+              `azone_id` varchar(128) DEFAULT NULL,
+              `cache_policy` bigint(11) NOT NULL DEFAULT 3 COMMENT 'NO_CACHE(0), META_CACHE(1), DATA_CACHE(2), META_AND_DATA_CACHE(3)',
+              `delete_policy` bigint(11) NOT NULL DEFAULT 1 COMMENT '0 for never, 1 for master only, 2 for master and slave',
+              `status` bigint(11) NOT NULL DEFAULT 1 COMMENT '0 for disable, 1 for running, 2 for read only',
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `endpoint_ordinal` bigint NOT NULL DEFAULT 0 COMMENT '0 use external_endpoint, 1 use internal_classic_endpoint, 2 use internal_vpc_endpoint',
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `file_uri` (`file_uri`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `file_storage_info` add column `delete_policy` bigint(11) NOT NULL DEFAULT 1 COMMENT '0 for never, 1 for master only, 2 for master and slave'
+        ]]></Change>
+
+        <Change><![CDATA[
+            alter table `file_storage_info` add column `status` bigint(11) NOT NULL DEFAULT 1 COMMENT '0 for disable, 1 for running, 2 for read only'
+        ]]></Change>
+
+        <Change><![CDATA[
+            alter table `file_storage_info` add column `endpoint_ordinal` bigint NOT NULL DEFAULT 0 COMMENT '0 use external_endpoint, 1 use internal_classic_endpoint, 2 use internal_vpc_endpoint'
+        ]]></Change>
+    </SystemTable>
+
+    <SystemTable name="file_storage_files_meta">
+        <Create><![CDATA[
+            CREATE TABLE `file_storage_files_meta` (
+              `id` bigint(11) NOT NULL AUTO_INCREMENT,
+              `file_name` varchar(4000) not null,
+              `engine` varchar(255) NOT NULL COMMENT 'engine name',
+              `commit_ts` bigint(21) unsigned default null,
+              `remove_ts` bigint(21) unsigned default null,
+              KEY `idx_commit_ts`(`commit_ts`),
+              KEY `idx_remove_ts`(`remove_ts`),
+              KEY `file_name`(`file_name`(255)),
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+        ]]></Create>
     </SystemTable>
 
 </SystemTables>

@@ -21,7 +21,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.SerializedChunk;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;

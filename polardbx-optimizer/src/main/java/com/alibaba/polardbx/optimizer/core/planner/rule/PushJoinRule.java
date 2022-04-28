@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -71,6 +72,16 @@ public class PushJoinRule extends RelOptRule {
     public static final PushJoinRule INSTANCE = new PushJoinRule(
         operand(LogicalJoin.class, some(operand(LogicalView.class, none()), operand(LogicalView.class, none()))),
         "INSTANCE");
+
+    @Override
+    public boolean matches(RelOptRuleCall call) {
+        final LogicalView leftView = (LogicalView) call.rels[1];
+        final LogicalView rightView = (LogicalView) call.rels[2];
+        if (leftView instanceof OSSTableScan || rightView instanceof OSSTableScan) {
+            return false;
+        }
+        return true;
+    }
 
     @Override
     public void onMatch(RelOptRuleCall call) {

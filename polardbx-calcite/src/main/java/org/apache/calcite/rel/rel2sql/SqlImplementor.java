@@ -106,7 +106,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1378,6 +1377,26 @@ public abstract class SqlImplementor {
      * equivalent to "SELECT * FROM emp AS emp".) */
     public SqlNode asFrom() {
       if (neededAlias != null) {
+        // table_factor: {
+        //    tbl_name [{PARTITION (partition_names) | AS OF expr}]
+        //        [[AS] alias] [index_hint_list]
+        //  | table_subquery [AS] alias
+        //  | ( table_references )
+        //}
+        // MySQL only support syntax showed above.
+        // So that we must put AS OF in front of alias and index_hint_list behind alias
+        if (node instanceof SqlIdentifier && ((SqlIdentifier) node).flashback != null
+            && ((SqlIdentifier) node).indexNode != null) {
+          // Move index hint from identifier to alias
+          final SqlIdentifier identifier = (SqlIdentifier) node;
+          final SqlIdentifier newIdentifier =
+              new SqlIdentifier(((SqlIdentifier) node).names, ((SqlIdentifier) node).getCollation(),
+                  node.getParserPosition(), null, null, identifier.partitions, identifier.flashback);
+          final SqlIdentifier alias =
+              new SqlIdentifier(ImmutableList.of(neededAlias), null, POS, null, identifier.indexNode);
+
+          return SqlStdOperatorTable.AS.createCall(POS, newIdentifier, alias);
+        }
         return SqlStdOperatorTable.AS.createCall(POS, node,
             new SqlIdentifier(neededAlias, POS));
       }

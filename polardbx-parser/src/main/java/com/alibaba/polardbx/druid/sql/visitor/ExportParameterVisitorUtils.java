@@ -19,6 +19,7 @@ import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBetweenExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBooleanExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
@@ -88,6 +89,9 @@ public final class ExportParameterVisitorUtils {
             replace = true;
         } else if (param instanceof SQLHexExpr) {
             value = ((SQLHexExpr) param).toBytes();
+            replace = true;
+        } else if (param instanceof SQLBinaryExpr) {
+            value = ((SQLBinaryExpr) param).getValue();
             replace = true;
         } else if (param instanceof SQLTimestampExpr) {
             value = ((SQLTimestampExpr) param).getValue();

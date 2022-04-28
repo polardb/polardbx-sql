@@ -21,7 +21,7 @@ import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.google.common.primitives.UnsignedLongs;
 import io.airlift.slice.Slice;
 
-import java.math.BigDecimal;
+import java.nio.charset.Charset;
 
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.*;
 
@@ -34,30 +34,42 @@ public class DecimalConverter {
         longToDecimal(0L, SIGNED_ZERO);
     }
 
+    /**
+     * Convert decimal to its binary fixed-length representation
+     * two representations of the same length can be compared with memcmp
+     * with the correct -1/0/+1 result
+     * NOTE: the buffer is assumed to be of the size decimal_bin_size(precision, scale)
+     *
+     * @param from value to convert
+     * @param precision wanted precision to store in binary.
+     * @param scale wanted scale to store in binary.
+     * @param to points to buffer where string representation should be stored
+     * @return E_DEC_OK / E_DEC_TRUNCATED / E_DEC_OVERFLOW
+     */
     public static int decimalToBin(DecimalStructure from, byte[] to, int precision, int scale) {
         int mask = from.isNeg() ? -1 : 0;
         int toPos = 0;
         int error = E_DEC_OK;
 
-
+        // wanted digits number of integer/fractional
         int fractions = scale;
         int integers = precision - fractions;
 
-
+        // number of positions in buff array, for full-DIG_PER_DEC1 integer / fraction digits
         int intg0 = integers / DIG_PER_DEC1;
         int frac0 = fractions / DIG_PER_DEC1;
 
-
+        // digits number of full-DIG_PER_DEC1 integer / fraction digits (trailing & leading)
         int integersX0 = integers - intg0 * DIG_PER_DEC1;
         int fractionsX0 = fractions - frac0 * DIG_PER_DEC1;
 
-
+        // original number of positions in buff array, for full-DIG_PER_DEC1 fraction digits
         int frac1 = from.getFractions() / DIG_PER_DEC1;
 
-
+        // original number of positions in buff array, for not full-DIG_PER_DEC1 fraction digits
         int fracX1 = from.getFractions() - frac1 * DIG_PER_DEC1;
 
-
+        // occupied bytes of integer / fraction part, from original & results
         int intBytes0 = intg0 * Integer.BYTES + DIG_TO_BYTES[integersX0];
         int fracBytes0 = frac0 * Integer.BYTES + DIG_TO_BYTES[fractionsX0];
         int fracBytes1 = frac1 * Integer.BYTES + DIG_TO_BYTES[fracX1];
@@ -66,18 +78,18 @@ public class DecimalConverter {
         final int originalBytesFrac0 = fracBytes0;
         int originalToPos = 0;
 
-
+        // get the start point to serialize.
         int[] removedResults = from.removeLeadingZeros();
         int bufPos = removedResults[0];
         int integers1 = removedResults[1];
 
         if (integers1 + fracBytes1 == 0) {
-            mask = 0;
+            mask = 0; /* just in case */
             integers = 1;
             bufPos = 0;
         }
 
-
+        // original number of positions in buff array, for (not)full-DIG_PER_DEC1 integer digits
         int intg1 = integers1 / DIG_PER_DEC1;
         int intgX1 = integers1 - intg1 * DIG_PER_DEC1;
 
@@ -116,6 +128,7 @@ public class DecimalConverter {
             }
         }
 
+        /* wordIntX1 part */
         if (intgX1 != 0) {
             int i = DIG_TO_BYTES[intgX1];
             int x = (from.getBuffValAt(bufPos) % POW_10[intgX1]) ^ mask;
@@ -125,13 +138,14 @@ public class DecimalConverter {
         }
 
         int stop1 = 0;
-
+        /* wordIntX1 + wordFracX1 part */
         for (stop1 = bufPos + intg1 + frac1; bufPos < stop1; toPos += Integer.BYTES) {
             int x = from.getBuffValAt(bufPos) ^ mask;
             bufPos++;
             writeInt(to, toPos, x, 4);
         }
 
+        /* wordFrac1 part */
         if (fracX1 != 0) {
             int x;
             int i = DIG_TO_BYTES[fracX1],
@@ -155,16 +169,25 @@ public class DecimalConverter {
         }
         to[originalToPos] ^= 0x80;
 
-
+        // Check that we have written the whole decimal and nothing more
         assert toPos == originalToPos + originalBytesFrac0 + originalBytesInt0;
         return error;
     }
 
+    /**
+     * Restores decimal from its binary fixed-length representation
+     *
+     * @param from value to convert
+     * @param to result
+     * @param precision wanted precision to restore from binary.
+     * @param scale wanted scale to restore from binary.
+     * @return array[0]=read index, array[1]=error:E_DEC_OK / E_DEC_TRUNCATED / E_DEC_OVERFLOW
+     */
     public static int[] binToDecimal(byte[] from, DecimalStructure to, int precision, int scale) {
 
         int error;
 
-
+        // digits number/occupied positions/byte size of integer part
         int integers = precision - scale;
         int intg0 = integers / DIG_PER_DEC1;
         int frac0 = scale / DIG_PER_DEC1;
@@ -176,17 +199,11 @@ public class DecimalConverter {
         int bufPos = 0;
         int mask = (from[0] & 0x80) != 0 ? 0 : -1;
 
-
+        // size to read
         int binarySize = binarySize(precision, scale);
-
-
-        byte[] tmpCopy = new byte[binarySize];
         int fromPos = 0;
-        System.arraycopy(from, 0, tmpCopy, 0, binarySize);
-        tmpCopy[0] ^= 0x80;
-        from = tmpCopy;
 
-
+        // fix int and frac error
         if (intg1 + frac1 > DecimalTypeBase.WORDS_LEN) {
             if (intg1 > DecimalTypeBase.WORDS_LEN) {
                 intg1 = DecimalTypeBase.WORDS_LEN;
@@ -211,13 +228,15 @@ public class DecimalConverter {
             }
         }
 
+        int toIntegers = intg0 * DIG_PER_DEC1 + intgX0;
+        int toFractions = frac0 * DIG_PER_DEC1 + fracX0;
         to.setNeg((mask != 0));
-        to.setIntegers(intg0 * DIG_PER_DEC1 + intgX0);
-        to.setFractions(frac0 * DIG_PER_DEC1 + fracX0, true);
+        to.setIntegers(toIntegers);
+        to.setFractions(toFractions, true);
 
         if (intgX0 != 0) {
             int i = DIG_TO_BYTES[intgX0];
-            int x = readInt(from, fromPos, i);
+            int x = readInt4Bin(from, fromPos, i);
 
             fromPos += i;
             to.setBuffValAt(bufPos, x ^ mask);
@@ -230,30 +249,30 @@ public class DecimalConverter {
             if (bufPos > 0 || to.getBuffValAt(bufPos) != 0) {
                 bufPos++;
             } else {
-                to.setIntegers(to.getIntegers() - intgX0);
+                to.setIntegers(toIntegers = (toIntegers - intgX0));
             }
 
         }
         int stopPos;
         for (stopPos = fromPos + intg0 * Integer.BYTES; fromPos < stopPos; fromPos += Integer.BYTES) {
-            to.setBuffValAt(bufPos, readInt(from, fromPos, 4) ^ mask);
+            to.setBuffValAt(bufPos, readInt4Bin(from, fromPos, 4) ^ mask);
             if (Integer.toUnsignedLong(to.getBuffValAt(bufPos)) > MAX_VALUE_IN_WORDS) {
-
+                // error
                 to.toZero();
                 return new int[] {binarySize, E_DEC_BAD_NUM};
             }
             if (bufPos > 0 || to.getBuffValAt(bufPos) != 0) {
                 bufPos++;
             } else {
-                to.setIntegers(to.getIntegers() - DIG_PER_DEC1);
+                to.setIntegers(toIntegers = (toIntegers - DIG_PER_DEC1));
             }
 
         }
 
         for (stopPos = fromPos + frac0 * Integer.BYTES; fromPos < stopPos; fromPos += Integer.BYTES) {
-            to.setBuffValAt(bufPos, readInt(from, fromPos, 4) ^ mask);
+            to.setBuffValAt(bufPos, readInt4Bin(from, fromPos, 4) ^ mask);
             if (Integer.toUnsignedLong(to.getBuffValAt(bufPos)) > MAX_VALUE_IN_WORDS) {
-
+                // error
                 to.toZero();
                 return new int[] {binarySize, E_DEC_BAD_NUM};
             }
@@ -262,29 +281,45 @@ public class DecimalConverter {
         }
         if (fracX0 != 0) {
             int i = DIG_TO_BYTES[fracX0];
-            int x = readInt(from, fromPos, i);
+            int x = readInt4Bin(from, fromPos, i);
 
             to.setBuffValAt(bufPos, (x ^ mask) * POW_10[DIG_PER_DEC1 - fracX0]);
             if (Integer.toUnsignedLong(to.getBuffValAt(bufPos)) > MAX_VALUE_IN_WORDS) {
-
+                // error
                 to.toZero();
                 return new int[] {binarySize, E_DEC_BAD_NUM};
             }
             bufPos++;
         }
 
-        if (to.getIntegers() == 0 && to.getFractions() == 0) {
+        // No digits? We have read the number zero, of unspecified precision.
+        // Make it a proper zero, with non-zero precision.
+        if (toIntegers == 0 && toFractions == 0) {
             to.toZero();
         }
-        to.setDerivedFractions(to.getFractions());
+        to.setDerivedFractions(toFractions);
 
         return new int[] {binarySize, error};
     }
 
+    /**
+     * Returns the size of array to hold a binary representation of a decimal
+     *
+     * @param precision wanted precision to restore/store from binary.
+     * @param scale wanted scale to restore/store from binary.
+     * @return size in bytes
+     */
     public static int binarySize(int precision, int scale) {
         return BINARY_SIZE[precision][scale];
     }
 
+    /**
+     * Returns the size of array to hold a binary representation of a decimal
+     *
+     * @param precision wanted precision to restore/store from binary.
+     * @param scale wanted scale to restore/store from binary.
+     * @return size in bytes
+     */
     public static int binarySizeByCompute(int precision, int scale) {
         int integers = precision - scale;
         int intWords = integers / DIG_PER_DEC1;
@@ -302,6 +337,7 @@ public class DecimalConverter {
         int error = E_DEC_OK;
         int resultLen = stringSize(from);
 
+        // remove leading zeros
         int[] removedResults = from.removeLeadingZeros();
         int bufPos0 = removedResults[0];
         int intg = removedResults[1];
@@ -331,6 +367,8 @@ public class DecimalConverter {
             int j = len - resultLen;
             error = (frac != 0 && j < frac + 1) ? E_DEC_TRUNCATED : E_DEC_OVERFLOW;
 
+            // If we need to cut more places than frac is wide, we'll end up
+            // dropping the decimal point as well.  Account for this.
             if (frac != 0 && j >= frac + 1) {
                 j--;
             }
@@ -421,14 +459,14 @@ public class DecimalConverter {
         int pos = offset;
         int len = length;
         int error = E_DEC_BAD_NUM;
-
+        // skip space
         while (pos < len && isSpace(decimalAsBytes[pos])) {
             pos++;
         }
         if (pos == len) {
             return error;
         }
-
+        // handle negative
         boolean isNeg = decimalAsBytes[pos] == '-';
         result.setNeg(isNeg);
         if (isNeg) {
@@ -437,6 +475,7 @@ public class DecimalConverter {
             pos++;
         }
 
+        // find integer part
         int pos1 = pos;
         int endPos;
         int integerLen, fractionalLen;
@@ -460,7 +499,7 @@ public class DecimalConverter {
         if (fractionalLen + integerLen == 0) {
             return error;
         }
-
+        // valid decimal string
         error = 0;
         if (fixed) {
             if (fractionalLen > result.getFractions()) {
@@ -509,6 +548,7 @@ public class DecimalConverter {
         pos1 = pos;
         int x = 0, i = 0;
 
+        // for integer
         for (; integerLen != 0; integerLen--) {
             x += (decimalAsBytes[--pos] - '0') * POW_10[i];
             if (++i == DIG_PER_DEC1) {
@@ -521,6 +561,7 @@ public class DecimalConverter {
             result.setBuffValAt(--bufPos, x);
         }
 
+        // for fractional
         bufPos = integerLen1;
         for (x = 0, i = 0; fractionalLen != 0; fractionalLen--) {
             x = (Byte.toUnsignedInt(decimalAsBytes[++pos1]) - '0') + x * 10;
@@ -534,6 +575,7 @@ public class DecimalConverter {
             result.setBuffValAt(bufPos, x * POW_10[DIG_PER_DEC1 - i]);
         }
 
+        // handle exponent
         if (endPos + 1 < offset + length && (decimalAsBytes[endPos] == 'e' || decimalAsBytes[endPos] == 'E')) {
             long[] parseResults = StringNumericParser.parseString(decimalAsBytes, endPos + 1, decimalAsBytes.length);
             int strError = (int) parseResults[StringNumericParser.ERROR_INDEX];
@@ -563,6 +605,7 @@ public class DecimalConverter {
             }
         }
 
+        // Avoid returning negative zero
         if (result.isNeg() && result.isZero()) {
             result.setNeg(false);
         }
@@ -577,17 +620,30 @@ public class DecimalConverter {
         return parseString(decimalAsBytes, 0, decimalAsBytes.length, result, fixed);
     }
 
+    /**
+     * Convert decimal to long value.
+     *
+     * @param from value to convert.
+     * @return long[0]=convert result, long[1]=error code.
+     */
     public static long[] decimal2Long(DecimalStructure from, boolean isUnsigned) {
         if (from.isNeg() && isUnsigned) {
-
+            // Converting a signed decimal to unsigned int
             return new long[] {0L, E_DEC_OVERFLOW};
         }
 
+        // round to 0 scale
         DecimalStructure rounded = new DecimalStructure();
         FastDecimalUtils.round(from, rounded, 0, DecimalRoundMod.HALF_UP);
         return isUnsigned ? decimalToULong(rounded) : decimal2Long(rounded);
     }
 
+    /**
+     * Convert decimal to long value.
+     *
+     * @param from value to convert.
+     * @return long[0]=convert result, long[1]=error code.
+     */
     public static long[] decimal2Long(DecimalStructure from) {
         int bufPos = 0;
         long x = 0L;
@@ -597,14 +653,19 @@ public class DecimalConverter {
         for (intg = from.getIntegers(); intg > 0; intg -= DIG_PER_DEC1) {
             long y = x;
 
+            // Attention: trick!
+            // we're calculating -|from| instead of |from| here
+            // because |LLONG_MIN| > LLONG_MAX
+            // so we can convert -9223372036854775808 correctly
             x = x * DIG_BASE - from.getBuffValAt(bufPos++);
             if (y < (Long.MIN_VALUE / DIG_BASE) || x > y) {
-
+                //the decimal is bigger than any possible integer
+                // return border integer depending on the sign
                 to = from.isNeg() ? Long.MIN_VALUE : Long.MAX_VALUE;
                 return new long[] {to, E_DEC_OVERFLOW};
             }
         }
-
+        // boundary case: 9223372036854775808
         if (!from.isNeg() && x == Long.MIN_VALUE) {
             to = Long.MAX_VALUE;
             return new long[] {to, E_DEC_OVERFLOW};
@@ -623,6 +684,12 @@ public class DecimalConverter {
     private static final long UNSIGNED_MAX_LONG = 0xffffffffffffffffL;
     private static final long MAX_UNSIGNED_LONG_DIV_DIG_BASE = UnsignedLongs.divide(UNSIGNED_MAX_LONG, DIG_BASE);
 
+    /**
+     * Convert decimal to unsigned long value.
+     *
+     * @param from value to convert.
+     * @return long[0]=convert result, long[1]=error code.
+     */
     public static long[] decimalToULong(DecimalStructure from) {
         int bufPos = 0;
         long x = 0;
@@ -646,6 +713,7 @@ public class DecimalConverter {
                 return new long[] {to, E_DEC_TRUNCATED};
             }
         }
+
         return new long[] {to, E_DEC_OK};
     }
 
@@ -663,7 +731,7 @@ public class DecimalConverter {
         if (from == 0) {
             intg1 = 1;
         } else {
-
+            // Count the number of decimal_digit_t's we need.
             intg1 = 0;
             while (from != 0) {
                 intg1++;
@@ -715,6 +783,9 @@ public class DecimalConverter {
         return (from.getIntegers() != 0 ? from.getIntegers() : 1) + (from.getFractions() + 3);
     }
 
+    /**
+     * Write integer value to array from designated position with designated length.
+     */
     private static void writeInt(byte[] b, int startPos, int x, int size) {
         long v = Integer.toUnsignedLong(x);
         switch (size) {
@@ -740,7 +811,13 @@ public class DecimalConverter {
         }
     }
 
-    private static int readInt(byte[] b, int startPos, int size) {
+    /**
+     * Read integer value from array, from designated position with designated length.
+     */
+    private static int readInt4Bin(byte[] b, int startPos, int size) {
+        if (startPos == 0) {
+            return readInt0(b, size);
+        }
         int x;
         switch (size) {
         case 1:
@@ -772,6 +849,48 @@ public class DecimalConverter {
         return x;
     }
 
+    private static int readInt0(byte[] b, int size) {
+        int x;
+        byte b0 = (byte) (b[0] ^ 0x80);
+        switch (size) {
+        case 1:
+            x = b0;
+            break;
+        case 2:
+            x = ((int) b0 << 8)
+                + Byte.toUnsignedInt(b[1]);
+            break;
+        case 3:
+            if ((Byte.toUnsignedInt(b0) & 128) != 0) {
+                x = ((Byte.toUnsignedInt((byte) 0xff) << 24)
+                    | (Byte.toUnsignedInt(b0) << 16)
+                    | (Byte.toUnsignedInt(b[1]) << 8)
+                    | (Byte.toUnsignedInt(b[2])));
+            } else {
+                x = ((Byte.toUnsignedInt(b0) << 16)
+                    | (Byte.toUnsignedInt(b[1]) << 8)
+                    | (Byte.toUnsignedInt(b[2])));
+            }
+            break;
+        case 4:
+        default:
+            x = Byte.toUnsignedInt(b[3])
+                + (Byte.toUnsignedInt(b[2]) << 8)
+                + (Byte.toUnsignedInt(b[1]) << 16)
+                + ((int) (b0) << 24);
+        }
+        return x;
+    }
+
+    /**
+     * Rescale the decimal to specified precision & scale.
+     *
+     * @param from rescaled decimal value.
+     * @param to destination decimal value.
+     * @param precision specified precision.
+     * @param scale specified scale.
+     * @param isUnsigned is data type unsigned.
+     */
     public static void rescale(DecimalStructure from, DecimalStructure to, int precision, int scale,
                                boolean isUnsigned) {
         int fromPrecision = from.getPrecision();
@@ -783,7 +902,7 @@ public class DecimalConverter {
         from.copyTo(to);
 
         if (!from.isZero() && integers > toIntegers) {
-
+            // overflow the valid range, use max / min decimal value
             if (isUnsigned && isNeg) {
                 to.toZero();
             } else {
@@ -793,10 +912,12 @@ public class DecimalConverter {
                 boundValue.copyTo(to);
             }
         } else if (fractions != scale) {
-
+            // destination scale does not match the original fractions
+            // need round.
             FastDecimalUtils.round(from, to, scale, DecimalRoundMod.HALF_UP);
         }
 
+        // prevent from minus unsigned value
         if (isUnsigned && to != null && to.isNeg()) {
             to.toZero();
         }

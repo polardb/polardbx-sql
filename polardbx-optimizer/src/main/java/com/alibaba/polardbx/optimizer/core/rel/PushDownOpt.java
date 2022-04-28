@@ -252,6 +252,9 @@ public class PushDownOpt {
     private void builderScan(List<String> qualifiedName, RelBuilder builder) {
         builder.scan(qualifiedName);
         pushedIndexHint(builder);
+        if (this.tableScan.getFlashback() != null) {
+            builder.flashback(this.tableScan.getFlashback());
+        }
     }
 
     public void push(RelNode relNode) {
@@ -458,6 +461,31 @@ public class PushDownOpt {
 
         optimizedNode = optimizedNode.accept(new RelCastRemover());
         return optimizedNode;
+    }
+
+    public void optimizeOSS() {
+        HepProgramBuilder builder = new HepProgramBuilder();
+        builder.addGroupBegin();
+        builder.addRuleCollection(RuleToUse.RULE_FOR_NATIVE_SQL);
+        builder.addRuleInstance(FilterProjectTransposeRule.INSTANCE);
+        builder.addRuleInstance(FilterSortTransposeRule.INSTANCE);
+        builder.addGroupEnd();
+        builder.addGroupBegin();
+        builder.addRuleInstance(FilterMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectRemoveRule.INSTANCE);
+        builder.addGroupEnd();
+        builder.addGroupBegin();
+        builder.addRuleInstance(FilterConditionSimplifyRule.INSTANCE);
+        builder.addGroupEnd();
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.stopOptimizerTrace();
+        planner.setRoot(getPushedRelNode());
+        RelNode optimizedNode = planner.findBestExp();
+        optimizedNode = optimizedNode.accept(new RelCastRemover());
+        RelNode optNode =  optimizedNode;
+        this.builder.clear();
+        this.builder.push(optNode);
     }
 
     /**

@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.executor.vectorized;
 
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.operator.BaseExecTest;
 import com.alibaba.polardbx.executor.operator.MockExec;
 import com.alibaba.polardbx.executor.operator.VectorizedProjectExec;

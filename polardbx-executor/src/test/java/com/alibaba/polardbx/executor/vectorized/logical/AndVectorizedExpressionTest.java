@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.vectorized.logical;
 
-import com.alibaba.polardbx.optimizer.chunk.BlockUtils;
-import com.alibaba.polardbx.optimizer.chunk.DoubleBlock;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.chunk.BlockUtils;
+import com.alibaba.polardbx.executor.chunk.DoubleBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.AndVectorizedExpression;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InputRefVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

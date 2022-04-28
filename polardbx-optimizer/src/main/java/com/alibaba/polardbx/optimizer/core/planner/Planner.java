@@ -1435,6 +1435,10 @@ public class Planner {
             return false;
         }
 
+        if (toDrdsRelVisitor.existsOSSTable()) {
+            return false;
+        }
+
         //should not generate direct plan for any table with gsi
         if (toDrdsRelVisitor.isModifyGsiTable()) {
             return false;

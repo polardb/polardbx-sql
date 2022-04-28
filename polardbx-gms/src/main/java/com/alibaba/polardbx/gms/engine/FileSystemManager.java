@@ -1,0 +1,294 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.gms.engine;
+
+import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CacheConfig;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CacheStats;
+import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheConfig;
+import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
+import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
+import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.gms.util.PasswdUtil;
+import com.alibaba.polardbx.rpc.utils.BufferPool;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
+import com.google.common.collect.ImmutableList;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+import java.io.IOException;
+import java.lang.management.BufferPoolMXBean;
+import java.math.BigInteger;
+import java.net.URI;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.StampedLock;
+
+public class FileSystemManager {
+    private ThreadPoolExecutor executor;
+
+    private static volatile FileSystemManager instance;
+
+    public static FileSystemManager getInstance() {
+        if (instance == null) {
+            synchronized (FileSystemManager.class) {
+                if (instance == null) {
+                    instance = new FileSystemManager();
+                }
+            }
+        }
+        return instance;
+    }
+
+    private LoadingCache<Engine, Optional<FileSystemGroup>> cache;
+
+    private Map<Engine, StampedLock> lockMap;
+
+    private FileSystemManager() {
+        lockMap = new ConcurrentHashMap<>();
+        for (Engine engine : Engine.values()) {
+            lockMap.put(engine, new StampedLock());
+        }
+        cache = CacheBuilder.newBuilder()
+                        .removalListener(new EngineFileSystemRemovalListener())
+                        .build(new EngineFileSystemCacheLoader());
+        this.executor = new ThreadPoolExecutor(16,
+                16,
+                1800,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(32),
+                new NamedThreadFactory("FileSystemManager executor", true),
+                new ThreadPoolExecutor.CallerRunsPolicy());
+
+        MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getFileStorageInfoDataId(), null);
+        MetaDbConfigManager
+            .getInstance().bindListener(MetaDbDataIdBuilder.getFileStorageInfoDataId(), new FileStorageInfoListener());
+    }
+
+    public ThreadPoolExecutor getExecutor() {
+        return executor;
+    }
+
+    public LoadingCache<Engine, Optional<FileSystemGroup>> getCache() {
+        return cache;
+    }
+
+    private StampedLock getLockImpl(Engine engine) {
+        return lockMap.get(engine);
+    }
+
+    private static final int CACHE_STATS_FIELD_COUNT = 9;
+
+    public static FileSystemGroup getFileSystemGroup(Engine engine) {
+        try {
+            Optional<FileSystemGroup> optional = getInstance().getCache().get(engine);
+            if (optional.isPresent()) {
+                return optional.get();
+            }
+        } catch (ExecutionException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+        return null;
+    }
+
+    private static StampedLock getLock(Engine engine) {
+        return getInstance().getLockImpl(engine);
+    }
+
+    public static int getReadLockCount(Engine engine) {
+        return getLock(engine).getReadLockCount();
+    }
+
+    public static boolean isWriteLocked(Engine engine) {
+        return getLock(engine).isWriteLocked();
+    }
+
+    public static long readLockWithTimeOut(Engine engine) {
+        try {
+            long stamp = getInstance().getLockImpl(engine).tryReadLock(3, TimeUnit.SECONDS);
+            if (stamp == 0) {
+                throw new RuntimeException("get read lock timeout");
+            }
+            return stamp;
+        } catch (InterruptedException e) {
+            throw new TddlNestableRuntimeException(e);
+        }
+    }
+
+    public static void unlockRead(Engine engine, long stamp) {
+        getInstance().getLockImpl(engine).unlockRead(stamp);
+    }
+
+    public static void invalidFileSystem() {
+        for (Map.Entry<Engine, Optional<FileSystemGroup>> entry : getInstance().getCache().asMap().entrySet()) {
+            Engine engine = entry.getKey();
+            long stamp = getLock(engine).writeLock();
+            try {
+                getInstance().getCache().invalidate(engine);
+            } finally {
+                getLock(engine).unlockWrite(stamp);
+            }
+        }
+    }
+
+    private static FileStorageInfoRecord queryLatest(Engine engine) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            FileStorageInfoAccessor fileStorageInfoAccessor = new FileStorageInfoAccessor();
+            fileStorageInfoAccessor.setConnection(connection);
+
+            return fileStorageInfoAccessor.queryLatest(engine);
+
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    private static List<FileStorageInfoRecord> query(Engine engine) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            FileStorageInfoAccessor fileStorageInfoAccessor = new FileStorageInfoAccessor();
+            fileStorageInfoAccessor.setConnection(connection);
+
+            return fileStorageInfoAccessor.query(engine);
+
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    private static class EngineFileSystemRemovalListener implements RemovalListener<Engine, Optional<FileSystemGroup>> {
+        @Override
+        public void onRemoval(RemovalNotification<Engine, Optional<FileSystemGroup>> notification) {
+            Optional<FileSystemGroup> fsg = notification.getValue();
+            if (fsg.isPresent()) {
+                try {
+                    fsg.get().close();
+                } catch (IOException e) {
+                    throw GeneralUtil.nestedException(e);
+                }
+            }
+        }
+    }
+
+    private static class EngineFileSystemCacheLoader extends CacheLoader<Engine, Optional<FileSystemGroup>> {
+        @Override
+        public Optional<FileSystemGroup> load(Engine engine) throws Exception {
+            List<FileStorageInfoRecord> records = query(engine);
+            if (records == null || records.isEmpty()) {
+                // No file storage info for this engine type.
+                return Optional.empty();
+            }
+            FileSystem master = buildFileSystem(records.get(0));
+            if (master == null) {
+                // No file system implementation.
+                return Optional.empty();
+            }
+            List<FileSystem> slaves = new ArrayList<>();
+            if (records.size() > 1) {
+                for (int i = 1; i < records.size(); i++) {
+                    FileSystem slave = buildFileSystem(records.get(i));
+                    slaves.add(slave);
+                }
+            }
+            return Optional.of(new FileSystemGroup(master, slaves, getInstance().executor, DeletePolicy.MAP.get(records.get(0).deletePolicy), records.get(0).status == 2));
+        }
+    }
+
+    public static FileSystem buildFileSystem(FileStorageInfoRecord record) throws IOException {
+        Engine engine = Engine.of(record.getEngine());
+        switch (engine) {
+            case OSS: {
+                List<String> endpoints =
+                    ImmutableList.of(record.externalEndpoint, record.internalClassicEndpoint, record.internalVpcEndpoint);
+                int endpointOrdinal = (int) Math.min(record.endpointOrdinal, endpoints.size() - 1);
+                FileSystem ossFileSystem =
+                        OSSInstanceInitializer.newBuilder()
+                                .accessKeyIdValue(record.accessKeyId)
+                                .accessKeySecretValue(PasswdUtil.decrypt(record.accessKeySecret))
+                                .bucketName(record.fileUri)
+                                .cachePolicy(CachePolicy.MAP.get(record.cachePolicy))
+                                .endpointValue(endpoints.get(endpointOrdinal))
+                                .initialize();
+                Path workingDirectory = new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+                ossFileSystem.setWorkingDirectory(workingDirectory);
+                return ossFileSystem;
+            }
+            case LOCAL_DISK: {
+                Configuration configuration = new Configuration();
+                configuration.setBoolean("fs.file.impl.disable.cache", true);
+                FileSystem localFileSystem = FileSystem.get(
+                        URI.create(record.fileUri), configuration
+                );
+                Path workingDirectory = new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+                localFileSystem.setWorkingDirectory(workingDirectory);
+                return localFileSystem;
+            }
+            default:
+                return null;
+        }
+    }
+
+    public synchronized static byte[][] generateCacheStatsPacket() {
+        FileSystem fileSystem = getFileSystemGroup(Engine.OSS).getMaster();
+        CacheManager cacheManager = ((FileMergeCachingFileSystem) fileSystem).getCacheManager();
+
+        if (cacheManager != null) {
+            CacheStats cacheStats = ((FileMergeCacheManager) cacheManager).getStats();
+            FileMergeCacheConfig fileMergeCacheConfig =
+                    ((FileMergeCacheManager) cacheManager).getFileMergeCacheConfig();
+            CacheConfig cacheConfig = ((FileMergeCacheManager) cacheManager).getCacheConfig();
+            BigInteger cacheSize = ((FileMergeCacheManager) cacheManager).calcCacheSize();
+            long cacheEntries = ((FileMergeCacheManager) cacheManager).currentCacheEntries();
+
+            byte[][] results = new byte[CACHE_STATS_FIELD_COUNT][];
+            int pos = 0;
+            results[pos++] = String.valueOf(cacheSize).getBytes();
+            results[pos++] = String.valueOf(cacheEntries).getBytes();
+            results[pos++] = String.valueOf(cacheStats.getInMemoryRetainedBytes()).getBytes();
+            results[pos++] = String.valueOf(cacheStats.getCacheHit()).getBytes();
+            results[pos++] = String.valueOf(cacheStats.getCacheMiss()).getBytes();
+            results[pos++] = String.valueOf(cacheStats.getQuotaExceed()).getBytes();
+            results[pos++] = cacheConfig.getBaseDirectory().toString().getBytes();
+            results[pos++] = fileMergeCacheConfig.getCacheTtl().toString().getBytes();
+            results[pos++] = String.valueOf(fileMergeCacheConfig.getMaxCachedEntries()).getBytes();
+            return results;
+        } else {
+            return null;
+        }
+    }
+}

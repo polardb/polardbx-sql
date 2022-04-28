@@ -27,6 +27,7 @@ public final class ServerParseClear {
     public static final int OTHER = -1;
     public static final int SLOW = 1;
     public static final int PLANCACHE = 2;
+    public static final int OSSCACHE = 3;
 
     public static int parse(ByteString stmt, int offset) {
         int i = offset;
@@ -44,6 +45,9 @@ public final class ServerParseClear {
             case 'P':
             case 'p':
                 return planCacheCheck(stmt, i);
+            case 'O':
+            case 'o':
+                return ossCacheCheck(stmt, i);
             default:
                 return OTHER;
             }
@@ -71,6 +75,16 @@ public final class ServerParseClear {
         if (stmt.length() >= offset + expect.length()) {
             if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
                 return PLANCACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int ossCacheCheck(ByteString stmt, int offset) {
+        final String expect = "OSS CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return OSSCACHE;
             }
         }
         return OTHER;

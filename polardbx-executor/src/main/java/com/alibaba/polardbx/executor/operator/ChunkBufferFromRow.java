@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkBuilder;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 
 public class ChunkBufferFromRow extends AbstractChunkBuffer {
     final ChunkBuilder chunkBuilder;

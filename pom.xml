@@ -169,6 +169,7 @@
         <module>polardbx-server</module>
         <module>polardbx-rpc</module>
         <module>polardbx-parser</module>
+        <module>polardbx-orc</module>
     </modules>
 
     <dependencyManagement>

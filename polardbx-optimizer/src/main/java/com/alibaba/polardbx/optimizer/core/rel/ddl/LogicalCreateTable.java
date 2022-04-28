@@ -16,14 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.ArchiveMode;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
-import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
-import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
-import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -32,7 +31,6 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
-import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
 import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -42,12 +40,9 @@ import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
-import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlPartitionByRange;
 import org.apache.calcite.util.Pair;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -70,7 +65,9 @@ public class LogicalCreateTable extends LogicalTableOperation {
     }
 
     public boolean isWithGsi() {
-        return createTableWithGsiPreparedData != null && createTableWithGsiPreparedData.hasGsi();
+        return createTableWithGsiPreparedData != null
+            && createTableWithGsiPreparedData.hasGsi()
+            && !Engine.isFileStore(sqlCreateTable.getEngine()); // no gsi for oss table
     }
 
     public boolean isBroadCastTable() {
@@ -102,6 +99,11 @@ public class LogicalCreateTable extends LogicalTableOperation {
         createTablePreparedData = preparePrimaryData(executionContext);
 
         final boolean isAutoPartition = sqlCreateTable.isAutoPartition();
+
+        if (Engine.isFileStore(sqlCreateTable.getEngine())) {
+            // no gsi for oss table
+            return;
+        }
 
         if (sqlCreateTable.createGsi()) {
             String primaryTableName = createTablePreparedData.getTableName();
@@ -161,7 +163,8 @@ public class LogicalCreateTable extends LogicalTableOperation {
             prepareCreateTableLikeData();
         }
 
-        final TableMeta tableMeta = TableMetaParser.parse(sqlCreateTable);
+        String tableName = ((SqlIdentifier) sqlCreateTable.getName()).getLastName();
+        final TableMeta tableMeta = TableMetaParser.parse(tableName, sqlCreateTable);
         tableMeta.setSchemaName(schemaName);
 
         LocalPartitionDefinitionInfo localPartitionDefinitionInfo = LocalPartitionDefinitionInfo.create(
@@ -217,13 +220,26 @@ public class LogicalCreateTable extends LogicalTableOperation {
             }
         }
 
+        if (sqlCreateTable.getLoadTableName() != null) {
+            res.setLoadTableName(sqlCreateTable.getLoadTableName());
+            if (sqlCreateTable.getLoadTableSchema() != null) {
+                res.setLoadTableSchema(sqlCreateTable.getLoadTableSchema());
+            } else {
+                res.setLoadTableSchema(schemaName);
+            }
+        }
+        if (sqlCreateTable.getArchiveMode() == ArchiveMode.TTL) {
+            res.setArchiveTableName(sqlCreateTable.getLoadTableName());
+        }
+
         return res;
     }
 
     private void prepareCreateTableLikeData() {
         // For `create table like xx` statement, we create a new "Create Table" AST for the target table
         // based on the LIKE table, then execute it as normal flow.
-        SqlCreateTable createTableAst = (SqlCreateTable) new FastsqlParser().parse(createTableSqlForLike, new ExecutionContext(schemaName)).get(0);
+        SqlCreateTable createTableAst = (SqlCreateTable) new FastsqlParser()
+            .parse(createTableSqlForLike, PlannerContext.getPlannerContext(this).getExecutionContext()).get(0);
 
         SqlIdentifier tableName = (SqlIdentifier) getTableNameNode();
 
@@ -236,6 +252,29 @@ public class LogicalCreateTable extends LogicalTableOperation {
         createTableAst.setMappingRules(null);
         createTableAst.setGlobalKeys(null);
         createTableAst.setGlobalUniqueKeys(null);
+
+        // set engine if there is engine option in user sql
+        Engine engine;
+        if ((engine = this.sqlCreateTable.getEngine()) != null) {
+            createTableAst.setEngine(engine);
+        }
+        ArchiveMode archiveMode;
+        if ((archiveMode = this.sqlCreateTable.getArchiveMode()) != null) {
+            createTableAst.setArchiveMode(archiveMode);
+        }
+        if (this.sqlCreateTable.shouldLoad() || this.sqlCreateTable.shouldBind()) {
+            if (sqlCreateTable.getLikeTableName() instanceof SqlIdentifier) {
+                if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 2) {
+                    createTableAst.setLoadTableSchema(
+                        ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(0).getLastName());
+                    createTableAst.setLoadTableName(
+                        ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(1).getLastName());
+                } else if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 1) {
+                    createTableAst.setLoadTableName(
+                        ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(0).getLastName());
+                }
+            }
+        }
 
         // Replace the original AST
         this.sqlCreateTable = createTableAst;

@@ -73,7 +73,7 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         IndexValidator.validateIndexNameLength(indexName);
         IndexValidator.validateIndexNonExistence(logicalDdlPlan.getSchemaName(), tableName, indexName);
 
-        return false;
+        return super.validatePlan(logicalDdlPlan, executionContext);
     }
 
     private DdlJob buildCreateLocalIndexJob(LogicalCreateIndex logicalCreateIndex, ExecutionContext executionContext) {

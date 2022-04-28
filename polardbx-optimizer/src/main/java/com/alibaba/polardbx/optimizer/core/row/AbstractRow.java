@@ -33,6 +33,8 @@ import io.airlift.slice.Slice;
 
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
 import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.Date;
@@ -242,6 +244,27 @@ public abstract class AbstractRow implements Row {
         // handle bytes
         if (o instanceof UInt64) {
             return o.toString().getBytes();
+        }
+
+        if (o instanceof BigInteger) {
+            final ColumnMeta columnMeta = this.cursorMeta.getColumns().get(index);
+            int precision = 64;
+            if (columnMeta != null) {
+                if (columnMeta.getField() != null) {
+                    precision = cursorMeta.getColumnMeta(index).getField().getRelType().getPrecision();
+                    if (precision < 1 || precision > 64) {
+                        precision = 64;
+                    }
+                }
+            }
+            long l = ((BigInteger) o).longValue();
+            final ByteBuffer buf = ByteBuffer.allocate(Long.BYTES).putLong(l);
+            final int bytesLen = precision / 8 + (precision % 8 != 0 ? 1 : 0);
+            final byte[] bytes = new byte[bytesLen];
+            buf.flip();
+            buf.position(Long.BYTES - bytesLen);
+            buf.get(bytes);
+            return bytes;
         }
 
         if (o instanceof Boolean) {

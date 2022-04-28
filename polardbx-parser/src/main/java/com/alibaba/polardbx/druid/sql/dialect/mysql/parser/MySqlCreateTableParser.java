@@ -487,6 +487,17 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                 continue;
             }
 
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_MODE)) {
+                lexer.nextToken();
+                if (lexer.token() == Token.EQ) {
+                    lexer.nextToken();
+                }
+                SQLExpr expr = new SQLIdentifierExpr(lexer.stringVal());
+                lexer.nextToken();
+                stmt.addOption("ARCHIVE_MODE", expr);
+                continue;
+            }
+
             if (lexer.identifierEquals(FnvHash.Constants.BLOCK_SIZE)) {
                 lexer.nextToken();
                 if (lexer.token() == Token.EQ) {

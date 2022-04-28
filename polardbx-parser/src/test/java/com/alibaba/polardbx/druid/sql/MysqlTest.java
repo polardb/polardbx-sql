@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlOutputVisitor;
+import com.alibaba.polardbx.druid.sql.parser.ParserException;
 import junit.framework.TestCase;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -59,6 +60,17 @@ public class MysqlTest extends TestCase {
 	protected List<SQLStatement> parseList(String sql) {
 		MySqlStatementParser parser = new MySqlStatementParser(sql);
 		return parser.parseStatementList();
+	}
+
+	protected void parseFalse(String sql, String exceptError) {
+	    Exception ex = null;
+		try {
+			SQLStatement statement = SQLUtils.parseSingleMysqlStatement(sql);
+		} catch (ParserException e) {
+		    ex = e;
+		}
+		Assert.assertNotNull("Excepted fail with exception: " + exceptError, ex);
+		Assert.assertEquals(exceptError, ex.getMessage());
 	}
 
 }

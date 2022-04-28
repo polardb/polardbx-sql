@@ -1085,7 +1085,8 @@ public abstract class ReturnTypes {
                 return type;
             }
             if (FRACTIONAL_TYPES.contains(typeName)) {
-                return type;
+                // for float / double / decimal, use original type as result type.
+                return opBinding.getTypeFactory().createSqlType(typeName);
             }
             if (DATETIME_YEAR_TYPES.contains(typeName)) {
                 return type;

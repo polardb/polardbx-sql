@@ -18,10 +18,10 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkConverter;
-import com.alibaba.polardbx.optimizer.chunk.Converters;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -48,6 +49,7 @@ abstract class AbstractJoinExec extends AbstractExecutor {
 
     final Executor outerInput;
     final Executor innerInput;
+    final List<DataType> dataTypes;
 
     final JoinRelType joinType;
     final boolean outerJoin;
@@ -96,27 +98,29 @@ abstract class AbstractJoinExec extends AbstractExecutor {
             outerKeyChunkGetter = null;
             innerKeyChunkGetter = null;
         }
-    }
 
-    @Override
-    public List<DataType> getDataTypes() {
         if (semiJoin) {
-            return outerInput.getDataTypes();
+            dataTypes = outerInput.getDataTypes();
         } else if (singleJoin) {
             final List<DataType> outer = outerInput.getDataTypes();
             final List<DataType> inner = innerInput.getDataTypes();
-            return ImmutableList.<DataType>builder()
+            dataTypes =  ImmutableList.<DataType>builder()
                 .addAll(outer)
                 .addAll(inner.subList(0, 1)) // only keep the first column for single join
                 .build();
         } else {
             final List<DataType> outer = outerInput.getDataTypes();
             final List<DataType> inner = innerInput.getDataTypes();
-            return ImmutableList.<DataType>builder()
+            dataTypes =  ImmutableList.<DataType>builder()
                 .addAll(joinType.leftSide(outer, inner))
                 .addAll(joinType.rightSide(outer, inner))
                 .build();
         }
+    }
+
+    @Override
+    public List<DataType> getDataTypes() {
+        return dataTypes;
     }
 
     boolean checkAntiJoinOperands(Row outerRow) {
@@ -155,6 +159,16 @@ abstract class AbstractJoinExec extends AbstractExecutor {
             }
         }
         return false;
+    }
+
+    protected List<Integer> getIgnoreNullsInJoinKey() {
+        List<Integer> ret = new ArrayList<>(joinKeys.size());
+        for (int i = 0; i < joinKeys.size(); i++) {
+            if (!joinKeys.get(i).isNullSafeEqual()) {
+                ret.add(i);
+            }
+        }
+        return ret;
     }
 
     protected void buildJoinRow(ChunksIndex chunksIndex, Chunk probeInputChunk, int position, int matchedPosition) {

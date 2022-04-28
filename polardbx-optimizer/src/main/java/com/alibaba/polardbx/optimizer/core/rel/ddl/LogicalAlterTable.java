@@ -66,8 +66,12 @@ import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterColumnDefaultVal;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTableAsOfTimeStamp;
+import org.apache.calcite.sql.SqlAlterTableDropFile;
 import org.apache.calcite.sql.SqlAlterTableDropIndex;
+import org.apache.calcite.sql.SqlAlterTableExchangePartition;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
+import org.apache.calcite.sql.SqlAlterTablePurgeBeforeTimeStamp;
 import org.apache.calcite.sql.SqlAlterTableRemoveLocalPartition;
 import org.apache.calcite.sql.SqlAlterTableRenameIndex;
 import org.apache.calcite.sql.SqlAlterTableRepartitionLocalPartition;
@@ -150,12 +154,32 @@ public class LogicalAlterTable extends LogicalTableOperation {
         return sqlAlterTable != null && sqlAlterTable instanceof SqlAlterTablePartitionKey;
     }
 
+    public boolean isExchangePartition() {
+        return sqlAlterTable != null && sqlAlterTable.isExchangePartition();
+    }
+
     public boolean isAllocateLocalPartition() {
         return sqlAlterTable != null && sqlAlterTable.isAllocateLocalPartition();
     }
 
     public boolean isExpireLocalPartition() {
         return sqlAlterTable != null && sqlAlterTable.isExpireLocalPartition();
+    }
+
+    public boolean isDropFile() {
+        return sqlAlterTable != null && sqlAlterTable.isDropFile();
+    }
+
+    public boolean isAlterEngine() {
+        return sqlAlterTable != null && sqlAlterTable.getTableOptions() != null && sqlAlterTable.getTableOptions().getEngine() != null;
+    }
+
+    public boolean isAlterAsOfTimeStamp() {
+        return sqlAlterTable instanceof SqlAlterTableAsOfTimeStamp;
+    }
+
+    public boolean isAlterPurgeBeforeTimeStamp() {
+        return sqlAlterTable instanceof SqlAlterTablePurgeBeforeTimeStamp;
     }
 
     public boolean isRepartitionLocalPartition() {
@@ -708,6 +732,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         Map<String, String> renamedIndexes = new HashMap<>();
         List<String> addedPrimaryKeyColumns = new ArrayList<>();
         List<Pair<String, String>> columnAfterAnother = new ArrayList<>();
+        List<String> dropFiles = new ArrayList<>();
 
         Map<String, String> binaryColumnDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -768,6 +793,11 @@ public class LogicalAlterTable extends LogicalTableOperation {
             } else if (alterItem instanceof SqlAlterTableDropIndex) {
                 SqlAlterTableDropIndex dropIndex = (SqlAlterTableDropIndex) alterItem;
                 droppedIndexes.add(dropIndex.getIndexName().getLastName());
+            } else if (alterItem instanceof SqlAlterTableDropFile) {
+                SqlAlterTableDropFile sqlAlterTableDropFile = (SqlAlterTableDropFile) alterItem;
+                // remove duplicated file names
+                sqlAlterTableDropFile.getFileNames().stream().map(sqlIdentifier -> sqlIdentifier.getLastName())
+                    .distinct().forEach(dropFiles::add);
             } else if (alterItem instanceof SqlAlterTableRenameIndex) {
                 SqlAlterTableRenameIndex renameIndex = (SqlAlterTableRenameIndex) alterItem;
                 renamedIndexes
@@ -842,6 +872,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 preparedData.setEnableKeys(enableKeys.getEnableType());
             } else if (alterItem instanceof SqlAlterTableTruncatePartition) {
                 //do nothing
+            } else if (alterItem instanceof SqlAlterTableExchangePartition) {
+                // do nothing
             } else {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNSUPPORTED, "alter type: " + alterItem);
             }
@@ -857,6 +889,12 @@ public class LogicalAlterTable extends LogicalTableOperation {
             if (tableOptions.getRowFormat() != null) {
                 tableRowFormat = tableOptions.getRowFormat().name();
             }
+        }
+
+        if (sqlAlterTable instanceof SqlAlterTableAsOfTimeStamp) {
+            preparedData.setTimestamp(((SqlAlterTableAsOfTimeStamp) sqlAlterTable).getTimestamp().getNlsString().getValue());
+        } else if (sqlAlterTable instanceof SqlAlterTablePurgeBeforeTimeStamp) {
+            preparedData.setTimestamp(((SqlAlterTablePurgeBeforeTimeStamp) sqlAlterTable).getTimestamp().getNlsString().getValue());
         }
 
         preparedData.setAlterDefaultColumns(alterDefaultColumns);
@@ -875,6 +913,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         preparedData.setColumnAfterAnother(columnAfterAnother);
         preparedData.setTableComment(tableComment);
         preparedData.setTableRowFormat(tableRowFormat);
+        preparedData.setDropFiles(dropFiles);
 
         return preparedData;
     }

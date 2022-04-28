@@ -17,19 +17,19 @@
 package com.alibaba.polardbx.executor.operator.util;
 
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.expression.calc.AbstractAggregator;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CountRow;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Count;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Long2LongSum0;
+import com.alibaba.polardbx.executor.calc.AbstractAggregator;
+import com.alibaba.polardbx.executor.calc.aggfunctions.CountRow;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Long2LongSum0;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilders;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkBuilder;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.BlockBuilders;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessorExec;
 import com.alibaba.polardbx.executor.operator.ProducerExecutor;
@@ -39,7 +39,7 @@ import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
 import org.apache.calcite.rel.RelFieldCollation;
 

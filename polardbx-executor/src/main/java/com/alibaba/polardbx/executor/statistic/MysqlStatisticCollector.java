@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.statistic;
 
 import com.alibaba.druid.util.JdbcUtils;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.Parameters;
@@ -720,10 +721,12 @@ public class MysqlStatisticCollector extends StatisticCollector {
             if (columnMetaList.isEmpty()) {
                 return true;
             }
+            Engine engine =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName).getEngine();
             logger.debug("start collectRowCount with scan");
             StatisticBuilder statisticBuilder = new StatisticBuilder(statisticManager, tDataSource,
                     callerParamManager, logicalTableName,
-                    columnMetaList, SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName()), false);
+                    columnMetaList, SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName()), false, engine);
 
             statisticBuilder.prepare();
             statisticBuilder.analyze();
@@ -758,7 +761,7 @@ public class MysqlStatisticCollector extends StatisticCollector {
             logger.debug("start sample table:" + logicalTableName);
             StatisticBuilder statisticBuilder = new StatisticBuilder(statisticManager, tDataSource,
                     callerParamManager, logicalTableName,
-                    columnMetaList, false, false);
+                    columnMetaList, false, false, Engine.INNODB);
 
             statisticBuilder.prepare();
             statisticBuilder.analyze();
@@ -791,9 +794,11 @@ public class MysqlStatisticCollector extends StatisticCollector {
                 return true;
             }
             logger.debug("start collectRowCount with scan");
+            Engine engine =
+                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName).getEngine();
             StatisticBuilder statisticBuilder = new StatisticBuilder(statisticManager, tDataSource,
                     callerParamManager, logicalTableName,
-                    columnMetaList, SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName(), callerParamManager.getBoolean(ConnectionParams.ENABLE_HLL)), true);
+                    columnMetaList, SchemaMetaUtil.checkSupportHll(statisticManager.getSchemaName(), callerParamManager.getBoolean(ConnectionParams.ENABLE_HLL)), true, engine);
 
             statisticBuilder.prepare();
             statisticBuilder.analyze();
@@ -903,6 +908,27 @@ public class MysqlStatisticCollector extends StatisticCollector {
                                  Map<String, Map<String, Long>> tablesRowCountCache) {
         PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         Map<String, Set<String>> topology;
+        try {
+            TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+            if (Engine.isFileStore(tableMeta.getEngine())) {
+                long tableCacheRowCount;
+                try (Connection conn = tDataSource.getConnection()) {
+                    try (Statement stmt = conn.createStatement()) {
+                        try (ResultSet resultSet = stmt.executeQuery("/*+TDDL:cmd_extra(MERGE_CONCURRENT=true)*/ select count(*) from " + logicalTableName)) {
+                            resultSet.next();
+                            tableCacheRowCount = resultSet.getLong(1);
+                        }
+                    }
+                } catch (Throwable t) {
+                    return;
+                }
+                statisticManager.setRowCount(logicalTableName, tableCacheRowCount);
+                return;
+            }
+        } catch (Throwable t) {
+            return;
+        }
+
         if (partitionInfoManager.isNewPartDbTable(logicalTableName)) {
             PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(logicalTableName);
             // FIXME if support subPartition

@@ -13,8 +13,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.executor.vectorized.*;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.*;
-import com.alibaba.polardbx.optimizer.chunk.*;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.chunk.*;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 
 import com.alibaba.polardbx.common.datatype.*;
 import com.alibaba.polardbx.optimizer.core.datatype.*;
@@ -72,7 +72,7 @@ public class ${className} extends AbstractVectorizedExpression {
             chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
         <#if type.inputDataType2 == "Decimal">
-        Slice input2 = ((DecimalBlock) rightInputVectorSlot).getMemorySegments();
+
         <#else>
         ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
         </#if>
@@ -125,7 +125,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType2 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array2[j], rightDec);
                 <#elseif type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(input2.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(j));
                 <#else>
                 DecimalConverter.longToDecimal(array2[j], rightDec, isRightUnsigned);
                 </#if>
@@ -137,7 +137,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 res[j] = leftDouble ${operator.doubleOp} array2[j];
                 </#if>
                 <#if type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(input2.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(j));
                 double rightDouble = DecimalConverter.decimalToDouble(rightDec);
                 res[j] = left ${operator.doubleOp} rightDouble;
                 </#if>
@@ -163,7 +163,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType2 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array2[i], rightDec);
                 <#elseif type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(input2.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(i));
                 <#else>
                 DecimalConverter.longToDecimal(array2[i], rightDec, isRightUnsigned);
                 </#if>
@@ -175,7 +175,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 res[i] = leftDouble ${operator.doubleOp} array2[i];
                 </#if>
                 <#if type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(input2.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(i));
                 double rightDouble = DecimalConverter.decimalToDouble(rightDec);
                 res[i] = left ${operator.doubleOp} rightDouble;
                 </#if>
@@ -187,4 +187,3 @@ public class ${className} extends AbstractVectorizedExpression {
 
     </#list>
 </#list>
-

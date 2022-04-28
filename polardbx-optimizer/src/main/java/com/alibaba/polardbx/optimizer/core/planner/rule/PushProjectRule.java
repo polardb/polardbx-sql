@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.Lists;
@@ -33,6 +34,7 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.rules.PushProjector;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
@@ -61,6 +63,40 @@ public class PushProjectRule extends RelOptRule {
         Project project = (Project) call.rels[0];
         LogicalView logicalView = (LogicalView) call.rels[1];
 
+        if (logicalView instanceof OSSTableScan) {
+            if (!((OSSTableScan)logicalView).canPushFilterProject()) {
+                return;
+            }
+            // only push column ref
+            PushProjector pushProjector =
+                new PushProjector(
+                    project, call.builder().getRexBuilder().makeLiteral(true), logicalView, PushProjector.ExprCondition.FALSE, call.builder());
+            RelNode pushProjectorResult = pushProjector.convertProject(null);
+            if (pushProjectorResult == null || !(pushProjectorResult instanceof Project)) {
+                return;
+            }
+            Project topProject = (Project) pushProjectorResult;
+            if (topProject.getInput() instanceof Project) {
+                Project refProject = (Project) topProject.getInput();
+                if (refProject.getInput() instanceof OSSTableScan) {
+                    OSSTableScan ossTableScan = (OSSTableScan) refProject.getInput();
+                    LogicalView newOssTableScan = logicalView.copy(ossTableScan.getTraitSet());
+                    // push column ref project
+                    newOssTableScan.push(refProject);
+                    LogicalProject logicalProjectStay =
+                        LogicalProject.create(newOssTableScan, topProject.getProjects(), topProject.getRowType());
+                    call.transformTo(logicalProjectStay);
+                }
+            } else if (topProject.getInput() instanceof OSSTableScan) {
+                OSSTableScan ossTableScan = (OSSTableScan) topProject.getInput();
+                LogicalView newOssTableScan = logicalView.copy(ossTableScan.getTraitSet());
+                // push column ref project
+                newOssTableScan.push(topProject);
+                call.transformTo(newOssTableScan);
+                return;
+            }
+            return;
+        }
         final ParamManager paramManager = PlannerContext.getPlannerContext(project).getParamManager();
         boolean enablePushProject = paramManager.getBoolean(ConnectionParams.ENABLE_PUSH_PROJECT);
         if (!enablePushProject) {

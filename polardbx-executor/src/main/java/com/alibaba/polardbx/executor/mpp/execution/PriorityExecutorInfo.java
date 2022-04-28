@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.polardbx.executor;
+package com.alibaba.polardbx.executor.mpp.execution;
 
 public class PriorityExecutorInfo {
     private String name;

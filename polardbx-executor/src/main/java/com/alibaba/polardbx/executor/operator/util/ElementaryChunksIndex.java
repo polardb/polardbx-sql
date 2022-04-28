@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.executor.operator.util;
 
 import com.google.common.collect.AbstractIterator;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.openjdk.jol.info.ClassLayout;
 

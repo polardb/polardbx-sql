@@ -764,12 +764,4 @@ public final class StringUtil {
         return true;
     }
 
-    public static void main(String[] args) {
-        Pair<Integer, Integer> pair = sequenceSlicing("20");
-        System.out.println(pair);
-        System.out.println(hash("~~~~~~~~~~~~~~~~~~~", 0, 12));
-        System.out.println(-34563354 & 1023);
-        System.out.println(-34563354 % 1024);
-    }
-
 }

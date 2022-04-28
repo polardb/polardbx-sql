@@ -19,7 +19,7 @@ package com.alibaba.polardbx.executor.mpp.client;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.operator.OperatorStats;

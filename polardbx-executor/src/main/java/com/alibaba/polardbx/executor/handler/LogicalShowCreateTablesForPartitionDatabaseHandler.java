@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -32,6 +33,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLHexExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
@@ -201,6 +203,16 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         if (tableMeta.isAutoPartition() && showCreateTable.isFull()) {
             createTable.setPrefixPartition(true);
+        }
+
+        // fix table options
+        Engine engine = tableMeta.getEngine();
+        for (SQLAssignItem tableOption : createTable.getTableOptions()) {
+            if (tableOption.getTarget().toString().equalsIgnoreCase("ENGINE")) {
+                if (tableOption.getValue() == null || !tableOption.getValue().toString().equalsIgnoreCase(engine.name())) {
+                    tableOption.setValue(new SQLCharExpr(engine.name()));
+                }
+            }
         }
 
         sql = createTable.toString();

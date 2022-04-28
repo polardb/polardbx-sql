@@ -424,6 +424,28 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         return results;
     }
 
+    public Map<Integer, ParameterContext> buildSplitParamMap(List<String> tables) {
+        Map<Integer, ParameterContext> results = new HashMap<>();
+        int tableIndex = -1;
+        for (DynamicParamInfo dynamicParamInfo : dynamicParamList) {
+            if (dynamicParamInfo instanceof IndexedDynamicParamInfo) {
+                int i = ((IndexedDynamicParamInfo) dynamicParamInfo).getParamIndex();
+                if (i == PlannerUtils.TABLE_NAME_PARAM_INDEX) {
+                    tableIndex += 1;
+                    results.put(i, PlannerUtils.buildParameterContextForTableName(tables.get(tableIndex), 0));
+                } else if (i == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
+                    // do nothing
+                } else if (i == PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
+                    // do nothing
+                } else {
+                    results.put(i, this.params.get(i + 1));
+                }
+            } else {
+                throw new IllegalArgumentException("Unsupported dynamic param info: " + dynamicParamInfo);
+            }
+        }
+        return results;
+    }
 //    /**
 //     * Build parameters of NativeSql
 //     */

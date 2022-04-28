@@ -11,8 +11,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.executor.vectorized.*;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.*;
-import com.alibaba.polardbx.optimizer.chunk.*;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.chunk.*;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 
 /*
 * This class is generated using freemarker and the ${.template_name} template.

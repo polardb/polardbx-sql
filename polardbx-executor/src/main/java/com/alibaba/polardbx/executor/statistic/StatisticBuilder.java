@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.statistic;
 
 import com.alibaba.druid.util.JdbcUtils;
+import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -39,6 +41,7 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import io.airlift.slice.Slice;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -82,6 +85,7 @@ public class StatisticBuilder {
     private int topNMinNum;
     private boolean analyzeHll;
     private boolean isFromAnalyze;
+    private Engine engine;
 
     private int sampleSize;
     private float sampleRate;
@@ -122,7 +126,7 @@ public class StatisticBuilder {
 
     public StatisticBuilder(StatisticManager statisticManager, DataSource tDataSource, ParamManager paramManager,
                             String logicalTableName,
-                            List<ColumnMeta> columnMetaList, boolean analyzeHll, boolean isFromAnalyze) {
+                            List<ColumnMeta> columnMetaList, boolean analyzeHll, boolean isFromAnalyze, Engine engine) {
 
         this.statisticManager = statisticManager;
         this.tDataSource = tDataSource;
@@ -137,13 +141,32 @@ public class StatisticBuilder {
         this.topNMinNum = paramManager.getInt(ConnectionParams.TOPN_MIN_NUM);
 //        this.useHll = paramManager.getBoolean(ConnectionParams.ENABLE_HLL);
         this.isFromAnalyze = isFromAnalyze;
+        this.engine = engine;
         this.analyzeHll = analyzeHll;
+        if (Engine.isFileStore(engine)) {
+            this.enableInnodbBtreeSampling = false;
+            this.analyzeHll = false;
+        }
     }
 
     public void prepare() {
         /** SAMPLE_RATE */
         sampleRate = 1;
         tableCacheRowCount = statisticManager.getCacheLine(logicalTableName).getRowCount();
+        if (tableCacheRowCount <= 0) {
+            if (Engine.isFileStore(engine)) {
+                try (Connection conn = tDataSource.getConnection()) {
+                    try (Statement stmt = conn.createStatement()) {
+                        try (ResultSet resultSet = stmt.executeQuery("/*+TDDL:cmd_extra(MERGE_CONCURRENT=true)*/ select count(*) from " + logicalTableName)) {
+                            resultSet.next();
+                            tableCacheRowCount = resultSet.getLong(1);
+                        }
+                    }
+                } catch (Throwable t) {
+                    tableCacheRowCount = 10000000;
+                }
+            }
+        }
         if (tableCacheRowCount > 0) {
             sampleRate = (float) DEFAULT_SAMPLE_SIZE / tableCacheRowCount;
             if (sampleRate > 1f) {
@@ -303,6 +326,12 @@ public class StatisticBuilder {
             try {
                 columnValue = resultSet.getObject(i + 1);
 
+                if (columnValue instanceof Slice) {
+                    columnValue = ((Slice) columnValue).toStringUtf8();
+                } else if (columnValue instanceof Decimal) {
+                    columnValue = ((Decimal) columnValue).toBigDecimal();
+                }
+
                 // pruning too long data
                 if (columnValue instanceof String) {
                     String s = (String) columnValue;
@@ -391,8 +420,14 @@ public class StatisticBuilder {
                 double f1 = f.getCountFresh();
                 double sumf2tofn = f.getCountDuplicated();
                 double lowerBound;
-                double n = sampleSize;
-                double N = tableCacheRowCount;
+                double n = rowCount;
+                double N = rowCount / sampleRate;
+                if (n <= 0) {
+                    n = 1;
+                }
+                if (N <= 0) {
+                    N = 1;
+                }
                 if (f1 >= n * Math.pow(1 - 1.0 / n, n - 1) && n != 1) {
                     lowerBound = 1.0 / (1 - Math.pow(f1 / n, 1 / (n - 1)));
                 } else {
@@ -453,8 +488,17 @@ public class StatisticBuilder {
         if (supportFastSample) {
             cmdExtraSamplePercentage = ",sample_percentage=" + sampleRate * 100;
         }
-        sql.append("/*+TDDL:cmd_extra(merge_union=false,ENABLE_DIRECT_PLAN=false" + cmdExtraSamplePercentage + ") */ "
-                + "select ");
+        String concurrentHint;
+        if (Engine.isFileStore(engine)) {
+            concurrentHint = "MERGE_CONCURRENT=true";
+        } else {
+            concurrentHint = "MERGE_UNION=false";
+        }
+        sql.append("/*+TDDL:cmd_extra(")
+            .append(concurrentHint)
+            .append(",ENABLE_DIRECT_PLAN=false")
+            .append(cmdExtraSamplePercentage)
+            .append(") */ select ");
         boolean first = true;
         for (ColumnMeta columnMeta : columnMetaList) {
             if (first) {

@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.subhandler.BaseVirtualViewSubClassHandler;
@@ -29,6 +28,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollati
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlPlanHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDnPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDrdsPhysicalProcessInTrxHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaFileStorageHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaGlobalIndexesHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInformationSchemaColumnsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaInformationSchemaTablesHandler;
@@ -44,6 +44,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalPa
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalityInfoHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMetadataLockHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMoveDatabaseHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaFileStorageFilesMetaHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPhysicalProcesslistHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPlanCacheCapacityHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPlanCacheHandler;
@@ -64,7 +65,6 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaVariabl
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaWorkloadHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.VirtualStatisticHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -135,9 +135,11 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaDnPerfHandler(this));
         subHandler.add(new InformationSchemaTcpPerfHandler(this));
         subHandler.add(new InformationSchemaSessionPerfHandler(this));
+        subHandler.add(new InformationSchemaFileStorageHandler(this));
         subHandler.add(new InformationSchemaCollationsCharsetHandler(this));
         subHandler.add(new InformationSchemaKeyColumnUsageHandler(this));
         subHandler.add(new InformationSchemaDdlPlanHandler(this));
+        subHandler.add(new InformationSchemaFileStorageFilesMetaHandler(this));
     }
 
     @Override

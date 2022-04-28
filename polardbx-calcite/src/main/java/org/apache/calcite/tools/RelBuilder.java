@@ -910,6 +910,17 @@ public class RelBuilder {
     return this;
   }
 
+  public RelBuilder flashback(RexNode flashback) {
+    if (stack.peek() == null) {
+      return this;
+    }
+    RelNode last = stack.peek().rel;
+    if (last instanceof TableScan){
+      ((TableScan)last).setFlashback(flashback);
+    }
+    return this;
+  }
+
   /** Creates a {@link org.apache.calcite.rel.core.TableScan} of the table
    * with a given name.
    *

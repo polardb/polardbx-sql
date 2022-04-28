@@ -128,8 +128,11 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOrderingExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CobarShowStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePartition;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePurgeBeforeTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableSingle;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsBaselineStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCancelDDLJob;
@@ -146,6 +149,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclT
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectDDLJobCache;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectGroupSeqRangeStatement;
@@ -171,6 +175,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowSchedu
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTableGroup;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowTransStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsSlowSqlCclStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsUnArchiveStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySql8ShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterDatabaseKillJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterDatabaseSetOption;
@@ -264,6 +269,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowEngin
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowEnginesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowErrorsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowEventsStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowFilesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowFunctionCodeStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowFunctionStatusStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlShowGrantsStatement;
@@ -543,12 +549,6 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         if (x.isLockInShareMode()) {
             println();
             print0(ucase ? "LOCK IN SHARE MODE" : "lock in share mode");
-        }
-
-        if (x.getAsOfTimestamp() != null) {
-            println();
-            print0(ucase ? "AS OF " : "as of ");
-            printExpr(x.getAsOfTimestamp());
         }
 
         if (bracket) {
@@ -5172,6 +5172,12 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             sampling.accept(this);
         }
 
+        if (x.getFlashback() != null) {
+            println();
+            print0(ucase ? "AS OF " : "as of ");
+            printExpr(x.getFlashback());
+        }
+
         String alias = x.getAlias();
         List<SQLName> columns = x.getColumnsDirect();
         if (alias != null) {
@@ -7872,4 +7878,92 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         return false;
     }
 
+    @Override
+    public void endVisit(DrdsUnArchiveStatement x){
+    }
+
+    @Override
+    public boolean visit(DrdsUnArchiveStatement x) {
+        print0(ucase ? "UNARCHIVE " : "unarchive ");
+        switch (x.getTarget()) {
+        case TABLE:
+            print0(ucase ? "TABLE " : "table ");
+            x.getTableSource().accept(this);
+            break;
+        case TABLE_GROUP:
+            print0(ucase ? "TABLEGROUP " : "tablegroup ");
+            x.getTableGroup().accept(this);
+            break;
+        case DATABASE:
+            print0(ucase ? "DATABASE " : "database ");
+            x.getDatabase().accept(this);
+            break;
+        default:
+            throw new IllegalArgumentException("syntax error, expect TABLE/TABLE_GROUP/DATABASE");
+        }
+        return false;
+    }
+
+    @Override
+    public boolean visit(MySqlShowFilesStatement x) {
+        print0(ucase ? "SHOW " : "show ");
+        print0(ucase ? "FILES FROM " : "files from ");
+        print0(x.getName().getSimpleName());
+        return false;
+    }
+
+    @Override
+    public void endVisit(MySqlShowFilesStatement x) {
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableAsOfTimeStamp x) {
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableAsOfTimeStamp x) {
+        print0(ucase ? "AS OF TIMESTAMP " : "as of timestamp ");
+        x.getExpr().accept(this);
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterFileStorageStatement x) {
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTablePurgeBeforeTimeStamp x) {
+        print0(ucase ? "PURGE BEFORE TIMESTAMP " : "purge before timestamp ");
+        x.getExpr().accept(this);
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTablePurgeBeforeTimeStamp x) {
+    }
+
+    @Override
+    public boolean visit(DrdsAlterFileStorageStatement x) {
+        print0(ucase ? "ATLER FILESTORAGE " : "alter filestorage ");
+        x.getName().accept(this);
+        if (x.isAsOf()) {
+            print0(ucase ? "AS OF TIMESTAMP " : "as of timestamp ");
+            x.getTimestamp().accept(this);
+        } else if (x.isPurgeBefore()) {
+            print0(ucase ? "PURGE BEFORE TIMESTAMP " : "purge before timestamp ");
+            x.getTimestamp().accept(this);
+        }
+        return false;
+    }
+
+    @Override
+    public boolean visit(DrdsDropFileStorageStatement x) {
+        print0(ucase ? "DROP FILESTORAGE " : "drop filestorage ");
+        x.getName().accept(this);
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsDropFileStorageStatement x) {
+    }
 } //

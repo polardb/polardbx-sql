@@ -16,8 +16,8 @@ import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.*;
 
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
-import com.alibaba.polardbx.optimizer.chunk.*;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.chunk.*;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.alibaba.polardbx.optimizer.core.datatype.*;

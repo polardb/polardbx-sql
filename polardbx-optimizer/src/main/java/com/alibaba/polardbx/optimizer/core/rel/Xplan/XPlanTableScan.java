@@ -52,7 +52,7 @@ public class XPlanTableScan extends TableScan {
 
     public XPlanTableScan(TableScan scan) {
         super(scan.getCluster(), scan.getTraitSet(), scan.getTable(), scan.getHints(), scan.getIndexNode(),
-            scan.getPartitions());
+            scan.getFlashback(), scan.getPartitions());
         this.originalRowType = scan.getRowType();
     }
 
@@ -78,7 +78,7 @@ public class XPlanTableScan extends TableScan {
 
     public synchronized RelNode getNodeForMetaQuery() {
         if (nodeForMetaQuery == null) {
-            nodeForMetaQuery = LogicalTableScan.create(getCluster(), table, hints, indexNode, null);
+            nodeForMetaQuery = LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, null);
             if (!getExprs.isEmpty()) {
                 assert 1 == getExprs.size();
                 RexNode filter = null;

@@ -111,7 +111,7 @@ public class LogicalTruncateTableHandler extends LogicalCommonDdlHandler {
         String logicalTableName = logicalDdlPlan.getTableName();
         TableValidator.validateTableName(logicalTableName);
         TableValidator.validateTableExistence(logicalDdlPlan.getSchemaName(), logicalTableName, executionContext);
-        return false;
+        return super.validatePlan(logicalDdlPlan, executionContext);
     }
 
     private DdlJob buildTruncateTableJob(LogicalTruncateTable logicalTruncateTable, ExecutionContext executionContext) {

@@ -20,7 +20,10 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.RemoveFixedCostVisitor;
+import com.alibaba.polardbx.optimizer.planmanager.LogicalViewFinder;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -37,6 +40,18 @@ public class WorkloadUtil {
             return WorkloadType.TP;
         }
         rel.accept(new RemoveFixedCostVisitor());
+        LogicalViewFinder logicalViewFinder = new LogicalViewFinder();
+        rel.accept(logicalViewFinder);
+        double ossNetThreshold = plannerContext.getParamManager().getLong(ConnectionParams.WORKLOAD_OSS_NET_THRESHOLD);
+        for (LogicalView logicalView : logicalViewFinder.getResult()) {
+            if (logicalView instanceof OSSTableScan) {
+                RelOptCost ossTableScanCost = mq.getCumulativeCost(logicalView);
+                if (ossTableScanCost.getNet() > ossNetThreshold) {
+                    return WorkloadType.AP;
+                }
+            }
+        }
+
         RelOptCost cost = mq.getCumulativeCost(rel);
         double ioThreshold = plannerContext.getParamManager().getLong(ConnectionParams.WORKLOAD_IO_THRESHOLD);
         return cost.getIo() < ioThreshold ? WorkloadType.TP : WorkloadType.AP;

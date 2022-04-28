@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -43,6 +44,8 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalSet;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyDal;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterFileStorage;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterRule;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterSystemSetConfig;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
@@ -76,6 +79,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRefreshTopology;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalSequenceDdl;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalUnArchive;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdIndex;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -101,6 +105,9 @@ import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.dal.Dal;
 import org.apache.calcite.rel.dal.Show;
+import org.apache.calcite.rel.ddl.AlterFileStorageAsOfTimestamp;
+import org.apache.calcite.rel.ddl.AlterFileStorageBackup;
+import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
 import org.apache.calcite.rel.ddl.AlterRule;
 import org.apache.calcite.rel.ddl.AlterSystemSetConfig;
 import org.apache.calcite.rel.ddl.AlterTable;
@@ -121,6 +128,7 @@ import org.apache.calcite.rel.ddl.CreateIndex;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
 import org.apache.calcite.rel.ddl.DropDatabase;
+import org.apache.calcite.rel.ddl.DropFileStorage;
 import org.apache.calcite.rel.ddl.DropIndex;
 import org.apache.calcite.rel.ddl.DropTable;
 import org.apache.calcite.rel.ddl.DropTableGroup;
@@ -130,6 +138,7 @@ import org.apache.calcite.rel.ddl.RefreshTopology;
 import org.apache.calcite.rel.ddl.RenameTable;
 import org.apache.calcite.rel.ddl.SequenceDdl;
 import org.apache.calcite.rel.ddl.TruncateTable;
+import org.apache.calcite.rel.ddl.UnArchive;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
@@ -236,6 +245,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private SqlNode ast;
     private boolean existsWindow;
     private boolean existsGroupingSets;
+    private boolean existsOSSTable;
 
     public ToDrdsRelVisitor() {
     }
@@ -291,7 +301,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return scanOrLookup;
     }
 
-    public RelNode buildTableAccess(TableScan scan, String tableName, String schemaName) {
+    private RelNode buildTableAccess(TableScan scan, String tableName, String schemaName) {
         assert schemaName != null;
         final RelOptSchema catalog = RelUtils.buildCatalogReader(Optional.ofNullable(schemaName)
             .orElse(OptimizerContext.getContext(schemaName).getSchemaName()), plannerContext.getExecutionContext());
@@ -313,6 +323,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 }
             }
         }
+
+        final Engine engine = this.plannerContext.getExecutionContext()
+            .getSchemaManager(schemaName).getTable(tableName).getEngine();
 
         return Optional.ofNullable(scan.getIndexNode())
             // FORCE INDEX
@@ -347,10 +360,13 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
                 // remove force index for physical sql
                 scan.setIndexNode(null);
-                final LogicalView primary = RelUtils.createLogicalView(scan, lockMode);
+                final LogicalView primary = RelUtils.createLogicalView(scan, lockMode, engine);
                 final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, indexName));
-                final LogicalIndexScan index = new LogicalIndexScan(indexTable,
-                    LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints()), this.lockMode);
+
+                final LogicalTableScan indexTableScan =
+                    LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null, scan.getFlashback(),
+                        null);
+                final LogicalIndexScan index = new LogicalIndexScan(indexTable, indexTableScan, this.lockMode);
                 this.withIndexHint = true;
 
                 return Optional.of((RelNode) RelUtils.createTableLookup(primary, index, index.getTable()));
@@ -381,15 +397,17 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                         } else {
                             indexTableNames = ImmutableList.of(schemaName, unwrapped);
                         }
-                        final LogicalView primary = RelUtils.createLogicalView(scan, lockMode);
+                        final LogicalView primary = RelUtils.createLogicalView(scan, lockMode, engine);
                         final RelOptTable indexTable = catalog.getTableForMember(indexTableNames);
-                        final LogicalIndexScan index = new LogicalIndexScan(indexTable,
-                            LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints()), this.lockMode);
+                        final LogicalTableScan indexTableScan =
+                            LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null,
+                                scan.getFlashback(), null);
+                        final LogicalIndexScan index = new LogicalIndexScan(indexTable, indexTableScan, this.lockMode);
                         this.withIndexHint = true;
 
                         return (RelNode) RelUtils.createTableLookup(primary, index, index.getTable());
                     }))
-                .orElse(RelUtils.createLogicalView(scan, lockMode)));
+                .orElse(RelUtils.createLogicalView(scan, lockMode, engine)));
     }
 
     @Override
@@ -432,6 +450,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         RelMetadataQuery mq = logicalProject.getCluster().getMetadataQuery();
         this.containUncertainValue |= replaceTableScanInFilterSubQueryFinder.isContainUncertainValue();
         this.containComplexExpression |= replaceTableScanInFilterSubQueryFinder.isContainComplexExpression();
+        this.existsOSSTable |= replaceTableScanInFilterSubQueryFinder.existsOSSTable();
         return LogicalProject.create(logicalProject.getInput(0),
             rexNodeList,
             logicalProject.getRowType(),
@@ -479,6 +498,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
         this.containUncertainValue |= replaceTableScanInFilterSubQueryFinder.isContainUncertainValue();
         this.containComplexExpression |= replaceTableScanInFilterSubQueryFinder.isContainComplexExpression();
+        this.existsOSSTable |= replaceTableScanInFilterSubQueryFinder.existsOSSTable();
         return filter.copy(logicalFilter.getTraitSet(), logicalFilter.getInput(0), rexNode).setHints(filter.getHints());
     }
 
@@ -825,6 +845,12 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 return LogicalAlterTableRepartition.create((AlterTableRepartition) ddl);
             } else if (ddl instanceof AlterTableGroupSplitPartitionByHotValue) {
                 return LogicalAlterTableGroupSplitPartitionByHotValue.create(ddl);
+            } else if (ddl instanceof AlterFileStorageAsOfTimestamp
+                || ddl instanceof AlterFileStoragePurgeBeforeTimestamp
+                || ddl instanceof AlterFileStorageBackup) {
+                return LogicalAlterFileStorage.create(ddl);
+            } else if (ddl instanceof DropFileStorage) {
+                return LogicalDropFileStorage.create(ddl);
             } else {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNSUPPORTED,
                     "operation " + ddl.getSqlNode().getKind());
@@ -854,6 +880,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 return LogicalCreateTableGroup.create((CreateTableGroup) ddl);
             } else if (ddl instanceof DropTableGroup) {
                 return LogicalDropTableGroup.create((DropTableGroup) ddl);
+            } else if (ddl instanceof UnArchive) {
+                return LogicalUnArchive.create(ddl);
             }
 
             if (ddl instanceof SequenceDdl) {
@@ -934,6 +962,11 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         final boolean allTableNotBroadcast = RelUtils.allTableNotBroadcast(tablePropertiesMap);
         if (this.allTableSingleNoBroadcast && !(allTableSingle && allTableNotBroadcast)) {
             this.allTableSingleNoBroadcast = false;
+        }
+        for (Map.Entry<String, TableProperties> entry : tablePropertiesMap.entrySet()) {
+            if (Engine.isFileStore(entry.getValue().getEngine())) {
+                existsOSSTable = true;
+            }
         }
     }
 
@@ -1060,6 +1093,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         private LockMode lockMode = LockMode.UNDEF;
         private List<String> schemaNames;
         private final PlannerContext plannerContext;
+        private boolean existsOSSTable;
 
         public ReplaceTableScanInFilterSubQueryFinder(SqlKind kind, LockMode lockMode, boolean allTableSingle,
                                                       boolean allTableBroadcast, boolean allTableSingleNoBroadcast,
@@ -1103,6 +1137,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             this.tableNames = visitor.tableNames;
             this.allTableBroadcast = visitor.allTableBroadcast;
             this.allTableSingleNoBroadcast = visitor.allTableSingleNoBroadcast;
+            this.existsOSSTable = visitor.existsOSSTable;
             return subQuery.clone(r);
         }
 
@@ -1125,6 +1160,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
         public boolean isAllTableSingle() {
             return allTableSingle;
+        }
+
+        public boolean existsOSSTable() {
+            return existsOSSTable;
         }
 
         public boolean isAllTableBroadcast() {
@@ -1192,4 +1231,5 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return existsGroupingSets;
     }
 
+    public boolean existsOSSTable() {return existsOSSTable;}
 }

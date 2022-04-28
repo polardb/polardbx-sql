@@ -140,10 +140,13 @@ public class OptimizerUtils {
         case ALTER_TABLEGROUP:
         case CREATE_TABLEGROUP:
         case DROP_TABLEGROUP:
+        case UNARCHIVE:
         case ALTER_TABLE_SET_TABLEGROUP:
         case REFRESH_TOPOLOGY:
         case CREATE_SCHEDULE:
         case DROP_SCHEDULE:
+        case ALTER_FILESTORAGE:
+        case DROP_FILESTORAGE:
             return true;
         default:
             if (ast.isA(SqlKind.DAL)) {

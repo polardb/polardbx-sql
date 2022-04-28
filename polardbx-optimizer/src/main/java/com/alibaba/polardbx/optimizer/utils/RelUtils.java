@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.utils;
 
 import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -51,6 +52,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
@@ -1113,6 +1115,7 @@ public class RelUtils {
         private TableRule tableRule;
         private TddlRule tddlRule;
         private PartitionInfo partInfo;
+        private Engine engine = Engine.INNODB;
         private ExecutionContext ec;
 
         public TableProperties(String tableName, TddlRule tddlRule, String schemaName,
@@ -1127,6 +1130,7 @@ public class RelUtils {
                     ec.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager()
                         .getPartitionInfo(tableName);
             }
+            this.engine = ec.getSchemaManager(schemaName).getTable(tableName).getEngine();
             this.ec = ec;
         }
 
@@ -1134,6 +1138,10 @@ public class RelUtils {
             this.tableName = tableName;
             this.schemaName = schemaName;
             this.ec = ec;
+        }
+
+        public Engine getEngine() {
+            return engine;
         }
 
         public boolean isBroadcast() {
@@ -1213,7 +1221,15 @@ public class RelUtils {
     }
 
     public static LogicalView createLogicalView(TableScan tableScan, SqlSelect.LockMode lockMode) {
-        return new LogicalView(tableScan, lockMode);
+        return createLogicalView(tableScan, lockMode, Engine.INNODB);
+    }
+
+    public static LogicalView createLogicalView(TableScan tableScan, SqlSelect.LockMode lockMode, Engine engine) {
+        if (Engine.isFileStore(engine)) {
+            return new OSSTableScan(tableScan, lockMode);
+        } else {
+            return new LogicalView(tableScan, lockMode);
+        }
     }
 
     public static LogicalTableLookup createTableLookup(LogicalView primary, RelNode index, RelOptTable indexTable) {
@@ -1521,6 +1537,9 @@ public class RelUtils {
             return true;
         } else if (plan instanceof LogicalView || plan instanceof BaseQueryOperation ||
             plan instanceof VirtualView) {
+            if (plan instanceof OSSTableScan) {
+                return false;
+            }
             return true;
         } else if (plan instanceof BaseDalOperation) {
             return true;

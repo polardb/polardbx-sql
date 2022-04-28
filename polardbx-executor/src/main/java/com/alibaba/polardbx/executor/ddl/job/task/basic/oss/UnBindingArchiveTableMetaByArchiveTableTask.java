@@ -1,0 +1,85 @@
+package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
+
+import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import lombok.Getter;
+
+import java.sql.Connection;
+
+@Getter
+@TaskName(name = "UnBindingArchiveTableMetaByArchiveTableTask")
+public class UnBindingArchiveTableMetaByArchiveTableTask extends BaseGmsTask {
+    private String archiveTableName;
+    private String originSchemaName;
+    private String originTableName;
+
+    @JSONCreator
+    public UnBindingArchiveTableMetaByArchiveTableTask(String archiveSchemaName, String archiveTableName) {
+        super(archiveSchemaName, null);
+        this.archiveTableName = archiveTableName;
+    }
+
+    @Override
+    protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        TableLocalPartitionRecord record =
+                tableInfoManager.getLocalPartitionRecordByArchiveTable(getSchemaName(), archiveTableName);
+
+        if (record == null) {
+            return;
+        }
+
+        originSchemaName = record.getTableSchema();
+        originTableName = record.getTableName();
+
+        tableInfoManager
+                .unBindingByArchiveTableName(getSchemaName(), archiveTableName);
+    }
+
+    @Override
+    public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
+        if (originSchemaName != null && originTableName != null) {
+            TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(metaDbConnection);
+
+            tableInfoManager
+                    .updateArchiveTable(originSchemaName, originTableName, getSchemaName(), archiveTableName);
+
+        }
+    }
+
+    @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
+        // don't sync here, leave it to latter task
+    }
+
+    @Override
+    protected void onRollbackSuccess(ExecutionContext executionContext) {
+        // don't sync here, leave it to latter task
+    }
+
+    protected void updateTableVersion(Connection metaDbConnection) {
+        try {
+            if (originSchemaName != null && originTableName != null) {
+                TableInfoManager.updateTableVersion(originSchemaName, originTableName, metaDbConnection);
+            }
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public String getLogicalTableName() {
+        return null;
+    }
+
+    protected String remark() {
+        return "|archiveTableName: " + archiveTableName;
+    }
+}

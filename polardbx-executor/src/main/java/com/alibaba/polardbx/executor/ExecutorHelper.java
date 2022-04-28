@@ -39,6 +39,7 @@ import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.dal.BaseDalOperation;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
@@ -250,14 +251,15 @@ public class ExecutorHelper {
          * - Merge <- LogicalView
          * To make it work properly, remember to call `executeByCursor` instead of `execute` in Gather/Merge cursors
          */
-        boolean ret = plan instanceof LogicalView ||
+        boolean ret = (plan instanceof LogicalView && !(plan instanceof OSSTableScan)) ||
             plan instanceof VirtualView ||
             plan instanceof DDL ||
             plan instanceof TableModify ||
             plan instanceof LogicalOutFile ||
             plan instanceof BaseDalOperation ||
             plan instanceof BroadcastTableModify ||
-            plan instanceof Gather && ((Gather) plan).getInput() instanceof LogicalView ||
+            plan instanceof Gather &&
+                (((Gather) plan).getInput() instanceof LogicalView && !(((Gather) plan).getInput() instanceof OSSTableScan)) ||
             plan instanceof Gather && ((Gather) plan).getInput() instanceof BaseQueryOperation ||
             plan instanceof BaseQueryOperation; // Maybe produced by PostPlanner
 

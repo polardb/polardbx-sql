@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.planner;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
@@ -501,7 +502,7 @@ public final class PlanCache {
         }
 
         // GSI can not build final plan
-        if (plan instanceof LogicalIndexScan) {
+        if (plan instanceof LogicalIndexScan || plan instanceof OSSTableScan) {
             return false;
         }
 

@@ -24,7 +24,7 @@ import java.util.Objects;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.chunk.NullBlock;
+import com.alibaba.polardbx.executor.chunk.NullBlock;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.expression.calc.AbstractExpression;
@@ -33,9 +33,9 @@ import org.apache.calcite.rel.core.JoinRelType;
 import org.junit.Ignore;
 import org.junit.Test;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.IntegerBlock;
-import com.alibaba.polardbx.optimizer.chunk.StringBlock;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.StringBlock;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.expression.calc.InputRefExpression;
 

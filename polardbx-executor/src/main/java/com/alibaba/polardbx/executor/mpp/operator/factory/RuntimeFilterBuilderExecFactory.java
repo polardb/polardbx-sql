@@ -22,7 +22,9 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.RuntimeFilterBuilderExec;
 import com.alibaba.polardbx.executor.operator.util.BloomFilterProduce;
+import com.alibaba.polardbx.executor.operator.util.minmaxfilter.MinMaxFilter;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RuntimeFilterUtil;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
@@ -64,6 +66,7 @@ public class RuntimeFilterBuilderExecFactory extends ExecutorFactory {
             List<List<Integer>> keyHash = new ArrayList<>();
             List<BloomFilter> bloomFilters = new ArrayList<>();
             List<List<Integer>> bloomfilterId = new ArrayList<>();
+            List<List<MinMaxFilter>> minMaxFilters = new ArrayList<>();
             for (RexNode rexNode : conditions) {
 
                 SqlRuntimeFilterBuildFunction buildFunction =
@@ -84,16 +87,20 @@ public class RuntimeFilterBuilderExecFactory extends ExecutorFactory {
                 double fpp = RuntimeFilterUtil.findMinFpp(ndv, bloomFilterSize);
 
                 List<Integer> keys = new ArrayList<>();
+                List<MinMaxFilter> minMaxFilterList = new ArrayList<>();
                 for (RexNode input : ((RexCall) rexNode).getOperands()) {
                     keys.add(((RexSlot) input).getIndex());
+                    minMaxFilterList.add(MinMaxFilter.create(DataTypeUtil.calciteToDrdsType(input.getType())));
                 }
                 bloomfilterId.add(buildFunction.getRuntimeFilterIds());
                 keyHash.add(keys);
+
                 BloomFilter bloomFilter = BloomFilter.createEmpty(hashMethodInfo, bloomFilterSize, fpp);
                 bloomFilters.add(bloomFilter);
+                minMaxFilters.add(minMaxFilterList);
             }
             bloomFilterProduce = BloomFilterProduce.create(
-                bloomfilterId, keyHash, bloomFilters, client, uri, context.getTraceId());
+                bloomfilterId, keyHash, bloomFilters, minMaxFilters, client, uri, context.getTraceId());
         }
         bloomFilterProduce.addCounter();
         Executor input = getInputs().get(0).createExecutor(context, idx);

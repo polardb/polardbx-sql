@@ -143,6 +143,8 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             return DdlType.CHECK_GLOBAL_INDEX;
         case MOVE_DATABASE:
             return DdlType.MOVE_DATABASE;
+        case UNARCHIVE:
+            return DdlType.UNARCHIVE;
         case ALTER_TABLEGROUP:
             return DdlType.ALTER_TABLEGROUP;
         case REBALANCE:

@@ -70,6 +70,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableConvertCharSet;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDisableConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDiscardPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropFile;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropForeignKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropKey;
@@ -3231,5 +3232,10 @@ public class SchemaStatVisitor extends SQLASTVisitorAdapter {
 
     public List<SQLName> getOriginalTables() {
         return originalTables;
+    }
+
+    @Override
+    public boolean visit(SQLAlterTableDropFile x) {
+        return false;
     }
 }

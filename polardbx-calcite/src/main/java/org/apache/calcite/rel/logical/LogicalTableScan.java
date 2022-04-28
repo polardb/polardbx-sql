@@ -25,6 +25,7 @@ import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.schema.Table;
 
 import com.google.common.base.Supplier;
@@ -80,8 +81,9 @@ public final class LogicalTableScan extends TableScan {
   }
 
   public LogicalTableScan(RelOptCluster cluster, RelTraitSet traitSet,
-                          RelOptTable table, SqlNodeList hints, SqlNode indexNode, SqlNode partitions) {
-    super(cluster, traitSet, table, hints,indexNode, partitions);
+                          RelOptTable table, SqlNodeList hints, SqlNode indexNode, RexNode flashback,
+                          SqlNode partitions) {
+    super(cluster, traitSet, table, hints, indexNode, flashback, partitions);
   }
 
   @Deprecated // to be removed before 2.0
@@ -109,41 +111,24 @@ public final class LogicalTableScan extends TableScan {
    */
   public static LogicalTableScan create(RelOptCluster cluster,
                                         final RelOptTable relOptTable) {
-      return create(cluster, relOptTable, new SqlNodeList(SqlParserPos.ZERO));
+      return create(cluster, relOptTable, new SqlNodeList(SqlParserPos.ZERO), null, null, null);
   }
 
   public static LogicalTableScan create(RelOptCluster cluster,
-      final RelOptTable relOptTable, SqlNodeList hints) {
+                                        final RelOptTable relOptTable, SqlNodeList hints, SqlNode indexNode,
+                                        RexNode flashback, SqlNode partitions) {
+
     final Table table = relOptTable.unwrap(Table.class);
     final RelTraitSet traitSet =
         cluster.traitSetOf(Convention.NONE)
             .replaceIfs(RelCollationTraitDef.INSTANCE,
-                new Supplier<List<RelCollation>>() {
-                  public List<RelCollation> get() {
-                    if (table != null) {
-                      return table.getStatistic().getCollations();
-                    }
-                    return ImmutableList.of();
+                (Supplier<List<RelCollation>>) () -> {
+                  if (table != null) {
+                    return table.getStatistic().getCollations();
                   }
-                });
-    return new LogicalTableScan(cluster, traitSet, relOptTable, hints);
-  }
-
-  public static LogicalTableScan create(RelOptCluster cluster,
-                                        final RelOptTable relOptTable, SqlNodeList hints, SqlNode indexNode, SqlNode partitions) {
-    final Table table = relOptTable.unwrap(Table.class);
-    final RelTraitSet traitSet =
-            cluster.traitSetOf(Convention.NONE)
-                    .replaceIfs(RelCollationTraitDef.INSTANCE,
-                            new Supplier<List<RelCollation>>() {
-                              public List<RelCollation> get() {
-                                if (table != null) {
-                                  return table.getStatistic().getCollations();
-                                }
-                                return ImmutableList.of();
-                              }
-                            });
-    return new LogicalTableScan(cluster, traitSet, relOptTable, hints, indexNode, partitions);
+                  return ImmutableList.of();
+                }).simplify();
+    return new LogicalTableScan(cluster, traitSet, relOptTable, hints, indexNode, flashback, partitions);
   }
 
 

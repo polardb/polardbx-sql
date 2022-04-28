@@ -166,8 +166,10 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.FullTextType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPurgeTransStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
@@ -1018,6 +1020,8 @@ public class SQLStatementParser extends SQLParser {
                 stmt = parseDropCclRule();
             } else if (isEnabled(SQLParserFeature.DrdsCCL) && lexer.identifierEquals(Constants.CCL_TRIGGER)) {
                 stmt = parseDropCclTrigger();
+            } else if (lexer.identifierEquals("FileStorage")) {
+                stmt = parseDropFileStorage();
             } else {
                 throw new ParserException("TODO " + lexer.info());
             }
@@ -1163,6 +1167,17 @@ public class SQLStatementParser extends SQLParser {
             triggerNames.add(exprParser.name());
         }
         stmt.setNames(triggerNames);
+        return stmt;
+    }
+
+    public SQLStatement parseDropFileStorage() {
+        if (lexer.token() == Token.DROP) {
+            lexer.nextToken();
+        }
+        acceptIdentifier("FileStorage");
+        SQLName name = this.exprParser.name();
+        DrdsDropFileStorageStatement stmt = new DrdsDropFileStorageStatement();
+        stmt.setName(name);
         return stmt;
     }
 

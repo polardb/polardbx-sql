@@ -19,7 +19,7 @@ package com.alibaba.polardbx.executor.vectorized.math;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.annotation.Parameter;
-import com.alibaba.polardbx.optimizer.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.utils.TestParameterUtil;
 import com.alibaba.polardbx.executor.vectorized.BaseProjectionTest;
 import com.alibaba.polardbx.executor.vectorized.ColumnInput;

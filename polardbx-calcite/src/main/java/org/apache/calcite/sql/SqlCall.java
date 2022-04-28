@@ -100,7 +100,7 @@ public abstract class SqlCall extends SqlNode {
         || (operator.getRightPrec() <= rightPrec && (rightPrec != 0))
         || writer.isAlwaysUseParentheses() && isA(SqlKind.EXPRESSION)) {
       // values do not with "( )" at outer.
-      if (operator.getKind().equals(SqlKind.VALUES)||operator.getKind().equals(SqlKind.ROW)) {
+      if (operator.getKind().equals(SqlKind.VALUES)||operator.getKind().equals(SqlKind.ROW)||operator.getKind().equals(SqlKind.AS_OF)) {
         dialect.unparseCall(writer, this, 0, 0);
       }else {
         if (operandCount() == 2 ) {
@@ -108,7 +108,7 @@ public abstract class SqlCall extends SqlNode {
           parentUion = isParentUion(writer, parentUion);
           pushOpt(writer);//if can puush, it must is a union statement
           final SqlNode operand1 = getOperandList().get(1);
-          if (parentUion && (operand1 instanceof SqlOrderBy || operand1 instanceof SqlSelect)) {
+          if (parentUion && (operand1 instanceof SqlOrderBy || operand1 instanceof SqlSelect) ) {
             dialect.unparseCall(writer, this, 0, 0);
           } else {
             final SqlWriter.Frame frame = writer.startList("(", ")");

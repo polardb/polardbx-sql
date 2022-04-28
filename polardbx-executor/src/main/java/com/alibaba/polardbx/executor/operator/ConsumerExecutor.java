@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 
 /**
  * Basic interface for consumer-operator which only receive the chunk.

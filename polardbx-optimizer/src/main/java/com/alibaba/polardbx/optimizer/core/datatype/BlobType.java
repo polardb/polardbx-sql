@@ -130,7 +130,7 @@ public class BlobType extends AbstractDataType<Blob> {
                         byte[] rawBytes = ((Blob) value).getBytes(1, (int) length);
                         return new com.alibaba.polardbx.optimizer.core.datatype.Blob(rawBytes);
                     } catch (SQLException e) {
-                        GeneralUtil.nestedException(e);
+                        throw GeneralUtil.nestedException(e);
                     }
                 }
             }

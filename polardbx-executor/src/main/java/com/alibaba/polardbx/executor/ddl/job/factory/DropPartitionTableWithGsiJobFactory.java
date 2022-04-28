@@ -100,7 +100,7 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
             DdlJobDataConverter.convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans);
 
         ExecutableDdlJob4DropPartitionTable dropPrimaryTableJob = (ExecutableDdlJob4DropPartitionTable)
-            new DropPartitionTableJobFactory(physicalPlanData).create();
+            new DropPartitionTableJobFactory(physicalPlanData, executionContext).create();
 
         DdlTask validateTask = dropPrimaryTableJob.getValidateTask();
         DdlTask dropPrimaryTableSyncTask = dropPrimaryTableJob.getTableSyncTask();

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 
 public interface PartitionFunction {
     int getPartitionCount();

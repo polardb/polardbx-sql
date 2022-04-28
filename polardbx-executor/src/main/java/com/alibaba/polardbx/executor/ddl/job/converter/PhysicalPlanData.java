@@ -22,6 +22,7 @@ import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import lombok.Data;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
@@ -44,6 +45,7 @@ public class PhysicalPlanData {
 
     private TablesExtRecord tablesExtRecord;
     private Map<String, List<List<String>>> tableTopology;
+    private Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology;
 
     private SqlKind kind;
 
@@ -70,6 +72,8 @@ public class PhysicalPlanData {
     private LocalityDesc localityDesc;
 
     private AlterTablePreparedData alterTablePreparedData;
+
+    private boolean flashbackRename = false;
 
     @Override
     public String toString() {

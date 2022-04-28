@@ -22,7 +22,7 @@ import com.alibaba.polardbx.optimizer.core.rel.SimpleShardProcessor;
 import com.google.common.collect.Iterables;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.partitionmanagement.PartitionUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;

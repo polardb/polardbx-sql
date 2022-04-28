@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.ArchiveMode;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
@@ -23,7 +25,9 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -35,6 +39,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.CreatePartitionTableJobFact
 import com.alibaba.polardbx.executor.ddl.job.factory.CreatePartitionTableWithGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableWithGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.oss.CreatePartitionOssTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.validator.ColumnValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ConstraintValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
@@ -67,6 +72,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_TABLE_EXISTS;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PARTITION_MANAGEMENT;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TABLE_ALREADY_EXISTS;
 
@@ -94,10 +100,43 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             SqlCreateTable createTableLikeSqlAst = (SqlCreateTable)
                 new FastsqlParser().parse(sourceCreateTableSql, executionContext).get(0);
             createTableLikeSqlAst.setSourceSql(targetTableAst.getSourceSql());
+            // handle engine
+            if (Engine.isFileStore(createTableLikeSqlAst.getEngine()) &&
+                !executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_CREATE_TABLE_LIKE_FILE_STORE)) {
+                throw GeneralUtil.nestedException(
+                    "cannot create table like an file-store table, the engine of source table must be INNODB.");
+            }
+            // set engine if there is engine option in user sql
+            Engine engine;
+            if ((engine = sqlCreateTable.getEngine()) != null) {
+                createTableLikeSqlAst.setEngine(engine);
+            }
+            // set archive mode if there is engine option in user sql
+            ArchiveMode archiveMode;
+            if ((archiveMode = sqlCreateTable.getArchiveMode()) != null) {
+                createTableLikeSqlAst.setArchiveMode(archiveMode);
+            }
+            if (!Engine.isFileStore(engine) && archiveMode != null) {
+                throw GeneralUtil.nestedException(
+                    "cannot create table using ARCHIVE_MODE if the engine of target table is INNODB.");
+            }
             createTableLikeSqlAst.setTargetTable(sqlCreateTable.getTargetTable());
             if (!DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName())) {
                 createTableLikeSqlAst.setGlobalKeys(null);
                 createTableLikeSqlAst.setGlobalUniqueKeys(null);
+            }
+            if (sqlCreateTable.shouldLoad() || sqlCreateTable.shouldBind()) {
+                if (sqlCreateTable.getLikeTableName() instanceof SqlIdentifier) {
+                    if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 2) {
+                        createTableLikeSqlAst.setLoadTableSchema(
+                            ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(0).getLastName());
+                        createTableLikeSqlAst.setLoadTableName(
+                            ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(1).getLastName());
+                    } else if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 1) {
+                        createTableLikeSqlAst.setLoadTableName(
+                            ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(0).getLastName());
+                    }
+                }
             }
             ExecutionPlan createTableLikeSqlPlan = Planner.getInstance().getPlan(createTableLikeSqlAst, plannerContext);
             LogicalCreateTable logicalCreateTableLikeRelNode = (LogicalCreateTable) createTableLikeSqlPlan.getPlan();
@@ -152,6 +191,35 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             if(tableExists){
                 throw new TddlNestableRuntimeException(String.format("Not unique table/alias: '%s'", targetTableName));
             }
+            if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 1) {
+                final String likeTableName = ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getLastName();
+                if (TStringUtil.equalsIgnoreCase(logicalDdlPlan.getTableName(), likeTableName)) {
+                    if (sqlCreateTable.isIfNotExists()) {
+                        DdlHelper.storeFailedMessage(logicalDdlPlan.getSchemaName(), ERROR_TABLE_EXISTS,
+                            "Table '" + likeTableName + "' already exists", executionContext);
+                        return true;
+                    } else {
+                        throw new TddlRuntimeException(ERR_TABLE_ALREADY_EXISTS, likeTableName);
+                    }
+                }
+            } else if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 2) {
+                final String likeTableSchema =
+                    ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(0).getLastName();
+                final String likeTableName =
+                    ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(1).getLastName();
+                if (TStringUtil.equalsIgnoreCase(logicalDdlPlan.getSchemaName(), likeTableSchema) &&
+                    TStringUtil.equalsIgnoreCase(logicalDdlPlan.getTableName(), likeTableName)) {
+                    if (sqlCreateTable.isIfNotExists()) {
+                        DdlHelper.storeFailedMessage(logicalDdlPlan.getSchemaName(), ERROR_TABLE_EXISTS,
+                            "Table '" + likeTableName + "' already exists", executionContext);
+                        return true;
+                    } else {
+                        throw new TddlRuntimeException(ERR_TABLE_ALREADY_EXISTS, likeTableName);
+                    }
+                }
+            } else {
+                throw new AssertionError("create table like with wrong argument");
+            }
             return false;
         }
 
@@ -166,7 +234,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
                 DdlVisibility.Public, executionContext.getExtraCmds());
 
             // Prompt "show warning" only.
-            DdlHelper.storeFailedMessage(schemaName, DdlConstants.ERROR_TABLE_EXISTS,
+            DdlHelper.storeFailedMessage(schemaName, ERROR_TABLE_EXISTS,
                 " Table '" + logicalTableName + "' already exists", executionContext);
             executionContext.getDdlContext().setUsingWarning(true);
             return true;
@@ -213,6 +281,16 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             new CreatePartitionTableBuilder(logicalCreateTable.relDdl, createTablePreparedData, executionContext,
                 partitionTableType).build();
         PhysicalPlanData physicalPlanData = createTableBuilder.genPhysicalPlanData();
+
+        Engine tableEngine = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getEngine();
+        ArchiveMode archiveMode = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getArchiveMode();
+        if (Engine.isFileStore(tableEngine)) {
+            return new CreatePartitionOssTableJobFactory(
+                createTablePreparedData.isAutoPartition(), createTablePreparedData.isTimestampColumnDefault(),
+                createTablePreparedData.getBinaryColumnDefaultValues(),
+                physicalPlanData, executionContext, createTablePreparedData, tableEngine, archiveMode)
+                .create();
+        }
 
         PartitionInfo partitionInfo = createTableBuilder.getPartitionInfo();
         return new CreatePartitionTableJobFactory(

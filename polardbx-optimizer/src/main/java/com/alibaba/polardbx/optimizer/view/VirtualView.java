@@ -247,6 +247,10 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaTcpPerf(cluster, traitSet);
         case SESSION_PERF:
             return new InformationSchemaSessionPerf(cluster, traitSet);
+        case FILE_STORAGE:
+            return new InformationSchemaFileStorage(cluster, traitSet);
+        case FILE_STORAGE_FILES_META:
+            return new InformationSchemaFileStorageFilesMeta(cluster, traitSet);
         case DDL_PLAN:
             return new InformationSchemaDdlPlan(cluster, traitSet);
         default:

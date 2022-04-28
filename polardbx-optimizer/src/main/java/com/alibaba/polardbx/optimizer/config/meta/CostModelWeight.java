@@ -59,6 +59,10 @@ public class CostModelWeight {
 
     public static final double RAND_IO_PAGE_SIZE = 4 * 1024;
 
+    public static final double OSS_PAGE_SIZE = 1000;
+
+    public static final double BLOOM_FILTER_READ_COST = 10;
+
     public static final double NET_BUFFER_SIZE = 8 * 1024 * 1024;
 
     public static final double WORKLOAD_MEMORY_WEIGHT = 10;

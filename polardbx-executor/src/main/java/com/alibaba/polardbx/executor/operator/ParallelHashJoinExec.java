@@ -19,8 +19,8 @@ package com.alibaba.polardbx.executor.operator;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.memory.SizeOf;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkConverter;
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -367,6 +367,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
         private int[] positionLinks;
         private FastIntBloomFilter bloomFilter;
         private boolean alreadyUseRuntimeFilter;
+        private boolean useBloomFilter;
 
         private BitSet joinNullRowBitSet;
         private int maxIndex = -1;
@@ -374,9 +375,14 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
 
         private final Set<Integer> operatorIds = new HashSet<>();
 
-        public Synchronizer(int numPartitions, boolean alreadyUseRuntimeFilter) {
+        public Synchronizer(int numPartitions, boolean alreadyUseRuntimeFilter, boolean useBloomFilter) {
             this.numPartitions = numPartitions;
             this.alreadyUseRuntimeFilter = alreadyUseRuntimeFilter;
+            this.useBloomFilter = useBloomFilter;
+        }
+
+        public Synchronizer(int numPartitions, boolean alreadyUseRuntimeFilter) {
+            this(numPartitions, alreadyUseRuntimeFilter, true);
         }
 
         private synchronized void initHashTable(MemoryAllocatorCtx ctx) {
@@ -390,7 +396,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
                 ctx.allocateReservedMemory(hashTable.estimateSize());
                 ctx.allocateReservedMemory(SizeOf.sizeOf(positionLinks));
 
-                if (!alreadyUseRuntimeFilter && size <= BLOOM_FILTER_ROWS_LIMIT_FOR_PARALLEL && size > 0) {
+                if (useBloomFilter && !alreadyUseRuntimeFilter && size <= BLOOM_FILTER_ROWS_LIMIT_FOR_PARALLEL && size > 0) {
                     bloomFilter = FastIntBloomFilter.create(size);
                     ctx.allocateReservedMemory(bloomFilter.sizeInBytes());
                 }

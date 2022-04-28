@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.executor.operator.frame;
 
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 
 import java.io.Serializable;
 import java.util.List;

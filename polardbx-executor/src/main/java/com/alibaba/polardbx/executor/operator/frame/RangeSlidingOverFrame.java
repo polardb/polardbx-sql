@@ -20,11 +20,10 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 
 import java.math.BigInteger;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * The range sliding window frame calculates frames with the following SQL form:

@@ -197,5 +197,7 @@ public enum VirtualViewType {
     DN_PERF,
     TCP_PERF,
     SESSION_PERF,
-    DDL_PLAN
+    DDL_PLAN,
+    FILE_STORAGE,
+    FILE_STORAGE_FILES_META
 }

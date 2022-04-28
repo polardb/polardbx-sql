@@ -22,7 +22,7 @@ import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
 import com.alibaba.polardbx.executor.operator.Executor;

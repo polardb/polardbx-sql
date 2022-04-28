@@ -188,6 +188,17 @@ public class SliceType extends AbstractDataType<Slice> {
         return collationHandler.instr(binaryStr1, binaryStr2);
     }
 
+    public SortKey makeSortKey(Object o, int length) {
+        if (o instanceof SortKey) {
+            return (SortKey) o;
+        } else {
+            return Optional.ofNullable(o)
+                .map(this::convertFrom)
+                .map(slice -> this.getSortKey(slice, length))
+                .orElse(null);
+        }
+    }
+
     public SortKey makeSortKey(Object o) {
         if (o instanceof SortKey) {
             return (SortKey) o;
@@ -280,13 +291,17 @@ public class SliceType extends AbstractDataType<Slice> {
     }
 
     public SortKey getSortKey(Slice slice) {
+        return getSortKey(slice, MAX_CHAR_LENGTH);
+    }
+
+    public SortKey getSortKey(Slice slice, int length) {
         // optimization for latin1 collation
         if ((isLatin1Encoding && !isBinaryCollation) || isUtf8Encoding) {
-            return collationHandler.getSortKey(slice, MAX_CHAR_LENGTH);
+            return collationHandler.getSortKey(slice, length);
         }
         // for other collations.
         Slice rawBytes = charsetHandler.encodeFromUtf8(slice);
-        return collationHandler.getSortKey(rawBytes, MAX_CHAR_LENGTH);
+        return collationHandler.getSortKey(rawBytes, length);
     }
 
     public void setLength(int precision) {

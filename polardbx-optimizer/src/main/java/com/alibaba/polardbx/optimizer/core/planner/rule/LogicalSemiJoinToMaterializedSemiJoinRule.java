@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -159,6 +160,9 @@ public class LogicalSemiJoinToMaterializedSemiJoinRule extends RelOptRule {
     public void onMatchLogicalView(RelOptRuleCall call) {
         final LogicalSemiJoin semiJoin = call.rel(0);
         final LogicalView logicalView = call.rel(1);
+        if (logicalView instanceof OSSTableScan) {
+            return;
+        }
         RelNode right = call.rel(2);
 
         RexNode newCondition =

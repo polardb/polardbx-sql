@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -40,6 +41,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.taobao.tddl.common.utils.TddlToStringStyle;
 import org.apache.calcite.config.CalciteConnectionConfig;
@@ -68,6 +70,7 @@ import java.io.Serializable;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -99,6 +102,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private final TableStatus status;
 
     private final long version;
+
+    private Engine engine;
 
     private final long flag;
 
@@ -141,6 +146,10 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     // when split/merge/move the table, this entry will save the new partitionInfo temporarily
     private volatile PartitionInfo newPartitionInfo = null;
 
+    // for oss engine
+    private Map<String, Map<String, List<FileMeta>>> fileMetaSet = null;
+    private Map<String, List<FileMeta>> flatFileMetas = null;
+
     private volatile LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
 
     public TableMeta(String tableName, List<ColumnMeta> allColumnsOrderByDefined, IndexMeta primaryIndex,
@@ -170,6 +179,14 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         this.version = version;
         this.flag = flag;
         this.digest = tableName + "#version:" + version;
+    }
+
+    public Engine getEngine() {
+        return engine;
+    }
+
+    public void setEngine(Engine engine) {
+        this.engine = engine;
     }
 
     public long getId() {
@@ -652,6 +669,28 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     public void initPartitionInfo(Connection conn, String schemaName, String tableName, TddlRuleManager rule) {
         rule.getPartitionInfoManager().reloadPartitionInfo(conn, schemaName, tableName);
         this.partitionInfo = rule.getPartitionInfoManager().getPartitionInfo(tableName);
+    }
+
+    public Map<String, Map<String, List<FileMeta>>> getFileMetaSet() {
+        return fileMetaSet;
+    }
+
+    public void setFileMetaSet(Map<String, Map<String, List<FileMeta>>> fileMetaSet) {
+        // only for file-store engine table
+        Preconditions.checkArgument(Engine.isFileStore(this.getEngine()));
+        this.fileMetaSet = fileMetaSet;
+        // build flat map for physical table - file meta
+        Map<String, List<FileMeta>> flatFileMetas = new HashMap<>();
+        for (Entry<String, Map<String, List<FileMeta>>> phySchemas : this.fileMetaSet.entrySet()) {
+            for (Entry<String, List<FileMeta>> phyTables : phySchemas.getValue().entrySet()) {
+                flatFileMetas.put(phyTables.getKey(), phyTables.getValue());
+            }
+        }
+        this.flatFileMetas = flatFileMetas;
+    }
+
+    public Map<String, List<FileMeta>> getFlatFileMetas() {
+        return flatFileMetas;
     }
 
     public void initPartitionInfo(String schemaName, String tableName, TddlRuleManager rule,

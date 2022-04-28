@@ -16,11 +16,13 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.common.RecycleBinManager;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
@@ -32,7 +34,9 @@ import com.alibaba.polardbx.executor.ddl.job.factory.DropPartitionTableJobFactor
 import com.alibaba.polardbx.executor.ddl.job.factory.DropPartitionTableWithGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.DropTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.DropTableWithGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.RecycleOssTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.RenameTableJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecycleMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
@@ -42,6 +46,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
@@ -70,7 +75,9 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         LogicalDropTable logicalDropTable = (LogicalDropTable) logicalDdlPlan;
-
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.PURGE_FILE_STORAGE_TABLE) && logicalDropTable.isPurge()) {
+            LogicalRenameTableHandler.makeTableVisible(logicalDropTable.getSchemaName(), logicalDropTable.getTableName(), executionContext);
+        }
         logicalDropTable.prepareData();
 
         if (logicalDropTable.ifExists()) {
@@ -81,6 +88,7 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
 
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDropTable.getSchemaName());
 
+        CheckOSSArchiveUtil.checkWithoutOSS(logicalDropTable.getSchemaName(), logicalDropTable.getTableName());
         if (!isNewPartDb) {
             if (logicalDropTable.isWithGsi()) {
                 return buildDropTableWithGsiJob(logicalDropTable, executionContext);
@@ -96,7 +104,22 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
             if (logicalDropTable.isWithGsi()) {
                 return buildDropPartitionTableWithGsiJob(logicalDropTable, executionContext);
             } else {
-                return buildDropPartitionTableJob(logicalDropTable, executionContext);
+                Engine engine = OptimizerContext.getContext(logicalDropTable.getSchemaName()).getLatestSchemaManager().getTable(logicalDropTable.getTableName()).getEngine();
+                if (Engine.isFileStore(engine)) {
+                    if (executionContext.getParamManager().getBoolean(ConnectionParams.PURGE_FILE_STORAGE_TABLE) && logicalDropTable.isPurge()) {
+                        return buildDropPartitionTableJob(logicalDropTable, executionContext);
+                    } else {
+                        // don't drop table for oss table in recycle bin
+                        RecycleBin bin = RecycleBinManager.instance.getByAppName(executionContext.getAppName());
+                        if (bin.get(logicalDropTable.getTableName()) != null) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_DROP_RECYCLE_BIN,
+                                logicalDropTable.getTableName());
+                        }
+                        return buildRecycleFileStorageTableJob(logicalDropTable, executionContext);
+                    }
+                } else {
+                    return buildDropPartitionTableJob(logicalDropTable, executionContext);
+                }
             }
         }
     }
@@ -179,6 +202,50 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         return new RenameTableJobFactory(physicalPlanData, executionContext).create();
     }
 
+    private DdlJob buildRecycleFileStorageTableJob(LogicalDropTable logicalDropTable, ExecutionContext executionContext) {
+        RecycleBin recycleBin = RecycleBinManager.instance.getByAppName(executionContext.getAppName());
+        String fileStorageBinName = recycleBin.genFileStorageBinName();
+
+        SqlIdentifier sourceTableNode = (SqlIdentifier) logicalDropTable.getTargetTable();
+        SqlIdentifier targetTableNode = sourceTableNode.setName(sourceTableNode.names.size() - 1, fileStorageBinName);
+
+        SqlNode sqlRenameTable = new SqlRenameTable(targetTableNode, sourceTableNode, SqlParserPos.ZERO);
+        executionContext.getDdlContext()
+            .setDdlStmt(CdcTruncateWithRecycleMarkTask.CDC_RECYCLE_HINTS + sqlRenameTable.toString());
+
+        RenameTable renameTable =
+            RenameTable.create(logicalDropTable.getCluster(), sqlRenameTable, sourceTableNode, targetTableNode);
+        LogicalRenameTable logicalRenameTable = LogicalRenameTable.create(renameTable);
+        logicalRenameTable.prepareData();
+        DdlJob renameTableJob = buildOssRecycleTableJob(logicalRenameTable, executionContext);
+
+        recycleBin.add(fileStorageBinName, logicalDropTable.getTableName());
+
+        return renameTableJob;
+    }
+
+    public static DdlJob buildOssRecycleTableJob(LogicalRenameTable logicalRenameTable, ExecutionContext executionContext) {
+        RenameTablePreparedData renameTablePreparedData = logicalRenameTable.getRenameTablePreparedData();
+        DdlPhyPlanBuilder renameTableBuilder =
+            RenameTableBuilder.create(logicalRenameTable.relDdl,
+                renameTablePreparedData,
+                executionContext).build();
+        PhysicalPlanData physicalPlanData = renameTableBuilder.genPhysicalPlanData();
+
+        Map<String, Long> tableVersions = new HashMap<>();
+
+        tableVersions.put(renameTablePreparedData.getTableName(),
+            renameTablePreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(renameTablePreparedData.getSchemaName(), tableVersions);
+
+        ExecutableDdlJob result = new RecycleOssTableJobFactory(physicalPlanData, executionContext).create();
+        result.addTask(validateTableVersionTask);
+        result.addTaskRelationship(validateTableVersionTask, result.getHead());
+
+        return result;
+    }
+
     private DdlJob buildDropPartitionTableJob(LogicalDropTable logicalDropTable, ExecutionContext executionContext) {
         DropTablePreparedData dropTablePreparedData = logicalDropTable.getDropTablePreparedData();
 
@@ -192,7 +259,7 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         ValidateTableVersionTask validateTableVersionTask =
             new ValidateTableVersionTask(dropTablePreparedData.getSchemaName(), tableVersions);
 
-        ExecutableDdlJob result = new DropPartitionTableJobFactory(physicalPlanData).create();
+        ExecutableDdlJob result = new DropPartitionTableJobFactory(physicalPlanData, executionContext).create();
         result.addTask(validateTableVersionTask);
         result.addTaskRelationship(validateTableVersionTask, result.getHead());
 

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.common;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -48,6 +49,8 @@ public class RecycleBin extends AbstractLifecycle {
     public static final String PREFIX = "BIN_";
     public static final int SUFFIX_LENGTH = 20;
     public static final int NAME_LENGTH = PREFIX.length() + SUFFIX_LENGTH;
+    public static final String FILE_STORAGE_PREFIX = "FILE_STORAGE_BIN_";
+    public static final int FILE_STORAGE_BIN_NAME_LENGTH = FILE_STORAGE_PREFIX.length() + SUFFIX_LENGTH;
 
     private String appName;
     private String schemaName;
@@ -64,11 +67,17 @@ public class RecycleBin extends AbstractLifecycle {
     }
 
     public static boolean isRecyclebinTable(String name) {
-        return name.toUpperCase().startsWith(PREFIX) && name.length() == NAME_LENGTH;
+        return (name.toUpperCase().startsWith(PREFIX) && name.length() == NAME_LENGTH) ||
+            (name.toUpperCase().startsWith(FILE_STORAGE_PREFIX) && name.length() == FILE_STORAGE_BIN_NAME_LENGTH);
     }
 
     @Override
     public void doInit() {
+    }
+
+    @Override
+    public void doDestroy() {
+        deleteAll();
     }
 
     public void flashback(String name, String renameTo) {
@@ -83,7 +92,7 @@ public class RecycleBin extends AbstractLifecycle {
         }
         try {
             logger.info("flashback:" + appName + "," + name + "->" + renameTo);
-            doExecuteUpdate(String.format("RENAME TABLE `%s` TO `%s`", name, TStringUtil.escape(target, '`', '`')),
+            doExecuteUpdate(String.format("/*+TDDL:cmd_extra(FLASHBACK_RENAME=true)*/ RENAME TABLE `%s` TO `%s`", name, TStringUtil.escape(target, '`', '`')),
                 dataSource);
         } catch (SQLException e) {
             logger.error("flashback:" + name + "->" + renameTo, e);
@@ -102,16 +111,28 @@ public class RecycleBin extends AbstractLifecycle {
     }
 
     public void purgeTable(String name, boolean check) {
+        RecycleBinParam param = get(name);
         if (check) {
-            RecycleBinParam param = get(name);
             if (param == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "can't find table in recycle bin");
             }
         }
+
+        String hint = "";
+        if (param.name.startsWith(FILE_STORAGE_PREFIX)) {
+            if (check) {
+//                throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "can't purge this table");
+                hint = "/*+TDDL: " + ConnectionProperties.PURGE_FILE_STORAGE_TABLE + "=true */";
+            } else {
+                // background do not purge oss table
+                return;
+            }
+        }
+
         try {
             logger.info("purge table:" + appName + "," + name + "," + check);
             //DDL have dblock, so if have conflict will throw exception
-            doExecuteUpdate(String.format("drop table IF EXISTS `%s` purge", name), dataSource);
+            doExecuteUpdate(String.format(hint + " drop table IF EXISTS `%s` purge", name), dataSource);
             delete(name);
         } catch (SQLException e) {
             logger.error("purge table:" + appName + "," + name + "," + check, e);
@@ -171,14 +192,24 @@ public class RecycleBin extends AbstractLifecycle {
         }
     }
 
+    public void deleteAll() {
+        String where = "`schema_name` = '" + schemaName + "' and";
+        String sql = "delete from %s where %s 1 = 1";
+        try {
+            doExecuteUpdate(String.format(sql, tableName, where), getMetaDataSource());
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "delete from recycle bin error", e);
+        }
+    }
+
     public void add(String name, String originalName) {
         String schemaColumn = ", `schema_name`";
         String schemaValue = ", '" + schemaName + "'";
-        String sql = "insert into %s (`gmt_create`,`name`, `original_name` %s) value (now(),'%s',%s %s)";
+        String sql = "insert into %s (`gmt_create`,`name`, `original_name` %s) value (%s,'%s',%s %s)";
         try {
             logger.info("bind recycle table:" + appName + "," + name + "," + originalName);
-            doExecuteUpdate(String.format(sql, tableName, schemaColumn,
-                name.toUpperCase(), TStringUtil.quoteString(originalName), schemaValue),
+            doExecuteUpdate(String.format(sql, tableName, schemaColumn, "now()",
+                    name.toUpperCase(), TStringUtil.quoteString(originalName), schemaValue),
                 getMetaDataSource());
         } catch (SQLException e) {
             logger.error("bind recycle table:" + appName + "," + name + "," + originalName, e);
@@ -188,6 +219,10 @@ public class RecycleBin extends AbstractLifecycle {
 
     public String genName() {
         return PREFIX + RandomStringUtils.randomAlphanumeric(SUFFIX_LENGTH).toUpperCase();
+    }
+
+    public String genFileStorageBinName() {
+        return FILE_STORAGE_PREFIX + RandomStringUtils.randomAlphanumeric(SUFFIX_LENGTH).toUpperCase();
     }
 
     public boolean hasForeignConstraint(String appName, String tableName) {

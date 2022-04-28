@@ -14,6 +14,10 @@
 
     <properties>
         <dep.airlift.version>0.178</dep.airlift.version>
+        <hadoop.version>3.2.2</hadoop.version>
+        <orc.version>1.6.9</orc.version>
+        <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
+        <hadoop-aliyun.version>3.2.2</hadoop-aliyun.version>
     </properties>
     <dependencies>
         <dependency>
@@ -247,6 +251,11 @@
         <dependency>
             <artifactId>commons-codec</artifactId>
             <groupId>commons-codec</groupId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-client</artifactId>
+            <version>${hadoop.version}</version>
         </dependency>
         <dependency>
             <groupId>com.cronutils</groupId>

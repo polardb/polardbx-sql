@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.alibaba.polardbx.optimizer.chunk.BlockEncoding;
-import com.alibaba.polardbx.optimizer.chunk.BlockEncodingBuilders;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.BlockEncoding;
+import com.alibaba.polardbx.executor.chunk.BlockEncodingBuilders;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import io.airlift.compress.Compressor;
 import io.airlift.compress.Decompressor;

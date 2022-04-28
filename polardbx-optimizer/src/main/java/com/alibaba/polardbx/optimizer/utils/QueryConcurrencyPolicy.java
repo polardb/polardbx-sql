@@ -45,5 +45,9 @@ public enum QueryConcurrencyPolicy {
     /**
      * 第一个请求先执行，其他请求并发（用于广播表多写）
      */
-    FIRST_THEN_CONCURRENT;
+    FIRST_THEN_CONCURRENT,
+    /**
+     * Concurrency among files
+     */
+    FILE_CONCURRENT
 }

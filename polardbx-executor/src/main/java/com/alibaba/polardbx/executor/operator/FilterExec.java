@@ -18,10 +18,10 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.BooleanBlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.BooleanBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpressionFilter;
 import com.alibaba.polardbx.executor.utils.ConditionUtils;

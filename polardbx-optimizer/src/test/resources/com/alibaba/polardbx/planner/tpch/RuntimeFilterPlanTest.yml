@@ -282,7 +282,8 @@
   plan: |
     project(p_partkey="p_partkey", s_address="s_address", s_nationkey="s_nationkey")
       hashjoin(condition="p_partkey = s_nationkey and p_name = s_name", type="inner")
-        logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`))")
+        filter(condition="bloomfilter(p_name)")
+          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, `p_name` from `part` as `part` where (bloomfilter(?, ?, ?, `p_partkey`))")
         exchange(distribution=broadcast, collation=[])
-          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey)")
+          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_nationkey) and runtime_filter_builder_[1](s_name)")
             logicalview(tables="[0000-0003].supplier_[00-15]", shardcount=16, sql="select `s_name`, `s_address`, `s_nationkey` from `supplier` as `supplier`")

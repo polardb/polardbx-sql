@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.gms;
 
 import com.alibaba.druid.pool.GetConnectionTimeoutException;
 import com.alibaba.druid.proxy.jdbc.ResultSetMetaDataProxy;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.exception.NotSupportException;
@@ -57,6 +58,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.Field;
+import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
@@ -266,6 +268,12 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         // Load lock flag.
                         locked = (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_LOCK) != 0;
                     }
+                }
+                // fetch file metas for oss engine.
+                if (meta != null && meta.getPartitionInfo() != null && Engine.isFileStore(meta.getEngine())) {
+                    Map<String, Map<String, List<FileMeta>>> fileMetaSet =
+                        FileManager.INSTANCE.getFiles(meta);
+                    meta.setFileMetaSet(fileMetaSet);
                 }
             }
 
@@ -546,6 +554,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             secondaryIndexMetas,
             hasPrimaryKey, TableStatus.convert(tableRecord.status), tableRecord.version, tableRecord.flag);
         res.setId(tableRecord.id);
+        res.setEngine(Engine.of(tableRecord.engine));
         return res;
     }
 
@@ -724,6 +733,13 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                             tableInfoManager, meta,
                             tablePartitionMap.get(origTableName), tablePartitionMapFromDelta.get(origTableName),
                             tableLocalPartitionMap.get(origTableName));
+
+                        // fetch file metas for oss engine.
+                        if (meta.getPartitionInfo() != null && Engine.isFileStore(meta.getEngine())) {
+                            Map<String, Map<String, List<FileMeta>>> fileMetaSet =
+                                FileManager.INSTANCE.getFiles(meta);
+                            meta.setFileMetaSet(fileMetaSet);
+                        }
                     }
                     // Get auto partition mark.
                     final TablesExtRecord extRecord =
@@ -942,7 +958,11 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 TableMeta currentMeta = oldSchemaManager.getTableWithNull(tableName);
                 long version = checkTableVersion(tableName);
 
-                if (version != -1 && currentMeta != null && currentMeta.getVersion() >= version) {
+                if (version != -1
+                    && currentMeta != null
+                    && !Engine.isFileStore(currentMeta.getEngine())
+                    && currentMeta.getVersion() >= version
+                    && currentMeta.getStatus() != TableStatus.ABSENT) {
                     SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
                         "{0}.{1} meta version change to {2} ignored, current version {3}", schemaName, tableName,
                         version,

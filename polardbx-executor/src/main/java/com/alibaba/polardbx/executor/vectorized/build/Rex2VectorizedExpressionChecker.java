@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.vectorized.build;
 
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexFieldAccess;
@@ -72,13 +73,17 @@ public class Rex2VectorizedExpressionChecker extends RexVisitorImpl<Boolean> {
 
     @Override
     public Boolean visitCall(RexCall call) {
-        return !call.getType().isStruct() &&
-            !(call.getOperator() instanceof SqlRuntimeFilterBuildFunction) &&
-            !(call.getOperator() instanceof SqlRuntimeFilterFunction) &&
-            call.getOperands()
-                .stream()
-                .map(r -> r.accept(this))
-                .allMatch(p -> Optional.ofNullable(p).orElse(false));
+        if (call.op == TddlOperatorTable.IN) {
+            return true;
+        } else {
+            return !call.getType().isStruct() &&
+                !(call.getOperator() instanceof SqlRuntimeFilterBuildFunction) &&
+                !(call.getOperator() instanceof SqlRuntimeFilterFunction) &&
+                call.getOperands()
+                    .stream()
+                    .map(r -> r.accept(this))
+                    .allMatch(p -> Optional.ofNullable(p).orElse(false));
+        }
     }
 
     @Override

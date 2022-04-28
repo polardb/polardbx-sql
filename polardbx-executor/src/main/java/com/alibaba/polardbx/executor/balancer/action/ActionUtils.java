@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupSplitPartiti
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.MoveDatabasesJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.RefreshTopologyFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.oss.UnArchiveJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -47,6 +48,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMovePar
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSplitPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalMoveDatabases;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRefreshTopology;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalUnArchive;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
@@ -56,6 +58,7 @@ import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartition;
 import org.apache.calcite.rel.ddl.MoveDatabase;
 import org.apache.calcite.rel.ddl.RefreshTopology;
+import org.apache.calcite.rel.ddl.UnArchive;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlRebalance;
@@ -143,6 +146,12 @@ public class ActionUtils {
             movePartition.preparedData();
             ddlContext.setDdlType(movePartition.getDdlType());
             return AlterTableGroupMovePartitionJobFactory.create(ddl, movePartition.getPreparedData(), ec);
+        } else if (ddl instanceof UnArchive) {
+            LogicalUnArchive unArchive = LogicalUnArchive.create(ddl);
+            unArchive.setSchemaName(schema);
+            unArchive.preparedData();
+            ddlContext.setDdlType(unArchive.getDdlType());
+            return UnArchiveJobFactory.create(unArchive.getPreparedData(), ec);
         } else if (ddl instanceof MoveDatabase) {
             LogicalMoveDatabases moveDatabase = LogicalMoveDatabases.create(ddl);
             moveDatabase.setSchemaName(schema);

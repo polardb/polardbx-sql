@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -79,7 +80,7 @@ import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -796,6 +797,11 @@ public class ExecUtils {
                 if (ConfigDataMode.isFastMock()) {
                     return 1;
                 }
+
+                if (logicalPlan instanceof OSSTableScan) {
+                    return 1;
+                }
+
                 // Only one sql, do not need to union.
                 if (total == 1) {
                     return 0;

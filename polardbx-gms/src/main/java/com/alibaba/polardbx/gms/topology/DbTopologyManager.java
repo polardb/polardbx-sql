@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.topology;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -26,8 +27,10 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.config.impl.ConnPoolConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.engine.FileStorageMetaStore;
 import com.alibaba.polardbx.gms.ha.HaSwitchParams;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
@@ -35,6 +38,7 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
+import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
@@ -44,6 +48,7 @@ import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -375,6 +380,13 @@ public class DbTopologyManager {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                 String.format("Drop db error, db[%s] does not exist", dbName));
         }
+
+
+        long ts;
+        int BITS_LOGICAL_TIME = 22;
+        ts = System.currentTimeMillis() << BITS_LOGICAL_TIME;
+
+        fileStoreDestroy(dbInfo.dbName, ts);
 
         // ---- update db_status=dropping to running by trx  ----
         dbInfoAccessor.updateDbStatusByDbName(dbName, DbInfoRecord.DB_STATUS_DROPPING);
@@ -2240,5 +2252,23 @@ public class DbTopologyManager {
             }
         }
         return allNonDeletableStorageInstIdSet;
+    }
+
+    private static void fileStoreDestroy(String schemaName, long ts) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(connection);
+            tableInfoManager.unBindingByArchiveSchemaName(schemaName);
+            List<FilesRecord> filesRecordList = tableInfoManager.queryFilesByLogicalSchema(schemaName);
+            for (FilesRecord filesRecord : filesRecordList) {
+                if (filesRecord.getCommitTs() != null && filesRecord.getRemoveTs() == null) {
+                    FileStorageMetaStore fileStorageMetaStore = new FileStorageMetaStore(Engine.of(filesRecord.getEngine()));
+                    fileStorageMetaStore.setConnection(connection);
+                    fileStorageMetaStore.updateFileRemoveTs(filesRecord.fileName, ts);
+                }
+            }
+        } catch (Throwable e) {
+            throw GeneralUtil.nestedException(e);
+        }
     }
 }

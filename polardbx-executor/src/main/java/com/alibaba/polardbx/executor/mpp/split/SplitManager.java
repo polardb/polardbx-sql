@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.mpp.split;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -34,6 +35,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -63,6 +65,8 @@ import java.util.Set;
 import static com.alibaba.polardbx.common.model.SqlType.SELECT_FOR_UPDATE;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.buildDRDSTraceComment;
 import static com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy.CONCURRENT;
+import static com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy.FILE_CONCURRENT;
+import static com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy.FIRST_THEN_CONCURRENT;
 import static com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
 
 public class SplitManager {
@@ -75,6 +79,13 @@ public class SplitManager {
             SqlLiteral.createCharString("bka_magic", SqlParserPos.ZERO)}, SqlParserPos.ZERO);
 
     public SplitInfo getSingleSplit(LogicalView logicalView, ExecutionContext executionContext) {
+        if(logicalView instanceof OSSTableScan) {
+            throw GeneralUtil.nestedException("Impossible code path: oss table scan with single split");
+        } else {
+            return logicalViewSingleSplit(logicalView, executionContext);
+        }
+    }
+    public SplitInfo logicalViewSingleSplit(LogicalView logicalView, ExecutionContext executionContext) {
         List<Split> splitList = new ArrayList<>();
         String schemaName = logicalView.getSchemaName();
         if (StringUtils.isEmpty(schemaName)) {
@@ -150,6 +161,15 @@ public class SplitManager {
 
     public SplitInfo getSplits(
         LogicalView logicalView, ExecutionContext executionContext, boolean highConcurrencyQuery) {
+        if (logicalView instanceof OSSTableScan) {
+            return ossTableScanSplit((OSSTableScan) logicalView, executionContext, highConcurrencyQuery);
+        } else {
+            return logicalViewSplit(logicalView, executionContext, highConcurrencyQuery);
+        }
+    }
+
+    public SplitInfo logicalViewSplit(LogicalView logicalView, ExecutionContext executionContext,
+                                      boolean highConcurrencyQuery) {
         if (logicalView != null) {
             ITransaction.RW rw =
                 logicalView.getLockMode() == SqlSelect.LockMode.UNDEF ? ITransaction.RW.READ : ITransaction.RW.WRITE;
@@ -279,6 +299,71 @@ public class SplitManager {
         throw new TddlRuntimeException(ErrorCode.ERR_GENERATE_SPLIT, "logicalView is null");
 
     }
+
+    public SplitInfo ossTableScanSplit(
+        OSSTableScan ossTableScan, ExecutionContext executionContext, boolean highConcurrencyQuery) {
+        if (ossTableScan == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GENERATE_SPLIT, "logicalView is null");
+        }
+        QueryConcurrencyPolicy concurrencyPolicy =
+            ExecUtils.getQueryConcurrencyPolicy(executionContext, ossTableScan);
+        List<RelNode> inputs = ExecUtils.getInputs(
+            ossTableScan, executionContext, !ExecUtils.isMppMode(executionContext));
+        String schemaName = ossTableScan.getSchemaName();
+        if (StringUtils.isEmpty(schemaName)) {
+            schemaName = executionContext.getSchemaName();
+        }
+        if (inputs.size() > 1) {
+            // record full table scan
+            executionContext.setHasScanWholeTable(true);
+        }
+        HashMap<String, String> shardSet = new HashMap<>();
+        int splitCount = 0;
+        List<RelNode> sortInputs = ExecUtils.zigzagInputsByMysqlInst(inputs, schemaName);
+        List<Split> splitList = new ArrayList<>();
+        switch (concurrencyPolicy) {
+        case SEQUENTIAL:
+        case CONCURRENT:
+        case FIRST_THEN_CONCURRENT:
+        case GROUP_CONCURRENT_BLOCK:
+            // split according to physical table operations.
+            for (RelNode input : sortInputs) {
+                OssSplit split = OssSplit.getTableConcurrencySplit(ossTableScan, input, executionContext);
+                if (split != null) {
+                    shardSet.put(split.getPhysicalSchema(), split.getLogicalSchema());
+                    splitList.add(new Split(false, split));
+                    splitCount++;
+                }
+            }
+            return new SplitInfo(ossTableScan.getRelatedId(), ossTableScan.isExpandView(),
+                concurrencyPolicy == FIRST_THEN_CONCURRENT ? GROUP_CONCURRENT_BLOCK : concurrencyPolicy,
+                ImmutableList.of(splitList),
+                shardSet, 1,
+                splitCount, false);
+        case FILE_CONCURRENT:
+            // split according to all table files.
+            for (RelNode input : sortInputs) {
+                List<OssSplit> splits = OssSplit.getFileConcurrencySplit(ossTableScan, input, executionContext);
+                if (splits != null) {
+                    for (OssSplit split : splits) {
+                        shardSet.put(split.getPhysicalSchema(), split.getLogicalSchema());
+                        splitList.add(new Split(false, split));
+                        splitCount++;
+                    }
+                }
+            }
+            return new SplitInfo(ossTableScan.getRelatedId(), ossTableScan.isExpandView(),
+                FILE_CONCURRENT,
+                ImmutableList.of(splitList),
+                shardSet, 1,
+                splitCount, false);
+        case INSTANCE_CONCURRENT:
+        default:
+            break;
+        }
+        throw new TddlRuntimeException(ErrorCode.ERR_GENERATE_SPLIT, "getSplits error:" + concurrencyPolicy);
+    }
+
 
     private JdbcSplit parseRelNode(LogicalView logicalView, TopologyHandler topology, RelNode input,
                                    String schemaName, String hint, ITransaction.RW rw) {

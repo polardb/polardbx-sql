@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.vectorized;
 
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 
 @SuppressWarnings("unused")
 public class AndVectorizedExpression extends AbstractVectorizedExpression {

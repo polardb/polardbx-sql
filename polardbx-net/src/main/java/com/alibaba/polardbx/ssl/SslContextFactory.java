@@ -214,7 +214,7 @@ public final class SslContextFactory {
         String data = new String(pem);
         String[] tokens = data.split(beginDelimiter);
         tokens = tokens[1].split(endDelimiter);
-        return Base64.getDecoder().decode(tokens[0].replaceAll("[\r\n]", ""));
+        return Base64.getDecoder().decode(tokens[0]);
     }
 
     protected static RSAPrivateKey generatePrivateKeyFromDER(byte[] keyBytes) throws InvalidKeySpecException,

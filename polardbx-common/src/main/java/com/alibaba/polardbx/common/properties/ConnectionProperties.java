@@ -1280,4 +1280,56 @@ public class ConnectionProperties {
      * pool size of auto-warming-logical-db-executor
      */
     public static final String LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE = "LOGICAL_DB_WARMMING_UP_EXECUTOR_POOL_SIZE";
+
+    public static final String OSS_FILE_CONCURRENT = "OSS_FILE_CONCURRENT";
+
+    /**
+     * batch size for check oss data procedure
+     */
+    public static final String CHECK_OSS_BATCH_SIZE = "CHECK_OSS_BATCH_SIZE";
+
+    public static final String ENABLE_OSS_INDEX_SELECTION = "ENABLE_OSS_INDEX_SELECTION";
+
+    public static final String WORKLOAD_OSS_NET_THRESHOLD = "WORKLOAD_OSS_NET_THRESHOLD";
+
+    public static final String FLASHBACK_RENAME = "FLASHBACK_RENAME";
+    public static final String PURGE_FILE_STORAGE_TABLE = "PURGE_FILE_STORAGE_TABLE";
+    /* ================ For OSS Table ORC File ================ */
+    public static final String OSS_BACKFILL_PARALLELISM = "OSS_BACKFILL_PARALLELISM";
+    public static final String OSS_ORC_INDEX_STRIDE = "OSS_ORC_INDEX_STRIDE";
+    public static final String OSS_BLOOM_FILTER_FPP = "OSS_BLOOM_FILTER_FPP";
+    public static final String OSS_MAX_ROWS_PER_FILE = "OSS_MAX_ROWS_PER_FILE";
+    public static final String OSS_REMOVE_TMP_FILES = "OSS_REMOVE_TMP_FILES";
+    public static final String OSS_ORC_COMPRESSION = "OSS_ORC_COMPRESSION";
+    /* ================ For OSS Table File System ================ */
+    public static final String OSS_FS_CACHING_ENABLE = "OSS_FS_CACHING_ENABLE";
+    public static final String OSS_FS_VALIDATION_ENABLE = "OSS_FS_VALIDATION_ENABLE";
+    public static final String OSS_FS_CACHE_TTL = "OSS_FS_CACHE_TTL";
+    public static final String OSS_FS_MAX_CACHED_ENTRIES = "OSS_FS_MAX_CACHED_ENTRIES";
+    public static final String OSS_FS_HOT_CACHE_TTL = "OSS_FS_HOT_CACHE_TTL";
+    public static final String OSS_FS_MAX_HOT_CACHED_ENTRIES = "OSS_FS_MAX_HOT_CACHED_ENTRIES";
+    public static final String OSS_ORC_MAX_MERGE_DISTANCE = "OSS_ORC_MAX_MERGE_DISTANCE";
+    public static final String FILE_LIST = "FILE_LIST";
+    public static final String FILE_PATTERN = "FILE_PATTERN";
+    public static final String ENABLE_FILE_STORE_CHECK_TABLE = "ENABLE_FILE_STORE_CHECK_TABLE";
+    public static final String ENABLE_OSS_BUFFER_POOL = "ENABLE_OSS_BUFFER_POOL";
+    public static final String ENABLE_OSS_DELAY_MATERIALIZATION = "ENABLE_OSS_DELAY_MATERIALIZATION";
+    public static final String ENABLE_OSS_ZERO_COPY = "ENABLE_OSS_ZERO_COPY";
+    public static final String ENABLE_OSS_COMPATIBLE = "ENABLE_OSS_COMPATIBLE";
+    public static final String ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE = "ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE";
+    public static final String ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN = "ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN";
+    public static final String ENABLE_REUSE_VECTOR = "ENABLE_REUSE_VECTOR";
+    public static final String ENABLE_DECIMAL_FAST_VEC = "ENABLE_DECIMAL_FAST_VEC";
+    public static final String ENABLE_UNIQUE_HASH_KEY = "ENABLE_UNIQUE_HASH_KEY";
+    public static final String BLOCK_BUILDER_CAPACITY = "BLOCK_BUILDER_CAPACITY";
+    public static final String ENABLE_HASH_TABLE_BLOOM_FILTER = "ENABLE_HASH_TABLE_BLOOM_FILTER";
+    public static final String ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE = "ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE";
+    public static final String OSS_FILE_ORDER = "OSS_FILE_ORDER";
+
+    public static final String ALLOW_REPLACE_ARCHIVE_TABLE = "ALLOW_REPLACE_ARCHIVE_TABLE";
+    public static final String ALLOW_CREATE_TABLE_LIKE_FILE_STORE = "ALLOW_CREATE_TABLE_LIKE_FILE_STORE";
+
+    public static final String PURGE_OSS_FILE_CRON_EXPR = "PURGE_OSS_FILE_CRON_EXPR";
+    public static final String PURGE_OSS_FILE_BEFORE_DAY = "PURGE_OSS_FILE_BEFORE_DAY";
+    public static final String FILE_STORAGE_FILES_META_QUERY_PARALLELISM = "FILE_STORAGE_FILES_META_QUERY_PARALLELISM";
 }

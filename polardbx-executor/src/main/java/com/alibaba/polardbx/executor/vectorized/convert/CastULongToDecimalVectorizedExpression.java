@@ -18,12 +18,12 @@ package com.alibaba.polardbx.executor.vectorized.convert;
 
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
-import com.alibaba.polardbx.optimizer.chunk.DecimalBlock;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
-import com.alibaba.polardbx.optimizer.chunk.ULongBlock;
+import com.alibaba.polardbx.executor.chunk.DecimalBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.chunk.ULongBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;

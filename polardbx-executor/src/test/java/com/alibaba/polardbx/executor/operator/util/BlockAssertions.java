@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.BooleanBlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.DateBlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.DoubleBlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.LongBlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.StringBlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.TimestampBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.BooleanBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.DateBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.DoubleBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.LongBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.StringBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.TimestampBlockBuilder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DateType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;

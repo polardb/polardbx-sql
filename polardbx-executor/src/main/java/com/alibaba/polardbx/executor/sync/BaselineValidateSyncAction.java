@@ -53,7 +53,6 @@ public class BaselineValidateSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-        ;
         if (baselineId != null) {
             planManager.forceValidate(baselineId);
         } else {

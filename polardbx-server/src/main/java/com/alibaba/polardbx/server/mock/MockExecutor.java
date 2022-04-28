@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.server.mock;
 
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.Group;
@@ -37,6 +34,7 @@ import com.alibaba.polardbx.optimizer.config.table.IndexType;
 import com.alibaba.polardbx.optimizer.config.table.Relationship;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
@@ -140,7 +138,8 @@ public class MockExecutor {
         SqlNodeList sqlNodes = new FastsqlParser().parse(sql);
         if (sqlNodes.get(0) instanceof SqlCreateTable) {
             SqlCreateTable sqlCreateTable = (SqlCreateTable) sqlNodes.get(0);
-            TableMeta tableMeta = TableMetaParser.parse(sqlCreateTable);
+            String tableName = ((SqlIdentifier) sqlCreateTable.getName()).getLastName();
+            TableMeta tableMeta = TableMetaParser.parse(tableName, sqlCreateTable);
             TableRule tableRule = ruleUtil.generateTableRule(sqlCreateTable, tableMeta);
             addTable(tableMeta, tableRule);
             return "ok";

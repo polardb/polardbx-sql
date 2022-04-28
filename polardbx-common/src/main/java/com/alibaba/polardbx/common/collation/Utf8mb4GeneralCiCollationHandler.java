@@ -125,6 +125,140 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
     }
 
     @Override
+    public boolean wildCompare(Slice slice, Slice wildCard) {
+        return doWildCompare(slice, wildCard) == 0;
+    }
+
+    public int doWildCompare(Slice slice, Slice wildCard) {
+        int sliceCodePoint, wildCodePoint;
+        SliceInput str = slice.getInput();
+        SliceInput wildStr = wildCard.getInput();
+        long[] strPositions = new long[2];
+        long[] wildStrPositions = new long[2];
+        while (wildStr.isReadable()) {
+            while (true) {
+                boolean escaped = false;
+                wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
+                if (wildCodePoint == INVALID_CODE) {
+                    return 1;
+                }
+                // found '%'
+                if (wildCodePoint == '%') {
+                    // found an anchor char
+                    break;
+                }
+                wildStr.setPosition(wildStrPositions[1]);
+                // found '/'
+                if (wildCodePoint == '\\' && wildStr.isReadable()) {
+                    wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
+                    if (wildCodePoint == INVALID_CODE) {
+                        return 1;
+                    }
+                    wildStr.setPosition(wildStrPositions[1]);
+                    escaped = true;
+                }
+                sliceCodePoint = codepointOfUTF8(str, strPositions);
+                if (sliceCodePoint == INVALID_CODE) {
+                    return 1;
+                }
+                str.setPosition(strPositions[1]);
+                // found '_'
+                if (!escaped && wildCodePoint == '_') {
+                    // found an anchor char
+                } else {
+                    int sliceWeight = getWeight(sliceCodePoint);
+                    int wildWeight = getWeight(wildCodePoint);
+                    if (sliceWeight != wildWeight) {
+                        // not matched
+                        return 1;
+                    }
+                }
+                if (!wildStr.isReadable()) {
+                    // Match if both are at end
+                    return str.isReadable() ? 1 : 0;
+                }
+            }
+            if (wildCodePoint == '%') {
+                // Remove any '%' and '_' from the wild search string
+                while (wildStr.isReadable()) {
+                    wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
+                    if (wildCodePoint == INVALID_CODE) {
+                        return 1;
+                    }
+                    if (wildCodePoint == '%') {
+                        wildStr.setPosition(wildStrPositions[1]);
+                        continue;
+                    }
+                    if (wildCodePoint == '_') {
+                        wildStr.setPosition(wildStrPositions[1]);
+                        sliceCodePoint = codepointOfUTF8(str, strPositions);
+                        if (sliceCodePoint == INVALID_CODE) {
+                            return 1;
+                        }
+                        str.setPosition(strPositions[1]);
+                        continue;
+                    }
+                    // Not a wild character
+                    break;
+                }
+                if (!wildStr.isReadable()) {
+                    // ok if '%' is last
+                    return 0;
+                }
+                if (!str.isReadable()) {
+                    // not matched
+                    return -1;
+                }
+                wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
+                if (wildCodePoint == INVALID_CODE) {
+                    return 1;
+                }
+                wildStr.setPosition(wildStrPositions[1]);
+                if (wildCodePoint == '\\') {
+                    if (wildStr.isReadable()) {
+                        wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
+                        if (wildCodePoint == INVALID_CODE) {
+                            return 1;
+                        }
+                        wildStr.setPosition(wildStrPositions[1]);
+                    }
+                }
+                while (true) {
+                    // skip until the first character from wildstr is found
+                    while (str.isReadable()) {
+                        sliceCodePoint = codepointOfUTF8(str, strPositions);
+                        if (sliceCodePoint == INVALID_CODE) {
+                            return 1;
+                        }
+                        int sliceWeight = getWeight(sliceCodePoint);
+                        int wildWeight = getWeight(wildCodePoint);
+                        if (sliceWeight == wildWeight) {
+                            break;
+                        }
+                        str.setPosition(strPositions[1]);
+                    }
+                    if (!str.isReadable()) {
+                        return -1;
+                    }
+                    str.setPosition(strPositions[1]);
+                    int strPos = (int) str.position();
+                    int wildPos = (int) wildStr.position();
+                    int res = doWildCompare(
+                        slice.slice(strPos, str.available()),
+                        wildCard.slice(wildPos, wildStr.available())
+                    );
+                    str.setPosition(strPositions[1]);
+                    wildStr.setPosition(wildStrPositions[1]);
+                    if (res <= 0) {
+                        return res;
+                    }
+                }
+            }
+        }
+        return str.isReadable() ? 1 : 0;
+    }
+
+    @Override
     public SortKey getSortKey(Slice str, int maxLength) {
         SliceInput sliceInput = str.getInput();
         ByteBuffer dst = ByteBuffer.allocate(maxLength);

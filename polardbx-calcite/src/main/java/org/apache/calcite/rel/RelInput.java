@@ -117,6 +117,10 @@ public interface RelInput {
   List<Window.Group> getWindowGroups();
 
   Set<CorrelationId> getVariablesSet();
+
+  void setLastRel(RelNode relNode);
+
+  RelNode getLastRel();
 }
 
 // End RelInput.java

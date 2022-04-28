@@ -134,6 +134,11 @@ public class MetaDbDataIdBuilder {
      */
     private static final MessageFormat DDL_JOB_DATA_ID = new MessageFormat(DDL_JOB_DATA_ID_PREFIX + "{0}.{1}");
 
+    /**
+     * File storage engine dataId for the whole instance.
+     */
+    public static final String FILE_STORAGE_INFO_DATA_ID = "polardbx.file.storage.info";
+
     public static String getTableListDataId(String schemaName) {
         return TABLE_LIST_DATA_ID.format(new Object[] {schemaName});
     }
@@ -224,5 +229,9 @@ public class MetaDbDataIdBuilder {
 
     public static String getVariableConfigDataId(String instId) {
         return VARIABLE_CONFIG_DATA_ID.format(new Object[] {instId});
+    }
+
+    public static String getFileStorageInfoDataId() {
+        return FILE_STORAGE_INFO_DATA_ID;
     }
 }

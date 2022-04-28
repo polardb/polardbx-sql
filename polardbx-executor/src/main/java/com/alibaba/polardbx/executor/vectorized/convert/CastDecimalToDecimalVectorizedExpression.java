@@ -18,11 +18,11 @@ package com.alibaba.polardbx.executor.vectorized.convert;
 
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
-import com.alibaba.polardbx.optimizer.chunk.DecimalBlock;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.chunk.DecimalBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
@@ -53,9 +53,6 @@ public class CastDecimalToDecimalVectorizedExpression extends AbstractVectorized
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        Slice input = ((DecimalBlock) inputVectorSlot).getMemorySegments();
-        Slice output = ((DecimalBlock) outputVectorSlot).getMemorySegments();
-
         DecimalStructure tmpDecimal = new DecimalStructure();
         int precision = outputDataType.getPrecision();
         int scale = outputDataType.getScale();
@@ -70,8 +67,8 @@ public class CastDecimalToDecimalVectorizedExpression extends AbstractVectorized
                 int fromIndex = j * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(input.slice(fromIndex, DECIMAL_MEMORY_SIZE));
-                DecimalStructure toValue = new DecimalStructure(output.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(j));
+                DecimalStructure toValue = new DecimalStructure(((DecimalBlock) outputVectorSlot).getRegion(j));
 
                 // do rescale operation
                 DecimalConverter.rescale(fromValue, toValue, precision, scale, false);
@@ -81,8 +78,8 @@ public class CastDecimalToDecimalVectorizedExpression extends AbstractVectorized
                 int fromIndex = i * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(input.slice(fromIndex, DECIMAL_MEMORY_SIZE));
-                DecimalStructure toValue = new DecimalStructure(output.slice(fromIndex, DECIMAL_MEMORY_SIZE));
+                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(i));
+                DecimalStructure toValue = new DecimalStructure(((DecimalBlock) outputVectorSlot).getRegion(i));
 
                 // do rescale operation
                 DecimalConverter.rescale(fromValue, toValue, precision, scale, false);

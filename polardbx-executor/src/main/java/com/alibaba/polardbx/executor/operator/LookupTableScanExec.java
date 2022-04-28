@@ -21,7 +21,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.MathUtils;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.operator.lookup.LookupConditionBuilder;

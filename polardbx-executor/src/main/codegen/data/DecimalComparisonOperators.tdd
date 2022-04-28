@@ -1,0 +1,64 @@
+{
+    operators: [
+        {
+            classHeader: "GT",
+            functionNames: "\"GT\",\">\"",
+            op: ">",
+            types: [
+                {constType: "Decimal"},
+                {constType: "Long"},
+                {constType: "Integer"}
+            ]
+        },
+        {
+            classHeader: "GE",
+            functionNames: "\"GE\",\">=\"",
+            op: ">=",
+            types: [
+                {constType: "Decimal"},
+                {constType: "Long"},
+                {constType: "Integer"}
+            ]
+        },
+        {
+            classHeader: "LT",
+            functionNames: "\"LT\",\"<\"",
+            op: "<",
+            types: [
+                {constType: "Decimal"},
+                {constType: "Long"},
+                {constType: "Integer"}
+            ]
+        },
+        {
+            classHeader: "LE",
+            functionNames: "\"LE\",\"<=\"",
+            op: "<=",
+            types: [
+                {constType: "Decimal"},
+                {constType: "Long"},
+                {constType: "Integer"}
+            ]
+        },
+        {
+            classHeader: "EQ",
+            functionNames: "\"EQ\",\"=\"",
+            op: "==",
+            types: [
+                {constType: "Decimal"},
+                {constType: "Long"},
+                {constType: "Integer"}
+            ]
+        },
+        {
+            classHeader: "NE",
+            functionNames: "\"NE\",\"!=\",\"<>\"",
+            op: "!=",
+            types: [
+                {constType: "Decimal"},
+                {constType: "Long"},
+                {constType: "Integer"}
+            ]
+        }
+    ]
+}

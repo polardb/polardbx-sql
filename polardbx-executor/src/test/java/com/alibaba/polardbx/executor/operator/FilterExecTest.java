@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;

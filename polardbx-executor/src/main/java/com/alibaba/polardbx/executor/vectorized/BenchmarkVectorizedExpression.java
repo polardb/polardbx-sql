@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.vectorized;
 
-import com.alibaba.polardbx.optimizer.chunk.LongBlock;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 public class BenchmarkVectorizedExpression extends AbstractVectorizedExpression {

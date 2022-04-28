@@ -360,9 +360,17 @@ public class PartitionInfoUtil {
     }
 
     public static TableGroupRecord prepareRecordForTableGroup(PartitionInfo partitionInfo) {
+        return prepareRecordForTableGroup(partitionInfo, false);
+    }
+
+    public static TableGroupRecord prepareRecordForTableGroup(PartitionInfo partitionInfo, boolean isOss) {
         TableGroupRecord tableGroupRecord = new TableGroupRecord();
         tableGroupRecord.schema = partitionInfo.tableSchema;
         tableGroupRecord.meta_version = 0L;
+        if (isOss) {
+            tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_OSS_TBL_TG;
+            return tableGroupRecord;
+        }
         if (partitionInfo.getTableType() == PartitionTableType.SINGLE_TABLE
             || partitionInfo.getTableType() == PartitionTableType.GSI_SINGLE_TABLE) {
             if (partitionInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID) {
@@ -1462,6 +1470,9 @@ public class PartitionInfoUtil {
         } else {
             int maxTableCount = -1;
             for (Map.Entry<Long, TableGroupConfig> entry : copyTableGroupInfo.entrySet()) {
+                if (entry.getValue().getTableGroupRecord().tg_type == TableGroupRecord.TG_TYPE_OSS_TBL_TG) {
+                    continue;
+                }
                 if (entry.getValue().getTableCount() > maxTableCount) {
                     if (partitionInfo.isBroadcastTable() || partitionInfo.isSingleTable()) {
                         maxTableCount = entry.getValue().getTableCount();

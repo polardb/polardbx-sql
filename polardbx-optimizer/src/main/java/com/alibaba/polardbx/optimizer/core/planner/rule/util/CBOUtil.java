@@ -17,6 +17,11 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.OrcTableScanRule;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -55,6 +60,7 @@ import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTrait;
@@ -87,6 +93,8 @@ import org.apache.calcite.rel.logical.LogicalTableLookup;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.rules.JoinToMultiJoinRule;
+import org.apache.calcite.rel.rules.ProjectFilterTransposeRule;
+import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -418,6 +426,27 @@ public class CBOUtil {
             return checkBkaJoinForLogicalView(logicalIndexScan);
         }
         return useBkaJoin;
+    }
+
+    /**
+     * the expected format is [project] -- filter -- [project] -- TS
+     *
+     * @param plan the tree to be formatted
+     * @return the formatted tree
+     */
+    static public RelNode OssTableScanFormat(RelNode plan) {
+        HepProgramBuilder builder = new HepProgramBuilder();
+        builder.addMatchOrder(HepMatchOrder.TOP_DOWN);
+        builder.addGroupBegin();
+        builder.addRuleInstance(FilterMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectFilterTransposeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addGroupEnd();
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.stopOptimizerTrace();
+        planner.setRoot(plan);
+        return planner.findBestExp();
     }
 
     public static class RexNodeHolder {
@@ -777,6 +806,45 @@ public class CBOUtil {
         return output;
     }
 
+    public static RelNode optimizeByOrcImpl(RelNode rel) {
+        HepProgramBuilder builder = new HepProgramBuilder();
+        builder.addMatchOrder(HepMatchOrder.TOP_DOWN);
+        builder.addGroupBegin();
+        builder.addRuleInstance(FilterMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectFilterTransposeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addGroupEnd();
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(OrcTableScanRule.PROJECT_FILTER_PROJECT_TABLESCAN);
+        builder.addGroupEnd();
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(OrcTableScanRule.PROJECT_FILTER_TABLESCAN);
+        builder.addGroupEnd();
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(OrcTableScanRule.FILTER_PROJECT_TABLESCAN);
+        builder.addGroupEnd();
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(OrcTableScanRule.PROJECT_TABLESCAN);
+        builder.addGroupEnd();
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(OrcTableScanRule.FILTER_TABLESCAN);
+        builder.addGroupEnd();
+        builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
+        builder.addGroupBegin();
+        builder.addRuleInstance(OrcTableScanRule.TABLESCAN);
+        builder.addGroupEnd();
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.stopOptimizerTrace();
+        planner.setRoot(rel);
+        RelNode output = planner.findBestExp();
+        return output;
+    }
+
     public static RelOptCost getCost(ExecutionContext executionContext) {
         final RelOptCost zero = DrdsRelOptCostImpl.FACTORY.makeZeroCost();
         if (!executionContext.getParamManager().getBoolean(ConnectionParams.RECORD_SQL_COST)) {
@@ -1040,4 +1108,94 @@ public class CBOUtil {
             return relNode.getTraitSet().simplify().getConvention() == DrdsConvention.INSTANCE;
         }
     };
+
+    /**
+     * check whether the agg can be pushed down or not
+     *
+     * @return true if the agg can be pushed down
+     */
+    public static boolean canPushAggToOss(LogicalAggregate aggregate, OSSTableScan ossTableScan) {
+        // can't deal with distinct
+        if (PlannerUtils.haveAggWithDistinct(aggregate.getAggCallList())) {
+            return false;
+        }
+        // can't deal with group by
+        if (!aggregate.getGroupSet().isEmpty()) {
+            return false;
+        }
+        for (AggregateCall aggCall : aggregate.getAggCallList()) {
+            SqlKind kind = aggCall.getAggregation().getKind();
+            if (kind != SqlKind.SUM && kind != SqlKind.SUM0
+                && kind != SqlKind.COUNT && kind != SqlKind.MIN && kind != SqlKind.MAX) {
+                return false;
+            }
+            if (aggCall.getArgList().size() == 0) {
+                continue;
+            }
+            if (aggCall.getArgList().size() > 1) {
+                return false;
+            }
+            // now we have only one column in the agg call
+            if (ossTableScan.getCluster().getMetadataQuery().getColumnOrigin(
+                ossTableScan.getPushedRelNode(), aggCall.getArgList().get(0)) == null) {
+                return false;
+            }
+            RelColumnOrigin columnOrigin = ossTableScan.getCluster().getMetadataQuery().getColumnOrigin(
+                ossTableScan.getPushedRelNode(), aggCall.getArgList().get(0));
+            DataType type = CBOUtil.getTableMeta(columnOrigin.getOriginTable()).
+                getColumn(columnOrigin.getColumnName()).getDataType();
+            final MySQLStandardFieldType fieldType = type.fieldType();
+            switch (kind) {
+            case SUM:
+            case SUM0: {
+                switch (fieldType) {
+                case MYSQL_TYPE_LONGLONG:
+                    if (type.isUnsigned()) {
+                        // reject bigint unsigned.
+                        return false;
+                    }
+                case MYSQL_TYPE_LONG:
+                case MYSQL_TYPE_INT24:
+                case MYSQL_TYPE_SHORT:
+                case MYSQL_TYPE_TINY:
+                case MYSQL_TYPE_DOUBLE:
+                case MYSQL_TYPE_FLOAT:
+                    // fall to next agg function
+                    break;
+                default:
+                    // reject directly
+                    return false;
+                }
+            }
+            case MAX:
+            case MIN: {
+                switch (fieldType) {
+                case MYSQL_TYPE_DATETIME:
+                case MYSQL_TYPE_DATETIME2:
+                case MYSQL_TYPE_TIMESTAMP:
+                case MYSQL_TYPE_TIMESTAMP2:
+                case MYSQL_TYPE_DATE:
+                case MYSQL_TYPE_NEWDATE:
+                case MYSQL_TYPE_TIME:
+                case MYSQL_TYPE_YEAR:
+                case MYSQL_TYPE_DECIMAL:
+                case MYSQL_TYPE_NEWDECIMAL:
+                case MYSQL_TYPE_LONGLONG:
+                case MYSQL_TYPE_LONG:
+                case MYSQL_TYPE_INT24:
+                case MYSQL_TYPE_SHORT:
+                case MYSQL_TYPE_TINY:
+                case MYSQL_TYPE_DOUBLE:
+                case MYSQL_TYPE_FLOAT:
+                    // fall to next agg function
+                    break;
+                default:
+                    // reject directly
+                    return false;
+                }
+            }
+            }
+        }
+        return true;
+    }
 }

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -64,6 +65,10 @@ public class PushCorrelateRule extends RelOptRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        final LogicalView leftView = (LogicalView) call.rels[1];
+        if(leftView instanceof OSSTableScan) {
+            return false;
+        }
         return true;
     }
 

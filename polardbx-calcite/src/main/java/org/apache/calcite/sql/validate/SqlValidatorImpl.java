@@ -69,8 +69,10 @@ import org.apache.calcite.sql.SqlAccessEnum;
 import org.apache.calcite.sql.SqlAccessType;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTableAsOfTimeStamp;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
+import org.apache.calcite.sql.SqlAlterTablePurgeBeforeTimeStamp;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCallBinding;
@@ -85,6 +87,7 @@ import org.apache.calcite.sql.SqlDdlNodes;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDesc;
 import org.apache.calcite.sql.SqlDrop;
+import org.apache.calcite.sql.SqlDropFileStorage;
 import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlDropView;
@@ -984,7 +987,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             registerQuery(scope, null, outermostNode, outermostNode, null, false);
         }
         if (topNode.getKind() == SqlKind.CREATE_TABLE || topNode.getKind() == SqlKind.DROP_TABLE
-            || topNode.getKind() == SqlKind.DROP_VIEW) {
+            || topNode.getKind() == SqlKind.DROP_VIEW || topNode.getKind() == SqlKind.DROP_FILESTORAGE) {
             if (topNode.getKind() == SqlKind.CREATE_TABLE) {
                 outermostNode.validate(this, scope);
             }
@@ -1113,6 +1116,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                 final SqlIdentifier id = (SqlIdentifier) call.getOperandList().get(0);
                 final DelegatingScope idScope = (DelegatingScope) scope;
                 return getNamespace(id, idScope);
+            case AS_OF:
             case AS:
                 final SqlNode nested = call.getOperandList().get(0);
                 switch (nested.getKind()) {
@@ -1148,6 +1152,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                 return ns;
             }
             // fall through
+        case AS_OF:
         case OVER:
         case COLLECTION_TABLE:
         case ORDER_BY:
@@ -3190,6 +3195,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         SqlNode newOperand;
 
         switch (kind) {
+        case AS_OF:
         case AS:
             call = (SqlCall) node;
             if (alias == null) {
@@ -3921,6 +3927,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         case MOVE_DATABASE:
         case REFRESH_TOPOLOGY:
         case IDENTIFIER:
+        case ALTER_FILESTORAGE:
+        case DROP_FILESTORAGE:
             setValidatedNodeType(node, RelOptUtil.createDmlRowType(
                 SqlKind.INSERT, typeFactory));
             break;
@@ -4498,6 +4506,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         SqlValidatorScope scope) {
         Preconditions.checkNotNull(targetRowType);
         switch (node.getKind()) {
+        case AS_OF:
         case AS:
             validateFrom(
                 ((SqlCall) node).operand(0),
@@ -4893,7 +4902,11 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             validateGsiColumn(createTable.getClusteredUniqueKeys());
         } else if (create.createGsi() && create instanceof SqlAlterTablePartitionKey) {
             //do nothing for now
-        } else if (create.createGsi() && create instanceof SqlAlterTable) {
+        } else if (create instanceof SqlAlterTableAsOfTimeStamp) {
+            //do nothing for now
+        } else if (create instanceof SqlAlterTablePurgeBeforeTimeStamp) {
+            //do nothing for now
+        } else if (create.createGsi() && create instanceof SqlAlterTable) {		        } else if (create.createGsi() && create instanceof SqlAlterTable) {
             final SqlAlterTable alterTable = (SqlAlterTable) create;
             alterTable.getAlters().forEach(alterItem -> {
                 if (alterItem.isA(SqlKind.ALTER_ADD_INDEX)) {

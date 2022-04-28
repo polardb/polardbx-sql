@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.cursor;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.row.Row;

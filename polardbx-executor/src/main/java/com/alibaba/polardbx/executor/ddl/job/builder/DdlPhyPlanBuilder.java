@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
+import com.alibaba.polardbx.common.Engine;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -45,6 +46,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SequenceBean;
+import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -132,7 +134,13 @@ public abstract class DdlPhyPlanBuilder {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
 
-        return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition);
+        if (relDdl.sqlNode instanceof SqlCreateTable) {
+            Engine tableEngine = ((SqlCreateTable) relDdl.sqlNode).getEngine();
+            return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition,
+                Engine.isFileStore(tableEngine));
+        } else {
+            return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition);
+        }
     }
 
     public PhysicalPlanData genPhysicalPlanData() {
@@ -254,7 +262,17 @@ public abstract class DdlPhyPlanBuilder {
 
     private Pair<String, Map<Integer, ParameterContext>> buildSqlAndParam(List<String> tableNames) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
-        String sql = RelUtils.toNativeSql(sqlTemplate, DbType.MYSQL);
+        String sql;
+        Engine engine;
+        if (this.sqlTemplate instanceof SqlCreateTable
+            && Engine.isFileStore(engine = ((SqlCreateTable) this.sqlTemplate).getEngine())) {
+            // for file-store engine, avoid to generate MySQL physical sql with engine info.
+            ((SqlCreateTable) this.sqlTemplate).setEngine(Engine.INNODB);
+            sql = RelUtils.toNativeSql(sqlTemplate, DbType.MYSQL);
+            ((SqlCreateTable) this.sqlTemplate).setEngine(engine);
+        } else {
+            sql = RelUtils.toNativeSql(sqlTemplate, DbType.MYSQL);
+        }
         Map<Integer, ParameterContext> params = buildParams(tableNames);
         return new Pair<>(sql, params);
     }

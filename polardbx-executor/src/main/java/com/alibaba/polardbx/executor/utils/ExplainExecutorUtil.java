@@ -16,7 +16,11 @@
 
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
+import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
 import com.alibaba.polardbx.statistics.ExplainStatisticsHandler;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.Parameters;
@@ -632,6 +636,8 @@ public class ExplainExecutorUtil {
                     .append(relNode.getId());
                 if (relNode instanceof Project) {
                     return buildExtraInfoForProject(builder, executionContext, (Project) relNode);
+                } else if (relNode instanceof OSSTableScan) {
+                    return buildExtraInfoForOSSTableScan(builder, executionContext, (OSSTableScan) relNode);
                 } else {
                     return builder.toString();
                 }
@@ -704,6 +710,29 @@ public class ExplainExecutorUtil {
                 .append(digest);
         }
 
+        return treeBuilder.toString();
+    }
+
+    private static String buildExtraInfoForOSSTableScan(StringBuilder treeBuilder, ExecutionContext context,
+                                                        OSSTableScan ossTableScan) {
+        OrcTableScan orcTableScan = ossTableScan.getOrcNode();
+        treeBuilder.append('\n');
+        if (!orcTableScan.getFilters().isEmpty()) {
+            RexNode rexNode = orcTableScan.getFilters().get(0);
+            List<DataType<?>> inputTypes = orcTableScan.getInProjectsDataType();
+            // binding vec expression
+            RexNode root = VectorizedExpressionBuilder.rewriteRoot(rexNode, true);
+            InputRefTypeChecker inputRefTypeChecker = new InputRefTypeChecker(inputTypes);
+            root = root.accept(inputRefTypeChecker);
+            Rex2VectorizedExpressionVisitor converter =
+                new Rex2VectorizedExpressionVisitor(context, inputTypes.size());
+            VectorizedExpression vectorizedExpression = root.accept(converter);
+            String digest = VectorizedExpressionUtils.digest(vectorizedExpression);
+            treeBuilder
+                .append(rexNode.toString())
+                .append('\n')
+                .append(digest);
+        }
         return treeBuilder.toString();
     }
 

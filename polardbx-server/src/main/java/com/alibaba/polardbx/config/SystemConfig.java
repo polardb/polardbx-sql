@@ -291,6 +291,13 @@ public final class SystemConfig {
      */
     private boolean enableLogicalDbWarmmingUp;
 
+    // information needed by oss
+    private String engine;
+    private String endPoint;
+    private String fileUri;
+    private String accessKey;
+    private String secretKey;
+
     public static long getDefaultMemoryLimit() {
         // By default reserve 3GB space for general use, unless the remaining
         // space is less than 1GB
@@ -1108,5 +1115,45 @@ public final class SystemConfig {
 
     public void setDefaultPartitionMode(String defaultPartitionMode) {
         this.defaultPartitionMode = defaultPartitionMode;
+    }
+
+    public String getEngine() {
+        return engine;
+    }
+
+    public void setEngine(String engine) {
+        this.engine = engine;
+    }
+
+    public String getEndPoint() {
+        return endPoint;
+    }
+
+    public void setEndPoint(String endPoint) {
+        this.endPoint = endPoint;
+    }
+
+    public String getFileUri() {
+        return fileUri;
+    }
+
+    public void setFileUri(String fileUri) {
+        this.fileUri = fileUri;
+    }
+
+    public String getAccessKey() {
+        return accessKey;
+    }
+
+    public void setAccessKey(String accessKey) {
+        this.accessKey = accessKey;
+    }
+
+    public String getSecretKey() {
+        return secretKey;
+    }
+
+    public void setSecretKey(String secretKey) {
+        this.secretKey = secretKey;
     }
 }

@@ -16,7 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelTraitSet;
@@ -41,6 +46,10 @@ public class DrdsInsertConvertRule extends ConverterRule {
     @Override
     public RelNode convert(RelNode rel) {
         final LogicalInsert logicalInsert = (LogicalInsert) rel;
+        TableMeta tableMeta = CBOUtil.getTableMeta(logicalInsert.getTable());
+        if (Engine.isFileStore(tableMeta.getEngine())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "dml in file store");
+        }
         RelTraitSet relTraitSet = logicalInsert.getTraitSet().simplify();
         return logicalInsert.copy(relTraitSet.replace(DrdsConvention.INSTANCE),
             convertList(logicalInsert.getInputs(), DrdsConvention.INSTANCE));

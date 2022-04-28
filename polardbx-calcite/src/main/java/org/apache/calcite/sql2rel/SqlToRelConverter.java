@@ -69,6 +69,9 @@ import org.apache.calcite.rel.core.Uncollect;
 import org.apache.calcite.rel.core.Values;
 import org.apache.calcite.rel.dal.Dal;
 import org.apache.calcite.rel.dal.Show;
+import org.apache.calcite.rel.ddl.AlterFileStorageAsOfTimestamp;
+import org.apache.calcite.rel.ddl.AlterFileStorageBackup;
+import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
 import org.apache.calcite.rel.ddl.AlterRule;
 import org.apache.calcite.rel.ddl.AlterSystemSetConfig;
 import org.apache.calcite.rel.ddl.AlterTable;
@@ -89,6 +92,7 @@ import org.apache.calcite.rel.ddl.CreateIndex;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
 import org.apache.calcite.rel.ddl.DropDatabase;
+import org.apache.calcite.rel.ddl.DropFileStorage;
 import org.apache.calcite.rel.ddl.DropIndex;
 import org.apache.calcite.rel.ddl.DropTable;
 import org.apache.calcite.rel.ddl.DropTableGroup;
@@ -98,6 +102,7 @@ import org.apache.calcite.rel.ddl.RefreshTopology;
 import org.apache.calcite.rel.ddl.RenameTable;
 import org.apache.calcite.rel.ddl.SequenceDdl;
 import org.apache.calcite.rel.ddl.TruncateTable;
+import org.apache.calcite.rel.ddl.UnArchive;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalFilter;
@@ -152,6 +157,7 @@ import org.apache.calcite.sql.OutFileParams;
 import org.apache.calcite.sql.SemiJoinType;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlAlterFileStorage;
 import org.apache.calcite.sql.SqlAlterRule;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterSystemSetConfig;
@@ -186,6 +192,7 @@ import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDmlKeyword;
 import org.apache.calcite.sql.SqlDropDatabase;
+import org.apache.calcite.sql.SqlDropFileStorage;
 import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlDropTableGroup;
@@ -223,6 +230,7 @@ import org.apache.calcite.sql.SqlSequence;
 import org.apache.calcite.sql.SqlSetOperator;
 import org.apache.calcite.sql.SqlShow;
 import org.apache.calcite.sql.SqlTruncateTable;
+import org.apache.calcite.sql.SqlUnArchive;
 import org.apache.calcite.sql.SqlUnnestOperator;
 import org.apache.calcite.sql.SqlUnresolvedFunction;
 import org.apache.calcite.sql.SqlUpdate;
@@ -2041,6 +2049,16 @@ public class SqlToRelConverter {
         case MATCH_RECOGNIZE:
             convertMatchRecognize(bb, (SqlCall) from);
             return;
+        case AS_OF:
+            call = (SqlCall) from;
+            SqlNode tableName = call.operand(0);
+            SqlNode timeStamp = call.operand(1);
+            final RexNode timestampExpr = bb.convertExpression(timeStamp);
+            this.hintBlackboard.beginAsOf(timestampExpr);
+            SqlIdentifier identifier = (SqlIdentifier) tableName;
+            convertIdentifier(bb, identifier, null, identifier.indexNode, identifier.partitions);
+            this.hintBlackboard.endAsOf();
+            return;
 
         case AS:
             call = (SqlCall) from;
@@ -2415,7 +2433,13 @@ public class SqlToRelConverter {
             tableRel = toRel(table);
         } else {
             SqlNodeList hint = this.hintBlackboard.currentHints(Util.last(table.getQualifiedName()));
-            tableRel = LogicalTableScan.create(cluster, table, hint, indexNode, partitions);
+            if (this.hintBlackboard.hasAsOf()) {
+                tableRel = LogicalTableScan
+                    .create(cluster, table, hint, indexNode, this.hintBlackboard.peekAsOf(), partitions);
+            } else {
+                tableRel = LogicalTableScan.create(cluster, table, hint, indexNode, null, partitions);
+
+            }
         }
         bb.setRoot(tableRel, true);
         if (usedDataset[0]) {
@@ -3337,6 +3361,12 @@ public class SqlToRelConverter {
             return RelRoot.of(convertAlterSystemSetConfig((SqlAlterSystemSetConfig) query), kind);
         case REFRESH_TOPOLOGY:
             return RelRoot.of(convertRefreshTopology((SqlRefreshTopology) query), kind);
+        case ALTER_FILESTORAGE:
+            return RelRoot.of(convertAlterFileStorage((SqlAlterFileStorage) query), kind);
+        case UNARCHIVE:
+            return RelRoot.of(convertUnArchive((SqlUnArchive) query), kind);
+        case DROP_FILESTORAGE:
+            return RelRoot.of(convertDropFileStorage((SqlDropFileStorage) query), kind);
         default:
             if (kind.belongsTo(SqlKind.DAL)) {
                 return RelRoot.of(convertDal((SqlDal) query), kind);
@@ -3422,6 +3452,32 @@ public class SqlToRelConverter {
         assert targetRowType != null;
 
         return DropTable.create(getCluster(), query, query.getOperandList().get(0));
+    }
+
+    private RelNode convertAlterFileStorage(SqlAlterFileStorage query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+        if (query.isAsOf()) {
+            return AlterFileStorageAsOfTimestamp.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
+                targetRowType, query.getFileStorageName().toString(),
+                query.getTimestamp().getNlsString().getValue().toString());
+        } else if (query.isPurgeBefore()) {
+            return AlterFileStoragePurgeBeforeTimestamp.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
+                targetRowType, query.getFileStorageName().toString(),
+                query.getTimestamp().getNlsString().getValue().toString());
+        } else if (query.isBackup()) {
+            return AlterFileStorageBackup.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
+                targetRowType, query.getFileStorageName().toString());
+        } else {
+            throw new AssertionError("unknown alter file storage sql");
+        }
+    }
+
+    private RelNode convertDropFileStorage(SqlDropFileStorage query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+        return DropFileStorage.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
+            targetRowType, query.getName().toString());
     }
 
     private RelNode convertAlterTableGroup(SqlAlterTableGroup query) {;
@@ -7108,6 +7164,8 @@ public class SqlToRelConverter {
 
         private final Deque<AliasContext> aliasStack = new ArrayDeque<>();
 
+        private final Deque<RexNode> asOfStack = new ArrayDeque<>();
+
         public void beginSelect() {
             hintStack.push(new HashMap<>(2));
         }
@@ -7126,6 +7184,22 @@ public class SqlToRelConverter {
 
         public Map<String, SqlNodeList> currentGroups() {
             return hintStack.peek();
+        }
+
+        public void beginAsOf(RexNode flashback) {
+            asOfStack.push(flashback);
+        }
+
+        public RexNode endAsOf() {
+            return this.asOfStack.pop();
+        }
+
+        public boolean hasAsOf() {
+            return !asOfStack.isEmpty();
+        }
+
+        public RexNode peekAsOf() {
+            return this.asOfStack.peek();
         }
 
         public void beginAlias(SqlNode operand0, SqlNode operand1) {
@@ -7330,6 +7404,12 @@ public class SqlToRelConverter {
             }
             return tableName;
         }
+    }
+
+    private RelNode convertUnArchive(SqlUnArchive query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+        return UnArchive.create(query, targetRowType, getCluster());
     }
 }
 

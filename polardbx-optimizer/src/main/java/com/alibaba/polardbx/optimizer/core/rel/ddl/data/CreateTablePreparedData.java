@@ -62,6 +62,10 @@ public class CreateTablePreparedData extends DdlPreparedData {
      */
     private LocalityDesc locality;
 
+    private String loadTableSchema;
+    private String loadTableName;
+    private String archiveTableName;
+
     /**
      * if Create gsi table
      */

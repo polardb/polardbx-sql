@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.ParallelHashJoinExec;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -80,7 +81,8 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
                 alreadyUseRuntimeFilter = ((HashJoin) join).isRuntimeFilterPushedDown();
             }
             ParallelHashJoinExec.Synchronizer synchronizer =
-                new ParallelHashJoinExec.Synchronizer(numPartitions, alreadyUseRuntimeFilter);
+                new ParallelHashJoinExec.Synchronizer(numPartitions, alreadyUseRuntimeFilter, context.getParamManager().getBoolean(
+                    ConnectionParams.ENABLE_HASH_TABLE_BLOOM_FILTER));
             for (int i = 0; i < probeParallelism; i++) {
                 Executor inner;
                 Executor outerInput;

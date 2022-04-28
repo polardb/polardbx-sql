@@ -34,4 +34,6 @@ public @interface ExpressionSignatures {
     ArgumentKind[] argumentKinds();
 
     ExpressionMode mode() default ExpressionMode.PROJECT;
+
+    ExpressionPriority priority() default ExpressionPriority.NORMAL;
 }

@@ -53,6 +53,7 @@ import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.type.RelDataType;
@@ -399,6 +400,73 @@ public class BuildPlanUtils {
         } else {
             return shardValuesForPartitionedTable(sqlInsert, indexMeta, newPartitionInfo, executionContext, schemaName);
         }
+    }
+
+    public static Map<String, Map<String, List<Integer>>> shardValuesByPartName(SqlInsert sqlInsert,
+                                                                                TableMeta indexMeta,
+                                                                                ExecutionContext executionContext,
+                                                                                String schemaName,
+                                                                                PartitionInfo newPartitionInfo, String partName) {
+        String logTbName = indexMeta.getTableName();
+        PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
+        boolean isPartitionedTable = partitionInfoManager.isNewPartDbTable(logTbName);
+        if (!isPartitionedTable) {
+            throw GeneralUtil.nestedException("Unsupported to shard key");
+        } else {
+            return shardValuesForPartitionedTableByPartName(
+                sqlInsert, indexMeta, newPartitionInfo, executionContext, schemaName, partName);
+        }
+    }
+    protected static Map<String, Map<String, List<Integer>>> shardValuesForPartitionedTableByPartName(SqlInsert sqlInsert,
+                                                                                                      TableMeta tableMeta,
+                                                                                                      PartitionInfo partInfo,
+                                                                                                      ExecutionContext executionContext,
+                                                                                                      String schemaName, String partName) {
+        String logTbName = tableMeta.getTableName();
+        List<ColumnMeta> rowColMeta = new ArrayList<>();
+        SqlNodeList rowColsAst = sqlInsert.getTargetColumnList();
+        for (int i = 0; i < rowColsAst.size(); i++) {
+            SqlNode rowCol = rowColsAst.get(i);
+            if (rowCol instanceof SqlIdentifier) {
+                String colName = ((SqlIdentifier) rowCol).getLastName();
+                ColumnMeta cm = tableMeta.getColumn(colName);
+                rowColMeta.add(cm);
+            }
+        }
+        List<Integer> partColIndexList;
+        Parameters parameters = executionContext.getParams();
+        if (partInfo == null) {
+            partInfo = tableMeta.getPartitionInfo();
+        }
+        List<String> partitionNameList = ImmutableList.of(partName);
+        PhysicalPartitionInfo loadTablePhysicalPartitionInfo =
+            partInfo.getPhysicalPartitionTopology(partitionNameList)
+                .values()
+                .stream()
+                .findFirst().get().get(0);
+        final Pair<String, String> dbAndTable = Pair
+            .of(loadTablePhysicalPartitionInfo.getGroupKey(), loadTablePhysicalPartitionInfo.getPhyTable());
+        /**
+         * isBatch:
+         *   isBatch=false,
+         *     e.g. convert "values (?,?,?)" to one tupleRouteFn
+         *   isBatch=true
+         *     e.g. convert "values (?,?+?,?)(?-?,?,?),..." to multi tupleRouteFn
+         */
+        PartitionTupleRoutingContext routingContext =
+            PartitionTupleRoutingContext.buildPartitionTupleRoutingContext(schemaName, logTbName, partInfo, rowColMeta);
+        partColIndexList = routingContext.getPartColIndexMappings();
+        // Pick part columns Values from insert Values ast of SqlInsert，
+        // each column of each value of multiValues is tha same as part column definitions
+        List<List<Object>> multiValues = valuesForInsert(sqlInsert, partColIndexList, parameters, true);
+        // Do Tuple Routing
+        Map<String, Map<String, List<Integer>>> shardResults = new HashMap<>();
+        for (int i = 0; i < multiValues.size(); i++) {
+            shardResults.computeIfAbsent(dbAndTable.getKey(), b -> new HashMap<>())
+                .computeIfAbsent(dbAndTable.getValue(), b -> new ArrayList<>())
+                .add(i);
+        }
+        return shardResults;
     }
 
     /**

@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.executor.partitionmanagement;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -73,17 +75,22 @@ public class BackfillExecutor {
 
         // Foreach row: lock batch -> fill into index -> release lock
         final AtomicInteger affectRows = new AtomicInteger();
-        extractor.foreachBatch(baseEc, (batch, extractEcAndIndexPair) -> loader
-            .fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
-                try {
-                    // Commit and close extract statement
-                    extractEcAndIndexPair.getKey().getTransaction().commit();
-                    return true;
-                } catch (Exception e) {
-                    logger.error("Close extract statement failed!", e);
-                    return false;
-                }
-            }));
+        extractor.foreachBatch(baseEc, new BatchConsumer() {
+            @Override
+            public void consume(List<Map<Integer, ParameterContext>> batch,
+                                Pair<ExecutionContext, String> extractEcAndIndexPair) {
+                loader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
+                    try {
+                        // Commit and close extract statement
+                        extractEcAndIndexPair.getKey().getTransaction().commit();
+                        return true;
+                    } catch (Exception e) {
+                        logger.error("Close extract statement failed!", e);
+                        return false;
+                    }
+                });
+            }
+        });
 
         return affectRows.get();
     }

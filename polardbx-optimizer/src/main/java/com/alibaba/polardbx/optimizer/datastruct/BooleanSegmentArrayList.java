@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.datastruct;
 
 import com.alibaba.polardbx.common.utils.MathUtils;
+import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.ArrayList;
@@ -52,7 +53,7 @@ public class BooleanSegmentArrayList implements SegmentArrayList {
     }
 
     public void set(int index, boolean value) {
-        assert index < size;
+        Preconditions.checkArgument(index < size);
         arrays.get(index / SEGMENT_SIZE)[index % SEGMENT_SIZE] = value;
     }
 

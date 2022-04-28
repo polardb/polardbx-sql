@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.util.bloomfilter;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 
 import java.util.List;
 

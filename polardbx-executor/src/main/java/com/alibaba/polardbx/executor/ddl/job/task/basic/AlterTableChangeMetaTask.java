@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -28,6 +30,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -114,13 +117,26 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         updateSupportedCommands(true, false, metaDbConnection);
+
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+
         TableMetaChanger.changeTableMeta(metaDbConnection, schemaName, logicalTableName, dbIndex, phyTableName, sqlKind,
             isPartitioned, droppedColumns, addedColumns, updatedColumns, changedColumns, hasTimestampColumnDefault,
             binaryColumnDefaultValues, droppedIndexes, addedIndexes, addedIndexesWithoutNames, renamedIndexes,
             primaryKeyDropped, addedPrimaryKeyColumns, columnAfterAnother, requireLogicalColumnOrder, tableComment,
             tableRowFormat, sequenceBean, executionContext);
+        List<String> alterColumnList = new ArrayList<>();
+        if (updatedColumns != null) {
+            alterColumnList.addAll(updatedColumns);
+        }
+        if (changedColumns != null) {
+            alterColumnList.addAll(changedColumns.values());
+        }
+        if (droppedColumns != null) {
+            alterColumnList.addAll(droppedColumns);
+        }
+        CommonMetaChanger.alterTableColumnFinalOperationsOnSuccess(schemaName, logicalTableName, alterColumnList);
     }
 
     @Override

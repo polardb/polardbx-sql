@@ -16,13 +16,12 @@
     where exists ( select id from test_hash_tb2 b where a.name=b.name )
 
   plan: |
-
-    HashAgg(count(id)="COUNT(id)")
-      SemiHashJoin(condition="name = name", type="semi")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+    hashagg(count(id)="count()")
+      semihashjoin(condition="name = name", type="semi")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `name` from `test_hash_tb2` as `test_hash_tb2`")
 
 - sql: |
     select a.id, a.name
@@ -346,9 +345,9 @@
          FROM test_tb5 b)
 
   plan: |
-    project(id="id", name="name", sub="id < 100 and id0", cor=[$cor])
+    project(id="id", name="name", sub="id < 100 and id0", cor=[$cor0])
       semibkajoin(condition="name = name", type="left")
-        logicalview(tables="optest_0000.test_tb6,test_tb5", sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where ((`id` = 5) or (`id` in((((select count(`id`) as `count(id)` from `test_tb5` as `test_tb5`))))))")
+        logicalview(tables="optest_0000.test_tb6,test_tb5", sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where ((`id` = 5) or (`id` in((((select count(*) as `count(id)` from `test_tb5` as `test_tb5`))))))")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where (`name` in (...))")
 

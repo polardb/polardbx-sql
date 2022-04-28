@@ -4,8 +4,7 @@ sql: |
   group by integer_test order by integer_test limit 10;
 
 plan: |
-
-  Limit(offset=0, fetch=10)
-    SortAgg(group="integer_test", count(pk)="SUM(count(pk))")
-      MergeSort(sort="integer_test ASC")
-        LogicalView(tables="[0000-0003].select_base_one_multi_db_multi_tb_[00-15]", shardCount=16, sql="SELECT `integer_test`, COUNT(`pk`) AS `count(pk)` FROM `select_base_one_multi_db_multi_tb` AS `select_base_one_multi_db_multi_tb` GROUP BY `integer_test` ORDER BY `integer_test`")
+  limit(offset=0, fetch=10)
+    sortagg(group="integer_test", count(pk)="sum(count(pk))")
+      mergesort(sort="integer_test asc")
+        logicalview(tables="[0000-0003].select_base_one_multi_db_multi_tb_[00-15]", shardcount=16, sql="select `integer_test`, count(*) as `count(pk)` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` group by `integer_test` order by `integer_test`")

@@ -16,19 +16,19 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.optimizer.core.expression.calc.AbstractAggregator;
+import com.alibaba.polardbx.executor.calc.AbstractAggregator;
 import com.google.common.base.Preconditions;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilders;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkBuilder;
-import com.alibaba.polardbx.optimizer.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.BlockBuilders;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import it.unimi.dsi.fastutil.ints.AbstractIntComparator;
 import it.unimi.dsi.fastutil.ints.AbstractIntIterator;
 import it.unimi.dsi.fastutil.ints.IntArrays;
@@ -200,6 +200,7 @@ public class AggOpenHashMap extends GroupOpenHashMap implements AggHashMap {
     private IntIterator hashSortedGroupIds() {
         this.groupChunks = groupKeyBuffer.buildChunks();
         this.keys = null;
+        this.map = null;
         IntComparator comparator = new AbstractIntComparator() {
             @Override
             public int compare(int position1, int position2) {

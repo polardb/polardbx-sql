@@ -56,6 +56,7 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.RateLimiter;
+import org.apache.calcite.rel.RelNode;
 import org.apache.commons.lang.StringEscapeUtils;
 
 import java.text.MessageFormat;
@@ -100,11 +101,11 @@ public class Extractor {
     protected final String schemaName;
     protected final String sourceTableName;
     private final String targetTableName;
-    private final long batchSize;
-    private volatile RateLimiter rateLimiter;
-    private volatile long nowSpeedLimit;
-    private final long parallelism;
-    private final GsiBackfillManager backfillManager;
+    protected final long batchSize;
+    protected volatile RateLimiter rateLimiter;
+    protected volatile long nowSpeedLimit;
+    protected final long parallelism;
+    protected final GsiBackfillManager backfillManager;
 
     /* Templates, built once, used every time. */
     /**
@@ -117,7 +118,7 @@ public class Extractor {
      * LOCK IN SHARE MODE
      * </pre>
      */
-    private final PhyTableOperation planSelectWithMax;
+    protected final PhyTableOperation planSelectWithMax;
     /**
      * <pre>
      * SELECT {all_columns_exists_in_index_table}
@@ -128,7 +129,7 @@ public class Extractor {
      * LOCK IN SHARE MODE
      * </pre>
      */
-    private final PhyTableOperation planSelectWithMin;
+    protected final PhyTableOperation planSelectWithMin;
     /**
      * <pre>
      * SELECT {all_columns_exists_in_index_table}
@@ -140,7 +141,7 @@ public class Extractor {
      * LOCK IN SHARE MODE
      * </pre>
      */
-    private final PhyTableOperation planSelectWithMinAndMax;
+    protected final PhyTableOperation planSelectWithMinAndMax;
     /**
      * <pre>
      * SELECT IFNULL(MAX(pk0), 0), ... , IFNULL(MAX(pkn), 0)
@@ -151,7 +152,7 @@ public class Extractor {
      * ) T1
      * </pre>
      */
-    private final PhyTableOperation planSelectMaxPk;
+    protected final PhyTableOperation planSelectMaxPk;
     //private final BitSet primaryKeys;
     private final List<Integer> primaryKeysId;
     /**
@@ -160,10 +161,10 @@ public class Extractor {
      */
     private final Map<Long, Long> primaryKeysIdMap;
 
-    private final ITransactionManager tm;
+    protected final ITransactionManager tm;
 
-    private final Reporter reporter;
-    private com.alibaba.polardbx.executor.backfill.Throttle t;
+    protected final Reporter reporter;
+    protected com.alibaba.polardbx.executor.backfill.Throttle t;
 
     protected Extractor(String schemaName, String sourceTableName, String targetTableName, long batchSize,
                         long speedMin,
@@ -259,7 +260,7 @@ public class Extractor {
      * @param primaryKeysId Index of primary keys for ResultSet of data extracted from source
      * @return BackfillObjectRecord with upper bound initialized, one for each primary key
      */
-    private List<GsiBackfillManager.BackfillObjectRecord> initUpperBound(final ExecutionContext baseEc,
+    protected List<GsiBackfillManager.BackfillObjectRecord> initUpperBound(final ExecutionContext baseEc,
                                                                          final long ddlJobId,
                                                                          final String dbIndex, final String phyTable,
                                                                          final List<Integer> primaryKeysId) {
@@ -272,7 +273,14 @@ public class Extractor {
         plan.setDbIndex(dbIndex);
         plan.setTableNames(ImmutableList.of(ImmutableList.of(phyTable)));
         plan.setParam(params);
+        return getBackfillObjectRecords(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId, plan);
+    }
 
+    protected List<GsiBackfillManager.BackfillObjectRecord> getBackfillObjectRecords(ExecutionContext baseEc,
+                                                                                     long ddlJobId, String dbIndex,
+                                                                                     String phyTable,
+                                                                                     List<Integer> primaryKeysId,
+                                                                                     RelNode plan) {
         // Execute query
         final List<Map<Integer, ParameterContext>> upperBound = GsiUtils.wrapWithSingleDbTrx(tm,
             baseEc,
@@ -340,7 +348,7 @@ public class Extractor {
      * @param consumer next step
      */
     public void foreachBatch(ExecutionContext ec,
-                             BiConsumer<List<Map<Integer, ParameterContext>>, Pair<ExecutionContext, String>> consumer) {
+                             BatchConsumer consumer) {
         // For each physical table there is a backfill object which represents a row in
         // system table
 
@@ -443,7 +451,7 @@ public class Extractor {
     private void foreachPhyTableBatch(String dbIndex, String phyTable,
                                       List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
                                       ExecutionContext ec,
-                                      BiConsumer<List<Map<Integer, ParameterContext>>, Pair<ExecutionContext, String>> loader) {
+                                      BatchConsumer loader) {
         // Load upper bound
         List<ParameterContext> upperBoundParam =
             buildUpperBoundParam(backfillObjects.size(), backfillObjects, primaryKeysIdMap);
@@ -583,9 +591,9 @@ public class Extractor {
      * @param next next pipeline
      * @return converted data of current batch
      */
-    private static List<Map<Integer, ParameterContext>> extract(PhyTableOperation extractPlan,
+    protected List<Map<Integer, ParameterContext>> extract(PhyTableOperation extractPlan,
                                                                 ExecutionContext extractEc,
-                                                                BiConsumer<List<Map<Integer, ParameterContext>>, Pair<ExecutionContext, String>> next) {
+                                                                BatchConsumer next) {
         // Extract
         Cursor extractCursor = ExecutorHelper.execute(extractPlan, extractEc);
 
@@ -600,7 +608,7 @@ public class Extractor {
         FailPoint.injectRandomExceptionFromHint(FP_RANDOM_BACKFILL_EXCEPTION, extractEc);
 
         // Load
-        next.accept(result, Pair.of(extractEc, extractPlan.getDbIndex()));
+        next.consume(result, Pair.of(extractEc, extractPlan.getDbIndex()));
 
         return result;
     }
@@ -707,7 +715,7 @@ public class Extractor {
         return plan;
     }
 
-    private static class Reporter {
+    protected static class Reporter {
         private final GsiBackfillManager backfillManager;
 
         /**
@@ -865,7 +873,7 @@ public class Extractor {
     public static List<String> getPrimaryKeys(TableMeta tableMeta, ExecutionContext ec) {
         final SchemaManager sm = ec.getSchemaManager(tableMeta.getSchemaName());
         List<String> primaryKeys = ImmutableList
-            .copyOf((tableMeta.isHasPrimaryKey() ? tableMeta.getPrimaryKey() :
+            .copyOf((tableMeta.isHasPrimaryKey() ? tableMeta.getPrimaryIndex().getKeyColumns() :
                 tableMeta.getGsiImplicitPrimaryKey())
                 .stream().map(ColumnMeta::getName).collect(Collectors.toList()));
         if (GeneralUtil.isEmpty(primaryKeys) && tableMeta.isGsi()) {

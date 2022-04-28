@@ -17,17 +17,17 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.DecimalBlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.DoubleBlock;
-import com.alibaba.polardbx.optimizer.chunk.IntegerBlock;
-import com.alibaba.polardbx.optimizer.chunk.LongBlock;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.DecimalBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.DoubleBlock;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Avg;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Count;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Avg;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
 import org.junit.Ignore;
 import org.junit.Test;
 

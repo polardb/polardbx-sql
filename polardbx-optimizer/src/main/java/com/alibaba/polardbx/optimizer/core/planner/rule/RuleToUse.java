@@ -450,6 +450,7 @@ public class RuleToUse {
         DrdsAggregateJoinTransposeRule.PROJECT_EXTENDED,
         // Access Path
         AccessPathRule.LOGICALVIEW,
+        OSSMergeIndexRule.INSTANCE,
         // Sort TableLookup Transpose
         SortTableLookupTransposeRule.INSTANCE,
         // Sort Join Transpose

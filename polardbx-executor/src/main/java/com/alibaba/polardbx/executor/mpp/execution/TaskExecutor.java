@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
-import com.alibaba.polardbx.executor.PriorityExecutorInfo;
 import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.memory.ApMemoryPool;

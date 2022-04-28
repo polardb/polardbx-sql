@@ -17,11 +17,11 @@
 package com.alibaba.polardbx.executor.vectorized.convert;
 
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
-import com.alibaba.polardbx.optimizer.chunk.LongBlock;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;

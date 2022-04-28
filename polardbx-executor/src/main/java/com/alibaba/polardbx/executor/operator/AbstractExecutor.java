@@ -22,10 +22,10 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
-import com.alibaba.polardbx.optimizer.chunk.Block;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilders;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.BlockBuilders;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.operator.EmptyExecutor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -136,6 +136,12 @@ public abstract class AbstractExecutor implements Executor {
         blockBuilders = new BlockBuilder[columns.size()];
         for (int i = 0; i < columns.size(); i++) {
             blockBuilders[i] = BlockBuilders.create(columns.get(i), context);
+        }
+    }
+
+    final void reset() {
+        for (int i = 0; i < blockBuilders.length; i++) {
+            blockBuilders[i] = blockBuilders[i].newBlockBuilder();
         }
     }
 

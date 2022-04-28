@@ -20,6 +20,9 @@ import io.airlift.slice.Slice;
 
 import java.math.BigDecimal;
 
+/**
+ * Wrap a decimal structure.
+ */
 public class Decimal extends Number implements Comparable<Decimal> {
 
     private static final long serialVersionUID = 5036570408857619384L;
@@ -54,11 +57,12 @@ public class Decimal extends Number implements Comparable<Decimal> {
         this.decimalStructure = decimalStructure;
     }
 
+    // todo optimize the rescale.
     public Decimal(long longVal, int scale) {
         this(new DecimalStructure());
-
+        // parse long & set scale.
         DecimalConverter.longToDecimal(longVal, this.decimalStructure);
-
+        // shift by scale value.
         FastDecimalUtils.shift(this.decimalStructure, this.decimalStructure, -scale);
     }
 
@@ -126,42 +130,46 @@ public class Decimal extends Number implements Comparable<Decimal> {
         return decimalStructure.toBytes();
     }
 
+    public void add(Decimal d, Decimal to) {
+        FastDecimalUtils.add(this.decimalStructure, d.decimalStructure, to.decimalStructure, true);
+    }
+
     public Decimal add(Decimal d) {
         DecimalStructure to = new DecimalStructure();
-        FastDecimalUtils.add(this.decimalStructure, d.decimalStructure, to);
+        FastDecimalUtils.add(this.decimalStructure, d.decimalStructure, to, true);
         return new Decimal(to);
     }
 
     public Decimal subtract(Decimal d) {
         DecimalStructure to = new DecimalStructure();
-        FastDecimalUtils.sub(this.decimalStructure, d.decimalStructure, to);
+        FastDecimalUtils.sub(this.decimalStructure, d.decimalStructure, to, true);
         return new Decimal(to);
     }
 
     public Decimal multiply(Decimal d) {
         DecimalStructure to = new DecimalStructure();
-        FastDecimalUtils.mul(this.decimalStructure, d.decimalStructure, to);
+        FastDecimalUtils.mul(this.decimalStructure, d.decimalStructure, to, true);
         return new Decimal(to);
     }
 
     public Decimal divide(Decimal d) {
         DecimalStructure to = new DecimalStructure();
         FastDecimalUtils
-            .div(this.decimalStructure, d.decimalStructure, to, DecimalStructure.DIV_PRECISION_INCREMENT_DEFAULT);
+            .div(this.decimalStructure, d.decimalStructure, to, DecimalStructure.DIV_PRECISION_INCREMENT_DEFAULT, true);
         return new Decimal(to);
     }
 
     public Decimal remainder(Decimal d) {
         DecimalStructure to = new DecimalStructure();
-        FastDecimalUtils.mod(this.decimalStructure, d.decimalStructure, to);
+        FastDecimalUtils.mod(this.decimalStructure, d.decimalStructure, to, true);
         return new Decimal(to);
     }
 
     @Override
     public long longValue() {
-
+        // It should be compatible for BigDecimal / BigInteger longValue()
         if (this.compareTo(MAX_UNSIGNED) > 0 || this.compareTo(MIN_SIGNED) < 0) {
-
+            // inflated value
             return Long.MIN_VALUE;
         } else {
             boolean isUnsigned = this.compareTo(MAX_SIGNED) > 0;
@@ -198,5 +206,9 @@ public class Decimal extends Number implements Comparable<Decimal> {
 
     public DecimalStructure getDecimalStructure() {
         return decimalStructure;
+    }
+
+    public Decimal copy() {
+        return new Decimal(decimalStructure.copy());
     }
 }

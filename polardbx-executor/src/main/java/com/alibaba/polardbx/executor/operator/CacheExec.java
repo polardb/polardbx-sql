@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;

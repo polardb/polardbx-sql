@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupRenamePartit
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -40,6 +41,7 @@ public class LogicalAlterTableGroupRenamePartitionHandler extends LogicalCommonD
         LogicalAlterTableGroupRenamePartition logicalAlterTableGroupRenamePartition =
             (LogicalAlterTableGroupRenamePartition) logicalDdlPlan;
         logicalAlterTableGroupRenamePartition.prepareData();
+        CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTableGroupRenamePartition.getPreparedData());
         return AlterTableGroupRenamePartitionJobFactory.create(logicalAlterTableGroupRenamePartition.relDdl,
             logicalAlterTableGroupRenamePartition.getPreparedData(), executionContext);
     }
@@ -49,7 +51,7 @@ public class LogicalAlterTableGroupRenamePartitionHandler extends LogicalCommonD
         AlterTableGroupUtils.alterTableGroupPreCheck(
             (SqlAlterTableGroup) (((LogicalAlterTableGroupRenamePartition) logicalDdlPlan).relDdl.getSqlNode()),
             executionContext);
-        return false;
+        return super.validatePlan(logicalDdlPlan, executionContext);
     }
 
 }

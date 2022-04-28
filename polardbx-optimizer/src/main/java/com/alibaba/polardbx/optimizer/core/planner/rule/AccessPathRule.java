@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -38,6 +37,7 @@ import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRule;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -162,8 +162,8 @@ public abstract class AccessPathRule extends RelOptRule {
                     && (lockMode == null || lockMode == SqlSelect.LockMode.UNDEF)) {
                     final IndexScanVisitor indexScanVisitor = new IndexScanVisitor(primaryTable, indexTable, call.builder());
                     final LogicalIndexScan logicalIndexScan =
-                        new LogicalIndexScan(plan.accept(indexScanVisitor), indexTable,
-                            logicalView.getHints(), lockMode);
+                        new LogicalIndexScan(plan.accept(indexScanVisitor), indexTable, logicalView.getHints(),
+                            lockMode, logicalView.getFlashback());
 
                     logicalIndexScan.rebuildPartRoutingPlanInfo();
 
@@ -561,8 +561,11 @@ public abstract class AccessPathRule extends RelOptRule {
             }
 
             final LogicalView primary = RelUtils.createLogicalView(scan, lockMode);
-            final LogicalIndexScan index = new LogicalIndexScan(indexTable,
-                LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints()), lockMode);
+            final LogicalTableScan indexTableScan =
+                LogicalTableScan.create(scan.getCluster(), this.indexTable, scan.getHints(), null, scan.getFlashback(),
+                    null);
+            final LogicalIndexScan index = new LogicalIndexScan(this.indexTable, indexTableScan, lockMode);
+            index.setFlashback(scan.getFlashback());
             return RelUtils.createTableLookup(primary, index, index.getTable());
         }
     }
@@ -611,7 +614,8 @@ public abstract class AccessPathRule extends RelOptRule {
                 return super.visit(scan);
             }
 
-            final LogicalTableScan indexTableScan = LogicalTableScan.create(scan.getCluster(), index, scan.getHints());
+            final LogicalTableScan indexTableScan =
+                LogicalTableScan.create(scan.getCluster(), index, scan.getHints(), null, scan.getFlashback(), null);
 
             indexTableScan.setIndexNode(Optional.ofNullable(scan.getIndexNode())
                 .filter(indexNode -> indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0)

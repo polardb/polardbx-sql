@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.matrix.config;
 
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.TddlNode;
-import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -45,6 +43,8 @@ import com.alibaba.polardbx.executor.common.SequenceLoadFromDBManager;
 import com.alibaba.polardbx.executor.common.SequenceManager;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
+import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.PurgeOssFileScheduleTask;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlPlanScheduler;
@@ -85,7 +85,6 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchServic
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
-import com.alibaba.polardbx.optimizer.context.AsyncDDLContext;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
@@ -110,7 +109,6 @@ import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
 import com.alibaba.polardbx.rule.TddlRule;
-import com.alibaba.polardbx.rule.database.util.TddlRuleParam;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.transaction.AutoCommitTransaction;
@@ -120,13 +118,13 @@ import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Objects;
 
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PARAMETRIC_SIMILARITY_ALGO;
+import static com.alibaba.polardbx.optimizer.utils.ITimestampOracle.BITS_LOGICAL_TIME;
 
 /**
  * 依赖的组件
@@ -324,6 +322,7 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
 
         // init table for locking function
         distributedLockManagerInit();
+        PurgeOssFileScheduleTask.getInstance().init(new ParamManager(dataSource.getConnectionProperties()));
     }
 
     private void loadContext() {
@@ -370,7 +369,6 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
 
     @Override
     protected void doDestroy() {
-
         try {
             if (optimizerContext != null && optimizerContext.getLatestSchemaManager() != null) {
                 optimizerContext.getLatestSchemaManager().destroy();
@@ -475,6 +473,12 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
             }
         } catch (Exception ex) {
             logger.warn("TableGroupInfoManager destroy error", ex);
+        }
+
+        try {
+            CommonMetaChanger.invalidateBufferPool(schemaName);
+        } catch (Exception ex) {
+            logger.warn("Invalidate BufferPool error", ex);
         }
 
         ddlEngineDestroy();
@@ -626,6 +630,7 @@ public class MatrixConfigHolder extends AbstractConfigDataHolder {
             logger.warn("Table meta unbind error: " + ex.getMessage(), ex);
         }
     }
+
 
     private DataSource buildDataSource(String groupKey) {
         return MetaDbDataSource.getInstance().getDataSource();

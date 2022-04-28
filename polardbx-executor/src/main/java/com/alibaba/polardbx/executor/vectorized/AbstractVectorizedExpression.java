@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.vectorized;
 
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 public abstract class AbstractVectorizedExpression implements VectorizedExpression {

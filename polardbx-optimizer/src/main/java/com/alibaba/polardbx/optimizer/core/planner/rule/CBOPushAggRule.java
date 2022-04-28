@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -65,6 +67,10 @@ public class CBOPushAggRule extends RelOptRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        final LogicalView logicalView = (LogicalView)call.rels[1];
+        if (logicalView instanceof OSSTableScan && !((OSSTableScan)logicalView).canPushAgg()) {
+            return false;
+        }
         return PlannerContext.getPlannerContext(call).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_CBO_PUSH_AGG);
     }
@@ -73,6 +79,11 @@ public class CBOPushAggRule extends RelOptRule {
     public void onMatch(RelOptRuleCall call) {
         final LogicalAggregate logicalAggregate = (LogicalAggregate) call.rels[0];
         final LogicalView logicalView = (LogicalView) call.rels[1];
+        if(logicalView instanceof OSSTableScan) {
+            if (!CBOUtil.canPushAggToOss(logicalAggregate, (OSSTableScan)logicalView)) {
+                return;
+            }
+        }
         if (logicalView.isSingleGroup()) {
             LogicalAggregate newLogicalAggregate = logicalAggregate.copy(
                 logicalView.getPushedRelNode(), logicalAggregate.getGroupSet(), logicalAggregate.getAggCallList());

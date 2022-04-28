@@ -69,6 +69,13 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private Set<String> truncatePartitionNames;
 
     /**
+     * Files modifications
+     */
+    private List<String> dropFiles;
+
+    private String timestamp;
+
+    /**
      * Charset and collation
      */
     private String charset;

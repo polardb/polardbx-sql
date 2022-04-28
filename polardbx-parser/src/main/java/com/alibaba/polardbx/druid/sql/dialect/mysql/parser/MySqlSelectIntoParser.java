@@ -184,17 +184,6 @@ public class MySqlSelectIntoParser extends SQLSelectParser {
             queryBlock.setLockInShareMode(true);
         }
 
-        if (lexer.token() == Token.AS) {
-            lexer.nextToken();
-            accept(Token.OF);
-            SQLExpr expr = this.exprParser.expr();
-            if (!(expr instanceof SQLTimestampExpr)) {
-                throw new ParserException("SELECT ... AS OF expect timestamp expression");
-            }
-            SQLTimestampExpr tsExpr = (SQLTimestampExpr) (expr);
-            queryBlock.setAsOfTimestamp(tsExpr);
-        }
-
         return queryRest(queryBlock, acceptUnion);
     }
     /**

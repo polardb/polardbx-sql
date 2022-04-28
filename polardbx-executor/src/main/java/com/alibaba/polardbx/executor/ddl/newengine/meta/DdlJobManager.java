@@ -73,7 +73,7 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
 
     private static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
 
-    private static final IdGenerator ID_GENERATOR = IdGenerator.getIdGenerator();
+    public static final IdGenerator ID_GENERATOR = IdGenerator.getIdGenerator();
 
     /**
      * Store a subJob for task
@@ -329,7 +329,9 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         List<DdlTask> taskList = taskIterator.getAllTasks();
         List<DdlEngineTaskRecord> result = taskList.stream().map(e -> {
             e.setJobId(jobId);
-            e.setTaskId(ID_GENERATOR.nextId());
+            if (e.getTaskId() == null) {
+                e.setTaskId(ID_GENERATOR.nextId());
+            }
             return TaskHelper.toDdlEngineTaskRecord(e);
         }).collect(Collectors.toList());
         return result;

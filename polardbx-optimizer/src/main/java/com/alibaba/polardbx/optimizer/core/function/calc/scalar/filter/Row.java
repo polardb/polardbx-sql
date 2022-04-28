@@ -21,6 +21,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -34,7 +35,11 @@ public class Row extends AbstractCollationScalarFunction {
 
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
-        return new RowValue(Arrays.asList(args));
+        List<Object> list = new ArrayList<>(args.length);
+        for (Object arg : args) {
+            list.add(arg);
+        }
+        return new RowValue(list);
     }
 
     public static class RowValue {

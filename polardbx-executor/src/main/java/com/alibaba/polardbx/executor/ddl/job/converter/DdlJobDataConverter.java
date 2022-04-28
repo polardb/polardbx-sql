@@ -30,6 +30,7 @@ import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.gms.TddlRuleGmsConfig;
 import com.google.common.collect.ImmutableList;
@@ -52,13 +53,19 @@ public class DdlJobDataConverter {
         return convertToPhysicalPlanData(tableTopology, physicalPlans, false, false);
     }
 
+    public static PhysicalPlanData convertToPhysicalPlanData(Map<String, List<List<String>>> tableTopology,
+                                                             List<PhyDdlTableOperation> physicalPlans,
+                                                             boolean isGsi, boolean isAutoPartition) {
+        return convertToPhysicalPlanData(tableTopology, physicalPlans, isGsi, isAutoPartition, false);
+    }
+
     /**
      * NOTE: In most case you should ues DdlPhyPlanBuilder.genPhysicalPlan instead
      * TODO Is the parameter isGsi necessary ?
      */
     public static PhysicalPlanData convertToPhysicalPlanData(Map<String, List<List<String>>> tableTopology,
                                                              List<PhyDdlTableOperation> physicalPlans,
-                                                             boolean isGsi, boolean isAutoPartition) {
+                                                             boolean isGsi, boolean isAutoPartition, boolean isOSS) {
         PhysicalPlanData data = new PhysicalPlanData();
 
         PhyDdlTableOperation physicalPlan = physicalPlans.get(0);
@@ -84,9 +91,11 @@ public class DdlJobDataConverter {
             data.setTablesExtRecord(tablesExtRecord);
         } else {
             PartitionInfo partitionInfo = physicalPlan.getPartitionInfo();
-            if (partitionInfo != null) {
-                TableGroupConfig tableGroupConfig = buildTableGroupConfig(partitionInfo);
-                data.setTableGroupConfig(tableGroupConfig);
+            if (partitionInfo != null || isOSS) {
+                TableGroupConfig tableGroupConfig = buildTableGroupConfig(partitionInfo, isOSS);
+                data.setTableGroupConfig(tableGroupConfig);		                data.setTableGroupConfig(tableGroupConfig);
+                Map<String, List<PhysicalPartitionInfo>> physicalPartitionTopology = physicalPlan.getPartitionInfo().getPhysicalPartitionTopology(null, false);
+                data.setPhysicalPartitionTopology(physicalPartitionTopology);
             }
         }
         data.setTableTopology(tableTopology);
@@ -175,7 +184,7 @@ public class DdlJobDataConverter {
         return tddlRuleGmsConfig.initTableRule(tablesExtRecord);
     }
 
-    public static TableGroupConfig buildTableGroupConfig(PartitionInfo partitionInfo) {
+    public static TableGroupConfig buildTableGroupConfig(PartitionInfo partitionInfo, boolean isOSS) {
         TablePartitionRecord logTableRec = PartitionInfoUtil.prepareRecordForLogicalTable(partitionInfo);
         List<TablePartitionRecord> partRecList = PartitionInfoUtil.prepareRecordForAllPartitions(partitionInfo);
         Map<String, List<TablePartitionRecord>> subPartRecInfos = PartitionInfoUtil
@@ -185,9 +194,9 @@ public class DdlJobDataConverter {
         List<PartitionGroupRecord> partitionGroupRecords = null;
 
         // need to create a new table group and related partition groups
-        if (partitionInfo.getTableGroupId() < 0) {
+        if (partitionInfo.getTableGroupId() < 0 || isOSS) {
             // TODO(moyi) auto flag?
-            tableGroupRecord = PartitionInfoUtil.prepareRecordForTableGroup(partitionInfo);
+            tableGroupRecord = PartitionInfoUtil.prepareRecordForTableGroup(partitionInfo, isOSS);
         }
 
         partitionGroupRecords =

@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.utils.GroupKey;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -69,6 +70,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlSelect.LockMode;
+import org.apache.calcite.sql.SqlSelectWithPartition;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.fun.SqlHashCheckAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
@@ -740,6 +742,21 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return buildPhyTableOperation(select, rowType, LockMode.UNDEF, ec);
     }
 
+    public PhyTableOperation buildSelectForBackfill(TableMeta tableMeta, List<String> selectKeys,
+                                                    List<String> primaryKeys, boolean withLowerBound,
+                                                    boolean withUpperBound, LockMode lockMode) {
+        return buildSelectForBackfill(tableMeta, selectKeys, primaryKeys, withLowerBound, withUpperBound,
+            lockMode, null);
+    }
+
+    public PhyTableOperation buildSelectForBackfill(Extractor.ExtractorInfo info, boolean withLowerBound,
+                                                    boolean withUpperBound, LockMode lockMode,
+                                                    String physicalPartition) {
+        return buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(), info.getPrimaryKeys(),
+            withLowerBound, withUpperBound,
+            lockMode, physicalPartition);
+    }
+
     /**
      * <pre>
      * SELECT {all_columns_exists_in_index_table}
@@ -761,7 +778,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      */
     public PhyTableOperation buildSelectForBackfill(TableMeta tableMeta, List<String> selectKeys,
                                                     List<String> primaryKeys, boolean withLowerBound,
-                                                    boolean withUpperBound, LockMode lockMode) {
+                                                    boolean withUpperBound, LockMode lockMode,
+                                                    String physicalPartition) {
         initParams(0);
 
         // build select list
@@ -809,8 +827,16 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         // lock mode
         sqlSelect.setLockMode(lockMode);
 
+        SqlNode physicalSelect;
+        if (physicalPartition != null && physicalPartition.length() > 0) {
+            SqlSelectWithPartition sqlSelectWithPartition = SqlSelectWithPartition.create(sqlSelect, physicalPartition);
+            physicalSelect = sqlSelectWithPartition;
+        } else {
+            physicalSelect = sqlSelect;
+        }
+
         // create PhyTableOperation
-        return buildPhyTableOperation(sqlSelect, rowType, lockMode, ec);
+        return buildPhyTableOperation(physicalSelect, rowType, lockMode, ec);
     }
 
     /**
@@ -1030,12 +1056,12 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return operation;
     }
 
-    private static PhyTableOperation buildPhyTableOperation(SqlSelect sqlSelect, RelDataType rowType,
+    private static PhyTableOperation buildPhyTableOperation(SqlNode sqlNode, RelDataType rowType,
                                                             LockMode lockMode, ExecutionContext ec) {
         final RelOptCluster cluster = SqlConverter.getInstance(ec).createRelOptCluster();
         RelTraitSet traitSet = RelTraitSet.createEmpty();
         PhyTableOperation operation = new PhyTableOperation(cluster, traitSet, rowType);
-        String sql = RelUtils.toNativeSql(sqlSelect);
+        String sql = RelUtils.toNativeSql(sqlNode);
         operation.setSqlTemplate(sql);
         operation.setKind(SqlKind.SELECT);
         operation.setDbType(DbType.MYSQL);

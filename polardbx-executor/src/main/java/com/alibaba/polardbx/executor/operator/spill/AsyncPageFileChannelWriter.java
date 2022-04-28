@@ -31,7 +31,7 @@ package com.alibaba.polardbx.executor.operator.spill;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeUtil;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;

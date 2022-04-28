@@ -239,12 +239,17 @@ public class InsertIndexExecutor extends IndexExecutor {
                                       ExecutionContext executionContext,
                                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                       boolean mayInsertDuplicate,
-                                      boolean mayForGsi) {
+                                      boolean mayForGsi, String partName) {
         // shard to get value indices
-        Map<String, Map<String, List<Integer>>> shardResults = BuildPlanUtils.shardValues(sqlInsert,
+        Map<String, Map<String, List<Integer>>> shardResults = StringUtils.isEmpty(partName)
+            ? BuildPlanUtils.shardValues(sqlInsert,
             tableMeta,
             executionContext,
-            schemaName, null);
+            schemaName, null)
+            : BuildPlanUtils.shardValuesByPartName(sqlInsert,
+            tableMeta,
+            executionContext,
+            schemaName, null, partName);
 
         final OptimizerContext oc = OptimizerContext.getContext(schemaName);
         assert null != oc;
@@ -273,12 +278,23 @@ public class InsertIndexExecutor extends IndexExecutor {
             mayInsertDuplicate, shardResults);
     }
 
-    private static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
-                                       String targetGroup, String schemaName,
-                                       ExecutionContext executionContext,
-                                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
-                                       boolean mayInsertDuplicate,
-                                       Map<String, Map<String, List<Integer>>> shardResults) {
+    public static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
+                                      String targetGroup, String schemaName,
+                                      ExecutionContext executionContext,
+                                      BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
+                                      boolean mayInsertDuplicate,
+                                      boolean mayForGsi) {
+        return insertIntoTable(logicalInsert, sqlInsert, tableMeta, targetGroup, schemaName, executionContext,
+            executeFunc,
+            mayInsertDuplicate, mayForGsi, "");
+    }
+
+    public static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
+                                      String targetGroup, String schemaName,
+                                      ExecutionContext executionContext,
+                                      BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
+                                      boolean mayInsertDuplicate,
+                                      Map<String, Map<String, List<Integer>>> shardResults) {
 
         final RelOptCluster cluster = SqlConverter.getInstance(schemaName, executionContext).createRelOptCluster();
         RelTraitSet traitSet = RelTraitSet.createEmpty();

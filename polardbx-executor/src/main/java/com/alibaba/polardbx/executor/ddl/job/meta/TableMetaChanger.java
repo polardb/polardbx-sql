@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.meta;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -33,7 +34,9 @@ import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
+import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
@@ -734,4 +737,91 @@ public class TableMetaChanger {
         tableInfoManager.setConnection(metaDbConn);
         tableInfoManager.endUpdateColumnDefaultVal(schema, table, column);
     }
+
+    public static void addOssTableMeta(Connection metaDbConn, PhyInfoSchemaContext phyInfoSchemaContext,
+                                       Engine tableEngine) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.addOssTable(phyInfoSchemaContext, tableEngine);
+    }
+    public static void addOssFileMeta(Connection metaDbConn, String tableSchema, String tableName,
+                                      FilesRecord filesRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.addOssFile(tableSchema, tableName, filesRecord);
+    }
+    public static void changeOssFile(Connection metaDbConn, Long primaryKey, Long fileSize) {
+        changeOssFile(metaDbConn, primaryKey, new byte[] {}, fileSize, 0L);
+    }
+    public static void changeOssFile(Connection metaDbConn, Long primaryKey, byte[] fileMeta, Long fileSize,
+                                     Long rowCount) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.changeOssFile(primaryKey, fileMeta, fileSize, rowCount);
+    }
+    public static Long addOssFileAndReturnLastInsertId(Connection metaDbConn, String tableSchema, String tableName,
+                                                       FilesRecord filesRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.addOssFileAndReturnLastInsertId(tableSchema, tableName, filesRecord);
+    }
+    public static void changeTableEngine(Connection metaDbConn, String tableSchema, String tableName, Engine engine) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.changeTableEngine(tableSchema, tableName, engine.name());
+    }
+    public static List<FilesRecord> lockOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema,
+                                                    String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.lockOssFile(taskId, tableSchema, tableName);
+    }
+    public static void deleteOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.deleteOssFile(taskId, tableSchema, tableName);
+    }
+    public static void validOssFileMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.validOssFile(taskId, tableSchema, tableName);
+    }
+    public static void addOssColumnMeta(Connection metaDbConn, String tableSchema, String tableName,
+                                        ColumnMetasRecord columnMetasRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.addOSSColumnsMeta(tableSchema, tableName, columnMetasRecord);
+    }
+    public static List<ColumnMetasRecord> lockOssColumnMeta(Connection metaDbConn, Long taskId,
+                                                            String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.lockOSSColumnsMeta(taskId, tableSchema, tableName);
+    }
+    public static void deleteOssColumnMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.deleteOSSColumnsMeta(taskId, tableSchema, tableName);
+    }
+    public static void validOssColumnMeta(Connection metaDbConn, Long taskId, String tableSchema, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.validOSSColumnsMeta(taskId, tableSchema, tableName);
+    }
+
+    public static void updateArchiveTable(Connection metaDbConnection,
+                                          String schemaName, String tableName,
+                                          String archiveTableSchema, String archiveTableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
+    }
+
+    public static void replaceScheduledJob(Connection metaDbConnection,
+                                           ScheduledJobsRecord scheduledJobsRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.replaceScheduledJob(scheduledJobsRecord);
+    }
+
 }

@@ -36,11 +36,13 @@ public class TableGroupRecord implements SystemTableRecord {
      * 1: default tg for single_tbl
      * 2: non-default tg for single_tbl
      * 3: broadcast tg for broadcast_tbl
+     * 4: tg for oss table
      */
     public static final int TG_TYPE_PARTITION_TBL_TG = 0;
     public static final int TG_TYPE_DEFAULT_SINGLE_TBL_TG = 1;
     public static final int TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG = 2;
     public static final int TG_TYPE_BROADCAST_TBL_TG = 3;
+    public static final int TG_TYPE_OSS_TBL_TG = 4;
 
     public Long id;
     public Date gmt_create;

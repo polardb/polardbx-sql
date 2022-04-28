@@ -18,9 +18,9 @@ package com.alibaba.polardbx.executor.mpp.operator;
 
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkConverter;
-import com.alibaba.polardbx.optimizer.chunk.Converters;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.ClientBuffer;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBuffer;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;

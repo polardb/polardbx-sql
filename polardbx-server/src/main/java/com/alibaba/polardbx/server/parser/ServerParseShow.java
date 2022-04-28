@@ -49,6 +49,9 @@ public final class ServerParseShow {
     public static final int MDL_DEADLOCK_DETECTION = 22;
     public static final int WORKLOAD = 23;
     public static final int PARAMETRIC = 24;
+    public static final int CACHE_STATS = 25;
+    public static final int ARCHIVE = 26;
+    public static final int FILE_STORAGE = 27;
 
     public static int parse(String stmt, int offset) {
         return parse(ByteString.from(stmt), offset);
@@ -64,9 +67,12 @@ public final class ServerParseShow {
             case '#':
                 i = ParseUtil.comment(stmt, i);
                 continue;
+            case 'A':
+            case 'a':
+                return aCheck(stmt, i);
             case 'C':
             case 'c':
-                return connectionCheck(stmt, i);
+                return cCheck(stmt, i);
             case 'D':
             case 'd':
                 return dataCheck(stmt, i);
@@ -93,7 +99,7 @@ public final class ServerParseShow {
                 return gitCheck(stmt, i);
             case 'F':
             case 'f':
-                return fullCheck(stmt, i);
+                return fCheck(stmt, i);
             case 'M':
             case 'm':
                 return memoryPoolCheck(stmt, i);
@@ -134,8 +140,39 @@ public final class ServerParseShow {
         return OTHER;
     }
 
-    static int connectionCheck(ByteString stmt, int offset) {
-        if (stmt.length() > offset + "ONNECTION".length()) {
+    private static int aCheck(ByteString stmt, int offset) {
+        final String expect = "archive";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)
+                && (stmt.length() == offset + expect.length() ||
+                ParseUtil.isEOF(stmt.charAt(offset + expect.length())))) {
+                return ARCHIVE;
+            }
+        }
+        return OTHER;
+    }
+
+    static int cCheck(ByteString stmt, int offset) {
+        if (stmt.length() > offset + "ACHE_STATS".length()) {
+            char c1 = stmt.charAt(++offset);
+            char c2 = stmt.charAt(++offset);
+            char c3 = stmt.charAt(++offset);
+            char c4 = stmt.charAt(++offset);
+            char c5 = stmt.charAt(++offset);
+            char c6 = stmt.charAt(++offset);
+            char c7 = stmt.charAt(++offset);
+            char c8 = stmt.charAt(++offset);
+            char c9 = stmt.charAt(++offset);
+            char c10 = stmt.charAt(++offset);
+            if ((c1 == 'A' || c1 == 'a') && (c2 == 'C' || c2 == 'c') && (c3 == 'H' || c3 == 'h')
+                && (c4 == 'E' || c4 == 'e') && (c5 == '_') && (c6 == 'S' || c6 == 's') && (c7 == 'T' || c7 == 't')
+                && (c8 == 'A' || c8 == 'a') && (c9 == 'T' || c9 == 't') && (c10 == 'S' || c10 == 's')
+                && (stmt.length() == ++offset || ParseUtil.isEOF(stmt.charAt(offset)))) {
+
+                return CACHE_STATS;
+
+            }
+        } else if (stmt.length() > offset + "ONNECTION".length()) {
             char c1 = stmt.charAt(++offset);
             char c2 = stmt.charAt(++offset);
             char c3 = stmt.charAt(++offset);
@@ -177,6 +214,22 @@ public final class ServerParseShow {
                 } else {
                     return OTHER;
                 }
+            default:
+                return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int fCheck(ByteString stmt, int offset) {
+        if (stmt.length() > offset + 1) {
+            switch (stmt.charAt(offset + 1)) {
+            case 'u':
+            case 'U':
+                return fullCheck(stmt, offset);
+            case 'i':
+            case 'I':
+                return fileStorageCheck(stmt, offset);
             default:
                 return OTHER;
             }
@@ -486,6 +539,38 @@ public final class ServerParseShow {
                     }
                 }
                 return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
+    // SHOW FILE STORAGE
+    private static int fileStorageCheck(ByteString stmt, int offset) {
+        if (stmt.length() > offset + "ILE ".length()) {
+            char c1 = stmt.charAt(++offset);
+            char c2 = stmt.charAt(++offset);
+            char c3 = stmt.charAt(++offset);
+            if ((c1 == 'I' || c1 == 'i') && (c2 == 'L' || c2 == 'l')
+                && (c3 == 'E' || c3 == 'e') && (stmt.length() > ++offset)) {
+                while (ParseUtil.isEOF(stmt.charAt(offset)) && stmt.charAt(offset) != ';') {
+                    offset++;
+                }
+                if (stmt.length() > offset + "TORAGE".length()) {
+                    char c11 = stmt.charAt(offset++);
+                    char c12 = stmt.charAt(offset++);
+                    char c13 = stmt.charAt(offset++);
+                    char c14 = stmt.charAt(offset++);
+                    char c15 = stmt.charAt(offset++);
+                    char c16 = stmt.charAt(offset++);
+                    char c17 = stmt.charAt(offset++);
+                    if ((c11 == 's' || c11 == 'S') && (c12 == 't' || c12 == 'T')
+                        && (c13 == 'o' || c13 == 'O') && (c14 == 'r' || c14 == 'R')
+                        && (c15 == 'A' || c15 == 'a') && (c16 == 'g' || c16 == 'G')
+                        && (c17 == 'e' || c17 == 'E')
+                        && (stmt.length() == offset || ParseUtil.isEOF(stmt.charAt(offset)))) {
+                        return FILE_STORAGE;
+                    }
+                }
             }
         }
         return OTHER;

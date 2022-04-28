@@ -1,6 +1,9 @@
 data: {
+    inOperators:        tdd(../data/InColConstOperators.tdd)
     mathOperators:             tdd(../data/ArithmeticOperators.tdd),
     cmpOperators:             tdd(../data/ComparisonOperators.tdd),
+    cmpDecOperators:             tdd(../data/DecimalComparisonOperators.tdd),
+    cmpDateOperators:             tdd(../data/DateComparisonOperators.tdd),
     logicalOperators:             tdd(../data/LogicalOperators.tdd),
     castOperators:             tdd(../data/CastOperators.tdd),
 }

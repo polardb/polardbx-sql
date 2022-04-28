@@ -629,7 +629,21 @@ public enum ErrorCode {
 
     ERR_X_PROTOCOL_CONNECTION(ErrorType.Xprotocol, 10003),
 
-    ERR_X_PROTOCOL_RESULT(ErrorType.Xprotocol, 10004);
+    ERR_X_PROTOCOL_RESULT(ErrorType.Xprotocol, 10004),
+    // ============= OSS ================
+    ERR_SHOULD_NOT_BE_NULL(ErrorType.OSS, 11001),
+    ERR_BACK_FILL_FAIL(ErrorType.OSS, 11002),
+    ERR_BACK_FILL_ROLLBACK_FAIL(ErrorType.OSS, 11003),
+    ERR_BACK_FILL_CHECK(ErrorType.OSS, 11004),
+    ERR_CANT_CONTINUE_DDL(ErrorType.OSS, 11005),
+    ERR_OSS_FORMAT(ErrorType.OSS, 11006),
+    ERR_DROP_RECYCLE_BIN(ErrorType.OSS, 11007),
+    ERR_UNARCHIVE_FIRST(ErrorType.OSS, 11008),
+    ERR_UNEXPECTED_REL_TREE(ErrorType.OSS, 11010),
+    ERR_EXECUTE_ON_OSS(ErrorType.Executor, 11011),
+    ERR_FILE_STORAGE_READ_ONLY(ErrorType.OSS, 11012),
+    ERR_OSS_CONNECT(ErrorType.OSS, 11013);
+
 
     private int code;
     private ErrorType type;

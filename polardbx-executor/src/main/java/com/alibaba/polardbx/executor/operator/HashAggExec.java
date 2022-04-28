@@ -17,18 +17,18 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
-import com.alibaba.polardbx.optimizer.core.expression.calc.AbstractAggregator;
+import com.alibaba.polardbx.executor.calc.AbstractAggregator;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkConverter;
-import com.alibaba.polardbx.optimizer.chunk.Converters;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.operator.spill.MemoryRevoker;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.util.AggOpenHashMap;
 import com.alibaba.polardbx.executor.operator.util.SpillableAggHashMap;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
 

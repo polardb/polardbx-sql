@@ -79,7 +79,13 @@ public class InformationSchemaFiles extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("CHECKSUM", 35, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("STATUS", 36, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("EXTRA", 37, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-
+        columns.add(new RelDataTypeFieldImpl("TASK_ID", 38, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("LIFE_CYCLE", 39, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PATH", 40, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOGICAL_SCHEMA_NAME", 41, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOGICAL_TABLE_NAME", 42, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("COMMIT_TS", 43, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("REMOVE_TS", 43, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         return typeFactory.createStructType(columns);
     }
 }

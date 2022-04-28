@@ -16,6 +16,9 @@
  */
 package org.apache.calcite.sql;
 
+import com.google.common.base.Function;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.type.DynamicRecordType;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
@@ -26,10 +29,6 @@ import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
-
-import com.google.common.base.Function;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -85,6 +84,22 @@ public class SqlIdentifier extends SqlNode {
   public SqlNode partitions;
 
   /**
+   * This is the timestamp expression for flashback query
+   * <pre>
+   *     table_factor: {
+   *         tbl_name [{PARTITION (partition_names) | AS OF expr}]
+   *             [[AS] alias] [index_hint_list]
+   *       | table_subquery [AS] alias
+   *       | ( table_references )
+   *     }
+   *
+   *     MySQL only support syntax showed above.
+   *     So that we must put AS OF in front of alias and index_hint_list behind alias
+   * </pre>
+   */
+  public SqlNode flashback;
+
+  /**
    * This identifier's collation (if any).
    */
   final SqlCollation collation;
@@ -137,7 +152,7 @@ public class SqlIdentifier extends SqlNode {
 //    for (String name : names) {
 //      assert name != null;
 //    }
-    this(names, collation, pos, componentPositions, null, null);
+    this(names, collation, pos, componentPositions, null, null, null);
   }
 
   public SqlIdentifier(
@@ -145,7 +160,7 @@ public class SqlIdentifier extends SqlNode {
       SqlCollation collation,
       SqlParserPos pos,
       List<SqlParserPos> componentPositions, SqlNode indexNode) {
-    this(names, collation, pos, componentPositions, indexNode, null);
+    this(names, collation, pos, componentPositions, indexNode, null, null);
   }
 
   /**
@@ -157,7 +172,7 @@ public class SqlIdentifier extends SqlNode {
       List<String> names,
       SqlCollation collation,
       SqlParserPos pos,
-      List<SqlParserPos> componentPositions,SqlNode indexNode, SqlNode partitions) {
+      List<SqlParserPos> componentPositions, SqlNode indexNode, SqlNode partitions, SqlNode flashback) {
     super(pos);
     this.names = ImmutableList.copyOf(names);
     this.collation = collation;
@@ -168,6 +183,7 @@ public class SqlIdentifier extends SqlNode {
     }
     this.indexNode = indexNode;
     this.partitions = partitions;
+    this.flashback = flashback;
   }
 
   /** Creates an identifier that is a singleton wildcard star. */
@@ -189,7 +205,7 @@ public class SqlIdentifier extends SqlNode {
   }
 
   @Override public SqlNode clone(SqlParserPos pos) {
-    return new SqlIdentifier(names, collation, pos, componentPositions, indexNode, partitions);
+    return new SqlIdentifier(names, collation, pos, componentPositions, indexNode, partitions, flashback);
   }
 
   public String toStringWithBacktick() {
@@ -356,16 +372,14 @@ public class SqlIdentifier extends SqlNode {
         writer.identifier(name);
         // Write partitions;
         SqlWriter.FrameTypeEnum frame1 = ((SqlPrettyWriter) writer).peekOptStack();
-        if (indexNode != null && writer instanceof SqlPrettyWriter && frame1 != null ) {
-          if (frame1 == SqlWriter.FrameTypeEnum.FROM_LIST) {
-            if (indexNode instanceof SqlNodeList) {
-              SqlNodeList list = (SqlNodeList) indexNode;
-              for (SqlNode node : list) {
-                node.unparse(writer, leftPrec, rightPrec);
-              }
-            } else {
-              indexNode.unparse(writer, leftPrec, rightPrec);
+        if (indexNode != null && frame1 == SqlWriter.FrameTypeEnum.FROM_LIST) {
+          if (indexNode instanceof SqlNodeList) {
+            SqlNodeList list = (SqlNodeList) indexNode;
+            for (SqlNode node : list) {
+              node.unparse(writer, leftPrec, rightPrec);
             }
+          } else {
+            indexNode.unparse(writer, leftPrec, rightPrec);
           }
         }
       }

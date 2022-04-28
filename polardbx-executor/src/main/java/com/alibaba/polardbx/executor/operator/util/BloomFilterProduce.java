@@ -18,12 +18,13 @@ package com.alibaba.polardbx.executor.operator.util;
 
 import com.alibaba.polardbx.common.utils.bloomfilter.BitSet;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.operator.util.minmaxfilter.MinMaxFilter;
 import com.google.common.net.HttpHeaders;
 import com.google.common.net.MediaType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
@@ -40,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static io.airlift.http.client.JsonBodyGenerator.jsonBodyGenerator;
@@ -53,6 +55,7 @@ public class BloomFilterProduce {
     private List<List<Integer>> bloomfilterId;
     private List<List<Integer>> hashKeys;
     private List<BloomFilter> bloomFilters;
+    private List<List<MinMaxFilter>> minMaxFilters;
 
     private HttpClient client;
     private URI uri;
@@ -62,10 +65,12 @@ public class BloomFilterProduce {
     private List<IStreamingHasher> hasherList;
 
     private BloomFilterProduce(List<List<Integer>> bloomfilterId, List<List<Integer>> hashKeys,
-                               List<BloomFilter> bloomFilters, HttpClient client, URI uri, String query) {
+                               List<BloomFilter> bloomFilters, List<List<MinMaxFilter>> minMaxFilters,
+                               HttpClient client, URI uri, String query) {
         this.bloomfilterId = bloomfilterId;
         this.hashKeys = hashKeys;
         this.bloomFilters = bloomFilters;
+        this.minMaxFilters = minMaxFilters;
         this.client = client;
         this.uri = uri;
         this.query = query;
@@ -73,12 +78,12 @@ public class BloomFilterProduce {
     }
 
     public static BloomFilterProduce create(List<List<Integer>> bloomfilterId, List<List<Integer>> hashKeys,
-                                            List<BloomFilter> bloomFilters, HttpClient client, URI uri,
+                                            List<BloomFilter> bloomFilters, List<List<MinMaxFilter>> minMaxFilters, HttpClient client, URI uri,
                                             String query) {
         if (bloomFilters.isEmpty()) {
             throw new IllegalArgumentException("Empty BloomFilterList in BloomFilterProduce");
         }
-        return new BloomFilterProduce(bloomfilterId, hashKeys, bloomFilters, client, uri, query);
+        return new BloomFilterProduce(bloomfilterId, hashKeys, bloomFilters, minMaxFilters, client, uri, query);
     }
 
     /**
@@ -89,9 +94,13 @@ public class BloomFilterProduce {
         for (int index = 0; index < hashKeys.size(); index++) {
             BloomFilter bloomFilter = bloomFilters.get(index);
             List<Integer> hashColumns = hashKeys.get(index);
+            List<MinMaxFilter> minMaxFilterList = minMaxFilters.get(index);
             for (int pos = 0; pos < input.getPositionCount(); pos++) {
                 Chunk.ChunkRow row = input.rowAt(pos);
                 bloomFilter.put(row.hashCode(hasher, hashColumns));
+                for (int i = 0; i < hashColumns.size(); i++) {
+                    minMaxFilterList.get(i).put(input.getBlock(hashColumns.get(i)), pos);
+                }
             }
         }
     }
@@ -116,7 +125,7 @@ public class BloomFilterProduce {
                 }
                 bloomFilterInfos.add(
                     new BloomFilterInfo(id, bloomFilters.get(i).getBitmap(), bloomFilters.get(i).getNumHashFunctions(),
-                        bloomFilters.get(i).getHashMethodInfo()));
+                        bloomFilters.get(i).getHashMethodInfo(), minMaxFilters.get(i).stream().map(x -> x.toMinMaxFilterInfo()).collect(Collectors.toList())));
             }
         }
         return bloomFilterInfos;

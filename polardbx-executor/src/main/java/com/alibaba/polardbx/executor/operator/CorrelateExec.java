@@ -20,7 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.utils.SubqueryApply;
 import com.alibaba.polardbx.executor.utils.SubqueryUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

@@ -339,6 +339,9 @@ public class ExecutionContext {
      */
     private long ruleCount = 0;
 
+    private volatile Integer blockBuilderCapacity = null;
+    private volatile Boolean enableOssCompatible = null;
+    private volatile Boolean enableOssDelayMaterializationOnExchange = null;
     private boolean executingPreparedStmt = false;
     private PreparedStmtCache preparedStmtCache = null;
 
@@ -1101,6 +1104,9 @@ public class ExecutionContext {
         ec.readOnly = isReadOnly();
         ec.backfillId = getBackfillId();
         ec.clientFoundRows = isClientFoundRows();
+        ec.blockBuilderCapacity = getBlockBuilderCapacity();
+        ec.enableOssCompatible = isEnableOssCompatible();
+        ec.enableOssDelayMaterializationOnExchange = isEnableOssDelayMaterializationOnExchange();
         ec.executingPreparedStmt = false;
         ec.preparedStmtCache = null;
         return ec;
@@ -1512,6 +1518,9 @@ public class ExecutionContext {
         if (params != null) {
             params.clear();
         }
+        blockBuilderCapacity = null;
+        enableOssCompatible = null;
+        enableOssDelayMaterializationOnExchange = null;
     }
 
     public boolean useReturning() {
@@ -1580,5 +1589,26 @@ public class ExecutionContext {
 
     public long getRuleCount() {
         return ruleCount;
+    }
+
+    public int getBlockBuilderCapacity() {
+        if (blockBuilderCapacity == null) {
+            blockBuilderCapacity = paramManager.getInt(ConnectionParams.BLOCK_BUILDER_CAPACITY);
+        }
+        return blockBuilderCapacity;
+    }
+
+    public boolean isEnableOssCompatible() {
+        if (enableOssCompatible == null) {
+            enableOssCompatible = paramManager.getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE);
+        }
+        return enableOssCompatible;
+    }
+
+    public boolean isEnableOssDelayMaterializationOnExchange() {
+        if (enableOssDelayMaterializationOnExchange == null) {
+            enableOssDelayMaterializationOnExchange = paramManager.getBoolean(ConnectionParams.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE);
+        }
+        return enableOssDelayMaterializationOnExchange;
     }
 }

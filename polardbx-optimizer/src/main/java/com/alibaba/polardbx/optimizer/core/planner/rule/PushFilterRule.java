@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -92,7 +93,10 @@ public class PushFilterRule extends RelOptRule {
     public void onMatch(RelOptRuleCall call) {
         Filter filter = call.rel(0);
         LogicalView logicalView = call.rel(1);
-
+        if (logicalView instanceof OSSTableScan
+            && !((OSSTableScan)logicalView).canPushFilterProject()) {
+            return;
+        }
         Pair<RexNode, RexNode> pair = splitConditionByPushable(filter.getCondition(), logicalView);
         RexNode pushable = pair.getKey();
         RexNode unPushable = pair.getValue();
@@ -128,6 +132,10 @@ public class PushFilterRule extends RelOptRule {
         if (RexUtils.containsUnPushableFunction(condition, false)) {
             return true;
         }
+        if (logicalView instanceof OSSTableScan
+            && !((OSSTableScan)logicalView).canPushFilterProject()) {
+            return true;
+        }
 
         if (logicalView != null) {
             /**
@@ -160,6 +168,15 @@ public class PushFilterRule extends RelOptRule {
 
         public PushFilterMergeSortTransposeRule(RelOptRuleOperand operand, String filter_mergeSort_tableScan) {
             super(operand, filter_mergeSort_tableScan);
+        }
+
+        @Override
+        public boolean matches(RelOptRuleCall call) {
+            final LogicalView logicalView = call.rel(2);
+            if (logicalView instanceof OSSTableScan) {
+                return false;
+            }
+            return true;
         }
 
         @Override
@@ -219,6 +236,15 @@ public class PushFilterRule extends RelOptRule {
 
         public PushProjectFilterLogicalViewRule(RelOptRuleOperand operand, String description) {
             super(operand, description);
+        }
+
+        @Override
+        public boolean matches(RelOptRuleCall call) {
+            final LogicalView logicalView = call.rel(2);
+            if (logicalView instanceof OSSTableScan) {
+                return false;
+            }
+            return true;
         }
 
         @Override

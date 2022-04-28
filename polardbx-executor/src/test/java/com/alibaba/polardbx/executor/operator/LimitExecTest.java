@@ -20,8 +20,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.collect.Lists;
 import org.junit.Test;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 import java.util.Collections;

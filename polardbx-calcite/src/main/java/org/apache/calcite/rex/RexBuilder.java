@@ -309,7 +309,7 @@ public class RexBuilder {
         && !aggCall.isDistinct()) {
       final List<Integer> args = aggCall.getArgList();
       final List<Integer> nullableArgs = nullableArgs(args, aggArgTypes);
-      if (!nullableArgs.equals(args) && false) {
+      if (!nullableArgs.equals(args) && true) {
         aggCall = aggCall.copy(nullableArgs, aggCall.filterArg);
       }
     }

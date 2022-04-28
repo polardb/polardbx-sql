@@ -17,12 +17,11 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.google.common.collect.HashMultiset;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.TreeMultiset;
 import org.apache.calcite.plan.RelOptPredicateList;
@@ -32,9 +31,7 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rex.RexNode;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public class CBOPushJoinRule extends PushJoinRule {
     public CBOPushJoinRule(RelOptRuleOperand operand, String description) {
@@ -50,6 +47,11 @@ public class CBOPushJoinRule extends PushJoinRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        final LogicalView leftView = (LogicalView) call.rels[1];
+        final LogicalView rightView = (LogicalView) call.rels[2];
+        if (leftView instanceof OSSTableScan || rightView instanceof OSSTableScan) {
+            return false;
+        }
         return PlannerContext.getPlannerContext(call).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_CBO_PUSH_JOIN);
     }

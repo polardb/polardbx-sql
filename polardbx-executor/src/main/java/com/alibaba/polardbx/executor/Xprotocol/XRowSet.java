@@ -29,8 +29,8 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.optimizer.chunk.BlockBuilder;
-import com.alibaba.polardbx.optimizer.chunk.IXRowChunk;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.IXRowChunk;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.Blob;
@@ -40,6 +40,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.YearType;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.row.AbstractRow;
 import io.airlift.slice.Slice;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -49,8 +50,10 @@ import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.function.BiFunction;
 
 /**
  * @version 1.0
@@ -87,6 +90,35 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
 
     public byte[] fastGetBytes(int index, String targetCharset) throws Exception {
         return XResultUtil.resultToBytes(metaData.get(index), row.get(index), targetCharset);
+    }
+
+    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber)
+        throws Exception {
+        XResultUtil
+            .resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber, false,
+                -1, -1, -1, null, null, null);
+    }
+    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
+                                        ZoneId timezone, int scale) throws Exception {
+        XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
+            false, -1, scale, -1, timezone, null, null);
+    }
+    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
+                                        boolean flipUnsigned) throws Exception {
+        XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
+            flipUnsigned, -1, -1, -1, null, null, null);
+    }
+    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
+                                        boolean flipUnsigned, int precision, int scale) throws Exception {
+        XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
+            flipUnsigned, precision, scale, -1, null, null, null);
+    }
+    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
+                                        int length, ColumnVector redundantColumnVector,
+                                        BiFunction<byte[], Integer, byte[]> collationHandler) throws Exception {
+        XResultUtil
+            .resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber, false,
+                -1, -1, length, null, redundantColumnVector, collationHandler);
     }
 
     @Override
@@ -162,7 +194,7 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
         assert bytes.length <= 8;
         long val = 0;
         for (int i = 0; i < bytes.length; i++) {
-            val |= (bytes[i] & 0xFF) << (i * 8);
+            val |= (bytes[i] & 0xFF) << ((bytes.length - i - 1) * 8);
         }
         return val;
     }

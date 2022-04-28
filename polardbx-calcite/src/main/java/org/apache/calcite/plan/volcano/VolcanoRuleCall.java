@@ -245,8 +245,8 @@ public class VolcanoRuleCall extends RelOptRuleCall {
         volcanoPlanner.getListener().ruleAttempted(event);
       }
     } catch (Exception e) {
-      throw new RuntimeException("Error while applying rule " + getRule()
-          + ", args " + Arrays.toString(rels), e);
+      LOGGER.error("Error while applying rule " + getRule() + ", args " + Arrays.toString(rels));
+      throw e;
     }
   }
   /**

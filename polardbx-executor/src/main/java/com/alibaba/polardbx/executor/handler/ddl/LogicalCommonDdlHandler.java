@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.validator.CommonValidator;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineRequester;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -139,6 +140,7 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
      * @return Indicate if need to return immediately
      */
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
         return false;
     }
 

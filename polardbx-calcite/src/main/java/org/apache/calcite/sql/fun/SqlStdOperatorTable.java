@@ -18,6 +18,7 @@ package org.apache.calcite.sql.fun;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlAsOfOperator;
 import org.apache.calcite.sql.SqlAsOperator;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlBinaryOperator;
@@ -169,6 +170,7 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
    * with an alias.
    */
   public static final SqlAsOperator AS = new SqlAsOperator();
+  public static final SqlAsOfOperator AS_OF = new SqlAsOfOperator();
 
   /**
    * <code>ARGUMENT_ASSIGNMENT</code> operator (<code>=&lt;</code>)

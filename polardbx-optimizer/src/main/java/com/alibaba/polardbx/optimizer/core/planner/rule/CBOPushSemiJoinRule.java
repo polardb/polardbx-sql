@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.plan.RelOptUtil;
@@ -39,6 +40,11 @@ public class CBOPushSemiJoinRule extends PushSemiJoinRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        final LogicalView leftView = (LogicalView)call.rels[1];
+        final LogicalView rightView = (LogicalView)call.rels[2];
+        if (leftView instanceof OSSTableScan || rightView instanceof OSSTableScan) {
+            return false;
+        }
         return PlannerContext.getPlannerContext(call).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_CBO_PUSH_JOIN)
             && !PlannerContext.getPlannerContext(call).getParamManager()

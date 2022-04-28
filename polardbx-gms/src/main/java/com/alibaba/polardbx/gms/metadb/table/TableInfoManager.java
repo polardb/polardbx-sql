@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.metadb.table;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -50,6 +51,7 @@ import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
@@ -80,6 +82,8 @@ public class TableInfoManager extends AbstractAccessor {
     private final TablePartitionAccessor tablePartitionAccessor;
     private final TableGroupAccessor tableGroupAccessor;
     private final PartitionGroupAccessor partitionGroupAccessor;
+    private final FilesAccessor filesAccessor;
+    private final ColumnMetaAccessor columnMetaAccessor;
     private final TableLocalPartitionAccessor localPartitionAccessor;
     private final ScheduledJobsAccessor scheduledJobsAccessor;
     private final FiredScheduledJobsAccessor firedScheduledJobsAccessor;
@@ -94,6 +98,8 @@ public class TableInfoManager extends AbstractAccessor {
         tablePartitionAccessor = new TablePartitionAccessor();
         tableGroupAccessor = new TableGroupAccessor();
         partitionGroupAccessor = new PartitionGroupAccessor();
+        filesAccessor = new FilesAccessor();
+        columnMetaAccessor = new ColumnMetaAccessor();
         localPartitionAccessor = new TableLocalPartitionAccessor();
         scheduledJobsAccessor = new ScheduledJobsAccessor();
         firedScheduledJobsAccessor = new FiredScheduledJobsAccessor();
@@ -155,6 +161,8 @@ public class TableInfoManager extends AbstractAccessor {
         tablePartitionAccessor.setConnection(connection);
         tableGroupAccessor.setConnection(connection);
         partitionGroupAccessor.setConnection(connection);
+        filesAccessor.setConnection(connection);
+        columnMetaAccessor.setConnection(connection);
         localPartitionAccessor.setConnection(connection);
         scheduledJobsAccessor.setConnection(connection);
         firedScheduledJobsAccessor.setConnection(connection);
@@ -236,6 +244,11 @@ public class TableInfoManager extends AbstractAccessor {
     public TablesRecord queryTable(long tableId) {
         return tablesAccessor.query(tableId);
     }
+
+    public List<TablesRecord> queryTablesByEngine(String engine) {
+        return tablesAccessor.queryByEngine(engine);
+    }
+
 
     public List<ColumnsRecord> queryVisibleColumns(String tableSchema, String tableName) {
         List<ColumnsRecord> visibleRecords = new ArrayList<>();
@@ -381,6 +394,133 @@ public class TableInfoManager extends AbstractAccessor {
         return tablesExtAccessor.alterTableExtFlag(tableSchema, tableName, flag);
     }
 
+    public void addOssTable(PhyInfoSchemaContext context, Engine tableEngine) {
+        // Build Table Meta
+        TablesRecord tablesRecord = new TablesRecord();
+        tablesRecord.tableSchema = context.tableSchema;
+        tablesRecord.tableName = context.tableName;
+        tablesRecord.tableType = "ORC TABLE";
+        tablesRecord.engine = tableEngine.name();
+        tablesRecord.version = 0;
+        tablesRecord.rowFormat = "Dynamic";
+        tablesRecord.tableRows = 0;
+        tablesRecord.avgRowLength = 0;
+        tablesRecord.dataLength = 0;
+        tablesRecord.maxDataLength = 0;
+        tablesRecord.indexLength = 0;
+        tablesRecord.dataFree = 0;
+        tablesRecord.autoIncrement = 0;
+        tablesRecord.tableCollation = "utf8mb4_general_ci";
+        tablesRecord.checkSum = 0;
+        tablesRecord.createOptions = "";
+        tablesRecord.tableComment = "THIS IS OSS TABLE";
+
+        tablesAccessor.insert(tablesRecord);
+
+        // Column Meta
+        List<ColumnsInfoSchemaRecord> columnsInfoSchemaRecords =
+            fetchColumnMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, null, context.dataSource);
+
+        Map<String, Map<String, Object>> columnJdbcExtInfo =
+            fetchColumnJdbcExtInfo(context.phyTableSchema, context.phyTableName, context.dataSource);
+
+        List<ColumnsRecord> columnsRecords = RecordConverter.convertColumn(
+            columnsInfoSchemaRecords, columnJdbcExtInfo, context.tableSchema, context.tableName);
+
+        columnsAccessor.insert(columnsRecords, context.tableSchema, context.tableName);
+
+        // Index Meta
+        List<IndexesInfoSchemaRecord> indexesInfoSchemaRecords =
+            fetchIndexMetaFromInfoSchema(context.phyTableSchema, context.phyTableName, context.dataSource);
+
+        if (indexesInfoSchemaRecords != null && !indexesInfoSchemaRecords.isEmpty()) {
+            List<IndexesRecord> indexesRecords =
+                RecordConverter.convertIndex(indexesInfoSchemaRecords, context.tableSchema, context.tableName);
+
+            indexesAccessor.insert(indexesRecords, context.tableSchema, context.tableName);
+        }
+
+        if (context.sequenceRecord != null) {
+            sequencesAccessor.insert(context.sequenceRecord);
+        }
+    }
+
+    public void addOssFile(String tableSchema, String tableName, FilesRecord filesRecord) {
+        filesAccessor.insert(ImmutableList.of(filesRecord), tableSchema, tableName);
+    }
+
+    public List<FilesRecord> queryFilesByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
+        return filesAccessor.queryByLogicalSchemaTable(logicalSchemaName, logicalTableName);
+    }
+
+    public List<FilesRecord> queryTableFormatByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
+        return filesAccessor.queryTableFormatByLogicalSchemaTable(logicalSchemaName, logicalTableName);
+    }
+
+    public List<FilesRecord> queryFilesByEngine(Engine engine) {
+        return filesAccessor.queryByEngine(engine);
+    }
+
+    public void updateFilesCommitTs(Long ts, String logicalSchemaName, String logicalTableName, Long taskId) {
+        filesAccessor.updateFilesCommitTs(ts, logicalSchemaName, logicalTableName, taskId);
+    }
+
+    public void updateFilesRemoveTs(Long ts, String logicalSchemaName, String logicalTableName, List<String> files) {
+        filesAccessor.updateFilesRemoveTs(ts, logicalSchemaName, logicalTableName, files);
+    }
+
+    public void updateTableRemoveTs(Long ts, String logicalSchemaName, String logicalTableName) {
+        filesAccessor.updateTableRemoveTs(ts, logicalSchemaName, logicalTableName);
+    }
+
+    public List<FilesRecord> queryFilesByLogicalSchema(String logicalSchemaName) {
+        return filesAccessor.queryByLogicalSchema(logicalSchemaName);
+    }
+
+    public List<FilesRecord> queryFilesByFileName(String fileName) {
+        return filesAccessor.queryByFileName(fileName);
+    }
+
+    public Long addOssFileAndReturnLastInsertId(String tableSchema, String tableName, FilesRecord filesRecord) {
+        return filesAccessor.insertAndReturnLastInsertId(filesRecord, tableSchema, tableName);
+    }
+
+    public void changeOssFile(Long primaryKey, byte[] fileMeta, Long fileSize, Long rowCount) {
+        filesAccessor.changeFile(primaryKey, fileMeta, fileSize, rowCount);
+    }
+
+    public void changeTableEngine(String tableSchema, String tableName, String engine) {
+        tablesAccessor.updateEngine(tableSchema, tableName, engine);
+    }
+
+    public List<FilesRecord> lockOssFile(Long taskId, String tableSchema, String tableName) {
+        return filesAccessor.lock(taskId, tableSchema, tableName);
+    }
+
+    public void deleteOssFile(Long taskId, String tableSchema, String tableName) {
+        filesAccessor.delete(taskId, tableSchema, tableName);
+    }
+
+    public void validOssFile(Long taskId, String tableSchema, String tableName) {
+        filesAccessor.valid(taskId, tableSchema, tableName);
+    }
+
+    public void addOSSColumnsMeta(String tableSchema, String tableName, ColumnMetasRecord columnMetasRecord) {
+        columnMetaAccessor.insert(ImmutableList.of(columnMetasRecord));
+    }
+
+    public List<ColumnMetasRecord> lockOSSColumnsMeta(Long taskId, String tableSchema, String tableName) {
+        return columnMetaAccessor.lock(taskId, tableSchema, tableName);
+    }
+
+    public void deleteOSSColumnsMeta(Long taskId, String tableSchema, String tableName) {
+        columnMetaAccessor.delete(taskId, tableSchema, tableName);
+    }
+
+    public void validOSSColumnsMeta(Long taskId, String tableSchema, String tableName) {
+        columnMetaAccessor.valid(taskId, tableSchema, tableName);
+    }
+
     public void addTable(PhyInfoSchemaContext context) {
         // Table Meta
         TablesInfoSchemaRecord tablesInfoSchemaRecord =
@@ -459,6 +599,8 @@ public class TableInfoManager extends AbstractAccessor {
         tablesAccessor.delete(tableSchema, tableName);
         columnsAccessor.delete(tableSchema, tableName);
         indexesAccessor.delete(tableSchema, tableName);
+        filesAccessor.delete(tableSchema, tableName);
+        columnMetaAccessor.delete(tableSchema, tableName);
         if (sequenceRecord != null) {
             sequencesAccessor.delete(sequenceRecord);
         }
@@ -561,6 +703,8 @@ public class TableInfoManager extends AbstractAccessor {
         tablesExtAccessor.rename(tableSchema, tableName, newTableName, newTbNamePattern);
         columnsAccessor.rename(tableSchema, tableName, newTableName);
         indexesAccessor.rename(tableSchema, tableName, newTableName);
+        filesAccessor.rename(tableSchema, tableName, newTableName);
+        columnMetaAccessor.rename(tableSchema, tableName, newTableName);
         if (sequenceRecord != null) {
             sequencesAccessor.rename(sequenceRecord);
         }
@@ -572,6 +716,8 @@ public class TableInfoManager extends AbstractAccessor {
         tablePartitionAccessor.rename(tableSchema, tableName, newTableName);
         columnsAccessor.rename(tableSchema, tableName, newTableName);
         indexesAccessor.rename(tableSchema, tableName, newTableName);
+        filesAccessor.rename(tableSchema, tableName, newTableName);
+        columnMetaAccessor.rename(tableSchema, tableName, newTableName);
         if (sequenceRecord != null) {
             sequencesAccessor.rename(sequenceRecord);
         }
@@ -1104,6 +1250,8 @@ public class TableInfoManager extends AbstractAccessor {
         sequencesAccessor.deleteAll(schemaName);
         tablePartitionAccessor.deleteTablePartitionConfigsByDbName(schemaName);
         localPartitionAccessor.deleteAll(schemaName);
+        filesAccessor.delete(schemaName);
+        columnMetaAccessor.delete(schemaName);
     }
 
     public void addTablePartitionInfos(TableGroupConfig tableGroupConfig, boolean isUpsert) {
@@ -1229,14 +1377,37 @@ public class TableInfoManager extends AbstractAccessor {
         return record;
     }
 
+    public TableLocalPartitionRecord getLocalPartitionRecordByArchiveTable(String archiveSchemaName, String archiveTableName) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(archiveSchemaName));
+        TableLocalPartitionRecord record = localPartitionAccessor.queryByArchiveTableName(archiveSchemaName, archiveTableName);
+        return record;
+    }
+
     public int addLocalPartitionRecord(TableLocalPartitionRecord tableLocalPartitionRecord) {
         Preconditions.checkNotNull(tableLocalPartitionRecord);
         return localPartitionAccessor.insert(tableLocalPartitionRecord);
     }
 
+    public void updateArchiveTable(String schemaName, String tableName, String archiveTableSchema, String archiveTableName) {
+        localPartitionAccessor.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
+    }
+
+    public void unBindingByArchiveTableName(String archiveTableSchema, String archiveTableName) {
+        localPartitionAccessor.unBindingByArchiveTableName(archiveTableSchema, archiveTableName);
+    }
+
+    public void unBindingByArchiveSchemaName(String archiveTableSchema) {
+        localPartitionAccessor.unBindingByArchiveSchemaName(archiveTableSchema);
+    }
+
     public int addScheduledJob(ScheduledJobsRecord scheduledJobsRecord) {
         Preconditions.checkNotNull(scheduledJobsRecord);
         return scheduledJobsAccessor.insert(scheduledJobsRecord);
+    }
+
+    public int replaceScheduledJob(ScheduledJobsRecord scheduledJobsRecord) {
+        Preconditions.checkNotNull(scheduledJobsRecord);
+        return scheduledJobsAccessor.replace(scheduledJobsRecord);
     }
 
     public int removeLocalPartitionRecord(String schemaName, String tableName) {

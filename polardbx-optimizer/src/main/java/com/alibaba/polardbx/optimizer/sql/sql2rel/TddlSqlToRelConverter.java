@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.sql.sql2rel;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.google.common.base.Supplier;
@@ -1564,6 +1565,10 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final List<String> qualifiedName = targetTable.getTable().getQualifiedName();
                 final String tableName = Util.last(qualifiedName);
                 final String schema = qualifiedName.get(qualifiedName.size() - 2);
+                TableMeta tableMeta = OptimizerContext.getContext(schema).getLatestSchemaManager().getTableWithNull(tableName);
+                if (tableMeta != null && tableMeta.getEngine() == Engine.OSS) {
+                    return false;
+                }
                 final TddlRuleManager rule = OptimizerContext.getContext(schema).getRuleManager();
                 if (rule != null) {
                     List<String> shardColumns = rule.getSharedColumns(tableName);

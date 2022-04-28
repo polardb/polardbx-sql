@@ -70,6 +70,14 @@ public class ExpressionSignature {
             .collect(Collectors.toList());
     }
 
+    public static ExpressionPriority priorityFrom(Class<?> klass) {
+        Preconditions.checkNotNull(klass);
+        ExpressionSignatures annotation = klass.getAnnotation(ExpressionSignatures.class);
+        Preconditions.checkNotNull(annotation, "ExpressionSignatures annotation of class " + klass + " is null!");
+        ExpressionPriority priority = annotation.priority();
+        return priority;
+    }
+
     public String getName() {
         return name;
     }

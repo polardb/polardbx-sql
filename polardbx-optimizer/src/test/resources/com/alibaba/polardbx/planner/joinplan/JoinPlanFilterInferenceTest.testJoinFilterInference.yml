@@ -81,13 +81,12 @@
       ;
 
   plan: |
-
-    HashAgg(count(a.id)="COUNT(id)")
-      BKAJoin(condition="int_col4 = int_col4", type="inner")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col4` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`int_col4` = 9)")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col4` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col4` = 9) AND (`int_col4` IN (...)))")
+    hashagg(count(a.id)="count()")
+      bkajoin(condition="int_col4 = int_col4", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col4` from `test_hash_tb` as `test_hash_tb` where (`int_col4` = 9)")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col4` = 9) and (`int_col4` in (...)))")
 
 -
   sql: |
@@ -116,12 +115,12 @@
       ;
 
   plan: |
-    HashAgg(count(a.id)="COUNT(id)")
-      BKAJoin(condition="int_col4 = int_col_c", type="inner")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, 88 AS `int_col_c` FROM `test_hash_tb` AS `test_hash_tb`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col4` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`int_col4` = 88) AND (`int_col4` IN (...)))")
+    hashagg(count(a.id)="count()")
+      bkajoin(condition="int_col4 = int_col_c", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, 88 as `int_col_c` from `test_hash_tb` as `test_hash_tb`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col4` = 88) and (`int_col4` in (...)))")
 
 -
   sql: |
@@ -153,13 +152,12 @@
         b.int_col4 < 3
 
   plan: |
-
-    HashAgg(count(a.id)="COUNT(id)")
-      BKAJoin(condition="int_col4 = int_col2", type="inner")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col2` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`int_col2` > 5) AND (`int_col2` < 3))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col4` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (((`int_col4` < 3) AND (`int_col4` > 5)) AND (`int_col4` IN (...)))")
+    hashagg(count(a.id)="count()")
+      bkajoin(condition="int_col4 = int_col2", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col2` from `test_hash_tb` as `test_hash_tb` where ((`int_col2` > 5) and (`int_col2` < 3))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where (((`int_col4` < 3) and (`int_col4` > 5)) and (`int_col4` in (...)))")
 
 -
   sql: |
@@ -211,14 +209,12 @@
         a.int_col2 < 1
 
   plan: |
-
-    HashAgg(count(a.id)="COUNT(id)")
-      BKAJoin(condition="int_col3 = int_col4 AND int_col3 = int_col2 AND int_col3 = int_col3", type="inner")
-        BKAJoin(condition="int_col4 = int_col2 AND int_col4 = int_col3", type="inner")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col2`, `int_col3` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((((`int_col2` > 5) AND (`int_col2` = `int_col3`)) AND (`int_col3` > 5)) AND (`int_col2` < 1)) AND (`int_col3` < 1))")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col4` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (((`int_col4` > 5) AND (`int_col4` < 1)) AND (`int_col4` IN (...)))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `int_col3` FROM `test_hash_tb3` AS `test_hash_tb3` WHERE (((`int_col3` > 5) AND (`int_col3` < 1)) AND (`int_col3` IN (...)))")
-
+    hashagg(count(a.id)="count()")
+      bkajoin(condition="int_col3 = int_col4 and int_col3 = int_col2 and int_col3 = int_col3", type="inner")
+        bkajoin(condition="int_col4 = int_col2 and int_col4 = int_col3", type="inner")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col2`, `int_col3` from `test_hash_tb` as `test_hash_tb` where (((((`int_col2` > 5) and (`int_col2` = `int_col3`)) and (`int_col3` > 5)) and (`int_col2` < 1)) and (`int_col3` < 1))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col4` from `test_hash_tb2` as `test_hash_tb2` where (((`int_col4` > 5) and (`int_col4` < 1)) and (`int_col4` in (...)))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb3", shardcount=4, sql="select `int_col3` from `test_hash_tb3` as `test_hash_tb3` where (((`int_col3` > 5) and (`int_col3` < 1)) and (`int_col3` in (...)))")

@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.frame.OverWindowFrame;
 import com.alibaba.polardbx.executor.operator.frame.RangeSlidingOverFrame;
 import com.alibaba.polardbx.executor.operator.frame.RangeUnboundedFollowingOverFrame;
@@ -29,8 +29,8 @@ import com.alibaba.polardbx.executor.operator.frame.RowUnboundedPrecedingOverFra
 import com.alibaba.polardbx.executor.operator.frame.UnboundedOverFrame;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;

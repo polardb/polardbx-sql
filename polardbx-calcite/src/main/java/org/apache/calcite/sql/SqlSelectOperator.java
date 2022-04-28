@@ -287,7 +287,7 @@ public class SqlSelectOperator extends SqlOperator {
         return ordinal == SqlSelect.WHERE_OPERAND;
     }
 
-    private boolean needUnparseFrom(SqlNode fromNode, SqlWriter writer) {
+    public boolean needUnparseFrom(SqlNode fromNode, SqlWriter writer) {
         if (fromNode == null) {
             return false;
         }
@@ -310,7 +310,7 @@ public class SqlSelectOperator extends SqlOperator {
         return false;
     }
 
-    private boolean isDualTable(SqlSelect select, SqlWriter writer) {
+    public boolean isDualTable(SqlSelect select, SqlWriter writer) {
         return writer.getDialect() instanceof MysqlSqlDialect && select.from == null && select.where != null;
     }
 }

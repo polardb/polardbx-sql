@@ -24,7 +24,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.MDC;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.executor.ExecutorHelper;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

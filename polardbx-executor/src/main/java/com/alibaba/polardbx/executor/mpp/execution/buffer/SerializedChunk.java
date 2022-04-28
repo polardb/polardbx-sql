@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import io.airlift.slice.Slice;
 import org.openjdk.jol.info.ClassLayout;
 

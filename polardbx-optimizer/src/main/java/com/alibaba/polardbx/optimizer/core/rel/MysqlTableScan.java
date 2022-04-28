@@ -16,13 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.config.meta.TableScanIOEstimator;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -30,8 +29,6 @@ import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
-import org.apache.calcite.rel.RelCollation;
-import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.Join;
@@ -45,7 +42,6 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.schema.Table;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -73,21 +69,15 @@ public class MysqlTableScan extends TableScan implements MysqlRel {
 
     MysqlTableScan(RelOptCluster cluster, RelTraitSet traitSet,
                    RelOptTable table, ImmutableList<RexNode> filters, SqlNodeList hints, SqlNode indexNode,
-                   SqlNode partitions) {
-        super(cluster, traitSet, table, hints, indexNode, partitions);
+                   RexNode flashback, SqlNode partitions) {
+        super(cluster, traitSet, table, hints, indexNode, flashback, partitions);
         this.filters = Preconditions.checkNotNull(filters);
     }
 
-    public static MysqlTableScan create(RelOptCluster cluster,
-                                        RelOptTable relOptTable, SqlNodeList hints, SqlNode indexNode,
-                                        SqlNode partitions) {
-        return create(cluster, relOptTable, ImmutableList.<RexNode>of(), hints, indexNode, partitions);
-    }
-
     public static MysqlTableScan create(RelOptCluster cluster, RelOptTable relOptTable, List<RexNode> filters,
-                                        SqlNodeList hints, SqlNode indexNode, SqlNode partitions) {
+                                        SqlNodeList hints, SqlNode indexNode, RexNode flashback, SqlNode partitions) {
         return new MysqlTableScan(cluster, cluster.traitSetOf(Convention.NONE), relOptTable,
-            ImmutableList.copyOf(filters), hints, indexNode, partitions);
+            ImmutableList.copyOf(filters), hints, indexNode, flashback, partitions);
     }
 
     @Override
@@ -150,10 +140,11 @@ public class MysqlTableScan extends TableScan implements MysqlRel {
         if (nodeForMetaQuery == null) {
             synchronized (this) {
                 if (filters.isEmpty()) {
-                    nodeForMetaQuery = LogicalTableScan.create(getCluster(), table, hints, indexNode, partitions);
+                    nodeForMetaQuery =
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
                 } else {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
                     LogicalFilter logicalFilter = LogicalFilter.create(logicalTableScan, filters.get(0));
                     nodeForMetaQuery = logicalFilter;
                 }

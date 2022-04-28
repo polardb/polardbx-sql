@@ -16,10 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -27,8 +23,12 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -356,8 +356,10 @@ public class MergeIndexRule extends RelOptRule {
                 TreeMaps::caseInsensitiveMap));
 
         // build index scan
-        final LogicalIndexScan indexScan = new LogicalIndexScan(index,
-            LogicalTableScan.create(logicalTableScan.getCluster(), index, logicalTableScan.getHints()), lockMode);
+        final LogicalTableScan indexTableScan =
+            LogicalTableScan.create(logicalTableScan.getCluster(), index, logicalTableScan.getHints(), null,
+                logicalTableScan.getFlashback(), null);
+        final LogicalIndexScan indexScan = new LogicalIndexScan(index, indexTableScan, lockMode);
 
         // filter, the predicate must be cover by indexScan
         RelOptUtil.InputReferencedVisitor inputReferencedVisitor = new RelOptUtil.InputReferencedVisitor();

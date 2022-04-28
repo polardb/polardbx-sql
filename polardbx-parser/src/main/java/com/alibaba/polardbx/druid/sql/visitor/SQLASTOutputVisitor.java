@@ -160,6 +160,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDiscardPartitio
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropColumnItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropExtPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropFile;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropForeignKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropKey;
@@ -5464,6 +5465,15 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
+    public boolean visit(SQLAlterTableDropFile x) {
+        print0(ucase ? "DROP FILE " : "drop file ");
+        for (SQLExpr expr : x.getFiles()) {
+            expr.accept(this);
+        }
+        return false;
+    }
+
+    @Override
     public boolean visit(SQLOver x) {
         print0(ucase ? "(" : "(");
         if (x.getPartitionBy().size() > 0) {
@@ -6764,6 +6774,14 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
     @Override
     public boolean visit(SQLBinaryExpr x) {
+        if (this.parameterized) {
+            print('?');
+            incrementReplaceCunt();
+            if (this.parameters != null) {
+                ExportParameterVisitorUtils.exportParameter(this.parameters, x);
+            }
+            return false;
+        }
         print0("b'");
         print0(x.getText());
         print('\'');

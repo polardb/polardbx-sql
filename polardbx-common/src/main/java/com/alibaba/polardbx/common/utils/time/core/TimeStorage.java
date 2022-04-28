@@ -89,6 +89,18 @@ public class TimeStorage {
         return t.isNeg() ? -l3 : l3;
     }
 
+    public static long writeTime(long hour, long minute, long second, long secondPart, boolean isNeg) {
+        //  If month is 0, we mix day with hours: "1 00:10:10" -> "24:00:10"
+        long l1 = hour << 12;
+        // for minute & second
+        long l2 = l1 | (minute << 6) | second;
+        // for nano
+        long l3 = (l2 << 24) + (secondPart / 1000);
+        // for sign
+        return isNeg ? -l3 : l3;
+    }
+
+
     public static MysqlDateTime readTime(long l) {
         MysqlDateTime t = new MysqlDateTime();
 
@@ -122,6 +134,16 @@ public class TimeStorage {
         return t.isNeg() ? -l : l;
     }
 
+    public static long writeTimestamp(long year, long month, long day, long hour, long minute, long second, long secondPart, boolean isNeg) {
+        // | 64 - 42 | 41 - 25 | 24 - 1 |
+        // |   ymd   |   hms   |  nano  |
+        long ymd = ((year * 13 + month) << 5) | day;
+        long hms = (hour << 12) | (minute << 6) | second;
+        long l = (((ymd << 17) | hms) << 24) + (secondPart / 1000);
+        return isNeg ? -l : l;
+    }
+
+
     public static MysqlDateTime readTimestamp(long l) {
         MysqlDateTime t = new MysqlDateTime();
         t.setNeg(l < 0);
@@ -147,6 +169,11 @@ public class TimeStorage {
 
     public static long writeDate(MysqlDateTime t) {
         long ymd = ((t.getYear() * 13 + t.getMonth()) << 5) | t.getDay();
+        return ymd << (24 + 17);
+    }
+
+    public static long writeDate(long year, long month, long day) {
+        long ymd = ((year * 13 + month) << 5) | day;
         return ymd << (24 + 17);
     }
 

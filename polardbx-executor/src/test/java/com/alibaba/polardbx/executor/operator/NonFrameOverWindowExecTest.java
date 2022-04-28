@@ -17,21 +17,21 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Avg;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitAnd;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitOr;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitXor;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Count;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Max;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Min;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Rank;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.RowNumber;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum0;
-import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Avg;
+import com.alibaba.polardbx.executor.calc.aggfunctions.BitAnd;
+import com.alibaba.polardbx.executor.calc.aggfunctions.BitOr;
+import com.alibaba.polardbx.executor.calc.aggfunctions.BitXor;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Max;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Min;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Rank;
+import com.alibaba.polardbx.executor.calc.aggfunctions.RowNumber;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Sum0;
+import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
 import org.junit.Ignore;
 import org.junit.Test;
 

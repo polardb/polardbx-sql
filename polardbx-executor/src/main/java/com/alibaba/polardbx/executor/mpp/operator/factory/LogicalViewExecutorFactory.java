@@ -16,6 +16,15 @@
 
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.operator.AbstractOSSTableScanExec;
+import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
+import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
+import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
+import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
+import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
 import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.operator.DrivingStreamTableScanExec;
@@ -48,7 +57,9 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexNode;
 
+import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -119,6 +130,16 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
         RelMetadataQuery.THREAD_PROVIDERS
             .set(JaninoRelMetadataProvider.of(logicalView.getCluster().getMetadataProvider()));
 
+        if (logicalView instanceof OSSTableScan) {
+            return buildOSSTableScanExec(context);
+        } else {
+            return buildTableScanExec(context);
+        }
+    }
+
+    @NotNull
+    private Executor buildTableScanExec(ExecutionContext context) {
+
         TableScanExec scanExec;
         Join join = logicalView.getJoin();
         if (join != null) {
@@ -166,6 +187,53 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
         }
         return scanExec;
     }
+
+    private Executor buildOSSTableScanExec(ExecutionContext context) {
+        OSSTableScan ossTableScan = (OSSTableScan) logicalView;
+        AbstractOSSTableScanExec exec = AbstractOSSTableScanExec.create(ossTableScan, context, dataTypeList);
+        OrcTableScan orcTableScan = ossTableScan.getOrcNode();
+        if (!orcTableScan.getFilters().isEmpty()) {
+            RexNode filterCondition = orcTableScan.getFilters().get(0);
+            List<DataType<?>> inputTypes = orcTableScan.getInProjectsDataType();
+            // binding vec expression
+            RexNode root = VectorizedExpressionBuilder.rewriteRoot(filterCondition, true);
+            InputRefTypeChecker inputRefTypeChecker = new InputRefTypeChecker(inputTypes);
+            root = root.accept(inputRefTypeChecker);
+            Rex2VectorizedExpressionVisitor converter =
+                new Rex2VectorizedExpressionVisitor(context, inputTypes.size());
+            VectorizedExpression vectorizedExpression = root.accept(converter);
+            List<DataType<?>> filterOutputTypes = converter.getOutputDataTypes();
+            MutableChunk preAllocatedChunk = MutableChunk.newBuilder(context.getExecutorChunkLimit())
+                .addEmptySlots(inputTypes)
+                .addEmptySlots(filterOutputTypes)
+                .build();
+            // prepare filter bitmap
+            List<Integer> inputIndex = VectorizedExpressionUtils.getInputIndex(vectorizedExpression);
+            int[] filterBitmap = new int[inputTypes.size() + filterOutputTypes.size()];
+            for(int i : inputIndex) {
+                filterBitmap[i] = 1;
+            }
+            exec.setPreAllocatedChunk(preAllocatedChunk);
+            exec.setFilterInputTypes(inputTypes);
+            exec.setFilterOutputTypes(filterOutputTypes);
+            exec.setCondition(vectorizedExpression);
+            exec.setFilterBitmap(filterBitmap);
+            int[] outProject = new int[orcTableScan.getOutProjects().size()];
+            for (int i = 0; i < orcTableScan.getOutProjects().size(); i++) {
+                outProject[i] = orcTableScan.getOutProjects().get(i);
+            }
+            exec.setOutProject(outProject);
+            exec.setId(logicalView.getRelatedId());
+            if (context.getRuntimeStatistics() != null) {
+                RuntimeStatHelper.registerStatForExec(logicalView, exec, context);
+            }
+        }
+        if (filterExpression != null) {
+            exec.initWaitFuture(filterExpression.getWaitBloomFuture());
+        }
+        return exec;
+    }
+
 
     private TableScanExec buildTableScanExec(TableScanClient scanClient, ExecutionContext context) {
         int stepSize = context.getParamManager().getInt(ConnectionParams.RESUME_SCAN_STEP_SIZE);

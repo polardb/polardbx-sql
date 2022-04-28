@@ -44,8 +44,11 @@ public class NodeScheduler {
         boolean slaveFirst =
             session.getClientContext().getParamManager().getBoolean(ConnectionParams.POLARDBX_SLAVE_INSTANCE_FIRST);
 
+        boolean enableOSSRoundRobin =
+            session.getClientContext().getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN);
+
         Set<InternalNode> nodes = nodeManager.getNodes(NodeState.ACTIVE, ConfigDataMode.isMasterMode() && slaveFirst);
 
-        return new SimpleNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode);
+        return new SimpleNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode, enableOSSRoundRobin);
     }
 }

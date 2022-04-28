@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MemSort;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.TopN;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
@@ -62,6 +63,10 @@ public class PushSortRule extends RelOptRule {
     public boolean matches(RelOptRuleCall call) {
         final Sort sort = call.rel(0);
         if (!PlannerContext.getPlannerContext(sort).getParamManager().getBoolean(ConnectionParams.ENABLE_PUSH_SORT)) {
+            return false;
+        }
+        final LogicalView logicalView = call.rel(1);
+        if (logicalView instanceof OSSTableScan) {
             return false;
         }
         return sort instanceof MemSort || sort instanceof TopN || sort instanceof Limit;

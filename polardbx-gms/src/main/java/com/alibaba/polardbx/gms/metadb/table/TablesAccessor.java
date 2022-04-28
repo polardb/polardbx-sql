@@ -53,6 +53,8 @@ public class TablesAccessor extends AbstractAccessor {
 
     private static final String WHERE_SCHEMA = " where `table_schema` = ?";
 
+    private static final String WHERE_ENGINE = " where `engine` = ?";
+
     private static final String WHERE_SCHEMA_TABLE = WHERE_SCHEMA + " and `table_name` = ?";
 
     private static final String WHERE_SCHEMA_NEW_TABLE = WHERE_SCHEMA + " and `new_table_name` = ?";
@@ -74,6 +76,8 @@ public class TablesAccessor extends AbstractAccessor {
 
     private static final String SELECT_TABLES_ALL = SELECT_TABLES + WHERE_SCHEMA;
 
+    private static final String SELECT_TABLES_BY_ENGINE = SELECT_TABLES + WHERE_ENGINE;
+
     private static final String SELECT_TABLES_ONE = SELECT_TABLES + WHERE_SCHEMA_TABLE;
 
     private static final String SELECT_TABLES_NEW = SELECT_TABLES + WHERE_SCHEMA_NEW_TABLE;
@@ -87,6 +91,8 @@ public class TablesAccessor extends AbstractAccessor {
     private static final String UPDATE_TABLES_VERSION = UPDATE_TABLES + "`version` = ?" + WHERE_SCHEMA_TABLE;
 
     private static final String UPDATE_TABLES_NEW_NAME = UPDATE_TABLES + "`new_table_name` = ?" + WHERE_SCHEMA_TABLE;
+
+    private static final String UPDATE_TABLES_ENGINE = UPDATE_TABLES + "`engine` = ?" + WHERE_SCHEMA_TABLE;
 
     private static final String UPDATE_TABLES_COMMENT = UPDATE_TABLES + "`table_comment` = ?" + WHERE_SCHEMA_TABLE;
 
@@ -158,6 +164,10 @@ public class TablesAccessor extends AbstractAccessor {
         return query(SELECT_TABLES_ALL, TABLES_TABLE, TablesRecord.class, tableSchema);
     }
 
+    public List<TablesRecord> queryByEngine(String engine) {
+        return query(SELECT_TABLES_BY_ENGINE, TABLES_TABLE, TablesRecord.class, engine);
+    }
+
     public long getTableMetaVersionForUpdate(String tableSchema, String tableName) {
 
         PreparedStatement stmt = null;
@@ -209,6 +219,10 @@ public class TablesAccessor extends AbstractAccessor {
     public TablesRecord query(long tableId) {
         List<TablesRecord> records = query(SELECT_BY_ID, TABLES_TABLE, TablesRecord.class, tableId);
         return records.stream().findFirst().orElse(null);
+    }
+
+    public int updateEngine(String tableSchema, String tableName, String engine) {
+        return update(UPDATE_TABLES_ENGINE, TABLES_TABLE, tableSchema, tableName, engine);
     }
 
     public int updateVersion(String tableSchema, String tableName, long newOpVersion) {

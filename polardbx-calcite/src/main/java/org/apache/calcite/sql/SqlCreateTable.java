@@ -16,6 +16,8 @@
  */
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.ArchiveMode;
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -85,6 +87,7 @@ import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.calcite.sql2rel.InitializerExpressionFactory;
 import org.apache.calcite.util.ImmutableNullableList;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.lang.StringUtils;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -174,6 +177,35 @@ public class SqlCreateTable extends SqlCreate {
     private SqlNode tableGroupName = null;
 
     private SQLPartitionByRange localPartitionSuffix;
+
+    private Engine engine = null;
+    private ArchiveMode archiveMode;
+    private String loadTableSchema = null;
+    public String getLoadTableSchema() {
+        return loadTableSchema;
+    }
+    public void setLoadTableSchema(String loadTableSchema) {
+        this.loadTableSchema = loadTableSchema;
+    }
+    private String loadTableName = null;
+    public String getLoadTableName() {
+        return loadTableName;
+    }
+    public void setLoadTableName(String loadTableName) {
+        this.loadTableName = loadTableName;
+    }
+    public Engine getEngine() {
+        return engine;
+    }
+    public void setEngine(Engine engine) {
+        this.engine = engine;
+    }
+    public void setArchiveMode(ArchiveMode archiveMode) {
+        this.archiveMode = archiveMode;
+    }
+    public ArchiveMode getArchiveMode() {
+        return this.archiveMode;
+    }
 
     public void setDefaultCharset(String dc) {
         defaultCharset = dc;
@@ -297,6 +329,26 @@ public class SqlCreateTable extends SqlCreate {
         this.sqlPartition = sqlPartition;
         this.localPartition = localPartition;
         this.tableGroupName = tableGroupName;
+    }
+
+    public boolean shouldLoad() {
+        if (!Engine.isFileStore(engine)) {
+            return false;
+        }
+        if (archiveMode != null) {
+            return this.archiveMode == ArchiveMode.LOADING;
+        }
+        if (comment != null) {
+            // compatible to old syntax
+            String trimmedComment = StringUtils.strip(comment, "'");
+            return trimmedComment.equalsIgnoreCase("load_oss")
+                || trimmedComment.equalsIgnoreCase("load_s3")
+                || trimmedComment.equalsIgnoreCase("load_local_disk");
+        }
+        return false;
+    }
+    public boolean shouldBind() {
+        return Engine.isFileStore(engine) && archiveMode == ArchiveMode.TTL;
     }
 
     public SqlNode getLikeTableName() {
@@ -792,6 +844,11 @@ public class SqlCreateTable extends SqlCreate {
 
         if (!autoSplit) {
             stmt.setAutoSplit(null);
+        }
+
+        // set engine name to create table statement.
+        if (engine != null) {
+            stmt.setEngine(engine.name());
         }
 
         // Handle default binary value

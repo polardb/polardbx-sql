@@ -77,7 +77,7 @@ public class SqlLikeOperator extends SqlSpecialOperator {
         kind,
         30,
         false,
-        ReturnTypes.BOOLEAN_NULLABLE,
+        ReturnTypes.BIGINT_NULLABLE,
         InferTypes.FIRST_KNOWN,
         OperandTypes.STRING_SAME_SAME_SAME);
     this.negated = negated;

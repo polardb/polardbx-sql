@@ -1,3 +1,19 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.alibaba.polardbx.gms.scheduler;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -7,8 +23,6 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
-import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -16,7 +30,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.FIRED_SCHEDULED_JOBS;
 import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.SCHEDULED_JOBS;
 
 /**
@@ -51,6 +64,9 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
     private static final String INSERT_TABLE_SCHEDULED_JOBS =
         "insert into " + SCHEDULED_JOBS + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
 
+    private static final String REPLACE_TABLE_SCHEDULED_JOBS =
+        "replace into " + SCHEDULED_JOBS + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
+
     private static final String GET_TABLE_SCHEDULED_JOBS = "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS;
 
     private static final String GET_TABLE_SCHEDULED_JOBS_BY_ID = GET_TABLE_SCHEDULED_JOBS + " where schedule_id=?";
@@ -79,6 +95,14 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
     public int insert(ScheduledJobsRecord record) {
         try {
             return MetaDbUtil.insert(INSERT_TABLE_SCHEDULED_JOBS, record.buildParams(), connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to insert into " + SCHEDULED_JOBS, "insert into", e);
+        }
+    }
+
+    public int replace(ScheduledJobsRecord record) {
+        try {
+            return MetaDbUtil.insert(REPLACE_TABLE_SCHEDULED_JOBS, record.buildParams(), connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to insert into " + SCHEDULED_JOBS, "insert into", e);
         }

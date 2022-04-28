@@ -1,0 +1,153 @@
+# flashback query on different kind of table
+- sql: |
+    replace into test_hash_tb select * from test_hash_ta as of timestamp "2022-02-17 14:40:40" where id = 1;
+
+  plan: |
+    
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name, datetime(0) create_time))
+      logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `create_time` from `test_hash_ta` as of timestamp ? as `test_hash_ta` where (`id` = ?)")
+
+- sql: |
+    replace into test_hash_tb select a.* from test_hash_ta a as of timestamp "2022-02-17 14:40:40" where a.id = 1;
+
+  plan: |
+    
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name, datetime(0) create_time))
+      logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `create_time` from `test_hash_ta` as of timestamp ? as `test_hash_ta` where (`id` = ?)")
+
+- sql: |
+    replace into test_hash_tb select a.* from test_hash_ta as of timestamp "2022-02-17 14:40:40" a force index(auto_shard_key_ID) where a.id = 1;
+
+  plan: |
+
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name, datetime(0) create_time))
+      logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `create_time` from `test_hash_ta` as of timestamp ? as `test_hash_ta` force index(auto_shard_key_id) where (`id` = ?)")
+
+- sql: |
+    replace into test_hash_tb select a.* from test_single a as of timestamp "2022-02-17 14:40:40" where a.id = 1;
+
+  plan: |
+
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name, datetime(0) create_time))
+      logicalview(tables="optest_0000.test_single", sql="select `id`, `name`, `create_time` from `test_single` as of timestamp ? as `test_single` where (`id` = ?)")
+
+- sql: |
+    replace into test_hash_tb select a.* from test_broadcast a as of timestamp "2022-02-17 14:40:40" where a.id = 1;
+
+  plan: |
+
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name, datetime(0) create_time))
+      logicalview(tables="optest_0000.test_broadcast", sql="select `id`, `name`, `create_time` from `test_broadcast` as of timestamp ? as `test_broadcast` where (`id` = ?)")
+
+- sql: |
+    replace into test_broadcast_b select a.* from test_broadcast a as of timestamp "2022-02-17 14:40:40" where a.id = 1;
+
+  plan: |
+
+    logicalreplace(table="test_broadcast_b", columns=recordtype(integer id, varchar(30) name, datetime(0) create_time))
+      logicalview(tables="optest_0000.test_broadcast", sql="select `id`, `name`, `create_time` from `test_broadcast` as of timestamp ? as `test_broadcast` where (`id` = ?)")
+
+# flashback query on table with gsi
+
+# force index gsi
+- sql: |
+    replace into t2 select a.* from t1 as of timestamp "2022-02-17 14:40:40" a force index(t1_i_a) where a.pk = 1;
+
+  plan: |
+
+    logicalreplace(table="t2", columns=recordtype(bigint pk, bigint c1, bigint c2, bigint c3, bigint c4, varchar(255) c5, datetime(0) c6, varchar(0) c7, timestamp(0) c8))
+      project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+          gather(concurrent=true)
+            indexscan(tables="[0000-0003].t1_i_a_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c3`, `c5`, `c6` from `t1_i_a` as of timestamp ? as `t1_i_a` where (`pk` = ?)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c2`, `c4`, `c7`, `c8` from `t1` as of timestamp ? as `t1` where ((`pk` = ?) and (`pk` in (...)))")
+
+# gsi with table lookup
+- sql: |
+    replace into t2 select a.* from t1 as of timestamp "2022-02-17 14:40:40" a where a.c3 = 1;
+
+  plan: |
+
+    logicalreplace(table="t2", columns=recordtype(bigint pk, bigint c1, bigint c2, bigint c3, bigint c4, varchar(255) c5, datetime(0) c6, varchar(0) c7, timestamp(0) c8))
+      project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+          indexscan(tables="optest_0000.t1_i_a_01", sql="select `pk`, `c1`, `c3`, `c5`, `c6` from `t1_i_a` as of timestamp ? as `t1_i_a` where (`c3` = ?)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c2`, `c4`, `c7`, `c8` from `t1` as of timestamp ? as `t1` where ((`c3` = ?) and (`pk` in (...)))")
+
+# gsi without table lookup
+- sql: |
+    replace into t2(pk, c1, c2, c5) select a.pk, a.c1, a.c2, a.c5 from t1 as of timestamp "2022-02-17 14:40:40" a where a.c2 = 1;
+
+  plan: |
+
+    logicalreplace(table="t2", columns=recordtype(bigint pk, bigint c1, bigint c2, bigint c3, varchar(255) c5))
+      indexscan(tables="optest_0000.t1_i_b_1", sql="select `pk`, `c1`, `c2`, null as `c3`, `c5` from `t1_i_b` as of timestamp ? as `t1_i_b` where (`c2` = ?)")
+
+# gsi with table lookup and ignore index
+- sql: |
+    replace into t2 select a.* from t1 as of timestamp "2022-02-17 14:40:40" a ignore index(primary) where a.c3 = 1;
+
+  plan: |
+
+    logicalreplace(table="t2", columns=recordtype(bigint pk, bigint c1, bigint c2, bigint c3, bigint c4, varchar(255) c5, datetime(0) c6, varchar(0) c7, timestamp(0) c8))
+      project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+          indexscan(tables="optest_0000.t1_i_a_01", sql="select `pk`, `c1`, `c3`, `c5`, `c6` from `t1_i_a` as of timestamp ? as `t1_i_a` where (`c3` = ?)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t1_[00-27]", shardcount=28, sql="select `pk`, `c1`, `c2`, `c4`, `c7`, `c8` from `t1` as of timestamp ? as `t1` ignore index(primary) where ((`c3` = ?) and (`pk` in (...)))")
+
+# gsi with table lookup and ignore index
+- sql: |
+    replace into t2(pk, c1, c2, c5) select a.pk, a.c1, a.c2, a.c5 from t1 as of timestamp "2022-02-17 14:40:40" a ignore index(primary) where a.c2 = 1;
+
+  plan: |
+
+    logicalreplace(table="t2", columns=recordtype(bigint pk, bigint c1, bigint c2, bigint c3, varchar(255) c5))
+      indexscan(tables="optest_0000.t1_i_b_1", sql="select `pk`, `c1`, `c2`, null as `c3`, `c5` from `t1_i_b` as of timestamp ? as `t1_i_b` where (`c2` = ?)")
+
+# flashback query on join
+
+# hash table join hash table
+- sql: |
+    replace into test_hash_tb(id, name) select a.id, b.name from test_hash_ta as of timestamp "2022-02-17 14:40:40" a JOIN test_hash_ta as of timestamp "2022-02-17 14:40:41" b ON a.id = b.id where a.name = 1;
+
+  plan: |
+
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name))
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `test_hash_ta`.`id`, `test_hash_ta0`.`name` from `test_hash_ta` as of timestamp ? as `test_hash_ta` inner join `test_hash_ta` as of timestamp ? as `test_hash_ta0` on ((`test_hash_ta`.`name` = ?) and (`test_hash_ta`.`id` = `test_hash_ta0`.`id`))")
+
+# hash table join broadcast table
+- sql: |
+    replace into test_hash_tb(id, name) select a.id, b.name from test_hash_ta as of timestamp "2022-02-17 14:40:40" a JOIN test_broadcast as of timestamp "2022-02-17 14:40:41" b ON a.id = b.id where a.name = 1;
+
+  plan: |
+
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name))
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_ta,test_broadcast", shardcount=4, sql="select `test_hash_ta`.`id`, `test_broadcast`.`name` from `test_hash_ta` as of timestamp ? as `test_hash_ta` inner join `test_broadcast` as of timestamp ? as `test_broadcast` on ((`test_hash_ta`.`name` = ?) and (`test_hash_ta`.`id` = `test_broadcast`.`id`))")
+
+# hash table join broadcast table with force index
+- sql: |
+    replace into test_hash_tb(id, name) select a.id, b.name from test_hash_ta as of timestamp "2022-02-17 14:40:40" a force index(auto_shard_key_ID) JOIN test_hash_ta as of timestamp "2022-02-17 14:40:41" b force index(auto_shard_key_ID) ON a.id = b.id where a.name = 1;
+
+  plan: |
+
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name))
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `test_hash_ta`.`id`, `test_hash_ta0`.`name` from `test_hash_ta` as of timestamp ? as `test_hash_ta` force index(auto_shard_key_id) inner join `test_hash_ta` as of timestamp ? as `test_hash_ta0` force index(auto_shard_key_id) on ((`test_hash_ta`.`name` = ?) and (`test_hash_ta`.`id` = `test_hash_ta0`.`id`))")
+
+# hash table join broadcast table with force index, not pushdown
+- sql: |
+    replace into test_hash_tb(id, name) select a.id, b.name from test_hash_ta as of timestamp "2022-02-17 14:40:40" a force index(auto_shard_key_ID) JOIN test_hash_ta as of timestamp "2022-02-17 14:40:41" b force index(auto_shard_key_ID) ON a.name = b.name where a.id = 1;
+
+  plan: |
+
+    logicalreplace(table="test_hash_tb", columns=recordtype(integer id, varchar(30) name))
+      project(id="id", name="name0")
+        bkajoin(condition="name = name", type="inner")
+          logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name` from `test_hash_ta` as of timestamp ? as `test_hash_ta` force index(auto_shard_key_id) where (`id` = ?)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `name` from `test_hash_ta` as of timestamp ? as `test_hash_ta` force index(auto_shard_key_id) where (`name` in (...))")

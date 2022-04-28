@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterPartitionTableTruncatePartitionBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
@@ -32,6 +34,11 @@ import com.alibaba.polardbx.executor.ddl.job.factory.DropIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.DropGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.RepartitionJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTableAsOfTimeStampJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTableDropOssFileJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTablePurgeBeforeTimeStampJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.oss.MoveOSSDataJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.ColumnValidator;
@@ -43,17 +50,22 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableAllocateLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableEngineHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableExpireLocalPartitionHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableRemoveLocalPartitionHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableRepartitionLocalPartitionHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.AlterTableWithGsiPreparedData;
@@ -61,23 +73,31 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPre
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateIndexWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropIndexWithGsiPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTableExchangePartition;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
-import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlModifyColumn;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -130,7 +150,17 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             initPrimaryTableDefinition(logicalAlterTable, executionContext);
         }
         logicalAlterTable.prepareData();
-        if (logicalAlterTable.isRepartition()) {
+        if (logicalAlterTable.isDropFile()) {
+            return buildDropFileJob(logicalDdlPlan, executionContext, logicalAlterTable);
+        } else if (logicalAlterTable.isExchangePartition()) {
+            return buildAlterTableExchangeJob(logicalDdlPlan, executionContext, logicalAlterTable);
+        } else if (logicalAlterTable.isAlterEngine()) {
+            return buildAlterTableEngineJob(logicalDdlPlan, executionContext, logicalAlterTable);
+        } else if (logicalAlterTable.isAlterAsOfTimeStamp()) {
+            return buildAlterTableAsOfTimeStamp(logicalDdlPlan, executionContext, logicalAlterTable);
+        } else if (logicalAlterTable.isAlterPurgeBeforeTimeStamp()) {
+            return buildAlterTablePurgeBeforeTimeStamp(logicalDdlPlan, executionContext, logicalAlterTable);
+        } else if (logicalAlterTable.isRepartition()) {
             return buildRepartitionJob(logicalAlterTable, executionContext);
         } else if (logicalAlterTable.isCreateGsi()
             || logicalAlterTable.isCreateClusteredIndex()) {
@@ -181,12 +211,189 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
 
         TableValidator.validateTruncatePartition(logicalDdlPlan.getSchemaName(), logicalTableName, sqlAlterTable);
 
-        return false;
+        return super.validatePlan(logicalDdlPlan, executionContext);
+    }
+
+    private DdlJob buildAlterTableExchangeJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext,
+                                              LogicalAlterTable logicalAlterTable) {
+        SqlAlterTable sqlAlterTable = logicalAlterTable.getSqlAlterTable();
+        List<SqlAlterSpecification> alters = sqlAlterTable.getAlters();
+        if (alters.size() > 1) {
+            throw GeneralUtil.nestedException("Unsupported operation: exchange more than one partition per time");
+        }
+        SqlAlterTableExchangePartition sqlExchange = (SqlAlterTableExchangePartition) alters.get(0);
+        String schemaName = logicalDdlPlan.getSchemaName();
+        String tableName = logicalDdlPlan.getTableName();
+        OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+        // source table info
+        TableMeta tableMeta = optimizerContext.getLatestSchemaManager().getTableWithNull(tableName);
+        TddlRuleManager tddlRuleManager = optimizerContext.getRuleManager();
+        PartitionInfoManager partitionInfoManager = tddlRuleManager.getPartitionInfoManager();
+        PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(tableName);
+        TableGroupConfig tgConfig = optimizerContext.getTableGroupInfoManager()
+            .getTableGroupConfigById(partInfo.getTableGroupId());
+        // target table info
+        String targetTableName = sqlExchange.getTableName().toString();
+        String partName = sqlExchange.getPartitions().get(0).toString();
+        boolean validation = sqlExchange.isValidation();
+        TableMeta targetTableMeta = optimizerContext.getLatestSchemaManager().getTableWithNull(targetTableName);
+        PartitionInfo targetPartInfo = partitionInfoManager.getPartitionInfo(targetTableName);
+        TableGroupConfig targetTgConfig = optimizerContext.getTableGroupInfoManager()
+            .getTableGroupConfigById(targetPartInfo.getTableGroupId());
+        // 1. check partition
+        PartitionGroupRecord partitionGroupRecord = tgConfig.getPartitionGroupRecords().stream()
+            .filter(o -> partName.equalsIgnoreCase(o.partition_name)).findFirst().orElse(null);
+        if (partitionGroupRecord == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_NAME_NOT_EXISTS,
+                "the partition:" + partName + " is not exists this current table group");
+        }
+        PartitionGroupRecord targetPartitionGroupRecord = targetTgConfig.getPartitionGroupRecords().stream()
+            .filter(o -> partName.equalsIgnoreCase(o.partition_name)).findFirst().orElse(null);
+        boolean needAddPartition = targetPartitionGroupRecord == null;
+        ExecutableDdlJob firstJob = null;
+        // 2. add partition to target table
+        if (needAddPartition) {
+            String targetTableGroupName = targetTgConfig != null ? targetTgConfig.getTableGroupRecord().tg_name : "";
+            PartitionSpec partitionSpec = partInfo.getPartitionBy().getPartitionByPartName(partName);
+            String logicalSql =
+                String.format("alter tablegroup %s add partition (%s)", targetTableGroupName, partitionSpec);
+            RelNode plan = Planner.getInstance().plan(logicalSql, executionContext).getPlan();
+            LogicalAlterTableGroupAddPartition logicalAlterTableGroupAddPartition =
+                (LogicalAlterTableGroupAddPartition) plan;
+            ExecutableDdlJob addPartitionJob = (ExecutableDdlJob) new LogicalAlterTableGroupAddPartitionHandler(repo)
+                .buildDdlJob(logicalAlterTableGroupAddPartition, executionContext);
+            firstJob = addPartitionJob;
+        }
+        // 3. validation
+        if (validation) {
+            // primary key range check
+            // partition lower bound & upper bound check
+        }
+        // 4. move data to target table
+        ExecutableDdlJob moveDataJob = new MoveOSSDataJobFactory(
+            schemaName, tableName, schemaName, targetTableName,
+            tableMeta.getEngine(), targetTableMeta.getEngine(), ImmutableList.of(partName)).create(true);
+        if (firstJob != null) {
+            firstJob.appendJob2(moveDataJob);
+        } else {
+            firstJob = moveDataJob;
+        }
+        return firstJob;
+    }
+
+    private DdlJob buildAlterTablePurgeBeforeTimeStamp(BaseDdlOperation logicalDdlPlan,
+                                                       ExecutionContext executionContext,
+                                                       LogicalAlterTable logicalAlterTable) {
+        final TableMeta tableMeta =
+            OptimizerContext
+                .getContext(logicalDdlPlan.getSchemaName())
+                .getLatestSchemaManager()
+                .getTable(logicalDdlPlan.getTableName());
+        if (tableMeta != null && !Engine.isFileStore(tableMeta.getEngine())) {
+            throw GeneralUtil.nestedException(MessageFormat.format(
+                "Only support alter table purge before timestamp for file-store table. The table engine of {0} is {1}",
+                tableMeta.getTableName(), tableMeta.getEngine()));
+        }
+        return new AlterTablePurgeBeforeTimeStampJobFactory(
+            logicalDdlPlan.getSchemaName(),
+            logicalDdlPlan.getTableName(),
+            logicalAlterTable.getAlterTablePreparedData(),
+            executionContext
+        ).create();
+    }
+
+    private DdlJob buildAlterTableAsOfTimeStamp(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext,
+                                                LogicalAlterTable logicalAlterTable) {
+        final TableMeta tableMeta =
+            OptimizerContext
+                .getContext(logicalDdlPlan.getSchemaName())
+                .getLatestSchemaManager()
+                .getTable(logicalDdlPlan.getTableName());
+        if (tableMeta != null && !Engine.isFileStore(tableMeta.getEngine())) {
+            throw GeneralUtil.nestedException(MessageFormat.format(
+                "Only support alter table as of timestamp for file-store table. The table engine of {0} is {1}",
+                tableMeta.getTableName(), tableMeta.getEngine()));
+        }
+        return new AlterTableAsOfTimeStampJobFactory(
+            logicalDdlPlan.getSchemaName(),
+            logicalDdlPlan.getTableName(),
+            logicalAlterTable.getAlterTablePreparedData(),
+            executionContext
+        ).create();
+    }
+
+    private DdlJob buildAlterTableEngineJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext,
+                                            LogicalAlterTable logicalAlterTable) {
+        SqlIdentifier sqlIdentifier = logicalAlterTable.getSqlAlterTable().getTableOptions().getEngine();
+        Engine targetEngine = Engine.of(sqlIdentifier.toString());
+        final TableMeta tableMeta =
+            OptimizerContext
+                .getContext(logicalDdlPlan.getSchemaName())
+                .getLatestSchemaManager()
+                .getTable(logicalDdlPlan.getTableName());
+        Engine sourceEngine = tableMeta.getEngine();
+        switch (sourceEngine) {
+        case INNODB: {
+            switch (targetEngine) {
+            case S3:
+            case OSS:
+            case LOCAL_DISK:
+                // innodb -> file store
+                return new LogicalAlterTableEngineHandler(repo, sourceEngine, targetEngine)
+                    .buildDdlJob(logicalDdlPlan, executionContext);
+            default:
+                // default
+                return buildAlterTableJob(logicalAlterTable, executionContext);
+            }
+        }
+        case S3:
+        case OSS:
+        case LOCAL_DISK: {
+            switch (targetEngine) {
+            case INNODB:
+                // file store -> innodb
+                return new LogicalAlterTableEngineHandler(repo, sourceEngine, targetEngine)
+                    .buildDdlJob(logicalDdlPlan, executionContext);
+            default:
+                // file store -> file store
+                if (targetEngine == sourceEngine) {
+                    throw GeneralUtil.nestedException(MessageFormat.format(
+                        "The Table {0} is already {1}.",
+                        logicalDdlPlan.getTableName(), targetEngine));
+                }
+                return new LogicalAlterTableEngineHandler(repo, sourceEngine, targetEngine)
+                    .buildDdlJob(logicalDdlPlan, executionContext);
+            }
+        }
+        default:
+            return buildAlterTableJob(logicalAlterTable, executionContext);
+        }
+    }
+
+    private DdlJob buildDropFileJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext,
+                                    LogicalAlterTable logicalAlterTable) {
+        // for alter table drop file ...
+        final TableMeta tableMeta =
+            OptimizerContext
+                .getContext(logicalDdlPlan.getSchemaName())
+                .getLatestSchemaManager()
+                .getTable(logicalDdlPlan.getTableName());
+        if (tableMeta != null && !Engine.isFileStore(tableMeta.getEngine())) {
+            throw GeneralUtil.nestedException(MessageFormat.format(
+                "Only support drop file from file-store table. The table engine of {0} is {1}",
+                tableMeta.getTableName(), tableMeta.getEngine()));
+        }
+        return new AlterTableDropOssFileJobFactory(
+            logicalDdlPlan.getSchemaName(),
+            logicalDdlPlan.getTableName(),
+            logicalAlterTable.getAlterTablePreparedData(),
+            executionContext
+        ).create();
     }
 
     private DdlJob buildAlterTableJob(LogicalAlterTable logicalAlterTable, ExecutionContext executionContext) {
         AlterTablePreparedData alterTablePreparedData = logicalAlterTable.getAlterTablePreparedData();
-
+        CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTable);
         DdlPhyPlanBuilder alterTableBuilder =
             AlterTableBuilder.create(logicalAlterTable.relDdl, alterTablePreparedData, executionContext).build();
         PhysicalPlanData physicalPlanData = alterTableBuilder.genPhysicalPlanData();
@@ -272,6 +479,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         initPrimaryTableDefinition(logicalAlterTable, executionContext);
 
         logicalAlterTable.prepareData();
+
+        CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTable.getTableName(), logicalAlterTable.getSchemaName());
 
         AlterTableWithGsiPreparedData alterTableWithGsiPreparedData =
             logicalAlterTable.getAlterTableWithGsiPreparedData();

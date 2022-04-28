@@ -16,11 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.parse;
 
+import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
@@ -79,9 +82,21 @@ public class TableMetaParser {
     }
 
     public static TableMeta parse(String tableName, SqlCreateTable sqlCreateTable) {
+        SqlIdentifier names = (SqlIdentifier) (sqlCreateTable.getName());
+        String schemaName;
+        if (!names.isSimple()) {
+            schemaName = names.names.get(0);
+        } else {
+            schemaName = DefaultSchema.getSchemaName();
+        }
+        DbInfoRecord dbInfoRecord = DbInfoManager.getInstance().getDbInfo(schemaName);
+
+        String defaultCharSet = Optional.ofNullable(sqlCreateTable.getDefaultCharset())
+            .orElse(dbInfoRecord == null ? null : dbInfoRecord.charset);
+
         List<ColumnMeta> columns = new ArrayList<>(sqlCreateTable.getColDefs().size());
         Map<String, ColumnMeta> columnsMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        Charset tableCharset = Optional.ofNullable(sqlCreateTable.getDefaultCharset())
+        Charset tableCharset = Optional.ofNullable(defaultCharSet)
             .map(CharsetName::convertStrToJavaCharset)
             .orElseGet(
                 () -> CharsetName.defaultCharset().toJavaCharset()
@@ -142,8 +157,10 @@ public class TableMetaParser {
             .addAll(keys).addAll(uniqueKeys)
             .build();
 
-        return new TableMeta(tableName, columns, primaryKey, secondaryIndexes, primaryKey != null, TableStatus.PUBLIC,
-            0, 0);
+        TableMeta tableMeta = new TableMeta(tableName, columns, primaryKey, secondaryIndexes, primaryKey != null, TableStatus.PUBLIC,
+        0, 0);
+        tableMeta.setEngine(sqlCreateTable.getEngine());
+        return tableMeta;
     }
 
     /**

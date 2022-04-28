@@ -23,6 +23,7 @@ import com.google.common.base.Preconditions;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.List;
 
 public class BloomFilterInfo {
     private static final int LONG_BYTES_SIZE = 8;
@@ -31,17 +32,20 @@ public class BloomFilterInfo {
     private final long[] data;
     private final HashMethodInfo hashMethodInfo;
     private byte[] bytesData;
+    private final List<MinMaxFilterInfo> minMaxFilterInfoList;
 
     @JsonCreator
     public BloomFilterInfo(
         @JsonProperty("id") Integer id,
         @JsonProperty("data") long[] data,
         @JsonProperty("hashFuncNum") int hashFuncNum,
-        @JsonProperty("hashMethodInfo") HashMethodInfo hashMethodInfo) {
+        @JsonProperty("hashMethodInfo") HashMethodInfo hashMethodInfo,
+        @JsonProperty("minMaxFilterInfoList") List<MinMaxFilterInfo> minMaxFilterInfoList) {
         this.id = id;
         this.data = data;
         this.hashFuncNum = hashFuncNum;
         this.hashMethodInfo = hashMethodInfo;
+        this.minMaxFilterInfoList = minMaxFilterInfoList;
     }
 
     @JsonProperty
@@ -78,6 +82,11 @@ public class BloomFilterInfo {
         return hashMethodInfo;
     }
 
+    @JsonProperty
+    public List<MinMaxFilterInfo> getMinMaxFilterInfoList() {
+        return minMaxFilterInfoList;
+    }
+
     public synchronized void mergeBloomFilter(BloomFilterInfo other) {
         Preconditions.checkArgument(this.id.equals(other.id), "Bloom filter info id should be same!");
         Preconditions.checkArgument(this.hashMethodInfo.equals(other.hashMethodInfo),
@@ -90,6 +99,10 @@ public class BloomFilterInfo {
 
         for (int i = 0; i < data.length; i++) {
             data[i] |= sourceData[i];
+        }
+
+        for (int i = 0; i < minMaxFilterInfoList.size(); i++) {
+            minMaxFilterInfoList.get(i).merge(other.getMinMaxFilterInfoList().get(i));
         }
 
         this.bytesData = null;

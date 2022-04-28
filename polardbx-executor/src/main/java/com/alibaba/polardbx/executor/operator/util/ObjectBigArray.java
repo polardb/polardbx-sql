@@ -35,8 +35,6 @@ import java.util.Arrays;
 
 import static io.airlift.slice.SizeOf.sizeOfObjectArray;
 
-// Note: this code was forked from fastutil (http://fastutil.di.unimi.it/)
-// Copyright (C) 2010-2013 Sebastiano Vigna
 public final class ObjectBigArray<T> {
     /**
      * Initial number of segments to support in array.

@@ -16,8 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter;
 
+import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
+import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
+import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
+import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
+import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -51,6 +57,33 @@ public class RuntimeFilterUtil {
         DataTypes.DecimalType
     );
 
+    private static final Set<DataType<?>> OSS_MIN_MAX_FILTER_SUPPORTED_DATATYPES = Sets.newHashSet(
+        DataTypes.DateType,
+        DataTypes.DoubleType,
+        DataTypes.FloatType,
+        DataTypes.TinyIntType,
+        DataTypes.UTinyIntType,
+        DataTypes.SmallIntType,
+        DataTypes.USmallIntType,
+        DataTypes.MediumIntType,
+        DataTypes.UMediumIntType,
+        DataTypes.IntegerType,
+        DataTypes.UIntegerType,
+        DataTypes.LongType,
+        DataTypes.ULongType);
+
+    public static boolean canPushRuntimeFilterToOss(DataType<?> dataType) {
+        if (dataType instanceof VarcharType
+            || dataType instanceof CharType
+            || dataType instanceof TimestampType
+            || dataType instanceof DecimalType
+            || dataType instanceof DateTimeType
+            || dataType instanceof TimeType) {
+            return true;
+        }
+        return OSS_MIN_MAX_FILTER_SUPPORTED_DATATYPES.contains(dataType);
+    }
+
     private static final Set<DataType<?>> MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES = Sets.newHashSet(
         DataTypes.DoubleType,
         DataTypes.FloatType,
@@ -72,8 +105,18 @@ public class RuntimeFilterUtil {
 
     public static boolean supportsRuntimeFilter(DataType<?> dataType) {
         // 如果一个类型支持生成的bloomfilter下推到mysql，必定支持类型在polarx这一层生成runtime filter
+        if (dataType instanceof VarcharType
+            || dataType instanceof CharType
+            || dataType instanceof TimestampType
+            || dataType instanceof DecimalType
+            || dataType instanceof DateTimeType
+            || dataType instanceof TimeType) {
+            return true;
+        }
+        // 如果一个类型支持生成的bloomfilter下推到mysql，必定支持类型在polarx这一层生成runtime filter
         return RUNTIME_FILTER_SUPPORTED_TYPES.contains(dataType) ||
-            MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES.contains(dataType);
+            MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES.contains(dataType) ||
+            OSS_MIN_MAX_FILTER_SUPPORTED_DATATYPES.contains(dataType);
     }
 
     public static double findMinFpp(double buildNdv, double bloomFilterMaxSize) {

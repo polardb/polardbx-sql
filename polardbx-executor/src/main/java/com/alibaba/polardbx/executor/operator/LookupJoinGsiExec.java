@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.google.common.base.Preconditions;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.BufferInputBatchQueue;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;

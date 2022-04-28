@@ -149,6 +149,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropClusteringK
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropColumnItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropExtPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropFile;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropForeignKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropKey;
@@ -3693,5 +3694,14 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     @Override
     public void endVisit(DrdsRefreshTopology x) {
 
+    }
+
+    @Override
+    public void endVisit(SQLAlterTableDropFile x) {
+    }
+
+    @Override
+    public boolean visit(SQLAlterTableDropFile x) {
+        return true;
     }
 }

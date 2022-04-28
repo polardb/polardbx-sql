@@ -57,6 +57,7 @@ public class TablePartitionRecord implements SystemTableRecord {
     public final static int PARTITION_TABLE_TYPE_BROADCAST_TABLE = 3;
     public final static int PARTITION_TABLE_TYPE_GSI_SINGLE_TABLE = 4;
     public final static int PARTITION_TABLE_TYPE_GSI_BROADCAST_TABLE = 5;
+    public final static int PARTITION_TABLE_TYPE_OSS_TABLE = 6;
 
     public final static String PARTITION_ENGINE_INNODB = "InnoDB";
 

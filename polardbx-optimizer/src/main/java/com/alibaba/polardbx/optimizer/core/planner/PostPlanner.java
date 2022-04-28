@@ -50,6 +50,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableModifyViewBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
@@ -512,7 +513,9 @@ public class PostPlanner {
 //            pushedDql = !(plan instanceof LogicalModifyView) && plan instanceof LogicalView;
 //        }
 
-        pushedDql = !(plan instanceof LogicalModifyView) && plan instanceof LogicalView;
+        pushedDql = !(plan instanceof LogicalModifyView)
+            && !(plan instanceof OSSTableScan)
+            && plan instanceof LogicalView;
 
         if (pushedDql || plan instanceof LogicalRelocate || plan instanceof BaseTableOperation
             || plan instanceof LogicalRecyclebin || plan instanceof BroadcastTableModify) {
@@ -754,8 +757,12 @@ public class PostPlanner {
 
             @Override
             public void visit(RelNode relNode, int ordinal, RelNode parent) {
-                if (relNode instanceof Project) {
-                    exists = PushProjectRule.doNotPush((Project) relNode) ? true : exists;
+                if (relNode instanceof OSSTableScan) {
+                    exists = true;
+                } else {
+                    if (relNode instanceof Project) {
+                        exists = PushProjectRule.doNotPush((Project) relNode) ? true : exists;
+                    }
                 }
                 super.visit(relNode, ordinal, parent);
             }

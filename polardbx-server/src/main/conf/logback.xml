@@ -821,7 +821,34 @@
             </appender>
         </sift>
     </appender>
-
+    <appender name="OSS" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <discriminator>
+            <Key>app</Key>
+            <DefaultValue>tddl</DefaultValue>
+        </discriminator>
+        <sift>
+            <appender name="OSS-{app}"
+                      class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <File>${loggerRoot:-..}/logs/${app}/oss.log</File>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!-- rollover daily -->
+                    <fileNamePattern>${loggerRoot:-..}/logs/${app}/%d{yyyy-MM-dd}/oss-%d{yyyy-MM-dd}-%i.log.gz
+                    </fileNamePattern>
+                    <timeBasedFileNamingAndTriggeringPolicy
+                            class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <maxFileSize>512MB</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>20GB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <pattern>
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %m%n
+                    </pattern>
+                </encoder>
+            </appender>
+        </sift>
+    </appender>
     <appender name="asyncROOT" class="com.alibaba.polardbx.common.utils.logger.logback.AsyncAppender">
         <queueSize>100000</queueSize>
         <maxFlushTime>3000</maxFlushTime>
@@ -989,6 +1016,31 @@
         <level value="INFO"/>
         <appender-ref ref="STATISTICS"/>
     </logger>
+    <logger name="com.alibaba.polardbx.executor.whatIf" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="STATISTICS"/>
+    </logger>
+    <logger name="com.alibaba.polardbx.optimizer.sharding.advisor" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="STATISTICS"/>
+    </logger>
+    <logger name="oss" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="OSS"/>
+    </logger>
+    <logger name="com.alibaba.polardbx.common.oss" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="OSS"/>
+    </logger>
+    <logger name="com.alibaba.polardbx.executor.archive" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="OSS"/>
+    </logger>
+    <logger name="org.apache.orc" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="OSS"/>
+    </logger>
+
     <logger name="com.alibaba.polardbx.executor.mpp.discover" additivity="false">
         <level value="info"/>
         <appender-ref ref="MPP_LOG"/>

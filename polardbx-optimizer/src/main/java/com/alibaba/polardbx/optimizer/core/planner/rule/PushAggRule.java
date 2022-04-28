@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -120,6 +122,10 @@ public abstract class PushAggRule extends RelOptRule {
             }
             LogicalView tableScan = (LogicalView) call.rels[1];
 
+            if (tableScan instanceof OSSTableScan) {
+                return false;
+            }
+
             if (!shouldPushAgg(tableScan)) {
                 return false;
             }
@@ -183,6 +189,10 @@ public abstract class PushAggRule extends RelOptRule {
 
             LogicalView tableScan = (LogicalView) call.rels[1];
 
+            if(tableScan instanceof OSSTableScan) {
+                return false;
+            }
+
             if (!shouldPushAgg(tableScan)) {
                 return false;
             }
@@ -205,6 +215,11 @@ public abstract class PushAggRule extends RelOptRule {
                 }
             }
 
+            if(lv instanceof OSSTableScan) {
+                if (!CBOUtil.canPushAggToOss(aggregate, (OSSTableScan)lv)) {
+                    return;
+                }
+            }
             aggregate.getAggOptimizationContext().setAggPushed(true);
             pushDownAggregate(call, aggregate, lv);
         }

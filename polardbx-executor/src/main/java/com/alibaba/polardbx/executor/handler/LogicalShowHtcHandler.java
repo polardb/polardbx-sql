@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.utils.GCState;
-import com.alibaba.polardbx.executor.PriorityExecutorInfo;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
+import com.alibaba.polardbx.executor.mpp.execution.PriorityExecutorInfo;
 import com.alibaba.polardbx.executor.mpp.execution.TaskExecutor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

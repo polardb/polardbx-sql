@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.executor.utils;
 
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;

@@ -27,7 +27,8 @@ public abstract class PriorityFIFOTask extends PriorityFIFOEntry implements Runn
         MEDIUM_PRIORITY_TASK(20),
         LOW_PRIORITY_TASK(30),
         GSI_BACKFILL_TASK(40),
-        GSI_CHECK_TASK(50);
+        GSI_CHECK_TASK(50),
+        OSS_FLUSH(60);
 
         private final int priority;
 

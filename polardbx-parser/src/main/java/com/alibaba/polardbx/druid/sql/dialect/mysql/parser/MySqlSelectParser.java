@@ -29,6 +29,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLSizeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimestampExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelect;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectItem;
@@ -107,7 +108,7 @@ public class MySqlSelectParser extends SQLSelectParser {
             lexer.nextToken();
         }
 
-        if (lexer.token() == Token.UPDATE) { // taobao returning to urgly syntax
+        if (lexer.token() == Token.UPDATE) { // returning syntax: SELECT FROM UPDATE
             updateStmt = this.parseUpdateStatment();
             List<SQLExpr> returnning = updateStmt.getReturning();
             for (SQLSelectItem item : queryBlock.getSelectList()) {
@@ -348,17 +349,6 @@ public class MySqlSelectParser extends SQLSelectParser {
             acceptIdentifier("SHARE");
             acceptIdentifier("MODE");
             queryBlock.setLockInShareMode(true);
-        }
-
-        if (lexer.token() == Token.AS) {
-            lexer.nextToken();
-            accept(Token.OF);
-            SQLExpr expr = this.exprParser.expr();
-            if (!(expr instanceof SQLTimestampExpr)) {
-                throw new ParserException("AS OF expect timestamp expression");
-            }
-            SQLTimestampExpr tsExpr = (SQLTimestampExpr) (expr);
-            queryBlock.setAsOfTimestamp(tsExpr);
         }
 
         if (hints != null) {
@@ -737,42 +727,12 @@ public class MySqlSelectParser extends SQLSelectParser {
     }
 
     protected SQLTableSource primaryTableSourceRest(SQLTableSource tableSource) {
-        if (lexer.token() == Token.USE) {
-            lexer.nextToken();
-            MySqlUseIndexHint hint = new MySqlUseIndexHint();
-            parseIndexHint(hint);
-            tableSource.getHints().add(hint);
-        }
+        parsePartitionAndAsOf(tableSource);
 
-        if (lexer.identifierEquals(FnvHash.Constants.IGNORE)) {
-            lexer.nextToken();
-            MySqlIgnoreIndexHint hint = new MySqlIgnoreIndexHint();
-            parseIndexHint(hint);
-            tableSource.getHints().add(hint);
-        }
-
-        if (lexer.identifierEquals(FnvHash.Constants.FORCE)) {
-            lexer.nextToken();
-            MySqlForceIndexHint hint = new MySqlForceIndexHint();
-            parseIndexHint(hint);
-            tableSource.getHints().add(hint);
-        }
-
-        if (lexer.token() == Token.PARTITION) {
-            lexer.nextToken();
-            // 兼容jsqlparser 和presto
-            if (lexer.token() == Token.ON) {
-                tableSource.setAlias("partition");
-            } else {
-                accept(Token.LPAREN);
-                this.exprParser.names(((SQLExprTableSource) tableSource).getPartitions(), tableSource);
-                accept(Token.RPAREN);
-            }
-        }
+        parseIndexHintList(tableSource);
 
         return tableSource;
     }
-
 
     public SQLTableSource parseTableSourceRest(SQLTableSource tableSource) {
         if (lexer.identifierEquals(FnvHash.Constants.TABLESAMPLE) && tableSource instanceof SQLExprTableSource) {
@@ -866,12 +826,13 @@ public class MySqlSelectParser extends SQLSelectParser {
             return tableSource;
         }
 
-        if (lexer.token() == Token.PARTITION) {
-            lexer.nextToken();
-            accept(Token.LPAREN);
-            this.exprParser.names(((SQLExprTableSource) tableSource).getPartitions(), tableSource);
-            accept(Token.RPAREN);
-        }
+        //table_factor: {
+        //    tbl_name [{PARTITION (partition_names) | AS OF expr}]
+        //        [[AS] alias] [index_hint_list]
+        //  | table_subquery [AS] alias
+        //  | ( table_references )
+        //}
+        parsePartitionAndAsOf(tableSource);
 
         parseIndexHintList(tableSource);
 
@@ -960,5 +921,86 @@ public class MySqlSelectParser extends SQLSelectParser {
 
     public MySqlExprParser getExprParser() {
         return (MySqlExprParser) exprParser;
+    }
+
+    /**
+     * tbl_name [{PARTITION (partition_names) | AS OF expr}] [[AS] alias] [index_hint_list]
+     */
+    private void parsePartitionAndAsOf(SQLTableSource tableSource) {
+        while (true) {
+            switch (lexer.token()) {
+            case PARTITION:
+                lexer.nextToken();
+                // 兼容jsqlparser 和presto
+                if (lexer.token() == Token.ON) {
+                    tableSource.setAlias("partition");
+                } else {
+                    accept(Token.LPAREN);
+                    this.exprParser.names(((SQLExprTableSource) tableSource).getPartitions(), tableSource);
+                    accept(Token.RPAREN);
+                }
+                continue;
+            case AS:
+                if (parseAsOf(tableSource)) {
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+
+    public boolean parseAsOf(SQLTableSource tableSource) {
+        Lexer.SavePoint savePoint = lexer.mark();
+
+        if (lexer.token() == Token.AS) {
+            lexer.nextToken();
+            if (lexer.token() != Token.OF) {
+                lexer.reset(savePoint);
+                return false;
+            }
+            lexer.nextToken();
+
+            // table_factor: {
+            //    tbl_name [{PARTITION (partition_names) | AS OF expr}]
+            //        [[AS] alias] [index_hint_list]
+            //  | table_subquery [AS] alias
+            //  | ( table_references )
+            //}
+
+            // Cannot set flashback timestamp twice;
+            // FIXME: Syntax like below should be validated here
+            //    tbl_name [{PARTITION (partition_names) | AS OF expr}]
+            //        [[AS] alias] [index_hint_list]
+            // but, for now, we handle [{PARTITION (partition_names) | AS OF expr}] and [index_hint_list] in
+            // MySqlSelectParser.parseTableSourceRest() before [[AS] alias] is handled in super.parseTableSourceRest().
+            // So that, for now, we do not reject clause like "FROM t AS a AS OF ..." or "FROM t a AS OF ..."
+            if (null != tableSource.getFlashback()
+                || tableSource instanceof SQLSubqueryTableSource
+                || tableSource instanceof SQLValuesTableSource
+                || tableSource instanceof SQLUnionQueryTableSource
+//                || (null != tableSource.getAlias() && !tableSource.getAlias() .isEmpty())
+            ) {
+                lexer.reset(savePoint);
+                setErrorEndPos(lexer.pos());
+                printError(lexer.token());
+            }
+
+            SQLExpr expr = this.exprParser.expr();
+            if (expr instanceof SQLTimestampExpr) {
+                // FROM t AS OF TIMESTAMP '2021-12-10 17:44:00'
+                SQLTimestampExpr tsExpr = (SQLTimestampExpr) (expr);
+                tableSource.setFlashback(tsExpr);
+            } else if (expr instanceof SQLVariantRefExpr) {
+                // Timestamp value was parameterized
+                // FROM t AS OF ?
+                SQLVariantRefExpr tsExpr = (SQLVariantRefExpr) (expr);
+                tableSource.setFlashback(tsExpr);
+            } else {
+                throw new ParserException("SELECT ... AS OF expect timestamp expression");
+            }
+            return true;
+        }
+
+        return false;
     }
 }

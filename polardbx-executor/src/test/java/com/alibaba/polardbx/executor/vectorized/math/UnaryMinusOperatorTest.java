@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.vectorized.math;
 
-import com.alibaba.polardbx.optimizer.chunk.Block;
+import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.vectorized.BaseProjectionTest;
 import com.alibaba.polardbx.executor.vectorized.ColumnInput;
 import com.alibaba.polardbx.optimizer.core.datatype.Calculator;

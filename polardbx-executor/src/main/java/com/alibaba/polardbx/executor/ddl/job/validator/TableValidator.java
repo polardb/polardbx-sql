@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.validator;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.charset.MySQLCharsetDDLValidator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -36,8 +37,19 @@ import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.sql.SqlAlterSpecification;
@@ -54,11 +66,13 @@ import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.text.MessageFormat;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class TableValidator {
 
@@ -450,4 +464,110 @@ public class TableValidator {
         }
     }
 
+    public static void validateTableEngine(BaseDdlOperation ddlOperation, ExecutionContext executionContext) {
+        if (ddlOperation instanceof LogicalAlterTable) {
+            String schemaName = ddlOperation.getSchemaName();
+            String logicalTableName = ddlOperation.getTableName();
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(logicalTableName);
+            if (tableMeta == null) {
+                return;
+            }
+            if (Engine.isFileStore(tableMeta.getEngine())) {
+                LogicalAlterTable logicalAlterTable = (LogicalAlterTable) ddlOperation;
+                if (logicalAlterTable.isAlterAsOfTimeStamp()
+                    || logicalAlterTable.isAlterPurgeBeforeTimeStamp()
+                    || logicalAlterTable.isAlterEngine()
+                    || logicalAlterTable.isExchangePartition()
+                    || logicalAlterTable.isDropFile()) {
+                    // support
+                } else {
+                    throwEngineNotSupport(schemaName, logicalTableName, tableMeta.getEngine());
+                }
+            }
+        } else if (ddlOperation instanceof LogicalDropIndex
+            || ddlOperation instanceof LogicalCreateIndex
+            || ddlOperation instanceof LogicalAlterTableRepartition
+            || ddlOperation instanceof LogicalTruncateTable) {
+            String schemaName = ddlOperation.getSchemaName();
+            String logicalTableName = ddlOperation.getTableName();
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(logicalTableName);
+            if (tableMeta == null) {
+                return;
+            }
+            if (Engine.isFileStore(tableMeta.getEngine())) {
+                throwEngineNotSupport(schemaName, logicalTableName, tableMeta.getEngine());
+            }
+        }
+    }
+    private static void throwEngineNotSupport(String schemaName, String logicalTableName, Engine engine) {
+        throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+            "Engine of " + schemaName + "." + logicalTableName + " is " + engine);
+    }
+    public static void checkCompatibleWithOss(TableMeta sourceTable, TableMeta targetTable) {
+        checkTopologyConsistency(sourceTable, targetTable);
+        checkColumnConsistency(sourceTable, targetTable);
+    }
+    public static void checkTopologyConsistency(TableMeta sourceTable, TableMeta targetTable) {
+        boolean isShard = false;
+        if (TableTopologyUtil.isBroadcast(sourceTable) != TableTopologyUtil.isBroadcast(targetTable)
+            || TableTopologyUtil.isSingle(sourceTable) != TableTopologyUtil.isSingle(targetTable)
+            || (isShard = TableTopologyUtil.isShard(sourceTable)) != TableTopologyUtil.isShard(targetTable)
+        ) {
+            throwTopologyInconsistentError(sourceTable, targetTable);
+        }
+        if (isShard) {
+            PartitionInfo sourcePartitionInfo = OptimizerContext.getContext(sourceTable.getSchemaName())
+                .getRuleManager().getPartitionInfoManager().getPartitionInfo(sourceTable.getTableName());
+            PartitionInfo targetPartitionInfo = OptimizerContext.getContext(targetTable.getSchemaName())
+                .getRuleManager().getPartitionInfoManager().getPartitionInfo(targetTable.getTableName());
+            PartitionByDefinition sourceDef = sourcePartitionInfo.getPartitionBy();
+            PartitionByDefinition targetDef = targetPartitionInfo.getPartitionBy();
+            if (!sourceDef.equals(targetDef)) {
+                throwTopologyInconsistentError(sourceTable, targetTable);
+            }
+        }
+    }
+    /**
+     * Check if source table is enabled to migrated to target table.
+     */
+    public static void checkColumnConsistency(TableMeta sourceTable, TableMeta targetTable) {
+        // check columns
+        List<ColumnMeta> sortedSourceColumns = sourceTable.getPhysicalColumns()
+            .stream()
+            .sorted(Comparator.comparing(ColumnMeta::getOriginColumnName))
+            .collect(Collectors.toList());
+        List<ColumnMeta> sortedTargetColumns = targetTable.getPhysicalColumns()
+            .stream()
+            .sorted(Comparator.comparing(ColumnMeta::getOriginColumnName))
+            .collect(Collectors.toList());
+        if (sortedSourceColumns.size() != sortedTargetColumns.size()) {
+            throwMetaInconsistentError(sourceTable, targetTable);
+        }
+        for (int i = 0; i < sortedSourceColumns.size(); i++) {
+            ColumnMeta c1 = sortedSourceColumns.get(i);
+            ColumnMeta c2 = sortedTargetColumns.get(i);
+            // column name inconsistent
+            if (!c1.getOriginColumnName().equalsIgnoreCase(c2.getOriginColumnName())) {
+                throwMetaInconsistentError(sourceTable, targetTable);
+            }
+            // column type inconsistent
+            if (!DataTypeUtil.equals(c1.getDataType(), c2.getDataType(), true)) {
+                throwMetaInconsistentError(sourceTable, targetTable);
+            }
+        }
+    }
+    private static void throwMetaInconsistentError(TableMeta sourceTable, TableMeta targetTable) {
+        throw GeneralUtil.nestedException(
+            MessageFormat
+                .format("the column metas of source table {0} and target table {1} are not consistent, "
+                        + "please create a new archive table for source table {0}", sourceTable.getTableName(),
+                    targetTable.getTableName()));
+    }
+    private static void throwTopologyInconsistentError(TableMeta sourceTable, TableMeta targetTable) {
+        throw GeneralUtil.nestedException(
+            MessageFormat
+                .format("the table topology of source table {0} and target table {1} are not consistent, "
+                        + "please create a new archive table for source table {0}", sourceTable.getTableName(),
+                    targetTable.getTableName()));
+    }
 }

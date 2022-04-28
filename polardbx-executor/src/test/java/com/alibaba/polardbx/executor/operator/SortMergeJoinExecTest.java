@@ -31,9 +31,9 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.junit.Test;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.IntegerBlock;
-import com.alibaba.polardbx.optimizer.chunk.StringBlock;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.StringBlock;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 

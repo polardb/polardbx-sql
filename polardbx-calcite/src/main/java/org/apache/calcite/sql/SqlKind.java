@@ -205,6 +205,10 @@ public enum SqlKind {
      * AS operator
      */
     AS,
+    /**
+     * AS OF operator
+     */
+    AS_OF,
 
     /**
      * ARGUMENT_ASSIGNMENT operator, {@code =>}
@@ -1296,6 +1300,11 @@ public enum SqlKind {
     DROP_INDEX,
 
     /**
+     * {@code DROP FILE} DDL statement.
+     */
+    DROP_FILE,
+
+    /**
      * {@code DROP PRIMARY KEY} DDL statement.
      */
     DROP_PRIMARY_KEY,
@@ -1429,6 +1438,10 @@ public enum SqlKind {
     SHOW_PARTITIONS,
 
     SHOW_TOPOLOGY,
+
+    SHOW_FILES,
+
+    SHOW_CACHE_STATS,
 
     SHOW_BROADCASTS,
 
@@ -1618,6 +1631,11 @@ public enum SqlKind {
     EXTRACT_PARTITION,
 
     /**
+     * partition management: Exchanging Partitions and Subpartitions with Tables
+     */
+    EXCHANGE_PARTITION,
+
+    /**
      * partition management: alter table group split into partitions xxx by hot value(xxx[,..,xxx])
      */
     SPLIT_HOT_VALUE,
@@ -1638,9 +1656,24 @@ public enum SqlKind {
     REBALANCE,
 
     /**
+     * unarchive oss tables
+     */
+    UNARCHIVE,
+
+    /**
      * partition group management: alter table group
      */
     ALTER_TABLEGROUP,
+
+    /**
+     * file storage management: alter fileStorage
+     */
+    ALTER_FILESTORAGE,
+
+    /**
+     * file storage management: drop fileStorage
+     */
+    DROP_FILESTORAGE,
 
     /**
      * alter table set tablegroup
@@ -1691,6 +1724,8 @@ public enum SqlKind {
      * {@link #SHOW_HTC              } ,
      * {@link #SHOW_PARTITIONS       } ,
      * {@link #SHOW_TOPOLOGY         } ,
+     * {@link #SHOW_FILES            } ,
+     * {@link #SHOW_CACHE_STATS      } ,
      * {@link #SHOW_BROADCASTS       } ,
      * {@link #SHOW_DS               } ,
      * {@link #SHOW_DB_STATUS        } ,
@@ -1722,6 +1757,8 @@ public enum SqlKind {
         SHOW_HTC,
         SHOW_PARTITIONS,
         SHOW_TOPOLOGY,
+        SHOW_FILES,
+        SHOW_CACHE_STATS,
         SHOW_BROADCASTS,
         SHOW_DS,
         SHOW_DB_STATUS,
@@ -1749,6 +1786,7 @@ public enum SqlKind {
 
     public static final EnumSet<SqlKind> LOGICAL_SHOW_WITH_TABLE = EnumSet.of(SHOW_CREATE_TABLE,
         SHOW_TOPOLOGY,
+        SHOW_FILES,
         SHOW_RULE,
         SHOW_TABLE_INFO,
         DESCRIBE_COLUMNS,
@@ -1873,13 +1911,13 @@ public enum SqlKind {
             DROP_DATABASE,
             MOVE_DATABASE, CHECK_GLOBAL_INDEX, ALTER_TABLEGROUP, CREATE_TABLEGROUP,
             CHANGE_CONSENSUS_ROLE, ALTER_SYSTEM_SET_CONFIG, ALTER_TABLE_SET_TABLEGROUP,
-            REFRESH_TOPOLOGY, DROP_TABLEGROUP
+            REFRESH_TOPOLOGY, DROP_TABLEGROUP, ALTER_FILESTORAGE, DROP_FILESTORAGE
         ));
 
     public static final EnumSet<SqlKind> DDL_SUPPORTED_BY_NEW_ENGINE =
         EnumSet.of(RENAME_TABLE, TRUNCATE_TABLE, DROP_TABLE, CREATE_INDEX, DROP_INDEX, ALTER_TABLE, CREATE_TABLE,
             ALTER_TABLEGROUP, ALTER_TABLE_SET_TABLEGROUP, REFRESH_TOPOLOGY, CHECK_GLOBAL_INDEX, ALTER_RULE,
-            MOVE_DATABASE);
+            MOVE_DATABASE, ALTER_FILESTORAGE, DROP_FILESTORAGE);
 
     public static final EnumSet<SqlKind> SUPPORT_DDL =
         EnumSet.of(CREATE_TABLE, ALTER_TABLE, DROP_TABLE,

@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
-import com.alibaba.polardbx.optimizer.chunk.ChunkBuilder;
+import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.mpp.operator.DriverYieldSignal;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

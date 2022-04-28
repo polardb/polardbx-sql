@@ -17,15 +17,15 @@
 package com.alibaba.polardbx.common.datatype;
 
 public class DecimalTypeBase {
-
+    // for divide precision.
     public final static int DEFAULT_DIV_PRECISION_INCREMENT = 4;
     public final static String DIV_PRECISION_INCREMENT = "div_precision_increment";
 
-
-    public static final int DECIMAL_MEMORY_SIZE = 48;
+    // decimal memory
+    public static final int DECIMAL_MEMORY_SIZE = 40;
     public static final byte[] BYTES_0 = new byte[DECIMAL_MEMORY_SIZE];
 
-
+    // decimal error codes
     public static final int E_DEC_OK = 0;
     public static final int E_DEC_TRUNCATED = 1;
     public static final int E_DEC_OVERFLOW = 2;
@@ -36,7 +36,7 @@ public class DecimalTypeBase {
     public static final int E_DEC_FATAL_ERROR = 30;
 
     public static final int DIV_PRECISION_INCREMENT_DEFAULT = 4;
-    public static final int[] BUFF_OFFSETS = {
+    public static final byte[] BUFF_OFFSETS = {
         0, 4, 8, 12, 16, 20, 24, 28, 32
     };
     public static final byte NEGATIVE_FLAG = 1;
@@ -55,6 +55,9 @@ public class DecimalTypeBase {
 
     protected static final int NOT_FIXED_DEC = 31;
 
+    /**
+     * The maximum buffer size in decimal structure.
+     */
     protected static final int WORDS_LEN = 9;
     public static final int INTEGERS_OFFSET = WORDS_LEN * Integer.BYTES;
     public static final int FRACTIONS_OFFSET = INTEGERS_OFFSET + Byte.BYTES;
@@ -63,9 +66,12 @@ public class DecimalTypeBase {
 
     protected final static long LONG_MASK = 0xffffffffL;
 
-    public static final int[] DIV9 = {
-        0, 0, 0, 0, 0, 0, 0, 0, 0,
-        1, 1, 1, 1, 1, 1, 1, 1, 1,
+    /**
+     * Get the occupied buffer positions from given number digits.
+     */
+    public static final byte[] DIV9 = {
+        0, // digits = 0
+        1, 1, 1, 1, 1, 1, 1, 1, 1, // digits = 1 ~ 9
         2, 2, 2, 2, 2, 2, 2, 2, 2,
         3, 3, 3, 3, 3, 3, 3, 3, 3,
         4, 4, 4, 4, 4, 4, 4, 4, 4,
@@ -81,20 +87,25 @@ public class DecimalTypeBase {
         14, 14,
     };
 
+    /**
+     * Get the pow(10, position).
+     */
     protected static int[] POW_10 = {
         1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
 
-    protected static int[] DIG_TO_BYTES = {0, 1, 1, 2, 2, 3, 3, 4, 4, 4};
+    /**
+     * Get the occupied bytes from digits (1~10).
+     */
+    protected static byte[] DIG_TO_BYTES = {0, 1, 1, 2, 2, 3, 3, 4, 4, 4};
 
-    protected static int roundUp(int digits) {
-        int div9Pos = digits + DIG_PER_DEC1 - 1;
-        if (div9Pos < DIV9.length) {
-            return DIV9[div9Pos];
-        }
-        return (div9Pos / DIG_PER_DEC1);
+    public static int roundUp(int digits) {
+        return digits == 0 ? 0 : (digits <= 9 ? 1 : ((digits + 8) / DIG_PER_DEC1));
     }
 
-    protected static int[][] BINARY_SIZE = {
+    /**
+     * Get the binary size from precision & scale.
+     */
+    protected static byte[][] BINARY_SIZE = {
         {0},
         {1, 1},
         {1, 2, 1},

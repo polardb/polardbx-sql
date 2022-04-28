@@ -777,6 +777,9 @@ public class LogicalInsert extends TableModify {
     }
 
     public String explainNodeName() {
+        if (isReplace()) {
+            return "LogicalReplace";
+        }
         return "LogicalInsert";
     }
 

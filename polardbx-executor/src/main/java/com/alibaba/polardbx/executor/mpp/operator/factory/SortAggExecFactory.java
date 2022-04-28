@@ -21,7 +21,7 @@ import com.alibaba.polardbx.executor.operator.SortAggExec;
 import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.core.rel.SortAgg;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;

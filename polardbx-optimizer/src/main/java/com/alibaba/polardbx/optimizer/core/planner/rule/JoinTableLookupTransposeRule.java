@@ -158,6 +158,12 @@ public class JoinTableLookupTransposeRule extends PushJoinRule {
     }
 
     @Override
+    public boolean matches(RelOptRuleCall call) {
+        // for compatibility with oss
+        return true;
+    }
+
+    @Override
     public void onMatch(RelOptRuleCall call) {
         final Join join = call.rel(0);
 

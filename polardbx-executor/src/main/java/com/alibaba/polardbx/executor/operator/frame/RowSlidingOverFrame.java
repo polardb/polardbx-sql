@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.frame;
 
-import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.executor.calc.Aggregator;
 
 import java.util.List;
 

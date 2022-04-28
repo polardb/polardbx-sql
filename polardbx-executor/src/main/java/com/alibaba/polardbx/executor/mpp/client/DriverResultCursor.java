@@ -19,7 +19,7 @@ package com.alibaba.polardbx.executor.mpp.client;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.optimizer.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.QueryExecution;

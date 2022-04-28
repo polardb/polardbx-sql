@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.vectorized;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.chunk.MutableChunk;
-import com.alibaba.polardbx.optimizer.context.EvaluationContext;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.google.common.base.Preconditions;
 
 @SuppressWarnings("unused")

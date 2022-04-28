@@ -770,6 +770,26 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
             this.system.setEnableLogicalDbWarmmingUp(Boolean.valueOf(enableLogicalDbWarmmingUpStr));
         }
 
+        String engine = serverProps.getProperty("engine");
+        if (!StringUtil.isEmpty(engine)) {
+            this.system.setEngine(engine);
+        }
+        String uri = serverProps.getProperty("uri");
+        if (!StringUtil.isEmpty(uri)) {
+            this.system.setFileUri(uri);
+        }
+        String endPoint = serverProps.getProperty("endpoint");
+        if (!StringUtil.isEmpty(endPoint)) {
+            this.system.setEndPoint(endPoint);
+        }
+        String accessKey = serverProps.getProperty("accessKey");
+        if (!StringUtil.isEmpty(accessKey)) {
+            this.system.setAccessKey(accessKey);
+        }
+        String secretKey = serverProps.getProperty("secretKey");
+        if (!StringUtil.isEmpty(secretKey)) {
+            this.system.setSecretKey(secretKey);
+        }
     }
 
     public SystemConfig getSystem() {
