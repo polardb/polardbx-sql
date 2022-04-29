@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
-
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenamePartitionTablePhyDdlTask;
@@ -26,7 +25,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableUpdateMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UnBindingArchiveTableMetaByArchiveTableTask;
-import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -65,7 +63,6 @@ public class RecycleOssTableJobFactory extends DdlJobFactory {
         DdlTask unBindingTask = new UnBindingArchiveTableMetaByArchiveTableTask(schemaName, logicalTableName);
 
         DdlTask addMetaTask = new RenameTableAddMetaTask(schemaName, logicalTableName, newLogicalTableName);
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
 
         DdlTask phyDdlTask;
         boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
@@ -84,7 +81,6 @@ public class RecycleOssTableJobFactory extends DdlJobFactory {
                 unBindingTask,
                 addMetaTask,
                 phyDdlTask,
-                cdcDdlMarkTask,
                 updateMetaTask,
                 hideTableMetaTask,
                 syncTask

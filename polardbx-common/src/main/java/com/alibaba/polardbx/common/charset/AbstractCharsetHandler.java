@@ -34,13 +34,11 @@ public abstract class AbstractCharsetHandler implements CharsetHandler {
     private static final long SIGNED_MAX_LONG = 0x7fffffffffffffffL;
 
     protected Charset charset;
-    protected CharsetEncoder encoder;
     protected CollationHandler collationHandler;
     protected CollationName collationName;
 
     AbstractCharsetHandler(Charset charset, CollationName collationName) {
         this.charset = charset;
-        this.encoder = charset.newEncoder();
         this.collationName = collationName;
         this.collationHandler = null;
     }
@@ -80,10 +78,12 @@ public abstract class AbstractCharsetHandler implements CharsetHandler {
             return Slices.EMPTY_SLICE;
         }
 
-        encoder.reset();
         CharBuffer charBuffer = CharBuffer.wrap(unicodeChars);
 
+        // For un-mappable characters, throw error.
+        CharsetEncoder encoder = charset.newEncoder();
         ByteBuffer buffer = encoder.encode(charBuffer);
+
         if (!buffer.hasRemaining()) {
             return Slices.EMPTY_SLICE;
         }

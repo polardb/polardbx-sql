@@ -642,7 +642,8 @@ public enum ErrorCode {
     ERR_UNEXPECTED_REL_TREE(ErrorType.OSS, 11010),
     ERR_EXECUTE_ON_OSS(ErrorType.Executor, 11011),
     ERR_FILE_STORAGE_READ_ONLY(ErrorType.OSS, 11012),
-    ERR_OSS_CONNECT(ErrorType.OSS, 11013);
+    ERR_OSS_CONNECT(ErrorType.OSS, 11013),
+    ERR_FILE_STORAGE_EXISTS(ErrorType.OSS, 11014);
 
 
     private int code;

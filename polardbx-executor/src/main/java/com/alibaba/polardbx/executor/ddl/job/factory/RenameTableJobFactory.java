@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenamePartitionTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableAddMetaTask;
@@ -29,9 +30,11 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.google.common.collect.Lists;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 public class RenameTableJobFactory extends DdlJobFactory {
@@ -71,15 +74,19 @@ public class RenameTableJobFactory extends DdlJobFactory {
         DdlTask updateMetaTask = new RenameTableUpdateMetaTask(schemaName, logicalTableName, newLogicalTableName);
         DdlTask syncTask = new RenameTableSyncTask(schemaName, logicalTableName, newLogicalTableName);
 
+        List<DdlTask> taskList = new ArrayList<>();
+        taskList.add(validateTask);
+        taskList.add(addMetaTask);
+        taskList.add(phyDdlTask);
+        Engine engine = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName).getEngine();
+        if (!Engine.isFileStore(engine)) {
+            taskList.add(cdcDdlMarkTask);
+        }
+        taskList.add(updateMetaTask);
+        taskList.add(syncTask);
+
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(
-            validateTask,
-            addMetaTask,
-            phyDdlTask,
-            cdcDdlMarkTask,
-            updateMetaTask,
-            syncTask
-        ));
+        executableDdlJob.addSequentialTasks(taskList);
         executableDdlJob.labelAsHead(validateTask);
         return executableDdlJob;
     }

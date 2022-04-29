@@ -196,6 +196,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlRepeatStatem
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlSelectIntoStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CobarShowStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CreateFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
@@ -893,6 +894,11 @@ public class MySqlStatementParser extends SQLStatementParser {
         if (lexer.identifierEquals("SCHEDULE")) {
             lexer.reset(mark);
             return parseCreateSchedule();
+        }
+
+        if (lexer.identifierEquals("FileStorage")) {
+            lexer.reset(mark);
+            return parseCreateFileStorage();
         }
 
         throw new ParserException("TODO " + lexer.info());
@@ -10073,6 +10079,34 @@ public class MySqlStatementParser extends SQLStatementParser {
 
         stmt.setWithAssignItems(withAssignItems);
 
+        return stmt;
+    }
+
+    public SQLStatement parseCreateFileStorage() {
+        accept(Token.CREATE);
+        acceptIdentifier("FileStorage");
+
+        CreateFileStorageStatement stmt = new CreateFileStorageStatement();
+
+        stmt.setEngineName(this.exprParser.name());
+        if (lexer.token() == Token.WITH) {
+            lexer.nextToken();
+            accept(Token.LPAREN);
+
+            for (;;) {
+                SQLName key = this.exprParser.name();
+                accept(Token.EQ);
+                SQLName value = this.exprParser.name();
+                stmt.getWithValue().add(new SQLAssignItem(key, value));
+                if (lexer.token() == Token.COMMA) {
+                    lexer.nextToken();
+                    continue;
+                }
+                break;
+            }
+
+            accept(Token.RPAREN);
+        }
         return stmt;
     }
 
