@@ -41,7 +41,7 @@ public class SslConstant {
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(null, null, null);
             sslSocket = (SSLSocket) sslContext.getSocketFactory().createSocket();
-            String[] enabledProtocols = sslSocket.getEnabledProtocols();
+            enabledProtocols = sslSocket.getEnabledProtocols();
             if (enabledProtocols != null && enabledProtocols.length > 0) {
                 String enabledProtocol = enabledProtocols[0];
                 PROTOCOL = enabledProtocol;
