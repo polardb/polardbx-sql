@@ -31,7 +31,7 @@ create filestorage oss with ('file_uri' = 'oss://oss-bucket-name/', 'endpoint'='
 
 例子：
 ```
-create filestorage local_disk with ('file_uri' = 'file://tmp/orc/');
+create filestorage local_disk with ('file_uri' = 'file:///tmp/orc/');
 ```
 
 建表时存储引擎改为`engine = 'local_disk'`即可使用本地磁盘存储，例如：
