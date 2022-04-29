@@ -210,8 +210,6 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         SqlIdentifier targetTableNode = sourceTableNode.setName(sourceTableNode.names.size() - 1, fileStorageBinName);
 
         SqlNode sqlRenameTable = new SqlRenameTable(targetTableNode, sourceTableNode, SqlParserPos.ZERO);
-        executionContext.getDdlContext()
-            .setDdlStmt(CdcTruncateWithRecycleMarkTask.CDC_RECYCLE_HINTS + sqlRenameTable.toString());
 
         RenameTable renameTable =
             RenameTable.create(logicalDropTable.getCluster(), sqlRenameTable, sourceTableNode, targetTableNode);

@@ -77,6 +77,7 @@ import com.alibaba.polardbx.executor.handler.ddl.LogicalAlterTableSplitPartition
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCheckGsiHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCommonDdlHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateDatabaseHandler;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateFileStorageHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateIndexHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateTableHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateViewHandler;
@@ -137,6 +138,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartiti
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalChangeConsensusLeader;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTableGroup;
@@ -204,6 +206,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_ALTER_TABLE_HANDLER = new LogicalAlterTableHandler(repo);
         LOGICAL_ALTER_FILESTORAGE_HANDLER = new LogicalAlterFileStoragHandler(repo);
         LOGICAL_DROP_FILESTORAGE_HANDLER = new LogicalDropFileStorageHandler(repo);
+        LOGICAL_CREATE_FILESTORAGE_HANDLER = new LogicalCreateFileStorageHandler(repo);
         LOGICAL_RENAME_TABLE_HANDLER = new LogicalRenameTableHandler(repo);
         LOGICAL_TRUNCATE_TABLE_HANDLER = new LogicalTruncateTableHandler(repo);
         LOGICAL_DROP_TABLE_HANDLER = new LogicalDropTableHandler(repo);
@@ -348,6 +351,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final LogicalCommonDdlHandler LOGICAL_ALTER_TABLE_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_ALTER_FILESTORAGE_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_DROP_FILESTORAGE_HANDLER;
+    private final LogicalCommonDdlHandler LOGICAL_CREATE_FILESTORAGE_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_ALTER_TABLE_REPARTITION_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_RENAME_TABLE_HANDLER;
     private final LogicalCommonDdlHandler LOGICAL_TRUNCATE_TABLE_HANDLER;
@@ -620,6 +624,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
             return LOGICAL_ALTER_FILESTORAGE_HANDLER;
         } else if (logicalPlan instanceof LogicalDropFileStorage) {
             return LOGICAL_DROP_FILESTORAGE_HANDLER;
+        } else if (logicalPlan instanceof LogicalCreateFileStorage) {
+            return LOGICAL_CREATE_FILESTORAGE_HANDLER;
         } else if (logicalPlan instanceof PhyQueryOperation) {
             return PHY_QUERY_HANDLER;
         } else if (logicalPlan instanceof LogicalAlterTableGroupSplitPartition) {

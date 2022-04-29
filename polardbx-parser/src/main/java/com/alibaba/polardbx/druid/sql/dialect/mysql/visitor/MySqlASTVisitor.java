@@ -50,6 +50,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOrderingExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CobarShowStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CreateFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
@@ -410,6 +411,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     boolean visit(DrdsCreateScheduleStatement x);
 
     void endVisit(DrdsDropScheduleStatement x);
+
+    boolean visit(CreateFileStorageStatement x);
+
+    void endVisit(CreateFileStorageStatement x);
 
     boolean visit(DrdsDropScheduleStatement x);
 

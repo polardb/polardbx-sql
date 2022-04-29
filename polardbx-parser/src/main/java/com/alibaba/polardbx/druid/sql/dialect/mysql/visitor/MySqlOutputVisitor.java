@@ -128,6 +128,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOrderingExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CobarShowStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CreateFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
@@ -2591,6 +2592,27 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
 
     @Override
     public void endVisit(DrdsDropScheduleStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(CreateFileStorageStatement x) {
+        print0(ucase ? "CREATE FILESTORAGE " : "create filestorage ");
+        x.getEngineName().accept(this);
+
+        List<SQLAssignItem> withValue = x.getWithValue();
+        if (withValue.size() > 0) {
+            println();
+            print0(ucase ? "WITH (" : "with (");
+            printAndAccept(withValue, ", ");
+            print(')');
+        }
+
+        return false;
+    }
+
+    @Override
+    public void endVisit(CreateFileStorageStatement x) {
 
     }
 

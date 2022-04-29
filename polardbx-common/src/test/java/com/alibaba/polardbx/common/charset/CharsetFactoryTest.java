@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.common.charset;
 
-import com.alibaba.polardbx.common.charset.CharsetFactory;
-import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.collation.CollationHandler;
 import org.junit.Assert;
 import org.junit.Test;
@@ -25,7 +23,7 @@ import org.junit.Test;
 public class CharsetFactoryTest {
     @Test
     public void test() {
-        for (CollationName collation : CollationName.values()) {
+        for (CollationName collation : CollationName.POLAR_DB_X_IMPLEMENTED_COLLATION_NAMES) {
             CollationHandler collationHandler = CharsetFactory.INSTANCE.createCollationHandler(collation);
             Assert.assertEquals(collationHandler.getName(), collation);
             Assert.assertEquals(collationHandler.getCharsetHandler().getName(), CollationName.getCharsetOf(collation));

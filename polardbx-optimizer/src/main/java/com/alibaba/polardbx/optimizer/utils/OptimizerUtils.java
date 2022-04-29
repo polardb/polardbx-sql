@@ -147,6 +147,7 @@ public class OptimizerUtils {
         case DROP_SCHEDULE:
         case ALTER_FILESTORAGE:
         case DROP_FILESTORAGE:
+        case CREATE_FILESTORAGE:
             return true;
         default:
             if (ast.isA(SqlKind.DAL)) {

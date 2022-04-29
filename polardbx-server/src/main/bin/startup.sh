@@ -412,7 +412,7 @@ fi
 
 #2.6.32-220.23.2.al.ali1.1.alios6.x86_64 not support Wisp2
 if [ "$wisp" == "wisp" ] && [ "$KERNEL_VERSION" != "2.6.32-220.23.2.al.ali1.1.alios6.x86_64" ]; then
-    JAVA_OPTS="$JAVA_OPTS -XX:+UseWisp2"
+    JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2"
 fi
 
 # in docker container, limit cpu cores

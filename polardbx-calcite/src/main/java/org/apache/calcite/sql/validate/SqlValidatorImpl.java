@@ -987,7 +987,8 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             registerQuery(scope, null, outermostNode, outermostNode, null, false);
         }
         if (topNode.getKind() == SqlKind.CREATE_TABLE || topNode.getKind() == SqlKind.DROP_TABLE
-            || topNode.getKind() == SqlKind.DROP_VIEW || topNode.getKind() == SqlKind.DROP_FILESTORAGE) {
+            || topNode.getKind() == SqlKind.DROP_VIEW || topNode.getKind() == SqlKind.DROP_FILESTORAGE
+            || topNode.getKind() == SqlKind.CREATE_FILESTORAGE) {
             if (topNode.getKind() == SqlKind.CREATE_TABLE) {
                 outermostNode.validate(this, scope);
             }
@@ -3929,6 +3930,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         case IDENTIFIER:
         case ALTER_FILESTORAGE:
         case DROP_FILESTORAGE:
+        case CREATE_FILESTORAGE:
             setValidatedNodeType(node, RelOptUtil.createDmlRowType(
                 SqlKind.INSERT, typeFactory));
             break;

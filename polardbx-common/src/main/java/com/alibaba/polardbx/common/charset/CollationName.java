@@ -321,7 +321,7 @@ public enum CollationName {
 
     public static ImmutableList<CollationName> POLAR_DB_X_IMPLEMENTED_COLLATION_NAMES = ImmutableList.of(
         // for utf8
-        UTF8_GENERAL_CI, UTF8_BIN, UTF8_UNICODE_CI, UTF8_GENERAL_MYSQL500_CI,
+        UTF8_GENERAL_CI, UTF8_BIN, UTF8_UNICODE_CI,
 
         // for utf8mb
         UTF8MB4_GENERAL_CI, UTF8MB4_BIN, UTF8MB4_UNICODE_CI,

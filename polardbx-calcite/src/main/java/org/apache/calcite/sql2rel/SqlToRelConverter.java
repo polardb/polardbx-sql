@@ -88,6 +88,7 @@ import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartitionByHotValue;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
 import org.apache.calcite.rel.ddl.CreateDatabase;
+import org.apache.calcite.rel.ddl.CreateFileStorage;
 import org.apache.calcite.rel.ddl.CreateIndex;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
@@ -183,6 +184,7 @@ import org.apache.calcite.sql.SqlCallBinding;
 import org.apache.calcite.sql.SqlChangeConsensusRole;
 import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlCreateDatabase;
+import org.apache.calcite.sql.SqlCreateFileStorage;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlCreateTableGroup;
@@ -3367,6 +3369,8 @@ public class SqlToRelConverter {
             return RelRoot.of(convertUnArchive((SqlUnArchive) query), kind);
         case DROP_FILESTORAGE:
             return RelRoot.of(convertDropFileStorage((SqlDropFileStorage) query), kind);
+        case CREATE_FILESTORAGE:
+            return RelRoot.of(convertCreateFileStorage((SqlCreateFileStorage) query), kind);
         default:
             if (kind.belongsTo(SqlKind.DAL)) {
                 return RelRoot.of(convertDal((SqlDal) query), kind);
@@ -3478,6 +3482,13 @@ public class SqlToRelConverter {
         assert targetRowType != null;
         return DropFileStorage.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
             targetRowType, query.getName().toString());
+    }
+
+    private RelNode convertCreateFileStorage(SqlCreateFileStorage query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+        return CreateFileStorage.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
+            targetRowType, query.getEngineName().toString(), query.getWithValue());
     }
 
     private RelNode convertAlterTableGroup(SqlAlterTableGroup query) {;

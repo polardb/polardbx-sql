@@ -45,6 +45,43 @@ import java.util.Map;
 import java.util.Set;
 
 public class OSSTaskUtils {
+    private static final ImmutableList<String> ENDPOINTS = ImmutableList.of(
+        "oss-cn-hangzhou.aliyuncs.com", "oss-cn-hangzhou-internal.aliyuncs.com",
+        "oss-cn-shanghai.aliyuncs.com", "oss-cn-shanghai-internal.aliyuncs.com",
+        "oss-cn-nanjing.aliyuncs.com", "oss-cn-nanjing-internal.aliyuncs.com",
+        "oss-cn-qingdao.aliyuncs.com", "oss-cn-qingdao-internal.aliyuncs.com",
+        "oss-cn-beijing.aliyuncs.com", "oss-cn-beijing-internal.aliyuncs.com",
+        "oss-cn-zhangjiakou", "oss-cn-zhangjiakou.aliyuncs.com",
+        "oss-cn-huhehaote.aliyuncs.com", "oss-cn-huhehaote-internal.aliyuncs.com",
+        "oss-cn-wulanchabu.aliyuncs.com", "oss-cn-wulanchabu-internal.aliyuncs.com",
+        "oss-cn-shenzhen.aliyuncs.com", "oss-cn-shenzhen-internal.aliyuncs.com",
+        "oss-cn-heyuan.aliyuncs.com", "oss-cn-heyuan-internal.aliyuncs.com",
+        "oss-cn-guangzhou.aliyuncs.com", "oss-cn-guangzhou-internal.aliyuncs.com",
+        "oss-cn-chengdu.aliyuncs.com", "oss-cn-chengdu-internal.aliyuncs.com",
+        "oss-cn-hongkong.aliyuncs.com", "oss-cn-hongkong-internal.aliyuncs.com",
+        "oss-us-west-1.aliyuncs.com", "oss-us-west-1-internal.aliyuncs.com",
+        "oss-us-east-1.aliyuncs.com", "oss-us-east-1-internal.aliyuncs.com",
+        "oss-ap-northeast-1.aliyuncs.com", "oss-ap-northeast-1-internal.aliyuncs.com",
+        "oss-ap-northeast-2.aliyuncs.com", "oss-ap-northeast-2-internal.aliyuncs.com",
+        "oss-ap-southeast-1.aliyuncs.com", "oss-ap-southeast-1-internal.aliyuncs.com",
+        "oss-ap-southeast-2.aliyuncs.com", "oss-ap-southeast-2-internal.aliyuncs.com",
+        "oss-ap-southeast-3.aliyuncs.com", "oss-ap-southeast-3-internal.aliyuncs.com",
+        "oss-ap-southeast-5.aliyuncs.com", "oss-ap-southeast-5-internal.aliyuncs.com",
+        "oss-ap-southeast-6.aliyuncs.com", "oss-ap-southeast-6-internal.aliyuncs.com",
+        "oss-ap-southeast-7.aliyuncs.com", "oss-ap-southeast-7-internal.aliyuncs.com",
+        "oss-ap-south-1.aliyuncs.com", "oss-ap-south-1-internal.aliyuncs.com",
+        "oss-eu-central-1.aliyuncs.com", "oss-eu-central-1-internal.aliyuncs.com",
+        "oss-eu-west-1.aliyuncs.com", "oss-eu-west-1-internal.aliyuncs.com",
+        "oss-me-east-1.aliyuncs.com", "oss-me-east-1-internal.aliyuncs.com"
+        );
+
+    public static boolean checkEndpoint(String endpoint) {
+        if (endpoint == null) {
+            return false;
+        }
+        return ENDPOINTS.contains(endpoint);
+    }
+
     public static Pair<String, String> getSingleTopology(String sourceLogicalSchema, String sourceLogicalTable, TableMeta sourceTableMeta) {
         Pair<String, String> singlePhySchemaAndTable = null;
         boolean isSingle =

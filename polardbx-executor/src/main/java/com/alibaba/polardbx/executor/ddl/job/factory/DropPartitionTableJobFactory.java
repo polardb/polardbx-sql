@@ -112,7 +112,9 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
             tasks.add(updateTableRemoveTsTask);
         }
         tasks.add(phyDdlTask);
-        tasks.add(cdcDdlMarkTask);
+        if (!Engine.isFileStore(engine)) {
+            tasks.add(cdcDdlMarkTask);
+        }
         tasks.add(removeMetaTask);
         if (syncTableGroup != null) {
             tasks.add(syncTableGroup);
@@ -127,7 +129,9 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
         executableDdlJob.setStoreTableLocalityTask(dropLocality);
         executableDdlJob.setDropTableHideTableMetaTask(dropTableHideTableMetaTask);
         executableDdlJob.setPhyDdlTask(phyDdlTask);
-        executableDdlJob.setCdcDdlMarkTask(cdcDdlMarkTask);
+        if (!Engine.isFileStore(engine)) {
+            executableDdlJob.setCdcDdlMarkTask(cdcDdlMarkTask);
+        }
         executableDdlJob.setRemoveMetaTask(removeMetaTask);
         executableDdlJob.setTableSyncTask(tableSyncTask);
 

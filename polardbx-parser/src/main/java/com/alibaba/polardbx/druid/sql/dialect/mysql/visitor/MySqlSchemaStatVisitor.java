@@ -58,6 +58,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOrderingExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CobarShowStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CreateFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
@@ -708,6 +709,16 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
 
     @Override
     public boolean visit(DrdsCreateScheduleStatement x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(CreateFileStorageStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(CreateFileStorageStatement x) {
         return false;
     }
 

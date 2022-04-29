@@ -200,6 +200,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlCharExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOutFileExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.CreateFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
@@ -437,6 +438,7 @@ import org.apache.calcite.sql.SqlContinueDdlJob;
 import org.apache.calcite.sql.SqlConvertToCharacterSet;
 import org.apache.calcite.sql.SqlCreateCclRule;
 import org.apache.calcite.sql.SqlCreateCclTrigger;
+import org.apache.calcite.sql.SqlCreateFileStorage;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateIndex.SqlIndexAlgorithmType;
 import org.apache.calcite.sql.SqlCreateIndex.SqlIndexConstraintType;
@@ -7896,6 +7898,25 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         addPrivilegeVerifyItem("*", "*", PrivilegePoint.CREATE);
         return false;
     }
+
+    @Override
+    public boolean visit(CreateFileStorageStatement x) {
+        SqlIdentifier engineName = (SqlIdentifier) convertToSqlNode(x.getEngineName());
+
+        List<SQLAssignItem> withValue = x.getWithValue();
+        List<Pair<SqlIdentifier, SqlIdentifier>> with = new ArrayList<>(withValue.size());
+        for (SQLAssignItem sqlAssignItem : withValue) {
+            SqlIdentifier target =
+                (SqlIdentifier) convertToSqlNode(sqlAssignItem.getTarget());
+            SqlIdentifier value =
+                (SqlIdentifier) convertToSqlNode(sqlAssignItem.getValue());
+            with.add(Pair.of(target, value));
+        }
+        SqlCreateFileStorage sqlCreateFileStorage = new SqlCreateFileStorage(SqlParserPos.ZERO, engineName, with);
+        sqlNode = sqlCreateFileStorage;
+        return false;
+    }
+
 
     @Override
     public boolean visit(DrdsCreateScheduleStatement x) {

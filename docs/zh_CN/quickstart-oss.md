@@ -3,68 +3,38 @@
 - 首先源码编译安装 PolarDB-X，可参考[源码编译部署](quickstart-development.md)
 - 或者通过K8S构建出 PolarDB-X集群，可参考[K8S部署](http://www.github.com/ApsaraDB/galaxykube/blob/main/docs/zh/deploy/quick-start.md)
 
-安装完成后通过如下命令进行OSS存储初始化:
+安装完成后连接PolarDB-X集群，通过如下SQL命令进行OSS存储初始化:
 
-- -e: 初始化存储引擎类型
-- -P: 之前准备的dnPasswordKey
-- --uri: OSS存储uri
-- --ep: OSS存储 end-point
-- --ak: Access Key
-- --sk: Secret Key
-
-注（关于--ep参数）：在阿里云OSS产品界面，通过“对象存储-Bucket列表-bucket-概览”可以获取到一组endpoint（地域节点）信息。仅当在相同Region的ECS部署环境下，使用经典网络访问或vpc网络访问endpoint。否则使用外网访问endpoint。
 
 例子：
 ```
-bin/startup.sh \
-    -e OSS \
-    --uri oss://oss-bucket/  \
-    --ep oss-cn-huhehaote.aliyuncs.com \
-    --ak akakakakakakakakakakakakakak \
-    --sk sksksksksksksksksksksksksksk \
-    -P asdf1234ghjk5678
+create filestorage oss with ('file_uri' = 'oss://oss-bucket-name/', 'endpoint'='oss-endpoint', 'access_key_id'='your_ak', 'access_key_secret'='your_sk');
 ```
 
-注1：启动实例后，通过执行show file storage语句来验证是否配置成功。
+- file_uri: OSS存储uri
+- endpoint: OSS存储 end-point
+- access_key_id: Access Key
+- access_key_secret: Secret Key
 
-注2：startup.sh脚本位于CN安装bin目录下。
+注1:（关于endpoint参数）：在阿里云OSS产品界面，通过“对象存储-Bucket列表-bucket-概览”可以获取到一组endpoint（地域节点）信息。仅当在相同Region的ECS部署环境下，使用经典网络访问或vpc网络访问endpoint。否则使用外网访问endpoint。
 
-如果你是通过K8S构建, 请通过下面方式登陆进入CN节点，获取dnPasswordKey并进行初始化
-```
-// 获取CN节点POD
-kubectl get pods | grep cn
 
-// 登陆任意一个CN节点
-kubectl exec -it [your-cn-pod-name] bash
-
-// 获取dnPasswordKey
-env | grep dnPasswordKey
-
-// startup.sh位于/home/admin/drds-server/bin目录下
-cd /home/admin/drds-server/bin
-```
+注2：通过执行show file storage语句来验证是否配置成功。
 
 
 # 本地磁盘存储配置
 对于没有OSS但希望体验用户，可以通过本地磁盘模拟OSS
 
-注意：本地磁盘为CN节点本地磁盘，如果你是通过K8S方式部署，请限制CN节点个数为1个
+注意：file_uri为CN节点能访问的数据目录路径，如果你无法保证多个CN能够共同访问这一数据目录路径，请限制CN节点个数为1个。
 
-安装完成后通过如下命令进行本地磁盘存储初始化:
-
-- -e: 初始化存储引擎类型
-- -P: 之前准备的dnPasswordKey
-- --uri: 本地磁盘uri，即本地存储目录。
+通过如下命令进行本地磁盘存储初始化:
 
 例子：
 ```
-bin/startup.sh \
-    -e LOCAL_DISK \
-    --uri file:///tmp/local-dir \
-    -P asdf1234ghjk5678
+create filestorage local_disk with ('file_uri' = 'file://tmp/orc/');
 ```
 
-存储引擎改为`engine = 'local_disk'`即可使用本地磁盘存储，例如：
+建表时存储引擎改为`engine = 'local_disk'`即可使用本地磁盘存储，例如：
 ```
 create table sbtest1 like sysbench.sbtest1 engine = 'local_disk' archive_mode = 'loading';
 ```
@@ -72,7 +42,7 @@ create table sbtest1 like sysbench.sbtest1 engine = 'local_disk' archive_mode = 
 
 # 开始体验
 
-例子中的存储引擎都会以`engine = 'oss'`展示，如果你使用的是本地存储请修改为`engine = 'local_disk'`
+注：例子中的存储引擎都会以`engine = 'oss'`展示，如果你使用的是本地存储请修改为`engine = 'local_disk'`
 
 ## Hello World
 ```
@@ -102,6 +72,8 @@ select * from oss_t1;
 
 ## TTL
 Innodb数据自动过期并归档到OSS存储上示例
+
+注：例子中的存储引擎都会以`engine = 'oss'`展示，如果你使用的是本地存储请修改为`engine = 'local_disk'`
 
 ```
 create database ttl_test partition_mode = 'auto';
