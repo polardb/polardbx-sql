@@ -107,7 +107,7 @@ public class NEVarcharColCharConstVectorizedExpression extends AbstractVectorize
 
                     Comparable sortKey = compatible ? sliceBlock.getSortKey(j) : sliceBlock.getRegion(j);
 
-                    output[j] = (sortKey != null && sortKey.compareTo(operandSortKey) == 0)
+                    output[j] = (sortKey != null && sortKey.compareTo(operandSortKey) != 0)
                         ? LongBlock.TRUE_VALUE
                         : LongBlock.FALSE_VALUE;
                 }
@@ -116,7 +116,7 @@ public class NEVarcharColCharConstVectorizedExpression extends AbstractVectorize
 
                     Comparable sortKey = compatible ? sliceBlock.getSortKey(i) : sliceBlock.getRegion(i);
 
-                    output[i] = (sortKey != null && sortKey.compareTo(operandSortKey) == 0)
+                    output[i] = (sortKey != null && sortKey.compareTo(operandSortKey) != 0)
                         ? LongBlock.TRUE_VALUE
                         : LongBlock.FALSE_VALUE;
                 }
