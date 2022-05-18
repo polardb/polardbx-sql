@@ -268,8 +268,8 @@ public final class TddlLauncher {
             config.getMetaDbAddr(),
             config.getMetaDbName(),
             config.getMetaDbProp(),
-            config.getMetaDbRootUser(),
-            PasswdUtil.encrypt(config.getMetaDbRootPasswd()));
+            config.getMetaDbUser(),
+            config.getMetaDbPasswd());
         MetaDbDataSource metaDb = MetaDbDataSource.getInstance();
 
         // create all tables
