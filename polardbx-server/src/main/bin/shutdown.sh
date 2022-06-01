@@ -26,9 +26,9 @@ get_pid() {
     else
         if $linux; then
             if [ ! -z "$PID" ]; then
-                JAVA_PID=`ps -C java -f --width 1000|grep "$STR"|grep "$PID"|grep -v grep|awk '{print $2}'`
+                JAVA_PID=`ps -C java -f --width 2000|grep "$STR"|grep "$PID"|grep -v grep|awk '{print $2}'`
             else 
-                JAVA_PID=`ps -C java -f --width 1000|grep "$STR"|grep -v grep|awk '{print $2}'`
+                JAVA_PID=`ps -C java -f --width 2000|grep "$STR"|grep -v grep|awk '{print $2}'`
             fi
         else
             if [ ! -z "$PID" ]; then
@@ -127,7 +127,7 @@ if [ ! -f "$pidfile" ];then
     fi
 else
     #get pid by ps command instead of reading from pidfile
-    pid=`ps -C java -f --width 1000|grep drds-server|grep "DserverPort=${serverPort}" |awk '{print $2}'`
+    pid=`ps -C java -f --width 2000|grep drds-server|grep "DserverPort=${serverPort}" |awk '{print $2}'`
     if [ x"$other" == "x" ]; then
         args=`cat $pidfile | awk -F'#@#' '{print $2}'`
     fi
