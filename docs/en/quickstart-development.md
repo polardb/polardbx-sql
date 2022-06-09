@@ -103,7 +103,7 @@ cd galaxycdc
 mvn install -D maven.test.skip=true -D env=release 
 
 # prepare to run CDC
-tar zxvf polardbx-cdc-assemble/target/polardbx-cdc*.tar.gz
+tar zxvf polardbx-cdc-assemble/target/polardbx-binlog*.tar.gz
 ```
 
 ### Start PolarDB-X DN
