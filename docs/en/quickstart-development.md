@@ -91,7 +91,7 @@ cd galaxysql/
 mvn install -D maven.test.skip=true -D env=release 
 
 # prepare to run polardb-x
-tar zxvf target/polardbx-server-5.4.12-SNAPSHOT.tar.gz
+tar zxvf target/polardbx-server-*-SNAPSHOT.tar.gz
 ```
 
 ### Compiling PolarDB-X CDC (GalaxyCDC)
