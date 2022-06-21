@@ -1,4 +1,4 @@
-# PolarDB-X Charset & Collation设计方案
+# PolarDB-X Charset & Collation设计方案 by [@burhanxz](https://github.com/burhanxz)
 
 ## 设计目标
 MySQL中的字符类型包括varchar、char、text等，都具有charset和collation属性。其中charset代表着字符的编码方式，collation代表字符的比较规则。在执行层面，charset和collation会影响到比较、排序、哈希、函数求值的行为。PolarDB-X中目前没有很好的适配MySQL的charset和collation机制，导致的问题有：
