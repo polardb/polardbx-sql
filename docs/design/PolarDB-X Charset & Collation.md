@@ -1,7 +1,3 @@
----
-typora-root-url: ./
----
-
 ## 设计目标
 MySQL中的字符类型包括varchar、char、text等，都具有charset和collation属性。其中charset代表着字符的编码方式，collation代表字符的比较规则。在执行层面，charset和collation会影响到比较、排序、哈希、函数求值的行为。PolarDB-X中目前没有很好的适配MySQL的charset和collation机制，导致的问题有：
 
@@ -377,7 +373,8 @@ public class SqlCollation implements Serializable {
 
 - Calcite中 collation的命名方式为{charset}${locale}，例如默认collation：ISO-8859-1$en_US。这种命名方式与MySQL不同，需要修复。
 - Calcite提供的coercibility（依据SQL99 标准）和MySQL所规定的coercibility信息不同，需要结合两者特点进行改造。梳理如下：
-| **Calcite Coercibility(SQL 99)** | **explain** | **MySQL **<br />**Coercibility** | **explain** |
+
+| **Calcite Coercibility(SQL 99)** | **explain** | **MySQL** <br />**Coercibility** | **explain** |
 | --- | --- | --- | --- |
 | **Explicit** | A  character value expression simply containing a collate clause has the coercibility characteristic Explicit | **0** | 显式 COLLATE 子句的 coercibility 值为 0 |
 | **Implicit** | A character value expression consisting of a column reference has the coercibility characteristic Implicit, with collating sequence as defined when the column was created. | **1** | 如果两个字符串的排序规则不兼容，这两个字符串 concat 结果的 coercibility 值为 1 |
