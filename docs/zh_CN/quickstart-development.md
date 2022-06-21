@@ -87,7 +87,7 @@ git submodule update --init
 mvn install -D maven.test.skip=true -D env=release 
 
 # 解压运行
-tar zxvf target/polardbx-server-5.4.12-SNAPSHOT.tar.gz
+tar zxvf target/polardbx-server-5.4.13-SNAPSHOT.tar.gz
 ```
 
 ### 编译 PolarDB-X CDC（日志节点，代号GalaxyCDC）
