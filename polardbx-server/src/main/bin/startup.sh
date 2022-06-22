@@ -335,6 +335,7 @@ if [ x"$secretKey" != "x" ]; then
 	TDDL_OPTS=" $TDDL_OPTS -DsecretKey=$secretKey"
 fi
 
+
 if [ x"$enable_bianque" == "xtrue" ]; then
   BIANQUE_LIB_FILEPATH="/home/admin/bianquejavaagent/output/lib/libjava_bianque_agent.so"
   BIANQUE_SERVER_PORT=9874
@@ -353,11 +354,14 @@ fi
 ## set java path
 TAOBAO_JAVA="/opt/taobao/java_coroutine/bin/java"
 ALIBABA_JAVA="/usr/alibaba/java/bin/java"
+DRAGONWELL_JAVA="/opt/java/dragonwell/bin/java"
 if [ -f $TAOBAO_JAVA ] ; then
 	JAVA=$TAOBAO_JAVA
 	JGROUP="/opt/taobao/java_coroutine/bin/jgroup"
 elif [ -f $ALIBABA_JAVA ] ; then
 	JAVA=$ALIBABA_JAVA
+elif [ -f $DRAGONWELL_JAVA ] ; then
+  JAVA=$DRAGONWELL_JAVA
 else
 	JAVA=$(which java)
 	if [ ! -f $JAVA ]; then
@@ -376,10 +380,17 @@ if [ -f $pidfile ] ; then
   fi
 fi
 
+JavaVersion=`$JAVA -version 2>&1 |awk 'NR==1{ gsub(/"/,""); print $3 }' | awk  -F '.' '{print $1}'`
+
+if [ -f $pidfile ] ; then
+	echo "found $pidfile , Please run shutdown.sh first ,then startup.sh" 2>&2
+    exit 1
+fi
+
 str=`file -L $JAVA | grep 64-bit`
 if [ -n "$str" ]; then
     freecount=`free -m | grep 'Mem' |awk '{print $2}'`
-    
+
     if [ x"$mem_size" != "x" ]; then
         freecount=$mem_size
     fi
@@ -415,6 +426,9 @@ if [ "$wisp" == "wisp" ] && [ "$KERNEL_VERSION" != "2.6.32-220.23.2.al.ali1.1.al
     JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2"
 fi
 
+#disable netty-native in order to support Wisp2
+TDDL_OPTS=" $TDDL_OPTS -Dio.grpc.netty.shaded.io.netty.transport.noNative=true -Dio.netty.transport.noNative=true"
+
 # in docker container, limit cpu cores
 if [ x"$cpu_cores" != "x" ]; then
     JAVA_OPTS="$JAVA_OPTS -XX:ActiveProcessorCount=$cpu_cores"
@@ -423,18 +437,40 @@ fi
 #https://workitem.aone.alibaba-inc.com/req/33334239
 JAVA_OPTS="$JAVA_OPTS -Dtxc.vip.skip=true "
 
-JAVA_OPTS="$JAVA_OPTS -XX:PermSize=96m -Xss4m -XX:+AggressiveOpts -XX:-UseBiasedLocking -XX:+UseFastAccessorMethods -XX:-OmitStackTraceInFastThrow"
+JAVA_OPTS="$JAVA_OPTS -Xss4m -XX:+AggressiveOpts -XX:-UseBiasedLocking -XX:-OmitStackTraceInFastThrow "
+
+if [ $JavaVersion -ge 11 ] ; then
+  JAVA_OPTS="$JAVA_OPTS"
+else
+  JAVA_OPTS="$JAVA_OPTS -XX:+UseFastAccessorMethods"
+fi
 
 # For CMS and ParNew
 #JAVA_OPTS="$JAVA_OPTS -XX:SurvivorRatio=10 -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:+UseCMSCompactAtFullCollection -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=75"
 # For G1
-JAVA_OPTS="$JAVA_OPTS -XX:+UseG1GC -XX:MaxGCPauseMillis=250 -XX:+UseGCOverheadLimit -XX:+ExplicitGCInvokesConcurrent -XX:+PrintAdaptiveSizePolicy -XX:+PrintTenuringDistribution"
+JAVA_OPTS="$JAVA_OPTS -XX:+UseG1GC -XX:MaxGCPauseMillis=250 -XX:+UseGCOverheadLimit -XX:+ExplicitGCInvokesConcurrent "
+
+if [ $JavaVersion -ge 11 ] ; then
+  JAVA_OPTS="$JAVA_OPTS"
+else
+  JAVA_OPTS="$JAVA_OPTS -XX:+PrintAdaptiveSizePolicy -XX:+PrintTenuringDistribution"
+fi
 
 export LD_LIBRARY_PATH=../lib/native
 
 JAVA_OPTS=" $JAVA_OPTS -Djava.awt.headless=true -Dcom.alibaba.java.net.VTOAEnabled=true -Djava.net.preferIPv4Stack=true -Dfile.encoding=UTF-8 -Ddruid.logType=slf4j"
-JAVA_OPTS=" $JAVA_OPTS -Xloggc:$base_log/gc.log -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCApplicationStoppedTime"
-JAVA_OPTS=" $JAVA_OPTS -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$base_log"
+JAVA_OPTS=" $JAVA_OPTS -Xloggc:$base_log/gc.log -XX:+PrintGCDetails "
+
+if [ $JavaVersion -ge 11 ] ; then
+  JAVA_OPTS=" $JAVA_OPTS -Xlog:gc*:$base_log/gc.log:time "
+  JAVA_OPTS="$JAVA_OPTS"
+else
+  JAVA_OPTS=" $JAVA_OPTS -Xloggc:$base_log/gc.log -XX:+PrintGCDetails "
+  JAVA_OPTS="$JAVA_OPTS -XX:+PrintGCDateStamps -XX:+PrintGCApplicationStoppedTime"
+fi
+
+JAVA_OPTS=" $JAVA_OPTS -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$base_log -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=$base_log/hs_err_pid%p.log"
+
 # JAVA_OPTS=" $JAVA_OPTS -XX:+UseWisp2"
 TDDL_OPTS=" $TDDL_OPTS -Dlogback.configurationFile=$logback_configurationFile -Dtddl.conf=$tddl_conf"
 
@@ -480,7 +516,7 @@ fi
     $TASKSET $JAVA $BIANQUE_AGENT_OPTS $JAVA_OPTS $JAVA_DEBUG_OPT $TDDL_OPTS -classpath .:$CLASSPATH com.alibaba.polardbx.server.TddlLauncher --port=$serverPort 1>>$base_log/tddl-console.log 2>&1 &
     echo "$! #@# $args" > $pidfile
     echo "cd to $current_path for continue"
-    cd $current_path
+  	cd $current_path
   fi
 else
 	usage

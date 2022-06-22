@@ -30,7 +30,6 @@ import io.airlift.slice.Slice;
 import org.apache.hadoop.fs.Path;
 import org.eclipse.jetty.util.ConcurrentHashSet;
 
-import javax.annotation.PreDestroy;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -169,7 +168,6 @@ public class FileMergeCacheManager implements CacheManager {
             TimeUnit.SECONDS);
     }
 
-    @PreDestroy
     public void destroy() {
         // Wait util all cache files removed.
         cacheFlushExecutor.shutdown();
