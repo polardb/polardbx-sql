@@ -31,11 +31,12 @@ function kill_and_clean() {
 
 function prepare() {
   mkdir -p /home/admin/bin/
+  source /etc/profile
   declare -xp > /home/admin/bin/server_env.sh
 }
 
 function start_process() {
-  $GALAXYSQL_HOME/bin/startup.sh -D
+  $GALAXYSQL_HOME/bin/startup.sh -w wisp -D
 }
 
 last_pid=0
@@ -71,7 +72,7 @@ function start() {
 
 retry_interval=5
 retry_cnt=0
-retry_limit=1
+retry_limit=20
 if [[ "$#" -ge 1 ]]; then
   retry_limit=$1
 fi

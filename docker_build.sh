@@ -15,4 +15,4 @@ esac
 BASE=${bin_abs_path}
 
 cd $BASE/ && mvn -Dmaven.test.skip=true clean package install
-docker build -f docker/Dockerfile -t polardbx/polardbx-cn $BASE/
+docker build -f docker/Dockerfile -t polardbx/galaxysql $BASE/

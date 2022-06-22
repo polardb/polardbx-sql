@@ -1,0 +1,31 @@
+/home/admin/drds-server/logs/tddl/tddl-console.log
+{
+su admin admin
+daily
+rotate 3
+copytruncate
+compress
+dateext
+#size 1k
+}
+
+/home/admin/logs/tcp-rt/drds-tcp.log
+{
+daily
+rotate 30
+copytruncate
+compress
+dateext
+#size 1k
+}
+
+/home/admin/drds-server/logs/tddl/gc.log
+{
+su admin admin
+daily
+rotate 14
+copytruncate
+dateext
+#size 1k
+}
+
