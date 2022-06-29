@@ -104,13 +104,13 @@ metaDbPasswd=+row16HHcsxn1JZ4YKcsrzjxOg1WZcRLUgba/IRagfc=
 
 添加Idea的环境变量`dnPasswordKey`，默认使用asdf1234ghjk5678
 
-![image-20220627105219762](/Users/edy/Library/Application Support/typora-user-images/image-20220627105219762.png)
+![add_env_variable](../images/add_env_variable.png)
 
 ## 运行TddlLauncher.java
 
 CN代码的运行入口为`com/alibaba/polardbx/server/TddlLauncher.java`，运行`TddlLauncher.java`即可看到相应日志输出。
 
-![image-20220627220813331](/Users/edy/Library/Application Support/typora-user-images/image-20220627220813331.png)
+![image-20220627220813331](../images/tddl_logs.png)
 
 连接PolarDB-X验证，如果能连上，说明数据库启动成功。
 
@@ -118,6 +118,6 @@ CN代码的运行入口为`com/alibaba/polardbx/server/TddlLauncher.java`，运�
 mysql -h127.1 -P8527 -upolardbx_root
 ```
 
-![image-20220627221138507](/Users/edy/Library/Application Support/typora-user-images/image-20220627221138507.png)
+![image-20220627221138507](../images/success_output.png)
 
 FYI: 系统运行日志在galaxysql同级目录的logs文件夹中。
