@@ -1,6 +1,6 @@
-# PolarDB-X CN开发文档
 
-## 概述
+
+### 概述
 
 作为一个开源社区贡献者，通常使用MacOS等操作系统进行开发，如何在本地搭建PolarDB-X的开发环境呢？
 
@@ -8,7 +8,7 @@
 
 备注：本文档主要针对只进行CN端开发人员使用，采用MacOS + Idea的组合，方便开源社区参与者能够在本地部署可运行的PolarDB-X环境并对CN端进行debug。
 
-## 源码下载
+### 源码下载
 
 下载 [GalaxySQL](https://github.com/ApsaraDB/galaxysql) 代码，main分支
 
@@ -16,7 +16,7 @@
 git clone https://github.com/ApsaraDB/galaxysql
 ```
 
-## 安装依赖
+### 安装依赖
 
 进入CN代码目录下载相应的依赖，注意系统及maven均使用JDK 1.8
 
@@ -36,7 +36,7 @@ mvn install -D maven.test.skip=true -D env=release
 tar zxvf target/polardbx-server-5.4.12-SNAPSHOT.tar.gz
 ```
 
-## 安装DN docker镜像
+### 安装DN docker镜像
 
 首先在本地安装docker
 
@@ -55,7 +55,7 @@ docker run -d --name some-dn-and-gms --env mode=dev -p 4886:4886 -p 32886:32886 
 
 使用``` docker ps -a ```指令查看当前运行的容器以及相应的端口映射。
 
-## 修改resources/server.properties
+### 修改resources/server.properties
 
 查看PolarDB-X的`metaDbPasswd`
 
@@ -98,7 +98,7 @@ instanceId=polardbx-polardbx
 metaDbPasswd=+row16HHcsxn1JZ4YKcsrzjxOg1WZcRLUgba/IRagfc=
 ```
 
-## 修改Idea环境变量
+### 修改Idea环境变量
 
 在使用Idea作为调试IDE时，首先需要保证工程JDK使用JDK 1.8。
 
@@ -106,7 +106,7 @@ metaDbPasswd=+row16HHcsxn1JZ4YKcsrzjxOg1WZcRLUgba/IRagfc=
 
 ![add_env_variable](../images/add_env_variable.png)
 
-## 运行TddlLauncher.java
+### 运行TddlLauncher.java
 
 CN代码的运行入口为`com/alibaba/polardbx/server/TddlLauncher.java`，运行`TddlLauncher.java`即可看到相应日志输出。
 
