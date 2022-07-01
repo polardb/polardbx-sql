@@ -29,9 +29,6 @@ git submodule update --init
 
 # 编译打包
 mvn install -D maven.test.skip=true -D env=release 
-
-# 解压运行，文件名按照当前的版本进行修改
-tar zxvf target/polardbx-server-5.4.12-SNAPSHOT.tar.gz
 ```
 
 ### 安装DN docker镜像
