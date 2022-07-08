@@ -58,7 +58,10 @@ public class JsonQuote extends JsonExtraFunction {
 
         return new StringBuilder()
             .append("\"")
-            .append(DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]))
+            .append(DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0])
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+            )
             .append("\"");
     }
 }
