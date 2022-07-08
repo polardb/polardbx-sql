@@ -13,5 +13,5 @@ args=$@
 if [ $? == 0 ]; then
     . ${base}/bin/startup.sh $args
 else
-    echo "Stop failed , manaually check needed."
+    echo "Stop failed , manually check needed."
 fi
