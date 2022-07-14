@@ -24,7 +24,7 @@ import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 import java.util.List;
 
 /**
- * 对应mysql的DIV函数，区别于/的出发
+ * 对应mysql的DIV函数，区别于/的除法
  *
  * <pre>
  * Integer division. Similar to FLOOR(), but is safe with BIGINT values.
