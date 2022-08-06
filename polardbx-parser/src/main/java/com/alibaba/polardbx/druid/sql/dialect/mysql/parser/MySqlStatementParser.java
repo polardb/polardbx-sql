@@ -128,6 +128,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCopyFromStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
@@ -774,6 +775,11 @@ public class MySqlStatementParser extends SQLStatementParser {
                 lexer.reset(mark);
             }
             return parseCreateFunction();
+        case JAVA_FUNCTION:
+            if (replace) {
+                lexer.reset(mark);
+            }
+            return parseCreateJavaFunction();
         case SEQUENCE:
             lexer.reset(mark);
             return parseCreateSequence(true);
@@ -839,6 +845,9 @@ public class MySqlStatementParser extends SQLStatementParser {
         } else if (lexer.token() == Token.FUNCTION) {
             lexer.reset(mark);
             return parseCreateFunction();
+        } else if (lexer.token() == Token.JAVA_FUNCTION) {
+            lexer.reset(mark);
+            return parseCreateJavaFunction();
         } else if (lexer.token() == PROCEDURE) {
             lexer.reset(mark);
             return parseCreateProcedure();
@@ -10585,6 +10594,15 @@ public class MySqlStatementParser extends SQLStatementParser {
 
         stmt.setBlock(block);
 
+        return stmt;
+    }
+
+    /**
+     * parse create java_function statement
+     */
+    public SQLCreateJavaFunctionStatement parseCreateJavaFunction() {
+        //JAVA_FUNC TODO
+        SQLCreateJavaFunctionStatement stmt = new SQLCreateJavaFunctionStatement();
         return stmt;
     }
 

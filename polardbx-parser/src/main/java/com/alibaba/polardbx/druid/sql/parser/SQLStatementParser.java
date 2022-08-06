@@ -86,6 +86,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateRoleStatement;
@@ -103,6 +104,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropEventStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
@@ -2924,6 +2926,12 @@ public class SQLStatementParser extends SQLParser {
         return stmt;
     }
 
+    protected SQLDropJavaFunctionStatement parseDropJavaFunction(boolean acceptDrop) {
+        //JAVA_FUNC TODO
+        SQLDropJavaFunctionStatement stmt = new SQLDropJavaFunctionStatement();
+        return stmt;
+    }
+
     protected SQLDropTableSpaceStatement parseDropTablespace(boolean acceptDrop) {
         SQLDropTableSpaceStatement stmt = new SQLDropTableSpaceStatement(getDbType());
 
@@ -3477,6 +3485,12 @@ public class SQLStatementParser extends SQLParser {
             SQLStatement stmt = createFunct;
             return stmt;
         }
+        case JAVA_FUNCTION: {
+            lexer.reset(markBp, markChar, Token.CREATE);
+            SQLStatement createJavaFunct = this.parseCreateJavaFunction();
+            SQLStatement stmt = createJavaFunct;
+            return stmt;
+        }
         default:
             if (token == Token.OR) {
                 lexer.nextToken();
@@ -3503,6 +3517,11 @@ public class SQLStatementParser extends SQLParser {
                 if (lexer.token == Token.FUNCTION) {
                     lexer.reset(markBp, markChar, Token.CREATE);
                     return parseCreateFunction();
+                }
+
+                if (lexer.token == Token.JAVA_FUNCTION) {
+                    lexer.reset(markBp, markChar, Token.CREATE);
+                    return parseCreateJavaFunction();
                 }
 
                 if (lexer.identifierEquals(FnvHash.Constants.PACKAGE)) {
@@ -3653,6 +3672,12 @@ public class SQLStatementParser extends SQLParser {
 
     public SQLCreateFunctionStatement parseCreateFunction() {
         throw new ParserException("TODO " + lexer.token);
+    }
+
+    public SQLCreateJavaFunctionStatement parseCreateJavaFunction() {
+        //JAVA_FUNC TODO
+        SQLCreateJavaFunctionStatement stmt = new SQLCreateJavaFunctionStatement();
+        return stmt;
     }
 
     public SQLStatement parseCreateMaterializedView() {

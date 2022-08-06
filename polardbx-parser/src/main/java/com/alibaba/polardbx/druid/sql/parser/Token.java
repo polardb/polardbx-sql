@@ -59,6 +59,7 @@ public enum Token {
     SESSION("SESSION"),
     PROCEDURE("PROCEDURE"),
     FUNCTION("FUNCTION"),
+    JAVA_FUNCTION("JAVA_FUNCTION"),
     
     PRIMARY("PRIMARY"), 
     KEY("KEY"), 

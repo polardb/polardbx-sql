@@ -435,6 +435,7 @@ public class SQLParser {
                 case UNTIL:
                 case VIEW:
                 case FUNCTION:
+                case JAVA_FUNCTION:
                 case DESC:
                 case KILL:
                 case SHOW:
