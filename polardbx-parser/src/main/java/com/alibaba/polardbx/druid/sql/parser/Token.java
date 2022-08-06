@@ -156,6 +156,7 @@ public enum Token {
     SQLSTATE("SQLSTATE"),
     CONDITION("CONDITION"),
     DIV("DIV"),
+    ADD("ADD"),
     
     //postgresql
     WINDOW("WINDOW"),

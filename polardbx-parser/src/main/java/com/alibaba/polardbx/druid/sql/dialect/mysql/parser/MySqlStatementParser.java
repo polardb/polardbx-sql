@@ -774,6 +774,7 @@ public class MySqlStatementParser extends SQLStatementParser {
                 lexer.reset(mark);
             }
             return parseCreateFunction();
+            case
         case SEQUENCE:
             lexer.reset(mark);
             return parseCreateSequence(true);

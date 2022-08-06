@@ -175,6 +175,15 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         OperandTypes.ANY,
         SqlFunctionCategory.STRING);
 
+    public static final SqlFunction FOO =
+        new SqlFunction(
+            "Foo",
+            SqlKind.OTHER_FUNCTION,
+            ReturnTypes.DOUBLE_NULLABLE,
+            InferTypes.FIRST_KNOWN,
+            OperandTypes.NUMERIC,
+            SqlFunctionCategory.NUMERIC);
+
     // Todo: BINARY OPERATOR: The BINARY operator converts the expression to a
     // binary string.
 //    public static SqlFunction BIT_AND = new SqlFunction("BIT_AND",

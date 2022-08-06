@@ -363,6 +363,11 @@ public class SQLExprParser extends SQLParser {
             SQLExpr rightExp = bitXor();
             expr = new SQLBinaryOpExpr(expr, SQLBinaryOperator.Modulus, rightExp, getDbType());
             expr = multiplicativeRest(expr);
+        } else if (token == Token.ADD) {
+            lexer.nextToken();
+            SQLExpr rightExp = bitXor();
+            expr = new SQLBinaryOpExpr(expr, SQLBinaryOperator.ADD, rightExp, getDbType());
+            expr = multiplicativeRest(expr);
         } else if (token == Token.DIV) {
             lexer.nextToken();
             SQLExpr rightExp = bitXor();
@@ -1324,6 +1329,7 @@ public class SQLExprParser extends SQLParser {
         case SUB:
         case STAR:
         case DIV:
+        case ADD:
         case SLASH:
         case DOT:
         case FROM:
@@ -2813,6 +2819,7 @@ public class SQLExprParser extends SQLParser {
     public SQLExpr additiveRest(SQLExpr expr) {
         Token token = lexer.token;
         if (token == Token.PLUS) {
+            //        if (token == Token.PLUS || token == Token.ADD) {
             lexer.nextToken();
 
             while (lexer.token == Token.HINT) {

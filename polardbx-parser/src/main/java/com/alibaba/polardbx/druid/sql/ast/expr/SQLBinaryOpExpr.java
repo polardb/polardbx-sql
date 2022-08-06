@@ -624,6 +624,7 @@ public class SQLBinaryOpExpr extends SQLExprImpl implements SQLReplaceable, Seri
                 return null;
             case Subtract:
             case Add:
+            case ADD:
             case Multiply:
                 if (leftDataType != null) {
                     if (rightDataType != null) {

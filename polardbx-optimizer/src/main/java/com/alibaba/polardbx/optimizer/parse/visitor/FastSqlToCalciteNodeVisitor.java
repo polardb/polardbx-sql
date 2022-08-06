@@ -627,6 +627,7 @@ import java.util.stream.Collectors;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlLocalPartitionConstants.DEFAULT_EXPIRE_AFTER;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlLocalPartitionConstants.DEFAULT_PRE_ALLOCATE;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlLocalPartitionConstants.NOW_FUNCTION;
+import static com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator.ADD;
 import static com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator.Escape;
 import static com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOperator.SubGtGt;
 import static com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement.Type.GLOBAL_TEMPORARY;
@@ -4950,7 +4951,11 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 operator = SqlStdOperatorTable.NOT_EQUALS;
             }
             break;
+          case ADD:
+            operator = SqlStdOperatorTable.ADD;
+            break;
         case Add:
+//          case ADD:
             operator = SqlStdOperatorTable.PLUS;
             break;
         case Subtract:
@@ -5048,6 +5053,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         case DIV:
             operator = TddlOperatorTable.DIVIDE_INTEGER;
             break;
+//          case ADD:
+//            operator = TddlOperatorTable.ADD_INTGER;
         case BitwiseXor:
             operator = TddlOperatorTable.BITWISE_XOR;
             break;

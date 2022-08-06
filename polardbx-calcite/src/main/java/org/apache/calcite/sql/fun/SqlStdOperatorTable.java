@@ -559,6 +559,16 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
           InferTypes.FIRST_KNOWN,
           OperandTypes.PLUS_OPERATOR);
 
+  public static final SqlBinaryOperator ADD =
+      new SqlMonotonicBinaryOperator(
+          "ADD",
+          SqlKind.PLUS,
+          48,
+          true,
+          ReturnTypes.NULLABLE_SUM,
+          InferTypes.FIRST_KNOWN,
+          OperandTypes.PLUS_OPERATOR);
+
  /**
    * Prefix arithmetic minus operator, '<code>-</code>'.
    *
@@ -1459,6 +1469,14 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
           InferTypes.FIRST_KNOWN,
           OperandTypes.NUMERIC,
           SqlFunctionCategory.NUMERIC);
+
+
+  public static final SqlFunction haha = new SqlFunction("haha",
+      SqlKind.OTHER_FUNCTION,
+      ReturnTypes.DOUBLE_NULLABLE,
+      InferTypes.FIRST_KNOWN,
+      OperandTypes.NUMERIC,
+      SqlFunctionCategory.NUMERIC);
 
   public static final SqlFunction ASIN =
       new SqlFunction(

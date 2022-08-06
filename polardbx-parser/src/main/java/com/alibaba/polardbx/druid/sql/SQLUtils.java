@@ -889,6 +889,7 @@ public class SQLUtils {
             SQLBinaryOpExpr binaryOpExpr = (SQLBinaryOpExpr) expr;
             SQLBinaryOperator op = binaryOpExpr.getOperator();
             if (op == SQLBinaryOperator.Add
+                || op == SQLBinaryOperator.ADD
                 || op == SQLBinaryOperator.Subtract
                 || op == SQLBinaryOperator.Multiply) {
                 return isValue(binaryOpExpr.getLeft())

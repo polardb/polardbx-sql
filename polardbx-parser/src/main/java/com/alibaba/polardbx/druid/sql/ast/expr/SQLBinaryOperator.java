@@ -31,7 +31,8 @@ public enum SQLBinaryOperator {
     DIV("DIV", 60), // mysql integer division
     Modulus("%", 60), 
     Mod("MOD", 60),
-    
+
+    ADD("ADD", 60),
     Add("+", 70), 
     Subtract("-", 70), 
     
@@ -160,6 +161,7 @@ public enum SQLBinaryOperator {
     public boolean isArithmetic() {
         switch (this) {
             case Add:
+            case ADD:
             case Subtract:
             case Multiply:
             case Divide:
