@@ -140,6 +140,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraintImpl;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
@@ -370,6 +371,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.taobao.tddl.common.privilege.PrivilegePoint;
+import groovy.sql.Sql;
 import org.apache.calcite.avatica.util.TimeUnit;
 import org.apache.calcite.sql.GroupConcatCall;
 import org.apache.calcite.sql.JoinConditionType;
@@ -3855,6 +3857,18 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     public boolean visit(SQLColumnDefinition x) {
         this.sqlNode = FastSqlConstructUtils.convertColumnDefinition(x, context, ec);
         return false;
+    }
+
+    @Override
+    public boolean visit(SQLCreateJavaFunctionStatement x) {
+        final SqlIdentifier funcName = (SqlIdentifier) convertToSqlNode(x.getName());
+        this.sqlNode = SqlDdlNodes.createJavaFunction(SqlParserPos.ZERO,
+            funcName,
+            x.getReturnType(),
+            x.getInputType(),
+            x.getJavaCode());
+      addPrivilegeVerifyItem(null, null, PrivilegePoint.CREATE);
+      return false;
     }
 
     @Override

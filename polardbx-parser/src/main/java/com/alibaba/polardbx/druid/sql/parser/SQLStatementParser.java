@@ -3675,8 +3675,46 @@ public class SQLStatementParser extends SQLParser {
     }
 
     public SQLCreateJavaFunctionStatement parseCreateJavaFunction() {
-        //JAVA_FUNC TODO
         SQLCreateJavaFunctionStatement stmt = new SQLCreateJavaFunctionStatement();
+        stmt.setDbType(dbType);
+
+        if (lexer.token() == Token.CREATE) {
+            lexer.nextToken();
+        }
+
+        accept(Token.JAVA_FUNCTION);
+
+        stmt.setName(this.exprParser.name());
+
+        if (identifierEquals("RETURNTYPE")) {
+            lexer.nextToken();
+            String returnType = lexer.stringVal();
+            stmt.setReturnType(returnType);
+            lexer.nextToken();
+        }
+
+        if (identifierEquals("INPUTTYPE")) {
+            lexer.nextToken();
+            String inputType = lexer.stringVal();
+            stmt.setInputType(inputType);
+            lexer.nextToken();
+        }
+
+        if (identifierEquals("CODE")) {
+            String javaCode;
+            String originText = lexer.text.toString();
+            String text = originText.toUpperCase();
+            javaCode = originText.substring(text.indexOf("CODE")+4, text.indexOf("ENDCODE"));
+            stmt.setJavaCode(javaCode);
+        }
+
+        for ( ; ;) {
+            if (lexer.token() == Token.EOF) {
+                break;
+            }
+            lexer.nextToken();
+        }
+
         return stmt;
     }
 

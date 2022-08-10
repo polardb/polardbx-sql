@@ -214,6 +214,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCopyFromStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
@@ -1035,6 +1036,17 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public boolean visit(SQLCreateDatabaseStatement x) {
         return true;
     }
+
+    @Override
+    public void endVisit(SQLCreateJavaFunctionStatement x){
+
+    }
+
+    @Override
+    public boolean visit(SQLCreateJavaFunctionStatement x) {
+        return true;
+    }
+
 
     @Override
     public boolean visit(SQLAlterTableDropIndex x) {

@@ -90,6 +90,7 @@ import org.apache.calcite.rel.ddl.ChangeConsensusRole;
 import org.apache.calcite.rel.ddl.CreateDatabase;
 import org.apache.calcite.rel.ddl.CreateFileStorage;
 import org.apache.calcite.rel.ddl.CreateIndex;
+import org.apache.calcite.rel.ddl.CreateJavaFunction;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
 import org.apache.calcite.rel.ddl.DropDatabase;
@@ -186,6 +187,7 @@ import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlCreateDatabase;
 import org.apache.calcite.sql.SqlCreateFileStorage;
 import org.apache.calcite.sql.SqlCreateIndex;
+import org.apache.calcite.sql.SqlCreateJavaFunction;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlCreateTableGroup;
 import org.apache.calcite.sql.SqlDal;
@@ -3349,6 +3351,8 @@ public class SqlToRelConverter {
             return RelRoot.of(convertCreateDatabase((SqlCreateDatabase) query), kind);
         case DROP_DATABASE:
             return RelRoot.of(convertDropDatabase((SqlDropDatabase) query), kind);
+        case CREATE_JAVA_FUNCTION:
+            return RelRoot.of(convertJavaFunction((SqlCreateJavaFunction) query), kind);
         case ALTER_TABLEGROUP:
             return RelRoot.of(convertAlterTableGroup((SqlAlterTableGroup) query), kind);
         case CREATE_TABLEGROUP:
@@ -4004,6 +4008,11 @@ public class SqlToRelConverter {
     private RelNode convertDropDatabase(SqlDropDatabase query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         return DropDatabase.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertJavaFunction(SqlCreateJavaFunction query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return CreateJavaFunction.create(query, targetRowType, getCluster());
     }
 
     /**

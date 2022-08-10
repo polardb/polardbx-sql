@@ -4196,6 +4196,11 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                 new DropDatabaseNamespace(this, (SqlDdl) node, enclosingNode, parentScope);
             registerNamespace(usingScope, alias, dropDbNamespace, forceNullable);
             break;
+        case CREATE_JAVA_FUNCTION:
+            final CreateJavaFunctionNamespace createJavaFuncNamespace =
+                new CreateJavaFunctionNamespace(this, (SqlDdl) node, enclosingNode, parentScope);
+            registerNamespace(usingScope, alias, createJavaFuncNamespace, forceNullable);
+            break;
         case LOCK_TABLE:
             registerDal(parentScope, usingScope, node, enclosingNode, alias, forceNullable);
             setValidatedNodeType(node, RelOptUtil.createDmlRowType(SqlKind.INSERT, typeFactory));
@@ -7714,6 +7719,28 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         private final SqlValidatorScope scope;
 
         CreateDatabaseNamespace(SqlValidatorImpl validator, SqlDdl node,
+                                SqlNode enclosingNode, SqlValidatorScope scope) {
+            super(validator, enclosingNode);
+            this.current = Preconditions.checkNotNull(node);
+            this.scope = scope;
+        }
+
+        @Override
+        public SqlNode getNode() {
+            return current;
+        }
+
+        @Override
+        protected RelDataType validateImpl(RelDataType targetRowType) {
+            return current.getOperator().deriveType(this.validator, this.scope, this.current);
+        }
+    }
+
+    private static class CreateJavaFunctionNamespace extends AbstractNamespace {
+        private final SqlCall current;
+        private final SqlValidatorScope scope;
+
+        CreateJavaFunctionNamespace(SqlValidatorImpl validator, SqlDdl node,
                                 SqlNode enclosingNode, SqlValidatorScope scope) {
             super(validator, enclosingNode);
             this.current = Preconditions.checkNotNull(node);

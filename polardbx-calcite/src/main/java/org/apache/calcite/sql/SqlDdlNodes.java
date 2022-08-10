@@ -49,6 +49,11 @@ public class SqlDdlNodes {
     return new SqlDropDatabase(pos, ifExists, dbName);
   }
 
+  public static SqlCreateJavaFunction createJavaFunction(SqlParserPos pos, SqlIdentifier funcName,
+                                                         String returnType, String inputType, String javaCode) {
+    return new SqlCreateJavaFunction(pos, funcName, returnType, inputType, javaCode);
+  }
+
   /** Creates a CREATE TABLE. */
   public static SqlCreateTable createTable(SqlParserPos pos, boolean replace,
                                            boolean ifNotExists, SqlNode name,
