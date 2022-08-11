@@ -3704,8 +3704,13 @@ public class SQLStatementParser extends SQLParser {
             String javaCode;
             String originText = lexer.text.toString();
             String text = originText.toUpperCase();
-            javaCode = originText.substring(text.indexOf("CODE")+4, text.indexOf("ENDCODE"));
+            javaCode = originText.substring(text.indexOf("CODE")+4, text.indexOf("ENDCODE")).trim();
             stmt.setJavaCode(javaCode);
+
+            String packageName = javaCode.split(";")[0]
+                                         .replace("package", "")
+                                         .trim();
+            stmt.setPackageName(packageName);
         }
 
         for ( ; ;) {

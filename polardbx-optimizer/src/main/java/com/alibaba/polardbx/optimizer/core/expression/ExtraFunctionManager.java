@@ -34,6 +34,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager.javaFunctionCaches;
+
 /**
  * {@linkplain AbstractScalarFunction}加载器，以类名做为Function Name，<strong>注意：忽略了大小写</stong>
  * <p>
@@ -65,6 +67,10 @@ public class ExtraFunctionManager {
         Constructor constructor = functionCaches.get(FunctionSignature.getFunctionSignature(null, name));
 
         if (constructor == null) {
+            constructor = javaFunctionCaches.get(FunctionSignature.getFunctionSignature(null, name));
+        }
+
+        if (constructor == null) {
             return new Dummy(functionName, operandTypes, resultType);
         }
 
@@ -91,6 +97,10 @@ public class ExtraFunctionManager {
             throw GeneralUtil.nestedException(e);
         }
 
+    }
+
+    public static Map<FunctionSignature, Constructor<?>> getFunctionCaches() {
+        return functionCaches;
     }
 
     private static void initFunctions() {
@@ -123,5 +133,6 @@ public class ExtraFunctionManager {
             }
             addFunction(clazz);
         }
+
     }
 }

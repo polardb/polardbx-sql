@@ -23,14 +23,16 @@ public class SqlCreateJavaFunction extends SqlDdl {
   protected String                         javaCode;
   protected String                         returnType;
   protected String                         inputType;
+  protected String                         packageName;
 
   public SqlCreateJavaFunction(SqlParserPos pos, SqlIdentifier funcName,
-                               String returnType, String inputType, String javaCode) {
+                               String returnType, String inputType, String javaCode, String packageName) {
     super(OPERATOR, pos);
     this.funcName = funcName;
     this.returnType = returnType;
     this.inputType = inputType;
     this.javaCode = javaCode;
+    this.packageName = packageName;
   }
 
   @Override
@@ -68,6 +70,10 @@ public class SqlCreateJavaFunction extends SqlDdl {
 
   public String getJavaCode() {
     return javaCode;
+  }
+
+  public String getPackageName() {
+    return packageName;
   }
 
   @Override

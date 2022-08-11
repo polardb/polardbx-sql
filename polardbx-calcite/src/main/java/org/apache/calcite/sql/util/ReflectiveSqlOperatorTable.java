@@ -37,7 +37,7 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
 
   //~ Instance fields --------------------------------------------------------
 
-  private final Multimap<Key, SqlOperator> operators = HashMultimap.create();
+  private static final Multimap<Key, SqlOperator> operators = HashMultimap.create();
 
   //~ Constructors -----------------------------------------------------------
 
@@ -128,7 +128,7 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
   /**
    * Registers a function or operator in the table.
    */
-  public void register(SqlOperator op) {
+  public static void register(SqlOperator op) {
     operators.put(new Key(op.getName(), op.getSyntax()), op);
   }
 

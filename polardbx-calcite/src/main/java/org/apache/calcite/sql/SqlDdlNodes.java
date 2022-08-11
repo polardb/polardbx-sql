@@ -50,8 +50,8 @@ public class SqlDdlNodes {
   }
 
   public static SqlCreateJavaFunction createJavaFunction(SqlParserPos pos, SqlIdentifier funcName,
-                                                         String returnType, String inputType, String javaCode) {
-    return new SqlCreateJavaFunction(pos, funcName, returnType, inputType, javaCode);
+                                                         String returnType, String inputType, String javaCode, String packageName) {
+    return new SqlCreateJavaFunction(pos, funcName, returnType, inputType, javaCode, packageName);
   }
 
   /** Creates a CREATE TABLE. */
