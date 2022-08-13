@@ -20,17 +20,14 @@ import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
-import org.codehaus.commons.compiler.CompileException;
 import org.codehaus.commons.compiler.util.ResourceFinderClassLoader;
 import org.codehaus.commons.compiler.util.resource.MapResourceCreator;
 import org.codehaus.commons.compiler.util.resource.MapResourceFinder;
 import org.codehaus.commons.compiler.util.resource.Resource;
 import org.codehaus.commons.compiler.util.resource.StringResource;
-import org.codehaus.janino.Compiler;
 import org.codehaus.commons.compiler.ICompiler;
 import org.codehaus.janino.CompilerFactory;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -97,7 +94,7 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
             funcName.toUpperCase(),
             SqlKind.OTHER_FUNCTION,
             //待判断
-            ReturnTypes.VARCHAR_2000,
+            ReturnTypes.BIGINT,
             InferTypes.FIRST_KNOWN,
             OperandTypes.ANY,
             //待判断

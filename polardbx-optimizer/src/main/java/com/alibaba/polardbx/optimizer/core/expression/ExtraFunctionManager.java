@@ -67,7 +67,10 @@ public class ExtraFunctionManager {
         Constructor constructor = functionCaches.get(FunctionSignature.getFunctionSignature(null, name));
 
         if (constructor == null) {
-            constructor = javaFunctionCaches.get(FunctionSignature.getFunctionSignature(null, name));
+            AbstractScalarFunction function =
+                UserDefinedJavaFunctionManager.
+                    getUserDefinedJavaFunction(functionName, operandTypes,resultType);
+            if (function != null) return function;
         }
 
         if (constructor == null) {
