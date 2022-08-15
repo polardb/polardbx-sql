@@ -10,9 +10,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
-import org.apache.orc.Writer;
 
-import java.nio.channels.WritableByteChannel;
 import java.util.List;
 
 public class SqlCreateJavaFunction extends SqlDdl {
@@ -23,16 +21,15 @@ public class SqlCreateJavaFunction extends SqlDdl {
   protected String                         javaCode;
   protected String                         returnType;
   protected String                         inputType;
-  protected String                         packageName;
+
 
   public SqlCreateJavaFunction(SqlParserPos pos, SqlIdentifier funcName,
-                               String returnType, String inputType, String javaCode, String packageName) {
+                               String returnType, String inputType, String javaCode) {
     super(OPERATOR, pos);
     this.funcName = funcName;
     this.returnType = returnType;
     this.inputType = inputType;
     this.javaCode = javaCode;
-    this.packageName = packageName;
   }
 
   @Override
@@ -70,10 +67,6 @@ public class SqlCreateJavaFunction extends SqlDdl {
 
   public String getJavaCode() {
     return javaCode;
-  }
-
-  public String getPackageName() {
-    return packageName;
   }
 
   @Override

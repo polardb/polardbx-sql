@@ -194,6 +194,7 @@ import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.FnvHash.Constants;
 import com.alibaba.polardbx.druid.util.MySqlUtils;
 import com.alibaba.polardbx.druid.util.StringUtils;
+import org.apache.log4j.spi.ErrorCode;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -3704,13 +3705,11 @@ public class SQLStatementParser extends SQLParser {
             String javaCode;
             String originText = lexer.text.toString();
             String text = originText.toUpperCase();
+            if (!text.contains("ENDCODE")) {
+                throw new ParserException("Need ENDCODE in your syntax");
+            }
             javaCode = originText.substring(text.indexOf("CODE")+4, text.indexOf("ENDCODE")).trim();
             stmt.setJavaCode(javaCode);
-
-            String packageName = javaCode.split(";")[0]
-                                         .replace("package", "")
-                                         .trim();
-            stmt.setPackageName(packageName);
         }
 
         for ( ; ;) {

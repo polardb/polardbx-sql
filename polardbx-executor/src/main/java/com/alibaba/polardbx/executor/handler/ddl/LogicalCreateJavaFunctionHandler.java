@@ -19,6 +19,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
+import org.apache.calcite.sql.type.SqlReturnTypeInference;
 import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 import org.codehaus.commons.compiler.util.ResourceFinderClassLoader;
 import org.codehaus.commons.compiler.util.resource.MapResourceCreator;
@@ -44,8 +45,9 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     final String funcName = sqlCreateJavaFunction.getFuncName().toString();
     final String inputType = sqlCreateJavaFunction.getInputType();
     final String returnType = sqlCreateJavaFunction.getReturnType();
-    final String packageName = sqlCreateJavaFunction.getPackageName();
-    final String javaCode = sqlCreateJavaFunction.getJavaCode();
+    final String packageName = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
+    final String importString = "import com.alibaba.polardbx.optimizer.core.function.calc.UserDefinedJavaFunction;\n";
+    String javaCode = sqlCreateJavaFunction.getJavaCode();
 
     if (funcName.equals("") ||
         inputType.equals("") ||
@@ -63,9 +65,10 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     }
 
     //load javacode
+    javaCode = "package " + packageName +";\n" + importString + javaCode;
     CompilerFactory compilerFactory = new CompilerFactory();
     ICompiler compiler = compilerFactory.newCompiler();
-    Map<String, byte[]> classes = new HashMap<String, byte[]>();
+    Map<String, byte[]> classes = new HashMap<>();
     compiler.setClassFileCreator(new MapResourceCreator(classes));
 
     try {
@@ -76,7 +79,7 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
           )
       });
     } catch (Exception e) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Compile code error");
+      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e.toString());
     }
     ClassLoader cl = new ResourceFinderClassLoader(
         new MapResourceFinder(classes),    // resourceFinder
@@ -93,14 +96,54 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         new SqlFunction(
             funcName.toUpperCase(),
             SqlKind.OTHER_FUNCTION,
-            //待判断
-            ReturnTypes.BIGINT,
+            computeReturnType(returnType),
             InferTypes.FIRST_KNOWN,
             OperandTypes.ANY,
-            //待判断
-            SqlFunctionCategory.NUMERIC
+            computeCategory(returnType, inputType)
         )
     );
-    return new AffectRowCursor(new int[] {1});
+    return new AffectRowCursor(1);
+  }
+
+  private SqlReturnTypeInference computeReturnType(String returnType) {
+    if (returnType == null) {
+      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Return type cannot be null");
+    }
+    switch (returnType.toUpperCase()) {
+      case "BOOLEAN":
+        return ReturnTypes.BOOLEAN;
+      case "FLOAT":
+      case "DOUBLE":
+        return ReturnTypes.DOUBLE;
+      case "INTEGER":
+        return ReturnTypes.INTEGER;
+      case "BIGINT":
+        return ReturnTypes.BIGINT;
+      case "VARCHAR":
+        return ReturnTypes.VARCHAR_2000;
+
+      default:
+        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Return type not support yet");
+    }
+  }
+
+  private SqlFunctionCategory computeCategory(String returnType, String inputType) {
+    returnType = returnType.toLowerCase();
+    inputType = inputType.toLowerCase();
+
+    if (returnType.equals("string") && inputType.equals("string")) {
+      return SqlFunctionCategory.STRING;
+    }
+
+    if (isNumericType(returnType) && isNumericType(inputType)) {
+      return SqlFunctionCategory.NUMERIC;
+    }
+
+    return SqlFunctionCategory.SYSTEM;
+  }
+
+  private boolean isNumericType(String type) {
+    return type.equals("BIGINT") || type.equals("INTEGER")
+        || type.equals("DOUBLE") || type.equals("FLOAT");
   }
 }

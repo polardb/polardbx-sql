@@ -33,6 +33,7 @@ public abstract class UserDefinedJavaFunction extends AbstractScalarFunction {
   @Override
   public Object compute(Object[] args, ExecutionContext ec) {
     Object argument = args[0];
+    //对入参进行处理
     return compute(argument);
   }
 
@@ -44,11 +45,22 @@ public abstract class UserDefinedJavaFunction extends AbstractScalarFunction {
     switch (className.toLowerCase()) {
       case "long":
         return DataTypes.LongType;
+      case "char":
+        return DataTypes.CharType;
       case "string":
         return DataTypes.VarcharType;
       case "double":
         return DataTypes.DoubleType;
-
+      case "int":
+        return DataTypes.IntegerType;
+      case "short":
+        return DataTypes.ShortType;
+      case "byte":
+        return DataTypes.BytesType;
+      case "float":
+        return DataTypes.FloatType;
+      case "boolean":
+        return DataTypes.BooleanType;
       default:
         throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Class not support yet " + className);
     }

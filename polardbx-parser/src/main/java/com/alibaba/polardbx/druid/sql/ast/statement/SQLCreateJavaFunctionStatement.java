@@ -4,7 +4,6 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectWithDataType;
-import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -16,7 +15,6 @@ public class SQLCreateJavaFunctionStatement extends SQLStatementImpl implements 
   protected String  javaCode;
   protected String returnType;
   protected String inputType;
-  protected String packageName;
 
   @Override
   public void accept0(SQLASTVisitor visitor) {
@@ -56,14 +54,6 @@ public class SQLCreateJavaFunctionStatement extends SQLStatementImpl implements 
 
   public void setInputType(String inputType) {
     this.inputType = inputType;
-  }
-
-  public String getPackageName() {
-    return packageName;
-  }
-
-  public void setPackageName(String packageName) {
-    this.packageName = packageName;
   }
 
   @Override

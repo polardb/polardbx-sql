@@ -2,15 +2,13 @@ package com.alibaba.polardbx.optimizer.core.expression;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.ClassFinder;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
 import com.alibaba.polardbx.optimizer.core.datatype.ByteType;
+import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.DoubleType;
 import com.alibaba.polardbx.optimizer.core.datatype.FloatType;
 import com.alibaba.polardbx.optimizer.core.datatype.IntegerType;
@@ -19,14 +17,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.ShortType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.expression.bean.FunctionSignature;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
-import com.alibaba.polardbx.optimizer.core.function.calc.Dummy;
-import com.google.common.collect.Lists;
-import com.sun.jdi.CharType;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.Validate;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,9 +36,6 @@ public class UserDefinedJavaFunctionManager extends ExtraFunctionManager{
 
     try {
       Constructor constructor = type.getConstructor(String.class, String.class);
-      if (constructor == null) {
-        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "need constructor in your code");
-      }
       AbstractScalarFunction sample = (AbstractScalarFunction) constructor.newInstance(null, null);
       for (FunctionSignature signature : sample.getFunctionSignature()) {
         Constructor oldConstructor = javaFunctionCaches.put(signature, constructor);
@@ -90,20 +79,30 @@ public class UserDefinedJavaFunctionManager extends ExtraFunctionManager{
 
     if (type instanceof BooleanType) {
       return "boolean";
-    } else if (type instanceof LongType) {
+    }
+    if (type instanceof LongType) {
       return "long";
-    } else if (type instanceof IntegerType) {
+    }
+    if (type instanceof IntegerType) {
       return "int";
-    } else if (type instanceof ShortType) {
+    }
+    if (type instanceof ShortType) {
       return "short";
-    } else if (type instanceof ByteType) {
+    }
+    if (type instanceof ByteType) {
       return "byte";
-    } else if (type instanceof FloatType) {
+    }
+    if (type instanceof FloatType) {
       return "float";
-    } else if (type instanceof DoubleType) {
+    }
+    if (type instanceof DoubleType) {
       return "double";
-    } else if (type instanceof VarcharType || type instanceof CharType) {
+    }
+    if (type instanceof VarcharType) {
       return "string";
+    }
+    if (type instanceof CharType) {
+      return "char";
     }
     throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Compute java class error");
   }

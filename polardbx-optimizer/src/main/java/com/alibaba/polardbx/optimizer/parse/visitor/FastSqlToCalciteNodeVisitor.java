@@ -371,7 +371,6 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.taobao.tddl.common.privilege.PrivilegePoint;
-import groovy.sql.Sql;
 import org.apache.calcite.avatica.util.TimeUnit;
 import org.apache.calcite.sql.GroupConcatCall;
 import org.apache.calcite.sql.JoinConditionType;
@@ -3866,8 +3865,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             funcName,
             x.getReturnType(),
             x.getInputType(),
-            x.getJavaCode(),
-            x.getPackageName());
+            x.getJavaCode());
       addPrivilegeVerifyItem(null, null, PrivilegePoint.CREATE);
       return false;
     }
