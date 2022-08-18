@@ -194,6 +194,7 @@ import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.FnvHash.Constants;
 import com.alibaba.polardbx.druid.util.MySqlUtils;
 import com.alibaba.polardbx.druid.util.StringUtils;
+import com.sun.prism.PixelFormat;
 import org.apache.log4j.spi.ErrorCode;
 
 import java.math.BigDecimal;
@@ -3679,7 +3680,7 @@ public class SQLStatementParser extends SQLParser {
         SQLCreateJavaFunctionStatement stmt = new SQLCreateJavaFunctionStatement();
         stmt.setDbType(dbType);
 
-        if (lexer.token() == Token.CREATE) {
+        if (lexer.token == Token.CREATE) {
             lexer.nextToken();
         }
 
@@ -3694,17 +3695,35 @@ public class SQLStatementParser extends SQLParser {
             lexer.nextToken();
         }
 
+        //TODO 解析生成SqlDataType
+        List<String> inputTypes = new ArrayList<String>();
         if (identifierEquals("INPUTTYPE")) {
             lexer.nextToken();
             String inputType = lexer.stringVal();
-            stmt.setInputType(inputType);
+            inputTypes.add(inputType);
             lexer.nextToken();
+            while (lexer.token == COMMA) {
+                lexer.nextToken();
+                String type = lexer.stringVal();
+                inputTypes.add(type);
+                lexer.nextToken();
+            }
+            stmt.setInputTypes(inputTypes);
+        }
+
+        String originText = lexer.text.toString();
+        String text = originText.toUpperCase();
+
+        if (identifierEquals("IMPORT")) {
+            if (!text.contains("ENDIMPORT")) {
+                throw new ParserException("Need ENDIMPORT in your syntax");
+            }
+            String importString = originText.substring(text.indexOf("IMPORT")+5, text.indexOf("ENDIMPORT")).trim();
+            stmt.setImportString(importString);
         }
 
         if (identifierEquals("CODE")) {
             String javaCode;
-            String originText = lexer.text.toString();
-            String text = originText.toUpperCase();
             if (!text.contains("ENDCODE")) {
                 throw new ParserException("Need ENDCODE in your syntax");
             }

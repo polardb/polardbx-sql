@@ -7,6 +7,8 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObjectWithDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
+import java.util.List;
+
 public class SQLCreateJavaFunctionStatement extends SQLStatementImpl implements SQLCreateStatement, SQLObjectWithDataType {
   public SQLCreateJavaFunctionStatement() {
 
@@ -14,7 +16,8 @@ public class SQLCreateJavaFunctionStatement extends SQLStatementImpl implements 
   protected SQLName name;
   protected String  javaCode;
   protected String returnType;
-  protected String inputType;
+  protected List<String> inputType;
+  protected String importString;
 
   @Override
   public void accept0(SQLASTVisitor visitor) {
@@ -48,12 +51,20 @@ public class SQLCreateJavaFunctionStatement extends SQLStatementImpl implements 
     this.returnType = returnType;
   }
 
-  public String getInputType() {
+  public List<String> getInputTypes() {
     return inputType;
   }
 
-  public void setInputType(String inputType) {
+  public void setInputTypes(List<String> inputType) {
     this.inputType = inputType;
+  }
+
+  public String getImportString() {
+    return importString;
+  }
+
+  public void setImportString(String importString) {
+    this.importString = importString;
   }
 
   @Override

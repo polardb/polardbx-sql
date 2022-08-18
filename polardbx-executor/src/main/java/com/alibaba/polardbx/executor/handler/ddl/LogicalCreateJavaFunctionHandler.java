@@ -7,10 +7,15 @@ import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
+import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
 import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
 import com.alibaba.polardbx.optimizer.core.expression.bean.FunctionSignature;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJavaFunction;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCreateJavaFunction;
 import org.apache.calcite.sql.SqlFunction;
@@ -20,6 +25,7 @@ import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlReturnTypeInference;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 import org.codehaus.commons.compiler.util.ResourceFinderClassLoader;
 import org.codehaus.commons.compiler.util.resource.MapResourceCreator;
@@ -29,10 +35,14 @@ import org.codehaus.commons.compiler.util.resource.StringResource;
 import org.codehaus.commons.compiler.ICompiler;
 import org.codehaus.janino.CompilerFactory;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
+
+  public static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
   public LogicalCreateJavaFunctionHandler(IRepository repo) {
     super(repo);
@@ -40,20 +50,20 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
 
   @Override
   public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+    final String PACKAGE_NAME = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
+
     final LogicalCreateJavaFunction logicalCreateJavaFunction = (LogicalCreateJavaFunction) logicalPlan;
     final SqlCreateJavaFunction sqlCreateJavaFunction = (SqlCreateJavaFunction) logicalCreateJavaFunction.getNativeSqlNode();
     final String funcName = sqlCreateJavaFunction.getFuncName().toString();
-    final String inputType = sqlCreateJavaFunction.getInputType();
+    final List<String> inputTypes = sqlCreateJavaFunction.getInputTypes();
     final String returnType = sqlCreateJavaFunction.getReturnType();
-    final String packageName = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
-    final String importString = "import com.alibaba.polardbx.optimizer.core.function.calc.UserDefinedJavaFunction;\n";
-    String javaCode = sqlCreateJavaFunction.getJavaCode();
+    final String userImportString = sqlCreateJavaFunction.getImportString() == null ? "" : sqlCreateJavaFunction.getImportString();
+    final String userJavaCode = sqlCreateJavaFunction.getJavaCode();
 
     if (funcName.equals("") ||
-        inputType.equals("") ||
+        inputTypes.isEmpty() ||
         returnType.equals("") ||
-        packageName.equals("") ||
-        javaCode.equals("")) {
+        userJavaCode.equals("")) {
       throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Create java_function syntax error");
     }
 
@@ -64,8 +74,26 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
       throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String.format("Function %s already exists", funcName));
     }
 
-    //load javacode
-    javaCode = "package " + packageName +";\n" + importString + javaCode;
+    String className = funcName.substring(0, 1).toUpperCase() + funcName.substring(1).toLowerCase();
+    String CODE = String.format(
+            "package %s;\n" +
+            "import com.alibaba.polardbx.optimizer.core.function.calc.UserDefinedJavaFunction;\n" +
+            "import com.alibaba.polardbx.optimizer.core.datatype.DataType;\n" +
+            "import java.util.List;\n"+
+            "%s\n"+
+            "public class %s extends UserDefinedJavaFunction {\n" +
+            "        public %s(List<DataType> operandTypes, DataType resultType) {\n" +
+            "        super(operandTypes, resultType);\n" +
+            "    }\n" +
+            "@Override\n" +
+            "public String[] getFunctionNames() {\n" +
+            "    return new String[] {\"%s\"};\n" +
+            "}\n" +
+            "@Override\n" +
+            "%s" +
+            "}",
+        PACKAGE_NAME, userImportString, className, className, funcName.toUpperCase(), userJavaCode);
+
     CompilerFactory compilerFactory = new CompilerFactory();
     ICompiler compiler = compilerFactory.newCompiler();
     Map<String, byte[]> classes = new HashMap<>();
@@ -74,8 +102,8 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     try {
       compiler.compile(new Resource[] {
           new StringResource(
-              String.format("%s/%s.java", packageName, funcName),
-              javaCode
+              String.format("%s/%s.java", PACKAGE_NAME, className),
+              CODE
           )
       });
     } catch (Exception e) {
@@ -86,24 +114,41 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         ClassLoader.getSystemClassLoader() // parent
     );
 
+    List<DataType> inputDataTypes = new ArrayList<>(inputTypes.size());
+    for (String inputType : inputTypes) {
+      inputDataTypes.add(computeDataType(inputType));
+    }
+    DataType resultDataType = computeDataType(returnType);
+
     try{
-      UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", packageName, funcName)));
+      UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", PACKAGE_NAME, className)), inputDataTypes, resultDataType);
     } catch (Exception e) {
       throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Add function error");
     }
 
-    ReflectiveSqlOperatorTable.register(
-        new SqlFunction(
-            funcName.toUpperCase(),
-            SqlKind.OTHER_FUNCTION,
-            computeReturnType(returnType),
-            InferTypes.FIRST_KNOWN,
-            OperandTypes.ANY,
-            computeCategory(returnType, inputType)
-        )
+    //new SqlUserDefinedFunction
+    final SqlFunction UserDefinedJavaFunction= new SqlFunction(
+        funcName.toUpperCase(),
+        SqlKind.OTHER_FUNCTION,
+        computeReturnType(returnType),
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.ONE_OR_MORE,
+        SqlFunctionCategory.SYSTEM
     );
+    ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
+    RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
     return new AffectRowCursor(1);
   }
+
+  private DataType computeDataType(String type) {
+    SqlTypeName name = SqlTypeName.get(type.toUpperCase());
+    if (name == null) {
+      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type name");
+    }
+    return DataTypeUtil.calciteToDrdsType(factory.createSqlType(name));
+  }
+
+
 
   private SqlReturnTypeInference computeReturnType(String returnType) {
     if (returnType == null) {
@@ -127,20 +172,20 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     }
   }
 
-  private SqlFunctionCategory computeCategory(String returnType, String inputType) {
-    returnType = returnType.toLowerCase();
-    inputType = inputType.toLowerCase();
-
-    if (returnType.equals("string") && inputType.equals("string")) {
-      return SqlFunctionCategory.STRING;
-    }
-
-    if (isNumericType(returnType) && isNumericType(inputType)) {
-      return SqlFunctionCategory.NUMERIC;
-    }
-
-    return SqlFunctionCategory.SYSTEM;
-  }
+//  private SqlFunctionCategory computeCategory(String returnType, String inputType) {
+//    returnType = returnType.toLowerCase();
+//    inputType = inputType.toLowerCase();
+//
+//    if (returnType.equals("string") && inputType.equals("string")) {
+//      return SqlFunctionCategory.STRING;
+//    }
+//
+//    if (isNumericType(returnType) && isNumericType(inputType)) {
+//      return SqlFunctionCategory.NUMERIC;
+//    }
+//
+//    return SqlFunctionCategory.SYSTEM;
+//  }
 
   private boolean isNumericType(String type) {
     return type.equals("BIGINT") || type.equals("INTEGER")

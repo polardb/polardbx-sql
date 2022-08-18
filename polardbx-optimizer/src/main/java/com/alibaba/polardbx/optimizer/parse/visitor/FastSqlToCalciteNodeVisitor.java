@@ -3864,8 +3864,9 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         this.sqlNode = SqlDdlNodes.createJavaFunction(SqlParserPos.ZERO,
             funcName,
             x.getReturnType(),
-            x.getInputType(),
-            x.getJavaCode());
+            x.getInputTypes(),
+            x.getJavaCode(),
+            x.getImportString());
       addPrivilegeVerifyItem(null, null, PrivilegePoint.CREATE);
       return false;
     }

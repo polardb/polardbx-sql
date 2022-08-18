@@ -34,8 +34,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager.javaFunctionCaches;
-
 /**
  * {@linkplain AbstractScalarFunction}加载器，以类名做为Function Name，<strong>注意：忽略了大小写</stong>
  * <p>

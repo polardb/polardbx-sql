@@ -20,16 +20,18 @@ public class SqlCreateJavaFunction extends SqlDdl {
   final SqlIdentifier                      funcName;
   protected String                         javaCode;
   protected String                         returnType;
-  protected String                         inputType;
+  protected List<String>                   inputTypes;
+  protected String                         importString;
 
 
   public SqlCreateJavaFunction(SqlParserPos pos, SqlIdentifier funcName,
-                               String returnType, String inputType, String javaCode) {
+                               String returnType, List<String> inputTypes, String javaCode, String importString) {
     super(OPERATOR, pos);
     this.funcName = funcName;
     this.returnType = returnType;
-    this.inputType = inputType;
+    this.inputTypes = inputTypes;
     this.javaCode = javaCode;
+    this.importString = importString;
   }
 
   @Override
@@ -42,9 +44,13 @@ public class SqlCreateJavaFunction extends SqlDdl {
       writer.keyword("RETURNTYPE");
       writer.literal(returnType);
     }
-    if (TStringUtil.isNotBlank(inputType)) {
+    if (!inputTypes.isEmpty()) {
       writer.keyword("INPUTTYPE");
-      writer.literal(inputType);
+      for (int i = 0; i < inputTypes.size()-1; i++) {
+        writer.literal(inputTypes.get(i));
+        writer.literal(",");
+      }
+      writer.literal(inputTypes.get(inputTypes.size()-1));
     }
     if (TStringUtil.isNotBlank(javaCode)) {
       writer.keyword("#CODE");
@@ -61,12 +67,16 @@ public class SqlCreateJavaFunction extends SqlDdl {
     return returnType;
   }
 
-  public String getInputType() {
-    return inputType;
+  public List<String> getInputTypes() {
+    return inputTypes;
   }
 
   public String getJavaCode() {
     return javaCode;
+  }
+
+  public String getImportString() {
+    return importString;
   }
 
   @Override

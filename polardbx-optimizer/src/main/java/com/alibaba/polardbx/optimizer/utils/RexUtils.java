@@ -38,6 +38,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.clearspring.analytics.util.Lists;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import org.apache.calcite.avatica.util.ByteString;
@@ -74,6 +75,7 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -93,7 +95,7 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
  * Created by chuanqin on 17/8/7.
  */
 public class RexUtils {
-    private final static List<SqlOperator> UN_PUSHABLE_FUNCTION = ImmutableList.of(
+    private final static List<SqlOperator> UN_PUSHABLE_FUNCTION = new ArrayList<>(Arrays.asList(
         TddlOperatorTable.CAN_ACCESS_TABLE,
         TddlOperatorTable.GET_LOCK,
         TddlOperatorTable.RELEASE_LOCK,
@@ -102,8 +104,13 @@ public class RexUtils {
         TddlOperatorTable.IS_USED_LOCK,
         TddlOperatorTable.ASSIGNMENT,
         TddlOperatorTable.VERSION,
-        TddlOperatorTable.PART_ROUTE
-    );
+        TddlOperatorTable.PART_ROUTE,
+        TddlOperatorTable.ACOS
+    ));
+
+    public static void addUnpushableFunction(SqlOperator func) {
+        UN_PUSHABLE_FUNCTION.add(func);
+    }
 
     private final static RelDataTypeFactory FACTORY = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
     private final static RexBuilder REX_BUILDER = new RexBuilder(FACTORY);
