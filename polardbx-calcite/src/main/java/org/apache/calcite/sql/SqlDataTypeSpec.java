@@ -752,6 +752,8 @@ public class SqlDataTypeSpec extends SqlNode {
             switch (value.toUpperCase()) {
             case "INT":
                 return INTEGER;
+            case "BOOL":
+                return BOOLEAN;
             case "NUMERIC":
             case "DEC":
                 return DECIMAL;
