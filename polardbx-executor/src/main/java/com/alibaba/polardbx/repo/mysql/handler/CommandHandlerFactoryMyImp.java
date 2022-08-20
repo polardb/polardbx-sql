@@ -85,6 +85,7 @@ import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateViewHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropDatabaseHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropFileStorageHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropIndexHandler;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalDropJavaFunctionHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropTableHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropViewHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalGenericDdlHandler;
@@ -148,6 +149,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateView;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropJavaFunction;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropView;
@@ -259,6 +261,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_DROP_DATABASE_HANDLER = new LogicalDropDatabaseHandler(repo);
 
         LOGICAL_CREATE_JAVA_FUNCTION_HANDLER = new LogicalCreateJavaFunctionHandler(repo);
+        LOGICAL_DROP_JAVA_FUNTION_HANDLER = new LogicalDropJavaFunctionHandler(repo);
 
         SHOW_DDL_JOBS_HANDLER = new DdlEngineShowJobsHandler(repo);
         RECOVER_DDL_JOBS_HANDLER = new DdlEngineRecoverJobsHandler(repo);
@@ -430,6 +433,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
 
     //java udf
     private final PlanHandler LOGICAL_CREATE_JAVA_FUNCTION_HANDLER;
+    private final PlanHandler LOGICAL_DROP_JAVA_FUNTION_HANDLER;
 
     private final PlanHandler SHOW_DDL_JOBS_HANDLER;
     private final PlanHandler CANCEL_DDL_JOBS_HANDLER;
@@ -591,8 +595,9 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
             return LOGICAL_DROP_DATABASE_HANDLER;
         } else if (logicalPlan instanceof LogicalCreateJavaFunction) {
             return LOGICAL_CREATE_JAVA_FUNCTION_HANDLER;
-        }
-        else if (logicalPlan instanceof LogicalRebalance) {
+        } else if (logicalPlan instanceof LogicalDropJavaFunction) {
+            return LOGICAL_DROP_JAVA_FUNTION_HANDLER;
+        } else if (logicalPlan instanceof LogicalRebalance) {
             return LOGICAL_REBALANCE_HANDLER;
         } else if (logicalPlan instanceof LogicalChangeConsensusLeader) {
             return LOGICAL_CHANGE_CONSENSUS_LEADER_HANDLER;

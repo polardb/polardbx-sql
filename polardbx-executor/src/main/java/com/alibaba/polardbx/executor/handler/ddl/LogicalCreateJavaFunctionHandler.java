@@ -130,6 +130,7 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     final SqlFunction UserDefinedJavaFunction= new SqlFunction(
         funcName.toUpperCase(),
         SqlKind.OTHER_FUNCTION,
+        //需要使用其他计算方法
         computeReturnType(returnType),
         InferTypes.FIRST_KNOWN,
         OperandTypes.ONE_OR_MORE,
@@ -137,13 +138,13 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     );
     ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
     RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
-    return new AffectRowCursor(1);
+    return new AffectRowCursor(0);
   }
 
   private DataType computeDataType(String type) {
     SqlTypeName name = SqlTypeName.get(type.toUpperCase());
     if (name == null) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type name");
+      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type "+type);
     }
     return DataTypeUtil.calciteToDrdsType(factory.createSqlType(name));
   }
@@ -151,41 +152,12 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
 
 
   private SqlReturnTypeInference computeReturnType(String returnType) {
-    if (returnType == null) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Return type cannot be null");
+    SqlTypeName name = SqlTypeName.get(returnType.toUpperCase());
+    if (name == null) {
+      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport return type " + returnType);
     }
-    switch (returnType.toUpperCase()) {
-      case "BOOLEAN":
-        return ReturnTypes.BOOLEAN;
-      case "FLOAT":
-      case "DOUBLE":
-        return ReturnTypes.DOUBLE;
-      case "INTEGER":
-        return ReturnTypes.INTEGER;
-      case "BIGINT":
-        return ReturnTypes.BIGINT;
-      case "VARCHAR":
-        return ReturnTypes.VARCHAR_2000;
-
-      default:
-        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Return type not support yet");
-    }
+    return ReturnTypes.explicit(name);
   }
-
-//  private SqlFunctionCategory computeCategory(String returnType, String inputType) {
-//    returnType = returnType.toLowerCase();
-//    inputType = inputType.toLowerCase();
-//
-//    if (returnType.equals("string") && inputType.equals("string")) {
-//      return SqlFunctionCategory.STRING;
-//    }
-//
-//    if (isNumericType(returnType) && isNumericType(inputType)) {
-//      return SqlFunctionCategory.NUMERIC;
-//    }
-//
-//    return SqlFunctionCategory.SYSTEM;
-//  }
 
   private boolean isNumericType(String type) {
     return type.equals("BIGINT") || type.equals("INTEGER")

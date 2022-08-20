@@ -132,6 +132,19 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
     operators.put(new Key(op.getName(), op.getSyntax()), op);
   }
 
+  public static boolean remove(String name) {
+    Key toRemove = null;
+    for (Key key : operators.keySet()) {
+      if (key.getKey().equals(name)) {
+        toRemove = key;
+        break;
+      }
+    }
+    if (toRemove == null) return false;
+    operators.removeAll(toRemove);
+    return true;
+  }
+
   public List<SqlOperator> getOperatorList() {
     return ImmutableList.copyOf(operators.values());
   }

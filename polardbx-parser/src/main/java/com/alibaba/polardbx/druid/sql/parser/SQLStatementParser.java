@@ -934,6 +934,9 @@ public class SQLStatementParser extends SQLParser {
             }
             stmt = dropFunc;
             break;
+        case JAVA_FUNCTION:
+            stmt = parseDropJavaFunction(false);
+            break;
         case TABLESPACE:
             stmt = parseDropTablespace(false);
             break;
@@ -2929,8 +2932,22 @@ public class SQLStatementParser extends SQLParser {
     }
 
     protected SQLDropJavaFunctionStatement parseDropJavaFunction(boolean acceptDrop) {
-        //JAVA_FUNC TODO
+        if (acceptDrop) {
+            accept(Token.DROP);
+        }
         SQLDropJavaFunctionStatement stmt = new SQLDropJavaFunctionStatement();
+
+        accept(Token.JAVA_FUNCTION);
+
+        if (lexer.token == Token.IF) {
+            lexer.nextToken();
+            accept(Token.EXISTS);
+            stmt.setIfExists(true);
+        }
+
+        SQLName name = this.exprParser.name();
+        stmt.setName(name);
+
         return stmt;
     }
 

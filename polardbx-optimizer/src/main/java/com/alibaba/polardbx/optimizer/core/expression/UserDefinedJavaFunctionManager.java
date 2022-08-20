@@ -25,6 +25,15 @@ public class UserDefinedJavaFunctionManager extends ExtraFunctionManager{
     initFunctions();
   }
 
+  public static boolean containsFunction(String name) {
+    return javaFunctionCaches.containsKey(name);
+  }
+
+  public static boolean removeFunction(String name) {
+    javaFunctionCaches.remove(name);
+    return true;
+  }
+
   public static void addFunction(Class type, List<DataType> inputTypes, DataType resultType) {
 
     try {

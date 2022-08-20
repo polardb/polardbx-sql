@@ -45,6 +45,7 @@ import org.apache.calcite.linq4j.function.Function2;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.prepare.Prepare;
+import org.apache.calcite.rel.ddl.DropJavaFunction;
 import org.apache.calcite.rel.type.DynamicRecordType;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -4201,6 +4202,11 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
                 new CreateJavaFunctionNamespace(this, (SqlDdl) node, enclosingNode, parentScope);
             registerNamespace(usingScope, alias, createJavaFuncNamespace, forceNullable);
             break;
+        case DROP_JAVA_FUNCTION:
+            final DropJavaFunctionNamespace dropJavaFunctionNamespace =
+            new DropJavaFunctionNamespace(this, (SqlDdl) node, enclosingNode, parentScope);
+            registerNamespace(usingScope, alias, dropJavaFunctionNamespace, forceNullable);
+            break;
         case LOCK_TABLE:
             registerDal(parentScope, usingScope, node, enclosingNode, alias, forceNullable);
             setValidatedNodeType(node, RelOptUtil.createDmlRowType(SqlKind.INSERT, typeFactory));
@@ -7742,6 +7748,28 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
 
         CreateJavaFunctionNamespace(SqlValidatorImpl validator, SqlDdl node,
                                 SqlNode enclosingNode, SqlValidatorScope scope) {
+            super(validator, enclosingNode);
+            this.current = Preconditions.checkNotNull(node);
+            this.scope = scope;
+        }
+
+        @Override
+        public SqlNode getNode() {
+            return current;
+        }
+
+        @Override
+        protected RelDataType validateImpl(RelDataType targetRowType) {
+            return current.getOperator().deriveType(this.validator, this.scope, this.current);
+        }
+    }
+
+    private static class DropJavaFunctionNamespace extends AbstractNamespace {
+        private final SqlCall current;
+        private final SqlValidatorScope scope;
+
+        DropJavaFunctionNamespace(SqlValidatorImpl validator, SqlDdl node,
+                                    SqlNode enclosingNode, SqlValidatorScope scope) {
             super(validator, enclosingNode);
             this.current = Preconditions.checkNotNull(node);
             this.scope = scope;

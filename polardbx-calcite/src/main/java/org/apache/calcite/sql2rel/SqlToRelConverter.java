@@ -96,6 +96,7 @@ import org.apache.calcite.rel.ddl.CreateTableGroup;
 import org.apache.calcite.rel.ddl.DropDatabase;
 import org.apache.calcite.rel.ddl.DropFileStorage;
 import org.apache.calcite.rel.ddl.DropIndex;
+import org.apache.calcite.rel.ddl.DropJavaFunction;
 import org.apache.calcite.rel.ddl.DropTable;
 import org.apache.calcite.rel.ddl.DropTableGroup;
 import org.apache.calcite.rel.ddl.GenericDdl;
@@ -198,6 +199,7 @@ import org.apache.calcite.sql.SqlDmlKeyword;
 import org.apache.calcite.sql.SqlDropDatabase;
 import org.apache.calcite.sql.SqlDropFileStorage;
 import org.apache.calcite.sql.SqlDropIndex;
+import org.apache.calcite.sql.SqlDropJavaFunction;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlDropTableGroup;
 import org.apache.calcite.sql.SqlDynamicParam;
@@ -3352,7 +3354,9 @@ public class SqlToRelConverter {
         case DROP_DATABASE:
             return RelRoot.of(convertDropDatabase((SqlDropDatabase) query), kind);
         case CREATE_JAVA_FUNCTION:
-            return RelRoot.of(convertJavaFunction((SqlCreateJavaFunction) query), kind);
+            return RelRoot.of(convertCreateJavaFunction((SqlCreateJavaFunction) query), kind);
+        case DROP_JAVA_FUNCTION:
+            return RelRoot.of(convertDropJavaFunction((SqlDropJavaFunction) query), kind);
         case ALTER_TABLEGROUP:
             return RelRoot.of(convertAlterTableGroup((SqlAlterTableGroup) query), kind);
         case CREATE_TABLEGROUP:
@@ -4010,9 +4014,14 @@ public class SqlToRelConverter {
         return DropDatabase.create(query, targetRowType, getCluster());
     }
 
-    private RelNode convertJavaFunction(SqlCreateJavaFunction query) {
+    private RelNode convertCreateJavaFunction(SqlCreateJavaFunction query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         return CreateJavaFunction.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertDropJavaFunction(SqlDropJavaFunction query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return DropJavaFunction.create(query, targetRowType, getCluster());
     }
 
     /**

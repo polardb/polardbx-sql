@@ -5,7 +5,10 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 
 import java.util.List;
 
@@ -30,7 +33,12 @@ public abstract class UserDefinedJavaFunction extends AbstractScalarFunction {
 
     //对入参进行处理
     for (int i = 0; i < args.length; i++) {
-      args[i] = userInputType.get(i).convertFrom(args[i]);
+      DataType type = userInputType.get(i);
+      if (type instanceof VarcharType || type instanceof CharType) {
+        args[i] = DataTypes.StringType.convertFrom(args[i]);
+        continue;
+      }
+      args[i] = type.convertFrom(args[i]);
     }
     return resultType.convertFrom(compute(args));
   }

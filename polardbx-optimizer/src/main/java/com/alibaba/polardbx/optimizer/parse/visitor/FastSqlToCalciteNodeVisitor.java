@@ -147,6 +147,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableStatement;
@@ -3868,6 +3869,16 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             x.getJavaCode(),
             x.getImportString());
       addPrivilegeVerifyItem(null, null, PrivilegePoint.CREATE);
+      return false;
+    }
+
+    @Override
+    public boolean visit(SQLDropJavaFunctionStatement x) {
+      final SqlIdentifier funcName = (SqlIdentifier) convertToSqlNode(x.getName());
+      this.sqlNode = SqlDdlNodes.dropJavaFunction(SqlParserPos.ZERO,
+          funcName,
+          x.isIfExists());
+      addPrivilegeVerifyItem(null, null, PrivilegePoint.DROP);
       return false;
     }
 
