@@ -99,6 +99,10 @@ metaDbPasswd=+row16HHcsxn1JZ4YKcsrzjxOg1WZcRLUgba/IRagfc=
 
 添加Idea的环境变量`dnPasswordKey`，默认使用asdf1234ghjk5678
 
+将Idea中`Preference - Build,Execution,Deployment - Build tools - maven - importing - VM options for importer`设置为`-Xmx2048m -Xms2048m`
+
+将Idea中`Preference-Compiler-Build process heap size`设置为4096
+
 ![add_env_variable](../images/add_env_variable.png)
 
 ### 运行TddlLauncher.java
