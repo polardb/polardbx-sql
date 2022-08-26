@@ -1,0 +1,24 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup tg11111;
+CREATE TABLE t_order (
+id bigint NOT NULL AUTO_INCREMENT,
+gmt_modified DATETIME NOT NULL,
+PRIMARY KEY (id, gmt_modified)
+)
+PARTITION BY KEY(id)
+PARTITIONS 4
+tablegroup=tg11111
+LOCAL PARTITION BY RANGE (gmt_modified)
+STARTWITH '2021-01-01'
+INTERVAL 1 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 3
+PIVOTDATE NOW()
+;
+show full create table t_order;
+
+insert into t_order (id, gmt_modified) values (null, '2012-12-12 00:00:00'),(null, '2013-12-12 00:00:00'),(null, '2014-12-12 00:00:00');
+
+explain select t1.id from t_order t1 join t_order t2 on t1.id=t2.id;
+explain update t_order set gmt_modified='2021-12-12 00:00:00' where id=100;
+explain update t_order set gmt_modified='2022-12-12 00:00:00';

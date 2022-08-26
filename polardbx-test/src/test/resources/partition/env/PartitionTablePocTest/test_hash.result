@@ -1,0 +1,47 @@
+DROP TABLE IF EXISTS tbl_hash;
+CREATE TABLE IF NOT EXISTS tbl_hash (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY HASH (a) PARTITIONS 32;
+SHOW CREATE TABLE tbl_hash;
+Table,Create Table
+tbl_hash,CREATE TABLE `tbl_hash` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32
+INSERT INTO tbl_hash
+VALUES (10),
+	(99),
+	(100),
+	(101);
+EXPLAIN SELECT *
+FROM tbl_hash
+WHERE a = 99
+ORDER BY a;
+Logical ExecutionPlan
+LogicalView(tables="tbl_hash[p5]", sql="SELECT `a` FROM `tbl_hash` AS `tbl_hash` WHERE (`a` = ?) ORDER BY `a`")
+SELECT *
+FROM tbl_hash
+WHERE a = 99
+ORDER BY a;
+a
+99
+EXPLAIN SELECT *
+FROM tbl_hash
+WHERE a BETWEEN 95 AND 103
+ORDER BY a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl_hash[p5,p6,p7,p9,p12,p20,p21,p30,p32]", shardCount=9, sql="SELECT `a` FROM `tbl_hash` AS `tbl_hash` WHERE (`a` BETWEEN ? AND ?) ORDER BY `a`")
+SELECT *
+FROM tbl_hash
+WHERE a BETWEEN 95 AND 103
+ORDER BY a;
+a
+99
+100
+101
+DROP TABLE IF EXISTS tbl_hash;

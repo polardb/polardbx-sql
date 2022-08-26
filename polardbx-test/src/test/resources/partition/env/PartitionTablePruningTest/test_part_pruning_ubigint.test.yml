@@ -1,0 +1,23 @@
+## test range/one col/ubigint
+# bigint: -9223372036854775808 to 9223372036854775807
+# bigint unsigned: 0~18446744073709551615
+
+drop table if exists tbl_ubigint;
+create table if not exists tbl_ubigint (a bigint unsigned not null)
+partition by range(a)
+( partition p0 values less than (9223372036854775800),
+  partition p1 values less than (9223372036854775808),
+  partition p2 values less than (18446744073709551610),
+  partition p3 values less than (18446744073709551615)
+);
+
+# excepted pruned partitions: p3
+explain select a from tbl_ubigint where a=18446744073709551611;
+# excepted pruned partitions: p2
+explain select a from tbl_ubigint where a=18446744073709551609;
+# excepted pruned partitions: p0,p1
+explain select a from tbl_ubigint where a<9223372036854775808;
+# excepted pruned partitions: p2,p3
+explain select a from tbl_ubigint where a>9223372036854775808;
+# excepted pruned partitions: p1,p2,p3
+explain select a from tbl_ubigint where a>=9223372036854775800;

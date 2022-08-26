@@ -567,9 +567,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
             try {
                 ex = TDataSourceInitUtils.initDataSource(ds);
                 if (ex != null) {
-                    logger.warn("Failed to init schema " + ds.getSchemaName() + " during using db, the cause is " + ex.getMessage(), ex);
+                    logger.warn("Failed to init schema " + ds.getSchemaName() + " during using db, the cause is " + ex
+                        .getMessage(), ex);
                 }
-            } catch (Throwable e){
+            } catch (Throwable e) {
                 throw GeneralUtil.nestedException(e);
             }
         }
@@ -1027,9 +1028,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
             try {
                 if (exception instanceof CclRescheduleException) {
                     ((CclRescheduleException) exception).getRescheduleCallback().apply(this);
+                    needRescheduled = true;
                 }
                 if (rescheduled) {
-                    needRescheduled = ec != null && ec.getCclContext() != null && ec.getCclContext().isReschedule();
+                    needRescheduled = needRescheduled && ec != null && ec.getCclContext() != null && ec.getCclContext()
+                        .isReschedule();
                     if (needRescheduled) {
                         rescheduleParam =
                             RescheduleParam.builder().sql(sql).params(params).handler(handler)
@@ -1874,9 +1877,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 loadDataHandler = null;
             }
             if (this.statementExecuting.get()) {
-                if(conn.isDdlStatement()){
+                if (conn.isDdlStatement()) {
                     logger.warn("Connection Killed By Client While Executing DDL");
-                    if(conn.getExecutionContext().getDdlContext() != null){
+                    if (conn.getExecutionContext().getDdlContext() != null) {
                         conn.getExecutionContext().getDdlContext().setClientConnectionResetAsTrue();
                     }
                     return true;

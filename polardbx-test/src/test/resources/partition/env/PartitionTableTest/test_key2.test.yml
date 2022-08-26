@@ -1,0 +1,85 @@
+## DISABLE_FAST_SQL_PARSER
+## test key/one col/int
+
+create tablegroup tb_ab_hash;
+drop table if exists t_ab_hash;
+CREATE TABLE t_ab_hash (
+	a int(11) NOT NULL,
+	b int(11) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(a,b)
+PARTITIONS 16;
+alter table t_ab_hash set tablegroup='tb_ab_hash';
+
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show create table t_ab_hash;
+
+insert into t_ab_hash values (99,2000),(100,100),(100,101),(100,102),(100,103),(100,104),(100,105),(100,106),(100,107),(401,3000);
+select * from t_ab_hash order by a,b;
+
+explain select * from t_ab_hash where a=99 order by a,b;
+explain select * from t_ab_hash where a=100 order by a,b;
+explain select * from t_ab_hash where a=401 order by a,b;
+
+explain select * from t_ab_hash where a=99 order by a,b;
+explain select * from t_ab_hash where a=100 order by a,b;
+explain select * from t_ab_hash where a=401 order by a,b;
+explain select * from t_ab_hash where (a,b)=(100,102);
+explain select * from t_ab_hash where (a,b)=(100,105);
+explain select * from t_ab_hash where (a,b)=(100,107);
+explain select * from t_ab_hash where (a,b)=(100,103);
+
+select * from t_ab_hash where a=99 order by a,b;
+select * from t_ab_hash where a=100 order by a,b;
+select * from t_ab_hash where a=100 and b=12345678912 order by a,b;
+select * from t_ab_hash where a=401 order by a,b;
+select * from t_ab_hash where (a,b)=(100,102);
+select * from t_ab_hash where (a,b)=(100,105);
+select * from t_ab_hash where (a,b)=(100,107);
+select * from t_ab_hash where (a,b)=(100,103);
+
+ALTER TABLEGROUP tb_ab_hash SPLIT PARTITION p6
+      INTO (
+            PARTITION p6_1 VALUES LESS THAN (-2682556572937990697,9223372036854775807),
+            PARTITION v100_1 VALUES LESS THAN (-2682556572937990696,-4611686018427387899),
+            PARTITION v100_2 VALUES LESS THAN (-2682556572937990696,3),
+            PARTITION v100_3 VALUES LESS THAN (-2682556572937990696,4611686018427387905),
+            PARTITION v100_4 VALUES LESS THAN (-2682556572937990696,9223372036854775807),
+            PARTITION p6_2 VALUES LESS THAN (-2305843009213693933,9223372036854775807) 
+            );
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show create table t_ab_hash;
+
+explain select * from t_ab_hash where a=99 order by a,b;
+explain select * from t_ab_hash where a=100 order by a,b;
+explain select * from t_ab_hash where a=401 order by a,b;
+
+explain select * from t_ab_hash where a=99 order by a,b;
+explain select * from t_ab_hash where a=100 order by a,b;
+explain select * from t_ab_hash where a=401 order by a,b;
+explain select * from t_ab_hash where (a,b)=(100,102);
+explain select * from t_ab_hash where (a,b)=(100,105);
+explain select * from t_ab_hash where (a,b)=(100,107);
+explain select * from t_ab_hash where (a,b)=(100,103);
+
+select * from t_ab_hash where a=99 order by a,b;
+select * from t_ab_hash where a=100 order by a,b;
+select * from t_ab_hash where a=100 and b=12345678912 order by a,b;
+select * from t_ab_hash where a=401 order by a,b;
+select * from t_ab_hash where (a,b)=(100,102);
+select * from t_ab_hash where (a,b)=(100,105);
+select * from t_ab_hash where (a,b)=(100,107);
+select * from t_ab_hash where (a,b)=(100,103);
+
+ALTER TABLEGROUP tb_ab_hash MERGE PARTITIONS p6_1,v100_1,v100_2,v100_3,v100_4,p6_2 TO p6;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show create table t_ab_hash;
+
+ALTER TABLEGROUP tb_ab_hash SPLIT PARTITION p1;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show create table t_ab_hash;
+
+ALTER TABLEGROUP tb_ab_hash SPLIT PARTITION p16;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=TRUE*/show create table t_ab_hash;
+
+
+
+drop table if exists t_ab_hash;
+
+

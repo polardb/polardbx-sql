@@ -1,0 +1,34 @@
+## test range/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a int not null)
+partition by range(a)
+( partition p0 values less than (100),
+  partition p1 values less than (200),
+  partition p2 values less than (300)
+);
+show create table tbl;
+insert into tbl values (10),(99),(100),(101);
+select * from tbl order by a;
+explain select * from tbl where a=99 order by a;
+explain select * from tbl where a=200 order by a;
+explain select * from tbl where a<200 order by a;
+
+## test range/one col with year/datetime
+drop table if exists tbl;
+create table if not exists tbl (a datetime not null)
+partition by range(year(a))
+( partition p0 values less than (1999),
+  partition p1 values less than (2000),
+  partition p2 values less than (2001),
+  partition p3 values less than (2002)
+);
+show create table tbl;
+insert into tbl values ('1998-10-01 10:10:10'),('1999-10-01 10:10:10'),('2000-10-01 10:10:10');
+select * from tbl order by a;
+explain select * from tbl where a='1999-10-01 10:10:10' order by a;
+# select * from tbl partition (p0) order by a;
+explain select * from tbl where a<'2000-10-01 10:10:10' order by a;
+explain select * from tbl where a<='2001-10-01 10:10:10' order by a;
+drop table if exists tbl;
+
+

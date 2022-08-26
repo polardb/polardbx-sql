@@ -1,0 +1,76 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup tg11;
+CREATE TABLE `t1` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`) PARTITIONS 4 (
+  PARTITION p1 VALUES LESS THAN (1000,9223372036854775807),
+  PARTITION p2 VALUES LESS THAN (2000,9223372036854775807),
+  PARTITION p3 VALUES LESS THAN (3000,9223372036854775807),
+  PARTITION p4 VALUES LESS THAN (9223372036854775807,9223372036854775807)
+)
+tablegroup = tg11;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+
+CREATE TABLE `t2` (
+  `a` int(11) DEFAULT NULL,
+  `b` int(11) DEFAULT NULL,
+  `c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`) PARTITIONS 4 (
+  PARTITION p1 VALUES LESS THAN (1000),
+  PARTITION p2 VALUES LESS THAN (2000),
+  PARTITION p3 VALUES LESS THAN (3000),
+  PARTITION p4 VALUES LESS THAN (9223372036854775807)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+
+CREATE TABLE `t3` (
+`a` int(11) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`,`c`) PARTITIONS 4 (
+  PARTITION p1 VALUES LESS THAN (1000,9223372036854775807,9223372036854775807),
+  PARTITION p2 VALUES LESS THAN (2000,9223372036854775807,9223372036854775807),
+  PARTITION p3 VALUES LESS THAN (3000,9223372036854775807,9223372036854775807),
+  PARTITION p4 VALUES LESS THAN (9223372036854775807,9223372036854775807,9223372036854775807)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+explain select t1.a from t1 join t3 on t1.a=t3.a;
+
+alter tablegroup tg11 split partition p3 into (
+  PARTITION p3_1 VALUES LESS THAN (2100),
+  PARTITION p3_2 VALUES LESS THAN (3000)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+explain select t1.a from t1 join t3 on t1.a=t3.a;
+
+alter tablegroup tg11 merge partitions p3_1,p3_2 to p3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;
+explain select t1.a from t1 join t2 on t1.a=t2.a;
+explain select t1.a from t1 join t3 on t1.a=t3.a;
+
+## error_msg: $# not all the tables in tablegroup #$
+alter tablegroup tg11 split partition p3 into (
+  PARTITION p3_1 VALUES LESS THAN (2100,9223372036854775807),
+  PARTITION p3_2 VALUES LESS THAN (3000,9223372036854775807)
+);
+create tablegroup tg2;
+alter table t2 set tablegroup=tg2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+alter tablegroup tg11 split partition p3 into (
+  PARTITION p3_1 VALUES LESS THAN (2100,9223372036854775807),
+  PARTITION p3_2 VALUES LESS THAN (3000,9223372036854775807)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;
+explain select t1.a from t1 join t3 on t1.a=t3.a;

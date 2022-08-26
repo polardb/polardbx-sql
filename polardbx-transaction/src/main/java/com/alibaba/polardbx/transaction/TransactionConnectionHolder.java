@@ -66,7 +66,6 @@ import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionCla
  * 4. 如果某个group的写连接正在使用中, 再次获取会报错;
  * </PRE>
  *
- * @author <a href="mailto:changyuan.lh@taobao.com">Changyuan.lh</a>
  * @since 5.1.28
  */
 public class TransactionConnectionHolder implements IConnectionHolder {

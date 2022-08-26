@@ -1,0 +1,46 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (x)
+) BROADCAST;
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL
+) BROADCAST;
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL
+) BROADCAST;
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST
+DROP TABLE IF EXISTS `t_order`;

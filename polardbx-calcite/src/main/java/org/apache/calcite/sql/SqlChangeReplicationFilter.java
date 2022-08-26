@@ -28,6 +28,11 @@ public class SqlChangeReplicationFilter extends SqlReplicationBase {
         super(pos, options);
     }
 
+    public SqlChangeReplicationFilter(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options, SqlNode channel){
+        super(pos, options, channel);
+    }
+
+
     @Override
     protected void parseParams(String k, String v) {
         k = StringUtils.upperCase(k);

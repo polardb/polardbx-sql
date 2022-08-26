@@ -36,7 +36,6 @@ import java.text.MessageFormat;
 /**
  * DRDS XA 事务
  *
- * @author <a href="mailto:eric.fy@taobao.com">Eric Fu</a>
  * @since 5.1.28
  */
 public class XATransaction extends ShareReadViewTransaction {

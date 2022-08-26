@@ -53,7 +53,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 /**
  * Transaction Manager
  *
- * @author <a href="mailto:changyuan.lh@taobao.com">Changyuan.lh</a>
  * @since 5.1.28
  */
 @Activate(order = 1)

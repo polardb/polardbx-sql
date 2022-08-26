@@ -1,0 +1,15 @@
+## test list tbl
+drop table if exists tbl_list;
+create table if not exists tbl_list (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,101),
+  partition p2 values in (99,100),
+  partition p3 values in (200,201)
+);
+show create table tbl_list;
+insert into tbl_list values (10),(99),(100),(101);
+explain select * from tbl_list where a=99 order by a;
+select * from tbl_list where a=99 order by a;
+explain select * from tbl_list where a between 98 and 101 order by a;
+select * from tbl_list where a between 98 and 101 order by a;
+drop table if exists tbl_list;

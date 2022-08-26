@@ -88,14 +88,14 @@ PolarDB-X 采用 Shared-nothing 与存储分离计算架构进行设计，系统
 
 PolarDB-X 提供通过 K8S Operator 方式管理以上4个组件，同时计算节点与存储节点之间可通过私有协议进行 RPC 通信，这些组件对应的仓库如下。
 
-| 组件名称 | 仓库地址 |
-| --- | --- |
-| 计算节点（CN, Compute Node） | [galaxysql](https://github.com/ApsaraDB/galaxysql) |
-| 元数据服务（GMS, Global Meta Service） | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) |
-| 存储节点（DN, Data Node） | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) |
-| 日志节点（CDC, Change Data Capture） | [galaxycdc](https://github.com/ApsaraDB/galaxycdc) |
-| 私有协议 | [galaxyglue](https://github.com/ApsaraDB/galaxyglue) |
-| K8S Operator | [galaxykube](https://github.com/ApsaraDB/galaxykube) |
+| 组件名称 | 仓库地址 | 版本号             |
+| --- | --- |-----------------|
+| 计算节点（CN, Compute Node） | [galaxysql](https://github.com/ApsaraDB/galaxysql) | v5.4.13-16614920 |
+| 元数据服务（GMS, Global Meta Service） | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
+| 存储节点（DN, Data Node） | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
+| 日志节点（CDC, Change Data Capture） | [galaxycdc](https://github.com/ApsaraDB/galaxycdc) | v5.4.13 |
+| 私有协议 | [galaxyglue](https://github.com/ApsaraDB/galaxyglue) |  v5.4.13-16614920 |
+| K8S Operator | [galaxykube](https://github.com/ApsaraDB/galaxykube) | v1.2.2 |
 
 
 

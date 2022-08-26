@@ -63,6 +63,9 @@ public class SqlChangeMaster extends SqlReplicationBase {
         case RplConstants.SOURCE_HOST_TYPE:
             params.put(RplConstants.SOURCE_HOST_TYPE, v);
             break;
+        case RplConstants.DEST_APPLIER_TYPE:
+            params.put(RplConstants.DEST_APPLIER_TYPE, v);
+            break;
         default:
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, String.format("Unrecognized arguments: %s", k));
         }

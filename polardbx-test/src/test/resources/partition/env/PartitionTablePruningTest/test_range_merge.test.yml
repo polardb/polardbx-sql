@@ -1,0 +1,18 @@
+## test hash/three col/int
+DROP TABLE if exists rng_cols;
+CREATE TABLE `rng_cols` (
+        `a` bigint(20) NOT NULL,
+        `b` bigint(20) NOT NULL,
+        `c` bigint(20) NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400002 DEFAULT CHARSET = utf8mb4  
+PARTITION BY RANGE COLUMNS(a,b,c)
+(PARTITION p0 VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (100,2000,10000) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (100,2000,30000) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (200,1000,10000) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (200,1000,20000) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (200,2000,10000) ENGINE = InnoDB,
+ PARTITION p6 VALUES LESS THAN (300,2000,10000) ENGINE = InnoDB);
+ show create table rng_cols;
+explain select * from rng_cols where (a=200 or a>=299) and (b<=900 or b>=1000) and (c in (9999));
+

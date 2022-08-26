@@ -27,7 +27,6 @@ import java.util.List;
 /**
  * 
  * @Description: create procedure parameter type support
- * @author zz email:455910092@qq.com
  * @date 2015-9-14
  * @version V1.0
  */

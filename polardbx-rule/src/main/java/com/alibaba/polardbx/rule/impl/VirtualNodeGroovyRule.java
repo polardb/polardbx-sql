@@ -20,7 +20,6 @@ import com.alibaba.polardbx.rule.virtualnode.VirtualNodeMap;
 import com.alibaba.polardbx.rule.VirtualTableSupport;
 
 /**
- * @author <a href="junyu@taobao.com">junyu</a>
  * @version 1.0
  * @since 1.6
  */

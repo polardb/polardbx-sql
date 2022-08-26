@@ -1,0 +1,68 @@
+DROP TABLE IF EXISTS tbl_bro;
+DROP TABLE IF EXISTS tbl_single;
+CREATE TABLE `tbl_bro` (
+	`min_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'min score',
+	`max_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'max score',
+	`price_ratio` decimal(11, 6) DEFAULT NULL COMMENT 'price ratio',
+	`normal_interest_rate` decimal(11, 6) DEFAULT NULL COMMENT 'normal interest rate',
+	`org_id` varchar(10) NOT NULL DEFAULT '' COMMENT 'organization id',
+	`data_create_time` varchar(23) DEFAULT NULL COMMENT 'data create time',
+	`data_update_time` varchar(23) DEFAULT NULL COMMENT 'data update time',
+	`data_create_user` varchar(32) DEFAULT NULL COMMENT 'data create user',
+	`data_update_user` varchar(32) DEFAULT NULL COMMENT 'data update user',
+	`data_version` bigint(19) DEFAULT NULL COMMENT 'data version',
+	PRIMARY KEY USING BTREE (`min_score`, `max_score`, `org_id`)
+) BROADCAST ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+SHOW CREATE TABLE tbl_bro;
+Table,Create Table
+tbl_bro,CREATE TABLE `tbl_bro` (
+	`min_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'min score',
+	`max_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'max score',
+	`price_ratio` decimal(11, 6) DEFAULT NULL COMMENT 'price ratio',
+	`normal_interest_rate` decimal(11, 6) DEFAULT NULL COMMENT 'normal interest rate',
+	`org_id` varchar(10) NOT NULL DEFAULT '' COMMENT 'organization id',
+	`data_create_time` varchar(23) DEFAULT NULL COMMENT 'data create time',
+	`data_update_time` varchar(23) DEFAULT NULL COMMENT 'data update time',
+	`data_create_user` varchar(32) DEFAULT NULL COMMENT 'data create user',
+	`data_update_user` varchar(32) DEFAULT NULL COMMENT 'data update user',
+	`data_version` bigint(19) DEFAULT NULL COMMENT 'data version',
+	PRIMARY KEY USING BTREE (`min_score`, `max_score`, `org_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST
+SELECT count(1)
+FROM tbl_bro;
+count(1)
+0
+CREATE TABLE `tbl_single` (
+	`min_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'min score',
+	`max_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'max score',
+	`price_ratio` decimal(11, 6) DEFAULT NULL COMMENT 'price ratio',
+	`normal_interest_rate` decimal(11, 6) DEFAULT NULL COMMENT 'normal interest rate',
+	`org_id` varchar(10) NOT NULL DEFAULT '' COMMENT 'organization id',
+	`data_create_time` varchar(23) DEFAULT NULL COMMENT 'data create time',
+	`data_update_time` varchar(23) DEFAULT NULL COMMENT 'data update time',
+	`data_create_user` varchar(32) DEFAULT NULL COMMENT 'data create user',
+	`data_update_user` varchar(32) DEFAULT NULL COMMENT 'data update user',
+	`data_version` bigint(19) DEFAULT NULL COMMENT 'data version',
+	PRIMARY KEY USING BTREE (`min_score`, `max_score`, `org_id`)
+) SINGLE ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+SHOW CREATE TABLE tbl_single;
+Table,Create Table
+tbl_single,CREATE TABLE `tbl_single` (
+	`min_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'min score',
+	`max_score` decimal(6, 3) NOT NULL DEFAULT '0.000' COMMENT 'max score',
+	`price_ratio` decimal(11, 6) DEFAULT NULL COMMENT 'price ratio',
+	`normal_interest_rate` decimal(11, 6) DEFAULT NULL COMMENT 'normal interest rate',
+	`org_id` varchar(10) NOT NULL DEFAULT '' COMMENT 'organization id',
+	`data_create_time` varchar(23) DEFAULT NULL COMMENT 'data create time',
+	`data_update_time` varchar(23) DEFAULT NULL COMMENT 'data update time',
+	`data_create_user` varchar(32) DEFAULT NULL COMMENT 'data create user',
+	`data_update_user` varchar(32) DEFAULT NULL COMMENT 'data update user',
+	`data_version` bigint(19) DEFAULT NULL COMMENT 'data version',
+	PRIMARY KEY USING BTREE (`min_score`, `max_score`, `org_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+SELECT count(1)
+FROM tbl_single;
+count(1)
+0
