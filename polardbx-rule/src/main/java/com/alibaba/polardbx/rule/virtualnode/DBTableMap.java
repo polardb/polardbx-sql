@@ -24,7 +24,6 @@ import com.google.common.collect.Maps;
 /**
  * 构造group的一致性hash的slot
  * 
- * @author <a href="junyu@taobao.com">junyu</a>
  * @version 1.0
  * @since 1.6
  * @date 2011-6-2 03:12:39

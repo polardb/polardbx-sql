@@ -36,7 +36,6 @@ import java.util.List;
 /**
  * 一些相同的 IFunction 处理函数合并到公共类。
  *
- * @author <a href="mailto:changyuan.lh@taobao.com">Changyuan.lh</a>
  */
 public class FunctionUtils {
 

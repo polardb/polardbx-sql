@@ -1,0 +1,16 @@
+test_check_tbl
+test_truncate_tbl
+test_split_merge_partition_for_list
+test_split_merge_partition_for_range
+test_add_drop_partition
+test_create_drop_tbl
+test_rename_tbl
+#test_move_partition
+test_modify_partition_add_and_drop_values
+test_split_merge_partition_for_key
+test_alter_repartition
+test_alter_repartition2
+test_alter_repartition3
+test_invalid_alter_partition
+
+

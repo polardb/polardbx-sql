@@ -1,0 +1,161 @@
+## DISABLE_FAST_SQL_PARSER
+
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range columns (a,b) (
+  partition p1 values less than (200,100),
+  partition p2 values less than (maxvalue)
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range columns (a,b) (
+partition p1 values less than (200,100,200),
+partition p2 values less than (maxvalue,maxvalue)
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range columns (a,b) (
+partition p1 values less than (200),
+partition p2 values less than (maxvalue)
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range (a) (
+partition p1 values less than (200),
+partition p2 values less than ()
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range (a) (
+partition p1 values less than (200,100),
+partition p2 values less than ()
+);
+## error_msg: $# should be larger #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range columns (a) (
+partition p1 values less than (200),
+partition p2 values less than (100)
+);
+## error_msg: $# should be larger #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range (a) (
+partition p1 values less than (200),
+partition p2 values less than (100)
+);
+## error_msg: $# should be larger #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range (a) (
+partition p1 values less than (200),
+partition p2 values less than (200)
+);
+## error_msg: $# should be larger #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range columns (a,b) (
+partition p1 values less than (200,100),
+partition p2 values less than (100,10)
+);
+## error_msg: $# should be larger #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range columns (a,b) (
+partition p1 values less than (300,maxvalue),
+partition p2 values less than (300,100)
+);
+## error_msg: $# can only use #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range (a) (
+partition p1 values in (300),
+partition p2 values in (500)
+);
+## error_msg: $# Not allowed to use NULL value in VALUES LESS THAN #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range (a) (
+partition p1 values less than (null),
+partition p2 values less than (300)
+);
+## error_msg: $# Not allowed to use NULL value in VALUES LESS THAN #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by range columns (a,b) (
+partition p1 values less than (200,100),
+partition p2 values less than (300,null)
+);
+
+
+
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a,b) (
+partition p1 values in (200,300),
+partition p2 values in (100,400)
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a,b) (
+partition p1 values in ((200,300),(200,301,400)),
+partition p2 values in ((100,400),(200,301))
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a) (
+partition p1 values in ((200,300),(200,301,400)),
+partition p2 values in ((100,400),(200,301))
+);
+## error_msg: $# can only use #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list (a) (
+partition p1 values less than (300),
+partition p2 values less than (500)
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a,b) (
+partition p1 values in (300),
+partition p2 values in (500)
+);
+## error_msg: $# cannot use 'maxvalue' as value #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a,b) (
+partition p1 values in ((300,maxvalue)),
+partition p2 values in ((500,400))
+);
+## error_msg: $# must match the partition columns #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a,b) (
+partition p1 values in ((300,100)),
+partition p2 values in (())
+);
+## error_msg: $# must be not empty #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list (a) (
+partition p1 values in (300),
+partition p2 values in ()
+);
+## error_msg: $# Multiple definition of same constant #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list (a) (
+partition p1 values in (1,2,3),
+partition p2 values in (4,3)
+);
+## error_msg: $# Multiple definition of same constant #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list (a) (
+partition p1 values in (1,3,3),
+partition p2 values in (4,5)
+);
+## error_msg: $# cannot use 'maxvalue' as value #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list (a) (
+partition p1 values in (1,3,maxvalue),
+partition p2 values in (4,5)
+);
+## error_msg: $# Multiple definition of same constant #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a,b) (
+partition p1 values in ((300,100)),
+partition p2 values in ((300,100))
+);
+## error_msg: $# Multiple definition of same constant #$
+create table if not exists tbl (a int not null, b int not null,c int not null)
+partition by list columns (a,b) (
+partition p1 values in ((300,100),(300,101)),
+partition p2 values in ((300,101))
+);

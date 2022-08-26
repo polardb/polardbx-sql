@@ -1,0 +1,28 @@
+## test hash/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a bigint not null, b bigint not null)
+partition by hash(a)
+partitions 4;
+show create table tbl;
+insert into tbl values (10, 100),(99, 100),(100, 200),(101, 200);
+select * from tbl order by a;
+select count(1) from tbl;
+select count(1) cnt,b from tbl where b<101 group by b order by cnt,b desc;
+select count(1) cnt,a from tbl where a<100 group by a order by cnt,a desc;
+
+## test range/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a bigint not null, b bigint not null)
+partition by range(a)
+( partition p0 values less than (100),
+  partition p1 values less than (200),
+  partition p2 values less than (300)
+);
+show create table tbl;
+insert into tbl values (10, 100),(99, 100),(100, 200),(101, 200);
+select * from tbl order by a;
+select count(1) from tbl;
+select count(1) cnt ,b from tbl where b<101 group by b order by cnt,b desc;
+select count(1) cnt ,a from tbl where a<100 group by a order by cnt,a desc;
+
+

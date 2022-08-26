@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.RefreshTopologyBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InitNewStorageInstTask;
@@ -34,7 +33,6 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshDbTopologyPreparedData;
 import com.google.common.collect.Lists;
-import com.sun.tools.javac.jvm.Gen;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;

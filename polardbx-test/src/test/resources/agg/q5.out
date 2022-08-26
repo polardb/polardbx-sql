@@ -1,0 +1,16 @@
+| linux   | Phone  | Beijing      |        1 |
+| windows | Phone  | Shijiazhuang |        1 |
+| windows | PC     | Beijing      |        2 |
+| windows | PC     | Shijiazhuang |        1 |
+| linux   | PC     | Beijing      |        1 |
+| ios     | Phone  | Shijiazhuang |        1 |
+| linux   | Phone  | NULL         |        1 |
+| windows | Phone  | NULL         |        1 |
+| windows | PC     | NULL         |        3 |
+| linux   | PC     | NULL         |        1 |
+| ios     | Phone  | NULL         |        1 |
+| NULL    | Phone  | Beijing      |        1 |
+| NULL    | Phone  | Shijiazhuang |        2 |
+| NULL    | PC     | Beijing      |        3 |
+| NULL    | PC     | Shijiazhuang |        1 |
+| NULL    | NULL   | NULL         |        7 |

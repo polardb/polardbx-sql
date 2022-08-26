@@ -28,7 +28,6 @@ import java.util.Map;
 /**
  * 每一个索引（或者叫KV更直白点）的描述
  *
- * @author jianxing <jianxing.qx@taobao.com>
  */
 public class IndexMeta implements Serializable, Cloneable {
 

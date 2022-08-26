@@ -1,0 +1,8 @@
+test_table_group_local_partition
+test_table_group_hash_split_hotval
+test_table_group_range_split_merge2
+test_table_group_hash_split_merge2
+test_table_group_hash_split_merge
+test_table_group_join_push
+test_table_group_range_split_merge
+test_table_group

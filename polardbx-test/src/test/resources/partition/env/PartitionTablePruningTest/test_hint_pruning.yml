@@ -1,0 +1,34 @@
+## test hash/one col/int
+CREATE TABLE t1 (
+	id bigint(20) NOT NULL AUTO_INCREMENT,
+	a int,
+	primary key(id)
+)
+PARTITION BY RANGE (id) (
+	PARTITION p0 VALUES LESS THAN (100), 
+	PARTITION p1 VALUES LESS THAN (200),
+	PARTITION p2 VALUES LESS THAN (300)
+);
+
+CREATE TABLE t2 (
+	id bigint(20) NOT NULL AUTO_INCREMENT,
+	a int,
+	b varchar(64),
+	primary key(id,b)
+)
+PARTITION BY RANGE COLUMNS (b) (
+	PARTITION p0 VALUES LESS THAN ('abc'), 
+	PARTITION p1 VALUES LESS THAN ('efg'),
+	PARTITION p2 VALUES LESS THAN ('hijk')
+);
+
+
+insert into t1 values (1,1),(100,100),(201,201);
+insert into t2 values (1,1,'abc'),(100,100,'efg'),(201,201,'hijk');
+
+/*+TDDL({'type':'direct','dbid':'D1_P00000_GROUP'})*/select * from t1_00000;
+/*+TDDL({'type':'direct','vtab':'t1','dbid':'D1_P00000_GROUP','realtabs':['t1_00000','t1_00002']})*/select * from t1;
+
+
+
+

@@ -1,0 +1,26 @@
+## test to_seconds
+drop table if exists tbl;
+CREATE TABLE `tbl` (
+        `a` datetime NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+PARTITION BY RANGE(to_seconds(a))
+(PARTITION p0 VALUES LESS THAN (to_seconds('1990-01-01 00:00:00')) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (to_seconds('2000-01-01 00:00:01')) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (to_seconds('2010-01-01 00:00:02')) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (to_seconds('2020-01-01 00:00:03')) ENGINE = InnoDB);
+show create table tbl;
+## single value insert
+insert into tbl values ('1989-01-01 00:00:00');
+## multi values insert
+insert into tbl values ('1990-01-01 00:00:01'),('1991-01-01 00:00:02'),('2019-01-01 00:00:03');
+## check point select
+select * from tbl where a='1989-01-01 00:00:00' order by a;
+select * from tbl where a='1990-01-01 00:00:01' order by a;
+select * from tbl where a='1991-01-01 00:00:02' order by a;
+select * from tbl where a='2019-01-01 00:00:03' order by a;
+## check range select
+select * from tbl where (a<'2019-01-02 00:00:00' and a>='2009-12-31 00:00:00') or a between '1989-01-01 00:00:00' and '1989-11-01 00:00:00'  order by a;
+## explain point select, choose partition: p1
+explain select * from tbl where a='2000-01-01 00:00:00' order by a;
+## explain range select, choose partition: p0,p2,p3
+explain select * from tbl where (a<'2019-01-02 00:00:00' and a>='2009-12-31 23:59:59') or a between '1989-01-01 00:00:00' and '1989-12-31 23:59:59'  order by a;

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.config.table;
 
 /**
- * @author jianxing <jianxing.qx@taobao.com>
  */
 public enum IndexType {
 

@@ -1,0 +1,40 @@
+
+# extra table elements
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+`x` int NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+PRIMARY KEY (x),
+local INDEX (`seller_id`),
+UNIQUE local INDEX (`order_id`)
+);
+show create table `t_order`;
+show full create table `t_order`;
+
+# pk def in column def
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+`x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+local INDEX (`seller_id`),
+UNIQUE local INDEX (`order_id`)
+);
+show create table `t_order`;
+show full create table `t_order`;
+
+# no pk
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+`x` int NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+local INDEX (`seller_id`),
+UNIQUE local INDEX (`order_id`)
+);
+show create table `t_order`;
+show full create table `t_order`;
+
+# cleanup
+drop table if exists `t_order`;

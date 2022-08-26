@@ -1,0 +1,22 @@
+## test hash/one col/int
+drop table if exists tbl;
+create table if not exists tbl (c int not null,b int not null,a int not null)
+partition by key(a,c)
+partitions 8;
+create tablegroup tbl_tg;
+alter table tbl set tablegroup=tbl_tg;
+
+## test insert into p6,p8
+insert into tbl(a,b,c) values (10,100,100),(20,200,200);
+select * from tbl partition(p8,p6) order by a,b,c;
+
+## test merge p6,p7,p8 to p9
+alter tablegroup tbl_tg merge partitions p6,p7,p8 to p9;
+select * from tbl partition(p9) order by a,b,c;
+
+## test insert into new split partition p9
+insert into tbl(a,b,c) values (10,100,100),(20,200,200);
+select * from tbl partition(p9) order by a,b,c;
+
+
+

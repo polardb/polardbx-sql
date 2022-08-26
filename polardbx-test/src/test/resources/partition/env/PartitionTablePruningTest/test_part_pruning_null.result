@@ -1,0 +1,35 @@
+DROP TABLE IF EXISTS tbl_ubigint;
+CREATE TABLE `tbl_ubigint` (
+	`a` bigint UNSIGNED DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (a) PARTITIONS 4;
+DROP TABLE IF EXISTS tbl_varchar;
+CREATE TABLE `tbl_varchar` (
+	`a` varchar(128) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (a) PARTITIONS 4;
+DROP TABLE IF EXISTS tbl_datetime;
+CREATE TABLE `tbl_datetime` (
+	`a` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (a) PARTITIONS 4;
+EXPLAIN SELECT a
+FROM tbl_ubigint
+WHERE a IS NULL;
+Logical ExecutionPlan
+LogicalView(tables="tbl_ubigint[p2]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` IS NULL)")
+EXPLAIN SELECT a
+FROM tbl_ubigint
+WHERE a = 0;
+Logical ExecutionPlan
+LogicalView(tables="tbl_ubigint[p3]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` = ?)")
+EXPLAIN SELECT a
+FROM tbl_datetime
+WHERE a IS NULL;
+Logical ExecutionPlan
+LogicalView(tables="tbl_datetime[p2]", sql="SELECT `a` FROM `tbl_datetime` AS `tbl_datetime` WHERE (`a` IS NULL)")
+EXPLAIN SELECT a
+FROM tbl_varchar
+WHERE a IS NULL;
+Logical ExecutionPlan
+LogicalView(tables="tbl_varchar[p2]", sql="SELECT `a` FROM `tbl_varchar` AS `tbl_varchar` WHERE (`a` IS NULL)")

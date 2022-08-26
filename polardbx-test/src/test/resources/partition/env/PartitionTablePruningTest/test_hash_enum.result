@@ -1,0 +1,48 @@
+DROP TABLE IF EXISTS hsh_key;
+CREATE TABLE `hsh_key` (
+	`a` bigint(20) NOT NULL,
+	`b` bigint(20) NOT NULL,
+	`c` bigint(20) NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400002 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (a) PARTITIONS 32;
+EXPLAIN SELECT *
+FROM hsh_key
+WHERE a BETWEEN 1 + 1 AND 3 + 2
+	AND a BETWEEN 1 + 2 AND 2 + 4;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hsh_key[p14,p23,p28]", shardCount=3, sql="SELECT `a`, `b`, `c` FROM `hsh_key` AS `hsh_key` WHERE ((`a` BETWEEN (? + ?) AND (? + ?)) AND (`a` BETWEEN (? + ?) AND (? + ?)))")
+EXPLAIN SELECT *
+FROM hsh_key
+WHERE (a BETWEEN 1 + 1 AND 3 + 2
+		AND a BETWEEN 1 + 2 AND 2 + 4)
+	OR (a > 5
+		AND a < 7);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hsh_key[p14,p17,p23,p28]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `hsh_key` AS `hsh_key` WHERE (((`a` BETWEEN (? + ?) AND (? + ?)) AND (`a` BETWEEN (? + ?) AND (? + ?))) OR ((`a` > ?) AND (`a` < ?)))")
+EXPLAIN SELECT *
+FROM hsh_key
+WHERE (a > 0
+		AND a < 3)
+	OR (a >= 3
+		AND a < 5);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hsh_key[p2,p11,p14,p28]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `hsh_key` AS `hsh_key` WHERE (((`a` > ?) AND (`a` < ?)) OR ((`a` >= ?) AND (`a` < ?)))")
+CREATE TABLE `t_ubigint` (
+	`a` bigint(20) UNSIGNED DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH (a) PARTITIONS 8;
+EXPLAIN SELECT *
+FROM t_ubigint
+WHERE a BETWEEN 9223372036854775809 AND 9223372036854775809;
+Logical ExecutionPlan
+PhyTableOperation(tables="t_ubigint[p1]", sql="SELECT `t_ubigint`.`a` FROM ? AS `t_ubigint` WHERE (`t_ubigint`.`a` BETWEEN ? AND ?)")
+EXPLAIN SELECT *
+FROM t_ubigint
+WHERE a = 9223372036854775809;
+Logical ExecutionPlan
+LogicalView(tables="t_ubigint[p1]", sql="SELECT `a` FROM `t_ubigint` AS `t_ubigint` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS hsh_key;

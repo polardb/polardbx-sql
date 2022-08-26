@@ -1,0 +1,12 @@
+## test hash tbl
+drop table if exists tbl_hash;
+create table if not exists tbl_hash (a int not null,primary key (`a`))
+partition by hash(a)
+partitions 32;
+show create table tbl_hash;
+insert into tbl_hash values (10),(99),(100),(101);
+explain select * from tbl_hash where a=99 order by a;
+select * from tbl_hash where a=99 order by a;
+explain select * from tbl_hash where a between 95 and 103 order by a;
+select * from tbl_hash where a between 95 and 103 order by a;
+drop table if exists tbl_hash;

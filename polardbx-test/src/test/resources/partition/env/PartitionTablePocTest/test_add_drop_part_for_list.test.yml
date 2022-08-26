@@ -1,0 +1,42 @@
+## add partition for list 
+## drop partition for lis
+drop table if exists tbl_list1;
+drop table if exists tbl_list2;
+create tablegroup new_tg_for_add_part2;
+create table if not exists tbl_list1 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+  partition p2 values in (100,101),
+  partition p3 values in (200,201)
+);
+alter table tbl_list1 set tablegroup=new_tg_for_add_part2;
+create table if not exists tbl_list2 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+  partition p2 values in (100,101),
+  partition p3 values in (200,201)
+);
+
+## test insert into data into p1,p2,p3
+insert into tbl_list1 values (10),(100),(200);
+insert into tbl_list2 values (10),(100),(200);
+
+## add a new partition of 300,301
+alter tablegroup new_tg_for_add_part2 add partition ( partition p4 values in (300,301) );
+
+## check part info after adding partition
+show create table tbl_list1;
+show create table tbl_list2;
+
+## test insert into data into p4: no error 
+insert into tbl_list1 values (300);
+insert into tbl_list2 values (300);
+
+## check if p4 has value 300
+select * from tbl_list1 partition(p4);
+select * from tbl_list2 partition(p4);
+
+## drop partition p1 for list
+alter tablegroup new_tg_for_add_part2 drop partition p1;
+show create table tbl_list1;
+show create table tbl_list2;

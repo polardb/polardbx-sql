@@ -81,7 +81,6 @@ import java.util.stream.Collectors;
 /**
  * 一个table的描述，包含主键信息/字段信息/索引信息等，暂时不考虑外键/约束键，目前没意义
  *
- * @author jianxing <jianxing.qx@taobao.com>
  * @author whisper
  */
 public class TableMeta implements Serializable, Cloneable, Table, Wrapper {

@@ -1,0 +1,11 @@
+drop table if exists tbl;
+create table if not exists tbl (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+insert into tbl values (101),(102),(103),(201),(202),(203);
+select * from tbl order by a;
+truncate table tbl;
+select * from tbl order by a;

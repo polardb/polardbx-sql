@@ -1,0 +1,51 @@
+drop table if exists tbl_rng_col;
+CREATE TABLE `tbl_rng_col` (
+  `a` bigint(20) DEFAULT NULL,
+  `b` bigint(20) DEFAULT NULL,
+  `c` bigint(20) DEFAULT NULL,
+  `d` bigint(20) DEFAULT NULL,
+  `e` bigint(20) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+PARTITION BY RANGE  COLUMNS(b)
+(PARTITION p1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (2000) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (3000) ENGINE = InnoDB);
+ 
+insert into tbl_rng_col values (1,1,1,1,1),(1001,1001,1,1,1),(2001,2001,1,1,1), (2002,null,1,1,1);
+
+explain select a from tbl_rng_col where b is null;
+explain select a from tbl_rng_col where b >= null;
+explain select a from tbl_rng_col where b <= null;
+explain select a from tbl_rng_col where b = null;
+explain select a from tbl_rng_col where b > null;
+explain select a from tbl_rng_col where b < null;
+
+CREATE TABLE `tbl_rng_col2` (
+  `a` bigint(20) DEFAULT NULL,
+  `b` bigint(20) DEFAULT NULL,
+  `c` bigint(20) DEFAULT NULL,
+  `d` bigint(20) DEFAULT NULL,
+  `e` bigint(20) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+PARTITION BY RANGE  COLUMNS(b,c)
+(PARTITION p1 VALUES LESS THAN (1000,10000) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (2000,20000) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (3000,30000) ENGINE = InnoDB);
+
+insert into tbl_rng_col2 values (1,1,1,1,1),(1001,1001,10001,1,1),(2001,2001,20001,1,1), (2002,null,null,1,1),(2003,1001,null,1,1);
+
+explain select a from tbl_rng_col2 where (b,c) = (1001, null);
+explain select a from tbl_rng_col2 where (b,c) = (null, null);
+explain select a from tbl_rng_col2 where (b,c) >= null;
+explain select a from tbl_rng_col2 where b <= null;
+explain select a from tbl_rng_col2 where b = null;
+explain select a from tbl_rng_col2 where b > null;
+explain select a from tbl_rng_col2 where b < null;
+
+select a from tbl_rng_col2 where (b,c) = (1001, null);
+select a from tbl_rng_col2 where (b,c) = (null, null);
+select a from tbl_rng_col2 where (b,c) >= (1001,null);
+select a from tbl_rng_col2 where b <= null;
+select a from tbl_rng_col2 where b = null;
+select a from tbl_rng_col2 where b > null;
+select a from tbl_rng_col2 where b < null;

@@ -59,7 +59,6 @@ import java.util.Set;
  * </pre>
  *
  * @author Dreamond
- * @author <a href="jianghang.loujh@taobao.com">jianghang</a>
  * @since 5.0.0
  */
 public class DataNodeChooser {

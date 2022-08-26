@@ -1,0 +1,24 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists tbl;
+
+## error_msg: $# Too many partitions #$
+create table if not exists tbl (a int not null,b int not null,c int not null)
+partition by key(a)
+partitions 10240;
+create table if not exists tbl (a int not null,b int not null,c int not null)
+partition by key(a,b,c)
+partitions 8;
+show create table tbl;
+
+## error_msg: $# Too many partitions #$
+alter table tbl partition by key(a,b) partitions 10240;
+show create table tbl;
+alter table tbl partition by key(a,b) partitions 32;
+show create table tbl;
+
+## error_msg: $# Too many partitions #$
+alter table tbl split into partitions 10240 by hot value('99');
+show create table tbl;
+alter table tbl split into partitions 3 by hot value('99');
+show create table tbl;

@@ -1,0 +1,288 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`y` int NOT NULL,
+	`z` int NOT NULL,
+	`c` int NOT NULL,
+	`d` float NOT NULL,
+	`e` int NOT NULL,
+	`f` int NOT NULL,
+	PRIMARY KEY (x, y),
+	INDEX(y, z),
+	INDEX(y, z, x),
+	INDEX(y, z, x, c, e, f),
+	INDEX(y, z, d),
+	UNIQUE INDEX (z, d)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` float NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	INDEX `i_0` (`y`, `z`),
+	INDEX `i_1` (`y`, `z`, `x`),
+	INDEX `i_2` (`y`, `z`, `x`, `c`, `e`, `f`),
+	INDEX `i_3` (`y`, `z`, `d`),
+	UNIQUE INDEX `i_4` (`z`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` float NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	GLOBAL INDEX /* i_0_$ */ `i_0` (`y`, `z`) PARTITION BY KEY (`y`, `z`, `x`) PARTITIONS #@#,
+	GLOBAL INDEX /* i_1_$ */ `i_1` (`y`, `z`, `x`) PARTITION BY KEY (`y`, `z`, `x`) PARTITIONS #@#,
+	GLOBAL INDEX /* i_2_$ */ `i_2` (`y`, `z`, `x`, `c`, `e`, `f`) PARTITION BY KEY (`y`, `z`, `x`, `c`, `e`) PARTITIONS #@#,
+	GLOBAL INDEX /* i_3_$ */ `i_3` (`y`, `z`, `d`) PARTITION BY KEY (`y`, `z`, `x`) PARTITIONS #@#,
+	UNIQUE GLOBAL INDEX /* i_4_$ */ `i_4` (`z`, `d`) PARTITION BY KEY (`z`) PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_i_4` (`z`, `d`),
+	LOCAL KEY `_local_i_0` (`y`, `z`),
+	LOCAL KEY `_local_i_1` (`y`, `z`, `x`),
+	LOCAL KEY `_local_i_2` (`y`, `z`, `x`, `c`, `e`, `f`),
+	LOCAL KEY `_local_i_3` (`y`, `z`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `i_0`;
+Table,Create Table
+i_0_$,CREATE TABLE `i_0_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	KEY `auto_shard_key_y` USING BTREE (`y`),
+	KEY `auto_shard_key_z` USING BTREE (`z`),
+	KEY `i_y_z` USING BTREE (`y`, `z`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `i_0`;
+Table,Create Table
+i_0_$,CREATE TABLE `i_0_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	LOCAL KEY `auto_shard_key_y` USING BTREE (`y`),
+	LOCAL KEY `auto_shard_key_z` USING BTREE (`z`),
+	LOCAL KEY `i_y_z` USING BTREE (`y`, `z`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `i_1`;
+Table,Create Table
+i_1_$,CREATE TABLE `i_1_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	KEY `auto_shard_key_y` USING BTREE (`y`),
+	KEY `auto_shard_key_z` USING BTREE (`z`),
+	KEY `i_y_z_x` USING BTREE (`y`, `z`, `x`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `i_1`;
+Table,Create Table
+i_1_$,CREATE TABLE `i_1_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	LOCAL KEY `auto_shard_key_y` USING BTREE (`y`),
+	LOCAL KEY `auto_shard_key_z` USING BTREE (`z`),
+	LOCAL KEY `i_y_z_x` USING BTREE (`y`, `z`, `x`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `i_2`;
+Table,Create Table
+i_2_$,CREATE TABLE `i_2_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_e` USING BTREE (`e`),
+	KEY `auto_shard_key_y` USING BTREE (`y`),
+	KEY `auto_shard_key_z` USING BTREE (`z`),
+	KEY `i_y_z_x_c_e_f` USING BTREE (`y`, `z`, `x`, `c`, `e`, `f`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`,`c`,`e`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `i_2`;
+Table,Create Table
+i_2_$,CREATE TABLE `i_2_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	LOCAL KEY `auto_shard_key_c` USING BTREE (`c`),
+	LOCAL KEY `auto_shard_key_e` USING BTREE (`e`),
+	LOCAL KEY `auto_shard_key_y` USING BTREE (`y`),
+	LOCAL KEY `auto_shard_key_z` USING BTREE (`z`),
+	LOCAL KEY `i_y_z_x_c_e_f` USING BTREE (`y`, `z`, `x`, `c`, `e`, `f`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`,`c`,`e`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `i_3`;
+Table,Create Table
+i_3_$,CREATE TABLE `i_3_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` float NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	KEY `auto_shard_key_y` USING BTREE (`y`),
+	KEY `auto_shard_key_z` USING BTREE (`z`),
+	KEY `i_y_z_d` USING BTREE (`y`, `z`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `i_3`;
+Table,Create Table
+i_3_$,CREATE TABLE `i_3_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` float NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	LOCAL KEY `auto_shard_key_y` USING BTREE (`y`),
+	LOCAL KEY `auto_shard_key_z` USING BTREE (`z`),
+	LOCAL KEY `i_y_z_d` USING BTREE (`y`, `z`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`,`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+CREATE INDEX `agsi_0` ON `t_order` (x, y);
+CREATE UNIQUE INDEX `agsi_1` ON `t_order` (y, z, d);
+ALTER TABLE `t_order`
+	ADD INDEX `agsi_2` (z, d);
+ALTER TABLE `t_order`
+	ADD UNIQUE INDEX `agsi_3` (x, y, z, c, e, f);
+SHOW CREATE TABLE `agsi_0`;
+Table,Create Table
+agsi_0_$,CREATE TABLE `agsi_0_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`x`, `y`),
+	KEY `auto_shard_key_y` USING BTREE (`y`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `agsi_0`;
+Table,Create Table
+agsi_0_$,CREATE TABLE `agsi_0_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	PRIMARY KEY USING BTREE (`x`, `y`),
+	LOCAL KEY `auto_shard_key_y` USING BTREE (`y`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `agsi_1`;
+Table,Create Table
+agsi_1_$,CREATE TABLE `agsi_1_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` float NOT NULL,
+	UNIQUE KEY `auto_shard_key_d_y_z` USING BTREE (`y`, `z`, `d`),
+	KEY `_gsi_pk_idx_` USING BTREE (`x`, `y`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`y`,`z`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `agsi_2`;
+Table,Create Table
+agsi_2_$,CREATE TABLE `agsi_2_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` float NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	LOCAL KEY `auto_shard_key_z` USING BTREE (`z`),
+	LOCAL KEY `i_z_d` USING BTREE (`z`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`z`,`x`,`y`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `agsi_2`;
+Table,Create Table
+agsi_2_$,CREATE TABLE `agsi_2_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` float NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	KEY `auto_shard_key_z` USING BTREE (`z`),
+	KEY `i_z_d` USING BTREE (`z`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`z`,`x`,`y`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `agsi_2`;
+Table,Create Table
+agsi_2_$,CREATE TABLE `agsi_2_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` float NOT NULL,
+	PRIMARY KEY (`x`, `y`),
+	LOCAL KEY `auto_shard_key_z` USING BTREE (`z`),
+	LOCAL KEY `i_z_d` USING BTREE (`z`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`z`,`x`,`y`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE `agsi_3`;
+Table,Create Table
+agsi_3_$,CREATE TABLE `agsi_3_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_x_y_z_c_e_f` USING BTREE (`x`, `y`, `z`, `c`, `e`, `f`),
+	KEY `_gsi_pk_idx_` USING BTREE (`x`, `y`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`,`z`,`c`,`e`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE `agsi_3`;
+Table,Create Table
+agsi_3_$,CREATE TABLE `agsi_3_$` (
+	`x` int(11) NOT NULL,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_c_e_f_x_y_z` USING BTREE (`c`, `e`, `f`, `x`, `y`, `z`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`, `y`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`,`z`,`c`,`e`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;
