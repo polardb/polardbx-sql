@@ -28,8 +28,6 @@ import com.alibaba.polardbx.rule.model.TargetDB;
  * 有些乱七八糟的oriDb/oriTable比较，我也没想明白具体的应用场景<br/>
  * 猜测应该和动态迁移有关，比如指定某个库/表完成了迁移，就单独开放这个表写入权限
  * 
- * @author <a href="junyu@taobao.com">junyu</a>
- * @author <a href="jianghang.loujh@taobao.com">jianghang</a>
  * @version 1.0
  * @since 1.6
  * @date 2011-4-22 12:49:53

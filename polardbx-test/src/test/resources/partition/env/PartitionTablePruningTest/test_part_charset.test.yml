@@ -1,0 +1,75 @@
+## test hash/one col/int
+
+## -----------
+## create tbl by key with varchar utf8_general_ci
+drop table if exists tbl_key_str;
+create table if not exists tbl_key_str (a varchar(64) collate utf8_general_ci not null)
+partition by key(a)
+partitions 8;
+## create tbl by key with varchar utf8_bin
+drop table if exists tbl_key_str2;
+create table if not exists tbl_key_str2 (a varchar(64) collate utf8_bin not null)
+partition by key(a)
+partitions 8;
+
+## should route to same partitions
+explain select * from tbl_key_str where a='abc';
+explain select * from tbl_key_str where a='ABC';
+
+## should route to different partitions
+explain select * from tbl_key_str2 where a='abc';
+explain select * from tbl_key_str2 where a='ABC';
+
+
+## -----------
+## create tbl by key with varchar utf8mb4_general_ci
+drop table if exists tbl_key_str3;
+create table if not exists tbl_key_str3 (a varchar(64) collate utf8mb4_general_ci not null)
+partition by key(a)
+partitions 8;
+
+## should route to same partitions
+explain select * from tbl_key_str where a='abc';
+explain select * from tbl_key_str where a='ABC';
+
+## should route to different partitions
+explain select * from tbl_key_str2 where a='abc';
+explain select * from tbl_key_str2 where a='ABC';
+
+## should route to different partitions
+explain select * from tbl_key_str3 where a='abc';
+explain select * from tbl_key_str3 where a='abc   ';
+
+
+## -----------
+## create tbl by range columns with varchar
+drop table if exists tbl_rc_str;
+create table if not exists tbl_rc_str (a varchar(64) collate utf8_general_ci not null)
+partition by range columns(a)
+(   partition p0 values less than ('abc'),
+	partition p1 values less than ('efg'),
+	partition p2 values less than ('ijc'),
+	partition p3 values less than ('opq')
+);
+
+drop table if exists tbl_rc_str2;
+create table if not exists tbl_rc_str2 (a varchar(64) collate utf8_bin not null)
+partition by range columns(a)
+(   partition p0 values less than ('abc'),
+	partition p1 values less than ('efg'),
+	partition p2 values less than ('ijc'),
+	partition p3 values less than ('opq')
+);
+
+## should route to same partitions
+explain select * from tbl_rc_str where a='abc';
+explain select * from tbl_rc_str where a='ABC';
+
+## should route to different partitions
+explain select * from tbl_rc_str2 where a='abc';
+explain select * from tbl_rc_str2 where a='ABC';
+
+
+
+
+

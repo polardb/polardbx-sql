@@ -1,0 +1,37 @@
+## test hash/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a int not null)
+partition by hash(a)
+partitions 4;
+show create table tbl;
+insert into tbl values (10),(99),(100),(101);
+select * from tbl where a=10 order by a;
+select * from tbl where a=99 order by a;
+select * from tbl where a=100 order by a;
+select * from tbl where a=101 order by a;
+select * from tbl where a=200 order by a;
+select * from tbl where a<200 order by a;
+drop table if exists tbl;
+
+## test hash/one col with year/datetime
+drop table if exists tbl;
+create table if not exists tbl (a datetime not null)
+partition by hash(year(a))
+partitions 4;
+show create table tbl;
+insert into tbl values ('2012-10-12 12:12:12'),('2010-10-12 12:12:12'),('2011-10-12 12:12:12'),('2014-10-12 12:12:12');
+select * from tbl where a='2012-10-12 12:12:12' order by a;
+select * from tbl where a='2010-10-12 12:12:12' order by a;
+select * from tbl where a='2011-10-12 12:12:12' order by a;
+select * from tbl where a>'2010-10-12 12:12:12' order by a;
+drop table if exists tbl;
+create table if not exists tbl (a int not null,b varchar(64) not null,c datetime not null)
+partition by hash(a,b,c)
+partitions 4;
+show create table tbl;
+insert into tbl (a,b,c) values (10,'a','2020-12-12'),(20,'b','2021-12-12'),(30,'c','2022-12-12'),(50,'f','2024-12-12'),(80,'i','2027-12-12');
+explain select * from tbl where a=10 and b='a' and c='2020-12-12' order by a;
+explain select * from tbl where a=10 order by a;
+
+select * from tbl where a>=10 and a<=14 order by a;
+drop table if exists tbl;

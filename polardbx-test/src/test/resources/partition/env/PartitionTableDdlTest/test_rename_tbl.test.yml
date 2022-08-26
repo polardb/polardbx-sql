@@ -1,0 +1,21 @@
+## test hash/one col/int
+drop table if exists tbl;
+drop table if exists tbl2;
+drop table if exists tbl3;
+create table if not exists tbl (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+rename table tbl to tbl2;
+create table if not exists tbl (b int not null,primary key (`b`))
+partition by range(b)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+show create table tbl;
+rename table tbl to tbl3;
+rename table tbl2 to tbl;
+show create table tbl;

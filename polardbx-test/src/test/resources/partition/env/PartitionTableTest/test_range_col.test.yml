@@ -1,0 +1,32 @@
+## test range col/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a int not null)
+partition by range columns (a)
+( partition p0 values less than (100),
+  partition p1 values less than (200),
+  partition p2 values less than (300)
+);
+show create table tbl;
+insert into tbl values (10),(99),(100),(101);
+select * from tbl order by a;
+explain select * from tbl where a=99 order by a;
+explain select * from tbl where a=200 order by a;
+explain select * from tbl where a<200 order by a;
+drop table if exists tbl;
+
+
+## test range/three col/bigint unsigned/datetime/varchar
+drop table if exists tbl;
+create table if not exists tbl (a bigint unsigned not null, b datetime not null, c varchar(128) not null)
+partition by range columns(a,b,c)
+( partition p0 values less than (100,'2012-12-12 11:11:11','abc'),
+  partition p1 values less than (200,'2012-12-11 11:11:11','abc'),
+  partition p2 values less than (300,'2012-12-11 11:11:11','abc')
+);
+show create table tbl;
+insert into tbl values (100,'2012-12-12 11:11:11','abc'), (200,'2012-12-11 11:11:11','abc');
+select * from tbl order by a;
+explain select * from tbl where a=99 order by a;
+explain select * from tbl where a=200 order by a;
+explain select * from tbl where a<200 order by a;
+drop table if exists tbl;

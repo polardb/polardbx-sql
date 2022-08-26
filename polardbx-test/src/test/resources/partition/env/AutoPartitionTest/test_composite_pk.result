@@ -1,0 +1,127 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`y` int NOT NULL,
+	`z` int NOT NULL,
+	`d` int NOT NULL,
+	PRIMARY KEY (x, y)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`y` int NOT NULL,
+	`z` int NOT NULL,
+	`d` int NOT NULL,
+	PRIMARY KEY (x, y, z)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`, `z`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`, `z`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`,`z`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`y` int NOT NULL,
+	`z` int NOT NULL,
+	`d` int NOT NULL,
+	`e` int NOT NULL,
+	`f` int NOT NULL,
+	PRIMARY KEY (x, y, z, d, e, f)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`, `z`, `d`, `e`, `f`),
+	LOCAL KEY `auto_shard_key_x_y_z_d_e` USING BTREE (`x`, `y`, `z`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	`e` int(11) NOT NULL,
+	`f` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`, `z`, `d`, `e`, `f`),
+	LOCAL KEY `auto_shard_key_x_y_z_d_e` USING BTREE (`x`, `y`, `z`, `d`, `e`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`,`z`,`d`,`e`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`y` int NOT NULL,
+	`z` float NOT NULL,
+	`d` int NOT NULL,
+	PRIMARY KEY (x, y, z, d)
+);
+SHOW CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` float NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`, `z`, `d`),
+	LOCAL KEY `auto_shard_key_x_y_d` USING BTREE (`x`, `y`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE PARTITION TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`y` int(11) NOT NULL,
+	`z` float NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`x`, `y`, `z`, `d`),
+	LOCAL KEY `auto_shard_key_x_y_d` USING BTREE (`x`, `y`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`,`y`,`d`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order`;

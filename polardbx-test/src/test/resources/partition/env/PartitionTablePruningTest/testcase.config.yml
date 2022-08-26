@@ -1,0 +1,14 @@
+#test_type_cast_pruning
+#test_hint_pruning
+test_select_partitions
+test_insert_for_list
+test_hash_enum
+test_range_merge
+test_part_pruning_between
+test_part_pruning_func_monotonicity
+test_part_pruning_ubigint
+test_part_agg
+test_part_pruning_null
+test_part_pruning_null2
+test_part_pruning_row_expr
+test_part_pruning_on_list_col

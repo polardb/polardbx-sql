@@ -1,0 +1,54 @@
+drop table if exists tbl_rng_col;
+CREATE TABLE `tbl_rng_col` (
+  `a` bigint(20) DEFAULT NULL,
+  `b` bigint(20) DEFAULT NULL,
+  `c` bigint(20) DEFAULT NULL,
+  `d` bigint(20) DEFAULT NULL,
+  `e` bigint(20) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+PARTITION BY RANGE  COLUMNS(b)
+(PARTITION p1 VALUES LESS THAN (1000) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (2000) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (3000) ENGINE = InnoDB);
+ 
+insert into tbl_rng_col values (1,1,1,1,1),(1001,1001,1,1,1),(2001,2001,1,1,1), (2002,null,1,1,1);
+
+select * from tbl_rng_col where (a,b,c) < (1000, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col where (b,c,a) > (1000, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col where (b,c,a) <= (2001, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col where (b,c,a) >= (2001, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col where (b,c,a) = (2001, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col where (b,c,a) != (2001, 1999, 10000) order by a,b,c;
+
+
+CREATE TABLE `tbl_rng_col2` (
+  `a` bigint(20) DEFAULT NULL,
+  `b` bigint(20) DEFAULT NULL,
+  `c` bigint(20) DEFAULT NULL,
+  `d` bigint(20) DEFAULT NULL,
+  `e` bigint(20) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+PARTITION BY RANGE  COLUMNS(b,c)
+(PARTITION p1 VALUES LESS THAN (1000,10000) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (2000,20000) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (3000,30000) ENGINE = InnoDB);
+
+insert into tbl_rng_col2 values (1,1,1,1,1),(1001,1001,10001,1,1),(2001,2001,20001,1,1), (2002,null,null,1,1),(2003,1001,null,1,1);
+
+select * from tbl_rng_col2 where (a,b,c) < (1000, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col2 where (b,c,a) > (1000, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col2 where (b,c,a) <= (1501, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col2 where (b,c,a) >= (2001, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col2 where (b,c,a) = (2001, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col2 where (b,c,a) != (2001, 1999, 10000) order by a,b,c;
+select * from tbl_rng_col2 where (b,c,a) > (2000, 1999, 10000);
+select * from tbl_rng_col2 where (b,c) in ((1,1),(1000,1000),(10001,10001),(2002,20001),(2001,20001)) order by b,c;
+
+explain select * from tbl_rng_col2 where (a,b,c) < (1000, 1999, 10000);
+explain select * from tbl_rng_col2 where (b,c,a) > (1000, 1999, 10000);
+explain select * from tbl_rng_col2 where (b,c,a) <= (1501, 1999, 10000);
+explain select * from tbl_rng_col2 where (b,c,a) >= (2001, 1999, 10000);
+explain select * from tbl_rng_col2 where (b,c,a) = (2001, 1999, 10000);
+explain select * from tbl_rng_col2 where (b,c,a) != (2001, 1999, 10000);
+explain select * from tbl_rng_col2 where (b,c,a) > (2000, 1999, 10000);
+select * from tbl_rng_col2 where (b,c) not in ((1,1),(1000,1000),(10001,10001),(2002,20001),(2001,20001)) order by b,c;

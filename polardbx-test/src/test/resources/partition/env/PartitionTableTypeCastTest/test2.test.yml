@@ -1,0 +1,33 @@
+## DISABLE_FAST_SQL_PARSER
+
+## test hash tbl
+drop table if exists nation;
+CREATE TABLE `nation` (
+        `N_NATIONKEY` int(11) NOT NULL,
+        `N_NAME` char(255) DEFAULT NULL,
+        `N_REGIONKEY` int(11) DEFAULT NULL,
+        `N_COMMENT` varchar(255) DEFAULT NULL,
+        PRIMARY KEY (`N_NATIONKEY`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`N_NATIONKEY`)
+PARTITIONS 8;
+
+explain /*TDDL:cmd_extra(USE_FAST_SINGLE_POINT_INTERVAL_MERGING=TRUE)*/SELECT nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name FROM nation WHERE nation.n_name <= 'FEGYPT' AND nation.n_nationkey = 4 AND nation.n_regionkey * 1.125 <= 4.597964841150929 AND nation.n_regionkey <= 4.603817292328983 AND nation.n_nationkey IN (4, 6.571142182969552E7, 1.0225007368253655E9, 1.3282392195771594E9) AND nation.n_comment IS NOT NULL AND nation.n_regionkey - 5 > -1.2458977715312591 AND nation.n_name != 'eD^)&oW4*F' AND nation.n_comment != 'F!fd)e' AND nation.n_name > 'DEGYPT' GROUP BY nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name ORDER BY nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name;
+
+explain /*TDDL:cmd_extra(USE_FAST_SINGLE_POINT_INTERVAL_MERGING=FALSE)*/SELECT nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name FROM nation WHERE nation.n_name <= 'FEGYPT' AND nation.n_nationkey = 4 AND nation.n_regionkey * 1.125 <= 4.597964841150929 AND nation.n_regionkey <= 4.603817292328983 AND nation.n_nationkey IN (4, 6.571142182969552E7, 1.0225007368253655E9, 1.3282392195771594E9) AND nation.n_comment IS NOT NULL AND nation.n_regionkey - 5 > -1.2458977715312591 AND nation.n_name != 'eD^)&oW4*F' AND nation.n_comment != 'F!fd)e' AND nation.n_name > 'DEGYPT' GROUP BY nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name ORDER BY nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name;
+
+
+SELECT nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name
+FROM nation
+WHERE nation.n_name <= 'FEGYPT'
+	AND nation.n_nationkey = 4
+	AND nation.n_regionkey * 1.125 <= 4.597964841150929
+	AND nation.n_regionkey <= 4.603817292328983
+	AND nation.n_nationkey IN (4, 6.571142182969552E7, 1.0225007368253655E9, 1.3282392195771594E9)
+	AND nation.n_comment IS NOT NULL
+	AND nation.n_regionkey - 5 > -1.2458977715312591
+	AND nation.n_name != 'eD^)&oW4*F'
+	AND nation.n_comment != 'F!fd)e'
+	AND nation.n_name > 'DEGYPT'
+GROUP BY nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name
+ORDER BY nation.n_nationkey, nation.n_regionkey, nation.n_comment, nation.n_name;

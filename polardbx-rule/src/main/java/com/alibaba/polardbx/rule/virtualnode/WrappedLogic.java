@@ -27,7 +27,6 @@ import com.alibaba.polardbx.rule.enumerator.handler.CloseIntervalFieldsEnumerato
 import com.alibaba.polardbx.rule.enumerator.handler.IntegerPartDiscontinousRangeEnumerator;
 
 /**
- * @author <a href="junyu@taobao.com">junyu</a>
  * @version 1.0
  * @since 1.6
  * @date 2011-8-20 02:58:34

@@ -1,0 +1,29 @@
+## ===========
+## test hash tbl
+drop table if exists nation;
+
+CREATE TABLE `nation` (
+        `N_NATIONKEY` int(11) NOT NULL,
+        `N_NAME` char(255) DEFAULT NULL,
+        `N_REGIONKEY` int(11) DEFAULT NULL,
+        `N_COMMENT` varchar(255) DEFAULT NULL,
+        PRIMARY KEY (`N_NATIONKEY`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY RANGE(`N_NATIONKEY`)
+(
+  PARTITION p1 VALUES LESS THAN (100),
+  PARTITION p2 VALUES LESS THAN (200),
+  PARTITION p3 VALUES LESS THAN (300)
+);
+
+
+# expect part: p1
+explain select * from nation where 3=3.000;
+
+# expect part: p2
+explain select * from nation where N_NATIONKEY=100 and N_NATIONKEY < 100.5;
+
+# expect part: p2
+explain select * from nation where N_NATIONKEY=100 and N_NATIONKEY < 100.5 and N_NATIONKEY > 99.12;
+
+

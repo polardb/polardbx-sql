@@ -423,7 +423,7 @@ fi
 
 #2.6.32-220.23.2.al.ali1.1.alios6.x86_64 not support Wisp2
 if [ "$wisp" == "wisp" ] && [ "$KERNEL_VERSION" != "2.6.32-220.23.2.al.ali1.1.alios6.x86_64" ]; then
-    JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2"
+    JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2 -Dio.grpc.netty.shaded.io.netty.transport.noNative=true"
 fi
 
 #disable netty-native in order to support Wisp2

@@ -34,7 +34,6 @@ import java.util.TreeMap;
  * 一组{@linkplain TableRule}的集合
  *
  * @author junyu
- * @author <a href="jianghang.loujh@taobao.com">jianghang</a>
  */
 public class VirtualTableRoot extends AbstractLifecycle implements Lifecycle {
 

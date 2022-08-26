@@ -1,0 +1,40 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a datetime NOT NULL
+)
+PARTITION BY RANGE (year(a)) (
+	PARTITION p0 VALUES LESS THAN (1999),
+	PARTITION p1 VALUES LESS THAN (2000),
+	PARTITION p2 VALUES LESS THAN (2001),
+	PARTITION p3 VALUES LESS THAN (2002)
+);
+EXPLAIN SELECT *
+FROM tbl
+WHERE a > '2000-12-31 22:59:59';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl[p2,p3]", shardCount=2, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` > ?)")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a > '2000-12-31 23:59:59';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl[p2,p3]", shardCount=2, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` > ?)")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a < '2000-01-01 00:00:00';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl[p0,p1]", shardCount=2, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` < ?)")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a <= '2000-01-01 00:00:00';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl[p0,p1,p2]", shardCount=3, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` <= ?)")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a < '2000-01-01 10:00:00';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl[p0,p1,p2]", shardCount=3, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` < ?)")

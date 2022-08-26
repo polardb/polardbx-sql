@@ -1,0 +1,44 @@
+## test hash/one col/int
+
+## test extra partition by hot value for hash
+drop table if exists tbl_hash;
+create table if not exists tbl_hash (a int not null)
+partition by hash(a)
+partitions 4;
+create tablegroup tbl_hash_tg;
+alter table tbl_hash set tablegroup=tbl_hash_tg;
+#alter tablegroup tbl_hash_tg extract to partition by hot value(402); 
+show create table tbl_hash;
+
+## test add and drop partition for range
+drop table if exists tbl_rng;
+create table if not exists tbl_rng (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+create tablegroup tbl_rng_tg;
+alter table tbl_rng set tablegroup=tbl_rng_tg;
+show create table tbl_rng;
+alter tablegroup tbl_rng_tg add partition (partition p4 values less than (400));
+show create table tbl_rng;
+alter tablegroup tbl_rng_tg drop partition p2;
+show create table tbl_rng;
+
+## test add and drop partition for list
+drop table if exists tbl_list;
+create table if not exists tbl_list (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+  partition p2 values in (100,101),
+  partition p3 values in (200,201)
+);
+create tablegroup tbl_list_tg;
+alter table tbl_list set tablegroup=tbl_list_tg;
+show create table tbl_list;
+alter tablegroup tbl_list_tg add partition ( partition p4 values in (300,301) );
+show create table tbl_list;
+alter tablegroup tbl_list_tg drop partition p2;
+show create table tbl_list;
+

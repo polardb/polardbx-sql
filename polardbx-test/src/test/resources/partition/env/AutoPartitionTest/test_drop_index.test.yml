@@ -1,0 +1,33 @@
+
+drop table if exists `t_order`;
+
+CREATE TABLE `t_order` (
+`x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL
+);
+
+show create table t_order;
+show full create table t_order;
+
+create local index idx0 on `t_order` (`order_id`);
+create index idx1 on `t_order` (`order_id`);
+create clustered index idx2 on `t_order` (`order_id`);
+alter table `t_order` add local index idx3 (`seller_id`);
+alter table `t_order` add index idx4 (`seller_id`);
+alter table `t_order` add clustered index idx5 (`seller_id`);
+
+show create table t_order;
+show full create table t_order;
+
+alter table `t_order` drop index idx0;
+alter table `t_order` drop index idx1;
+alter table `t_order` drop index idx2;
+drop index idx3 on `t_order`;
+drop index idx4 on `t_order`;
+drop index idx5 on `t_order`;
+
+show create table t_order;
+show full create table t_order;
+
+drop table if exists `t_order`;

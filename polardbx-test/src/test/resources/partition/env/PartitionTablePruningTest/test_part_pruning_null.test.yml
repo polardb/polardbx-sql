@@ -1,0 +1,25 @@
+drop table if exists tbl_ubigint;
+CREATE TABLE `tbl_ubigint` (
+  `a` bigint unsigned DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+PARTITION BY KEY (a)
+PARTITIONS 4;
+
+drop table if exists tbl_varchar;
+CREATE TABLE `tbl_varchar` (
+  `a` varchar(128) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+PARTITION BY KEY (a)
+PARTITIONS 4;
+
+drop table if exists tbl_datetime;
+CREATE TABLE `tbl_datetime` (
+  `a` datetime DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+PARTITION BY KEY (a)
+PARTITIONS 4;
+
+explain select a from tbl_ubigint where a is null;
+explain select a from tbl_ubigint where a = 0;
+explain select a from tbl_datetime where a is null;
+explain select a from tbl_varchar where a is null;

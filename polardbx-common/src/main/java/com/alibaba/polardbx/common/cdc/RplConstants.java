@@ -40,6 +40,8 @@ public class RplConstants {
 
     public final static String SOURCE_HOST_TYPE = "SOURCE_HOST_TYPE";
 
+    public final static String DEST_APPLIER_TYPE = "DEST_APPLIER_TYPE";
+
     public final static String CHANNEL = "CHANNEL";
 
     public final static String REPLICATE_DO_DB = "REPLICATE_DO_DB";

@@ -18,10 +18,12 @@ package com.alibaba.polardbx.common.charset;
 
 import com.alibaba.polardbx.common.collation.CollationHandler;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class CharsetFactoryTest {
     @Test
+    @Ignore
     public void test() {
         for (CollationName collation : CollationName.POLAR_DB_X_IMPLEMENTED_COLLATION_NAMES) {
             CollationHandler collationHandler = CharsetFactory.INSTANCE.createCollationHandler(collation);

@@ -1,0 +1,10 @@
+use information_schema;
+desc partitions;
+describe partitions;
+desc table_group;
+describe table_group;
+show create table table_group;
+desc full_table_group;
+describe full_table_group;
+show create table full_table_group;
+show create table table_detail;

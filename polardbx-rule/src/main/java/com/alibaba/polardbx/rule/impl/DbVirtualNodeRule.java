@@ -22,7 +22,6 @@ import com.alibaba.polardbx.rule.VirtualTableSupport;
 import java.util.Map;
 
 /**
- * @author <a href="junyu@taobao.com">junyu</a>
  * @version 1.0
  * @since 1.6
  */

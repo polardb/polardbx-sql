@@ -1,0 +1,31 @@
+DROP TABLE IF EXISTS tbl1;
+DROP TABLE IF EXISTS tbl2;
+DROP TABLE IF EXISTS tbl3;
+CREATE TABLE IF NOT EXISTS tbl1 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p1 VALUES LESS THAN (100),
+	PARTITION p2 VALUES LESS THAN (200),
+	PARTITION p3 VALUES LESS THAN (300)
+);
+CREATE TABLE IF NOT EXISTS tbl2 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+) SINGLE;
+CREATE TABLE IF NOT EXISTS tbl3 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+) BROADCAST;
+CHECK TABLE tbl1;
+Table,Op,Msg_type,Msg_text
+part_mtr.tbl1,check,status,OK
+part_mtr.tbl1:columns,check,status,OK
+CHECK TABLE tbl2;
+Table,Op,Msg_type,Msg_text
+part_mtr.tbl2,check,status,OK
+CHECK TABLE tbl3;
+Table,Op,Msg_type,Msg_text
+part_mtr.tbl3,check,status,OK
+part_mtr.tbl3:columns,check,status,OK
