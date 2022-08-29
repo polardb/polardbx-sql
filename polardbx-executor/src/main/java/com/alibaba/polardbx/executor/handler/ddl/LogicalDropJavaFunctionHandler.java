@@ -6,12 +6,16 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropJavaFunction;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlDropJavaFunction;
 import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
+
+import java.sql.Connection;
 
 public class LogicalDropJavaFunctionHandler extends HandlerCommon {
   public LogicalDropJavaFunctionHandler(IRepository repo) {
@@ -41,6 +45,9 @@ public class LogicalDropJavaFunctionHandler extends HandlerCommon {
     ReflectiveSqlOperatorTable.remove(funcNameUpper);
 
     System.gc();
+
+    Connection connection = MetaDbUtil.getConnection();
+    UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
 
     return new AffectRowCursor(0);
 

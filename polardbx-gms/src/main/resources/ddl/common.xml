@@ -69,4 +69,18 @@
             ) charset=utf8
         ]]></Create>
     </SystemTable>
+    <SystemTable name="user_defined_java_code">
+        <Create><![CDATA[
+            create table if not exists `user_defined_java_code` (
+              `id` bigint unsigned not null auto_increment,
+              `func_name` varchar(100) not null,
+              `class_name` varchar(100) not null,
+              `code` text not null,
+              `code_language` varchar(100) not null,
+              `input_types` varchar(200) not null,
+              `result_type` varchar(100) not null,
+              primary key(`id`, `func_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

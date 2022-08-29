@@ -6,6 +6,8 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
@@ -27,22 +29,12 @@ import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlReturnTypeInference;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
-import org.codehaus.commons.compiler.util.ResourceFinderClassLoader;
-import org.codehaus.commons.compiler.util.resource.MapResourceCreator;
-import org.codehaus.commons.compiler.util.resource.MapResourceFinder;
-import org.codehaus.commons.compiler.util.resource.Resource;
-import org.codehaus.commons.compiler.util.resource.StringResource;
-import org.codehaus.commons.compiler.ICompiler;
-import org.codehaus.janino.CompilerFactory;
 
+import java.sql.Connection;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
-
-  public static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
   public LogicalCreateJavaFunctionHandler(IRepository repo) {
     super(repo);
@@ -94,73 +86,48 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
             "}",
         PACKAGE_NAME, userImportString, className, className, funcName.toUpperCase(), userJavaCode);
 
-    CompilerFactory compilerFactory = new CompilerFactory();
-    ICompiler compiler = compilerFactory.newCompiler();
-    Map<String, byte[]> classes = new HashMap<>();
-    compiler.setClassFileCreator(new MapResourceCreator(classes));
-
-    try {
-      compiler.compile(new Resource[] {
-          new StringResource(
-              String.format("%s/%s.java", PACKAGE_NAME, className),
-              CODE
-          )
-      });
-    } catch (Exception e) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e.toString());
-    }
-    ClassLoader cl = new ResourceFinderClassLoader(
-        new MapResourceFinder(classes),    // resourceFinder
-        ClassLoader.getSystemClassLoader() // parent
-    );
+    ClassLoader cl = UserDefinedJavaFunctionManager.compileAndLoadClass(funcName, CODE, className);
 
     List<DataType> inputDataTypes = new ArrayList<>(inputTypes.size());
     for (String inputType : inputTypes) {
-      inputDataTypes.add(computeDataType(inputType));
+      inputDataTypes.add(UserDefinedJavaFunctionManager.computeDataType(inputType));
     }
-    DataType resultDataType = computeDataType(returnType);
+    DataType resultDataType = UserDefinedJavaFunctionManager.computeDataType(returnType);
 
     try{
       UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", PACKAGE_NAME, className)), inputDataTypes, resultDataType);
+      //new SqlUserDefinedFunction
+      final SqlFunction UserDefinedJavaFunction= new SqlFunction(
+          funcName.toUpperCase(),
+          SqlKind.OTHER_FUNCTION,
+          UserDefinedJavaFunctionManager.computeReturnType(returnType),
+          InferTypes.FIRST_KNOWN,
+          OperandTypes.ONE_OR_MORE,
+          SqlFunctionCategory.SYSTEM
+      );
+      ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
+      RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
     } catch (Exception e) {
       throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Add function error");
     }
 
-    //new SqlUserDefinedFunction
-    final SqlFunction UserDefinedJavaFunction= new SqlFunction(
-        funcName.toUpperCase(),
-        SqlKind.OTHER_FUNCTION,
-        //需要使用其他计算方法
-        computeReturnType(returnType),
-        InferTypes.FIRST_KNOWN,
-        OperandTypes.ONE_OR_MORE,
-        SqlFunctionCategory.SYSTEM
-    );
-    ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
-    RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
+    Connection connection = MetaDbUtil.getConnection();
+    UserDefinedJavaFunctionAccessor.insertFunction(funcName.toLowerCase(), className, CODE, "Java",
+        connection, buildInputTypeString(inputTypes), returnType);
+
     return new AffectRowCursor(0);
   }
 
-  private DataType computeDataType(String type) {
-    SqlTypeName name = SqlTypeName.get(type.toUpperCase());
-    if (name == null) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type "+type);
+  private String buildInputTypeString(List<String> inputTypes) {
+    StringBuilder sb = new StringBuilder();
+    int size = inputTypes.size();
+    for (int i = 0; i < size - 1; i++) {
+      sb.append(inputTypes.get((i)));
+      sb.append(",");
     }
-    return DataTypeUtil.calciteToDrdsType(factory.createSqlType(name));
+    sb.append(inputTypes.get(size-1));
+    return sb.toString();
   }
 
 
-
-  private SqlReturnTypeInference computeReturnType(String returnType) {
-    SqlTypeName name = SqlTypeName.get(returnType.toUpperCase());
-    if (name == null) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport return type " + returnType);
-    }
-    return ReturnTypes.explicit(name);
-  }
-
-  private boolean isNumericType(String type) {
-    return type.equals("BIGINT") || type.equals("INTEGER")
-        || type.equals("DOUBLE") || type.equals("FLOAT");
-  }
 }
