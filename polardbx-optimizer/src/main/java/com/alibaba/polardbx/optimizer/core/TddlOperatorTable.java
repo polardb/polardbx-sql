@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core;
 
+import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
+import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
 import com.alibaba.polardbx.optimizer.core.function.AddTimeFunction;
 import com.alibaba.polardbx.optimizer.core.function.FunctionWithVariadicArg;
 import com.alibaba.polardbx.optimizer.core.function.FunctionWithoutArg;
@@ -74,7 +78,9 @@ import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.calcite.util.Util;
 
+import java.sql.Connection;
 import java.util.List;
 import java.util.Set;
 
@@ -2381,6 +2387,27 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
             || (opName.names.size() == 3 && opName.names.get(2).equalsIgnoreCase(SqlFunction.NEXTVAL_FUNC_NAME))) {
             operatorList.add(NEXTVAL);
         } else {
+            Connection connection = MetaDbUtil.getConnection();
+            String funcName;
+            if (opName.names.size() > 1) {
+                if (opName.names.get(opName.names.size() - 2).equals(IS_NAME)) {
+                    // per SQL99 Part 2 Section 10.4 Syntax Rule 7.b.ii.1
+                    funcName = Util.last(opName.names);
+                } else {
+                    return;
+                }
+            } else {
+                funcName = opName.getSimple();
+            }
+            if (!UserDefinedJavaFunctionManager.containsFunction(funcName)
+                && !UserDefinedJavaFunctionAccessor.queryFunctionByName(funcName, connection).isEmpty()) {
+
+                List<UserDefinedJavaFunctionRecord> records = UserDefinedJavaFunctionAccessor.queryAllFunctions(connection);
+                UserDefinedJavaFunctionManager.removeRedundant(records);
+                records.stream()
+                    .filter(record -> !UserDefinedJavaFunctionManager.containsFunction(record.funcName))
+                    .forEach(UserDefinedJavaFunctionManager::addFunctionFromMeta);
+            }
             super.lookupOperatorOverloads(opName, category, syntax, operatorList);
         }
     }

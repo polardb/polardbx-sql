@@ -38,8 +38,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class UserDefinedJavaFunctionManager{
+
   private static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunctionManager.class);
   public static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
@@ -52,9 +54,15 @@ public class UserDefinedJavaFunctionManager{
     return javaFunctionCaches.containsKey(name);
   }
 
-  public static boolean removeFunction(String name) {
+  public static void removeFunction(String name) {
     javaFunctionCaches.remove(name);
-    return true;
+  }
+
+  public static void removeRedundant(List<UserDefinedJavaFunctionRecord> records) {
+    List<String> nameList = records.stream().map(record -> record.funcName).collect(Collectors.toList());
+    javaFunctionCaches = javaFunctionCaches.entrySet().stream()
+        .filter(entry -> nameList.contains(entry.getKey()))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
   }
 
   public static void addFunction(Class type, List<DataType> inputTypes, DataType resultType) {
@@ -77,7 +85,7 @@ public class UserDefinedJavaFunctionManager{
     }
   }
 
-  public static void addFunctionsFromMeta(UserDefinedJavaFunctionRecord record, Connection conn) {
+  public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {
       String funcName = record.funcName;
       String className = record.className;
       String code = record.code;
@@ -115,10 +123,9 @@ public class UserDefinedJavaFunctionManager{
 
     if (records.size() == 0) return;
 
-    for (UserDefinedJavaFunctionRecord record : records) {
-     addFunctionsFromMeta(record, connection);
-    }
-
+    records.stream()
+        .filter(record -> !containsFunction(record.funcName))
+        .forEach(UserDefinedJavaFunctionManager::addFunctionFromMeta);
   }
 
   public static AbstractScalarFunction getUserDefinedJavaFunction(String functionName, List<DataType> operandTypes,
@@ -127,7 +134,7 @@ public class UserDefinedJavaFunctionManager{
 
     if (constructor == null) {
         return null;
-      }
+    }
 
     try {
       UserDefinedJavaFunction sample = (UserDefinedJavaFunction) constructor.newInstance(operandTypes, resultType);

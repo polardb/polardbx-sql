@@ -33,6 +33,7 @@ import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
 
@@ -88,10 +89,14 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
 
     ClassLoader cl = UserDefinedJavaFunctionManager.compileAndLoadClass(funcName, CODE, className);
 
-    List<DataType> inputDataTypes = new ArrayList<>(inputTypes.size());
-    for (String inputType : inputTypes) {
-      inputDataTypes.add(UserDefinedJavaFunctionManager.computeDataType(inputType));
-    }
+//    List<DataType> inputDataTypes = new ArrayList<>(inputTypes.size());
+//    for (String inputType : inputTypes) {
+//      inputDataTypes.add(UserDefinedJavaFunctionManager.computeDataType(inputType));
+//    }
+    List<DataType> inputDataTypes = inputTypes.stream()
+        .map(UserDefinedJavaFunctionManager::computeDataType)
+        .collect(Collectors.toList());
+
     DataType resultDataType = UserDefinedJavaFunctionManager.computeDataType(returnType);
 
     try{

@@ -68,7 +68,7 @@ public class ExtraFunctionManager {
         if (constructor == null) {
             AbstractScalarFunction function =
                 UserDefinedJavaFunctionManager.
-                    getUserDefinedJavaFunction(functionName, operandTypes,resultType);
+                    getUserDefinedJavaFunction(functionName, operandTypes, resultType);
             if (function != null) return function;
         }
 
