@@ -6,7 +6,7 @@ on:
     paths-ignore:
       - "README.md"
       - "docs/**"
-  pull_request:
+  pull_request_target:
     types: [labeled]
     branches:
       - "main"
@@ -19,20 +19,23 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('ci-master-{0}', github.sha) || format('ci-{0}', github.ref) }}
   cancel-in-progress: true
 
+permissions:
+  checks: write
+  contents: read
+  issues: read
+  pull-requests: write
+
+env:
+  GIT_URL: https://github.com/${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+  COMMIT_ID: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+  CODE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref || github.ref }}
+
 jobs:
   DML_Test:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ready for test')
-    permissions:
-      checks: write
-      contents: read
-      issues: read
-      pull-requests: write
     env:
       TEST_UID: ${{ github.run_id }}-${{ github.run_attempt }}-dml
-      GIT_URL: https://github.com/${{ github.repository }}
-      COMMIT_ID: ${{ github.sha }}
-      CODE_REF: ${{ github.ref }}
     steps:
       - name: Print ENV
         run: |
@@ -40,7 +43,6 @@ jobs:
           echo "git_url: ${GIT_URL}"
           echo "commit_id: ${COMMIT_ID}"
           echo "code_ref: ${CODE_REF}"
-      - uses: actions/checkout@v3
       - name: Deploy PolarDB-X Cluster
         uses: appleboy/ssh-action@master
         id: dml_deploy
@@ -109,16 +111,8 @@ jobs:
   DDL_TEST:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ready for test')
-    permissions:
-      checks: write
-      contents: read
-      issues: read
-      pull-requests: write
     env:
       TEST_UID: ${{ github.run_id }}-${{ github.run_attempt }}-ddl
-      GIT_URL: https://github.com/${{ github.repository }}
-      COMMIT_ID: ${{ github.sha }}
-      CODE_REF: ${{ github.ref }}
     steps:
       - name: Print ENV
         run: |
@@ -126,7 +120,6 @@ jobs:
           echo "git_url: ${GIT_URL}"
           echo "commit_id: ${COMMIT_ID}"
           echo "code_ref: ${CODE_REF}"
-      - uses: actions/checkout@v3
       - name: Deploy PolarDB-X Cluster
         uses: appleboy/ssh-action@master
         id: ddl_deploy
