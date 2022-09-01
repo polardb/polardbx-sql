@@ -20,6 +20,7 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -348,6 +349,7 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
+    @Ignore
     public void testPartitionTable() throws SQLException {
         final String dbName = "opt_part_db";
         final String tableName = "opt_part_tb";

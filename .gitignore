@@ -10,6 +10,7 @@
 .project
 .settings/
 .svn/
+.vscode
 bdbtmp/
 git.properties
 je.info.*
