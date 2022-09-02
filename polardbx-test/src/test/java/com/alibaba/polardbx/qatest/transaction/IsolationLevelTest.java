@@ -23,6 +23,7 @@ import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -152,6 +153,7 @@ public class IsolationLevelTest extends CrudBasedLockTestCase {
      * Test setting/getting isolation level
      */
     @Test
+    @Ignore
     public void testSetIsolationLevel() throws Exception {
         try (Connection conn = getPolardbxConnection(); Statement stmt = conn.createStatement()) {
             // set session transaction isolation
