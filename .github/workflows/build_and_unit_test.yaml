@@ -1,0 +1,67 @@
+name: Build_Unit_Test
+on:
+  push:
+    branches:
+      - "main"
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+  pull_request:
+    branches:
+      - "main"
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+
+env:
+  MAVEN_CUSTOM_OPTS: "-Xmx4g -XX:+ExitOnOutOfMemoryError"
+
+concurrency: 
+  # main branch should complete running
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('ci-master-{0}', github.sha) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: true
+
+jobs:
+  Build_Unit_Test:
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+      issues: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: 'true'
+      - uses: actions/setup-java@v1
+        with:
+          java-version: 8
+      - uses: stCarolas/setup-maven@v4.3
+        with:
+          maven-version: 3.5.0
+      - name: Cache local Maven repository
+        id: cache-maven
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ github.workflow }}-${{ runner.os }}-maven-2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ github.workflow }}-${{ runner.os }}-maven-2-
+      - name: Populate maven cache
+        if: steps.cache-maven.outputs.cache-hit != 'true'
+        run: ./mvnw de.qaware.maven:go-offline-maven-plugin:resolve-dependencies
+      - name: Maven Build
+        run: |
+          export MAVEN_OPTS="${MAVEN_CUSTOM_OPTS}"
+          ./mvnw -T 1C clean package install -DskipTests -Dcheckstyle.skip=true -Dmaven.javadoc.skip=true
+      - name: Unit Test
+        run: |
+          export MAVEN_OPTS="${MAVEN_CUSTOM_OPTS}"
+          sudo sed -i 's#.*#Asia/Shanghai#g' /etc/timezone
+          ./mvnw test -B -pl '!polardbx-calcite,!polardbx-rule,!polardbx-rpc,!polardbx-test' -Dmaven.test.failure.ignore=true
+      - name: Analyze Unit Test Result
+        uses: scacap/action-surefire-report@v1
+        with:
+          check_name: Unit Test Result
+          report_paths: polardbx-*/target/surefire-reports/TEST-*.xml
+          fail_on_test_failures: true

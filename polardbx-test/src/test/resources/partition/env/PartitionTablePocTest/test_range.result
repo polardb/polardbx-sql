@@ -1,0 +1,52 @@
+DROP TABLE IF EXISTS tbl_range;
+CREATE TABLE IF NOT EXISTS tbl_range (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p1 VALUES LESS THAN (100),
+	PARTITION p2 VALUES LESS THAN (200),
+	PARTITION p3 VALUES LESS THAN (300)
+);
+SHOW CREATE TABLE tbl_range;
+Table,Create Table
+tbl_range,CREATE TABLE `tbl_range` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+INSERT INTO tbl_range
+VALUES (10),
+	(99),
+	(100),
+	(101);
+EXPLAIN SELECT *
+FROM tbl_range
+WHERE a = 99
+ORDER BY a;
+Logical ExecutionPlan
+LogicalView(tables="tbl_range[p1]", sql="SELECT `a` FROM `tbl_range` AS `tbl_range` WHERE (`a` = ?) ORDER BY `a`")
+SELECT *
+FROM tbl_range
+WHERE a = 99
+ORDER BY a;
+a
+99
+EXPLAIN SELECT *
+FROM tbl_range
+WHERE a BETWEEN 100 AND 200
+ORDER BY a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl_range[p2,p3]", shardCount=2, sql="SELECT `a` FROM `tbl_range` AS `tbl_range` WHERE (`a` BETWEEN ? AND ?) ORDER BY `a`")
+SELECT *
+FROM tbl_range
+WHERE a BETWEEN 100 AND 200
+ORDER BY a;
+a
+100
+101
+DROP TABLE IF EXISTS tbl_range;

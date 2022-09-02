@@ -1,0 +1,100 @@
+## Test charset set for part_route
+drop table if exists rc_tbl_utf8;
+drop table if exists rc_tbl_gbk;
+
+  ## E4B896E7958C:世界, E4B896E7958CE4BABAE6B091:世界人民
+set names utf8;
+create table if not exists rc_tbl_utf8 (a bigint unsigned not null, b datetime not null, c varchar(128) CHARACTER SET utf8 not null)
+partition by range columns(c)
+(
+partition p0 values less than (x'E4B896E7958C'),
+partition p1 values less than (x'E4B896E7958CE4BABAE6B091'),
+partition p2 values less than (maxvalue)
+);
+
+  ## CAC0BDE7:世界, CAC0BDE7C8CBC3F1:世界人民
+set names gbk;
+create table if not exists rc_tbl_gbk (a bigint unsigned not null, b datetime not null, c varchar(128) CHARACTER SET gbk not null )
+partition by range columns(c)
+(
+partition p0 values less than (x'CAC0BDE7'),
+partition p1 values less than (x'CAC0BDE7C8CBC3F1'),
+partition p2 values less than (maxvalue)
+);
+
+  #set names utf8;
+  #gbk(actual:utf8)->utf8：cast_to_utf8_invalid(actual:gbk)[->utf8(terminal)：decoding invalid]
+  #gbk(actual:gbk)->utf8：cast_to_utf8_valid(actual:gbk)[->utf8(terminal):decoding invalid]
+set names utf8;
+show create table rc_tbl_utf8;
+show create table rc_tbl_gbk;
+
+  #set names gbk:
+  #gbk(actual:utf8)->gbk:no_cast(actual:utf8)[->utf8(terminal)：decoding valid]
+  #gbk(actual:gbk)->gbk:no_cast(actual:gbk)[->utf8(terminal)：decoding invalid]
+set names gbk;
+show create table rc_tbl_utf8;
+show create table rc_tbl_gbk;
+
+set names utf8;
+insert into rc_tbl_utf8(a,b,c) values (1,'2012-12-11 23:00:00', '世界'),(2,'2012-12-12 01:00:00','世界人民');
+select a,b,c from rc_tbl_utf8 where c='世界';
+delete from rc_tbl_utf8;
+
+set names utf8;
+insert into rc_tbl_utf8(a,b,c) values (3,'2012-12-11 23:00:00', x'E4B896E7958C'),(4,'2012-12-12 01:00:00', x'E4B896E7958CE4BABAE6B091');
+select a,b,c from rc_tbl_utf8 where c=x'E4B896E7958C';
+
+set names gbk;
+insert into rc_tbl_gbk(a,b,c) values (5,'2012-12-11 23:00:00', x'CAC0BDE7'),(6,'2012-12-12 01:00:00', x'CAC0BDE7C8CBC3F1');
+select a,b,c from rc_tbl_gbk where c=x'CAC0BDE7';
+
+  # test the part_route for charset utf8
+set names utf8;
+select a,part_route('','rc_tbl_utf8', c) from rc_tbl_utf8 order by a;
+explain select hex(c) from rc_tbl_utf8 where c= x'E4B896E7958C' or c= x'E4B896E7958CE4BABAE6B091' order by a;
+select part_route('','rc_tbl_utf8', x'E4B896E7958C');
+select part_route('','rc_tbl_utf8', x'E4B896E7958CE4BABAE6B091');
+select part_route('','rc_tbl_utf8', '世界');
+select part_route('','rc_tbl_utf8', '世界人民');
+  # test the part_route for charset gbk
+set names gbk;
+select a,part_route('','rc_tbl_gbk', c) from rc_tbl_gbk order by a;
+explain select hex(c) from rc_tbl_gbk where c= x'CAC0BDE7' or c= x'CAC0BDE7C8CBC3F1' order by a;
+select part_route('','rc_tbl_gbk', x'CAC0BDE7');
+select part_route('','rc_tbl_gbk', x'CAC0BDE7C8CBC3F1');
+
+  ## test charset set utf8_bin of partition col
+drop table if exists lc_tbl3;
+set names utf8;
+create table if not exists lc_tbl3 (a bigint unsigned not null, b datetime not null, c varchar(128) character set utf8 collate utf8_bin not null)
+partition by list columns(c)
+(
+partition p0 values in ('A', 'B', 'C'),
+partition p1 values in ('a','b', 'c'),
+partition p2 values in ('Aa','Bb', 'Cc'),
+partition p3 values in ('aA','bB', 'cC')
+);
+
+  ## test charset set utf8_bin of partition col
+drop table if exists lc_tbl3;
+set names utf8;
+create table if not exists lc_tbl3 (a bigint unsigned default null, b datetime default null, c varchar(128) character set utf8 collate utf8_bin not null)
+partition by list columns(c)
+(
+partition p0 values in ('A', 'B', 'C'),
+partition p1 values in ('a','b', 'c'),
+partition p2 values in ('Aa','Bb', 'Cc'),
+partition p3 values in ('aA','bB', 'cC')
+);
+insert into lc_tbl3 (c) values ('A'),('Aa'),('B'),('Bb'),('a'),('aA'),('b'),('bB');
+explain select c from lc_tbl3 where c='A' or c='Aa' or c='B' or c='Bb' or c='a' or c='aA' or c='b' or c='bB';
+select part_route('','lc_tbl3', 'A');
+select part_route('','lc_tbl3', 'Aa');
+select part_route('','lc_tbl3', 'B');
+select part_route('','lc_tbl3', 'Bb');
+select part_route('','lc_tbl3', 'a');
+select part_route('','lc_tbl3', 'aA');
+select part_route('','lc_tbl3', 'b');
+select part_route('','lc_tbl3', 'bB');
+select part_route('','lc_tbl3', c) from lc_tbl3 order by c;

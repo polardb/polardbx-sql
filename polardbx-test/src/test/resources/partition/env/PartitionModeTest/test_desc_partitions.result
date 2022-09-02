@@ -1,0 +1,110 @@
+USE information_schema;
+DESC partitions;
+Field,Type,Null,Key,Default,Extra
+TABLE_CATALOG,char(3),YES,,NULL,
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_NAME,varchar,YES,,NULL,
+PARTITION_NAME,varchar(192),YES,,NULL,
+SUBPARTITION_NAME,null,YES,,NULL,
+PARTITION_ORDINAL_POSITION,bigint,YES,,NULL,
+SUBPARTITION_ORDINAL_POSITION,null,YES,,NULL,
+PARTITION_METHOD,varchar(192),YES,,NULL,
+SUBPARTITION_METHOD,null,YES,,NULL,
+PARTITION_EXPRESSION,varchar,YES,,NULL,
+SUBPARTITION_EXPRESSION,null,YES,,NULL,
+PARTITION_DESCRIPTION,null,YES,,NULL,
+TABLE_ROWS,bigint_unsigned,YES,,NULL,
+AVG_ROW_LENGTH,decimal(65, 0),YES,,NULL,
+DATA_LENGTH,bigint_unsigned,YES,,NULL,
+MAX_DATA_LENGTH,bigint_unsigned,YES,,NULL,
+INDEX_LENGTH,bigint_unsigned,YES,,NULL,
+DATA_FREE,bigint_unsigned,YES,,NULL,
+CREATE_TIME,datetime,YES,,NULL,
+UPDATE_TIME,datetime,YES,,NULL,
+CHECK_TIME,datetime,YES,,NULL,
+CHECKSUM,bigint_unsigned,YES,,NULL,
+PARTITION_COMMENT,varchar,YES,,NULL,
+NODEGROUP,char(7),YES,,NULL,
+TABLESPACE_NAME,null,YES,,NULL,
+DESC partitions;
+Field,Type,Null,Key,Default,Extra
+TABLE_CATALOG,char(3),YES,,NULL,
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_NAME,varchar,YES,,NULL,
+PARTITION_NAME,varchar(192),YES,,NULL,
+SUBPARTITION_NAME,null,YES,,NULL,
+PARTITION_ORDINAL_POSITION,bigint,YES,,NULL,
+SUBPARTITION_ORDINAL_POSITION,null,YES,,NULL,
+PARTITION_METHOD,varchar(192),YES,,NULL,
+SUBPARTITION_METHOD,null,YES,,NULL,
+PARTITION_EXPRESSION,varchar,YES,,NULL,
+SUBPARTITION_EXPRESSION,null,YES,,NULL,
+PARTITION_DESCRIPTION,null,YES,,NULL,
+TABLE_ROWS,bigint_unsigned,YES,,NULL,
+AVG_ROW_LENGTH,decimal(65, 0),YES,,NULL,
+DATA_LENGTH,bigint_unsigned,YES,,NULL,
+MAX_DATA_LENGTH,bigint_unsigned,YES,,NULL,
+INDEX_LENGTH,bigint_unsigned,YES,,NULL,
+DATA_FREE,bigint_unsigned,YES,,NULL,
+CREATE_TIME,datetime,YES,,NULL,
+UPDATE_TIME,datetime,YES,,NULL,
+CHECK_TIME,datetime,YES,,NULL,
+CHECKSUM,bigint_unsigned,YES,,NULL,
+PARTITION_COMMENT,varchar,YES,,NULL,
+NODEGROUP,char(7),YES,,NULL,
+TABLESPACE_NAME,null,YES,,NULL,
+DESC table_group;
+Field,Type,Null,Key,Default,Extra
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_GROUP_ID,bigint,YES,,NULL,
+TABLE_GROUP_NAME,varchar,YES,,NULL,
+LOCALITY,varchar,YES,,NULL,
+PRIMARY_ZONE,varchar,YES,,NULL,
+IS_MANUAL_CREATE,integer,YES,,NULL,
+CUR_PART_KEY,varchar,YES,,NULL,
+MAX_PART_KEY,varchar,YES,,NULL,
+PART_COUNT,bigint,YES,,NULL,
+TABLE_COUNT,bigint,YES,,NULL,
+INDEX_COUNT,bigint,YES,,NULL,
+DESC table_group;
+Field,Type,Null,Key,Default,Extra
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_GROUP_ID,bigint,YES,,NULL,
+TABLE_GROUP_NAME,varchar,YES,,NULL,
+LOCALITY,varchar,YES,,NULL,
+PRIMARY_ZONE,varchar,YES,,NULL,
+IS_MANUAL_CREATE,integer,YES,,NULL,
+CUR_PART_KEY,varchar,YES,,NULL,
+MAX_PART_KEY,varchar,YES,,NULL,
+PART_COUNT,bigint,YES,,NULL,
+TABLE_COUNT,bigint,YES,,NULL,
+INDEX_COUNT,bigint,YES,,NULL,
+SHOW CREATE TABLE table_group;
+View,Create View,character_set_client,collation_connection
+table_group,[VIRTUAL_VIEW] TABLE_GROUP,utf8,utf8_general_ci
+DESC full_table_group;
+Field,Type,Null,Key,Default,Extra
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_GROUP_ID,bigint,YES,,NULL,
+TABLE_GROUP_NAME,varchar,YES,,NULL,
+LOCALITY,varchar,YES,,NULL,
+PRIMARY_ZONE,varchar,YES,,NULL,
+IS_MANUAL_CREATE,integer,YES,,NULL,
+PART_INFO,varchar,YES,,NULL,
+TABLES,varchar,YES,,NULL,
+DESC full_table_group;
+Field,Type,Null,Key,Default,Extra
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_GROUP_ID,bigint,YES,,NULL,
+TABLE_GROUP_NAME,varchar,YES,,NULL,
+LOCALITY,varchar,YES,,NULL,
+PRIMARY_ZONE,varchar,YES,,NULL,
+IS_MANUAL_CREATE,integer,YES,,NULL,
+PART_INFO,varchar,YES,,NULL,
+TABLES,varchar,YES,,NULL,
+SHOW CREATE TABLE full_table_group;
+View,Create View,character_set_client,collation_connection
+full_table_group,[VIRTUAL_VIEW] FULL_TABLE_GROUP,utf8,utf8_general_ci
+SHOW CREATE TABLE table_detail;
+View,Create View,character_set_client,collation_connection
+table_detail,[VIRTUAL_VIEW] TABLE_DETAIL,utf8,utf8_general_ci

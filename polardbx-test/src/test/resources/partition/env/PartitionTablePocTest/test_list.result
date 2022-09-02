@@ -1,0 +1,53 @@
+DROP TABLE IF EXISTS tbl_list;
+CREATE TABLE IF NOT EXISTS tbl_list (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY LIST (a) (
+	PARTITION p1 VALUES IN (10, 101),
+	PARTITION p2 VALUES IN (99, 100),
+	PARTITION p3 VALUES IN (200, 201)
+);
+SHOW CREATE TABLE tbl_list;
+Table,Create Table
+tbl_list,CREATE TABLE `tbl_list` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,101) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (99,100) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+INSERT INTO tbl_list
+VALUES (10),
+	(99),
+	(100),
+	(101);
+EXPLAIN SELECT *
+FROM tbl_list
+WHERE a = 99
+ORDER BY a;
+Logical ExecutionPlan
+LogicalView(tables="tbl_list[p2]", sql="SELECT `a` FROM `tbl_list` AS `tbl_list` WHERE (`a` = ?) ORDER BY `a`")
+SELECT *
+FROM tbl_list
+WHERE a = 99
+ORDER BY a;
+a
+99
+EXPLAIN SELECT *
+FROM tbl_list
+WHERE a BETWEEN 98 AND 101
+ORDER BY a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl_list[p1,p2]", shardCount=2, sql="SELECT `a` FROM `tbl_list` AS `tbl_list` WHERE (`a` BETWEEN ? AND ?) ORDER BY `a`")
+SELECT *
+FROM tbl_list
+WHERE a BETWEEN 98 AND 101
+ORDER BY a;
+a
+99
+100
+101
+DROP TABLE IF EXISTS tbl_list;

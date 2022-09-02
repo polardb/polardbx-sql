@@ -1,0 +1,92 @@
+DROP TABLE IF EXISTS tbl_list1;
+DROP TABLE IF EXISTS tbl_list2;
+CREATE TABLEGROUP new_tg_for_add_part2;
+CREATE TABLE IF NOT EXISTS tbl_list1 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY LIST (a) (
+	PARTITION p1 VALUES IN (10, 11),
+	PARTITION p2 VALUES IN (100, 101),
+	PARTITION p3 VALUES IN (200, 201)
+);
+ALTER TABLE tbl_list1
+	SET tablegroup = new_tg_for_add_part2;
+CREATE TABLE IF NOT EXISTS tbl_list2 (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY LIST (a) (
+	PARTITION p1 VALUES IN (10, 11),
+	PARTITION p2 VALUES IN (100, 101),
+	PARTITION p3 VALUES IN (200, 201)
+);
+INSERT INTO tbl_list1
+VALUES (10),
+	(100),
+	(200);
+INSERT INTO tbl_list2
+VALUES (10),
+	(100),
+	(200);
+ALTER TABLEGROUP new_tg_for_add_part2 ADD PARTITION (PARTITION p4 VALUES IN (300, 301)) ;
+SHOW CREATE TABLE tbl_list1;
+Table,Create Table
+tbl_list1,CREATE TABLE `tbl_list1` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,11) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (100,101) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB,
+ PARTITION p4 VALUES IN (300,301) ENGINE = InnoDB)
+tablegroup = `new_tg_for_add_part2`
+SHOW CREATE TABLE tbl_list2;
+Table,Create Table
+tbl_list2,CREATE TABLE `tbl_list2` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,11) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (100,101) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB,
+ PARTITION p4 VALUES IN (300,301) ENGINE = InnoDB)
+tablegroup = `new_tg_for_add_part2`
+INSERT INTO tbl_list1
+VALUES (300);
+INSERT INTO tbl_list2
+VALUES (300);
+## check if p4 has value 300
+SELECT *
+FROM tbl_list1 PARTITION (p4);
+a
+300
+SELECT *
+FROM tbl_list2 PARTITION (p4);
+a
+300
+ALTER TABLEGROUP new_tg_for_add_part2 DROP PARTITION p1 ;
+SHOW CREATE TABLE tbl_list1;
+Table,Create Table
+tbl_list1,CREATE TABLE `tbl_list1` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p2 VALUES IN (100,101) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB,
+ PARTITION p4 VALUES IN (300,301) ENGINE = InnoDB)
+tablegroup = `new_tg_for_add_part2`
+SHOW CREATE TABLE tbl_list2;
+Table,Create Table
+tbl_list2,CREATE TABLE `tbl_list2` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p2 VALUES IN (100,101) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB,
+ PARTITION p4 VALUES IN (300,301) ENGINE = InnoDB)
+tablegroup = `new_tg_for_add_part2`

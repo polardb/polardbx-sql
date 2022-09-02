@@ -1,0 +1,41 @@
+
+# clean
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;
+drop table if exists `t_order_2`;
+
+# explicit clustered
+CREATE TABLE `t_order_0` (
+`x` int NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+PRIMARY KEY (x),
+clustered INDEX (`seller_id`),
+UNIQUE clustered INDEX (`order_id`)
+);
+show full create table `t_order_0`;
+
+# explicit clustered and partition
+CREATE TABLE `t_order_1` (
+`x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+clustered INDEX (`seller_id`) partition by key(`seller_id`) partitions 2,
+UNIQUE clustered INDEX (`order_id`) partition by key(`order_id`) partitions 5
+);
+show full create table `t_order_1`;
+
+# explicit clustered and name
+CREATE TABLE `t_order_2` (
+`x` int NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+clustered INDEX i_0(`seller_id`),
+UNIQUE clustered INDEX i_1(`order_id`)
+);
+show full create table `t_order_2`;
+
+# cleanup
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;
+drop table if exists `t_order_2`;

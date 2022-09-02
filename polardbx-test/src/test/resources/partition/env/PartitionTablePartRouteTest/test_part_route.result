@@ -1,0 +1,196 @@
+DROP TABLE IF EXISTS hash_1c_tbl;
+CREATE TABLE IF NOT EXISTS hash_1c_tbl (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY HASH (c) PARTITIONS 16;
+INSERT INTO hash_1c_tbl
+VALUES (100, '2012-12-12 11:11:11', 'A'),
+	(101, '2012-12-12 11:11:11', 'A'),
+	(102, '2012-12-12 11:11:11', 'A'),
+	(200, '2014-12-12 11:11:11', 'B'),
+	(201, '2014-12-12 11:11:11', 'B'),
+	(202, '2014-12-12 11:11:11', 'B');
+DROP TABLE IF EXISTS key_1c_tbl;
+CREATE TABLE IF NOT EXISTS key_1c_tbl (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY KEY (c) PARTITIONS 16;
+INSERT INTO key_1c_tbl
+VALUES (100, '2012-12-12 11:11:11', 'A'),
+	(101, '2012-12-12 11:11:11', 'A'),
+	(102, '2012-12-12 11:11:11', 'A'),
+	(200, '2014-12-12 11:11:11', 'B'),
+	(201, '2014-12-12 11:11:11', 'B'),
+	(202, '2014-12-12 11:11:11', 'B');
+DROP TABLE IF EXISTS hash_tbl;
+CREATE TABLE IF NOT EXISTS hash_tbl (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY HASH (a, b, c) PARTITIONS 16;
+INSERT INTO hash_tbl
+VALUES (100, '2012-12-12 11:11:11', 'A'),
+	(101, '2012-12-12 11:11:11', 'A'),
+	(102, '2012-12-12 11:11:11', 'A'),
+	(200, '2014-12-12 11:11:11', 'B'),
+	(201, '2014-12-12 11:11:11', 'B'),
+	(202, '2014-12-12 11:11:11', 'B');
+DROP TABLE IF EXISTS key_tbl;
+CREATE TABLE IF NOT EXISTS key_tbl (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY KEY (a, b, c) PARTITIONS 16;
+INSERT INTO key_tbl
+VALUES (100, '2012-12-12 11:11:11', 'A'),
+	(101, '2012-12-12 11:11:11', 'A'),
+	(102, '2012-12-12 11:11:11', 'A'),
+	(200, '2014-12-12 11:11:11', 'B'),
+	(201, '2014-12-12 11:11:11', 'B'),
+	(202, '2014-12-12 11:11:11', 'B');
+DROP TABLE IF EXISTS rc_tbl;
+CREATE TABLE IF NOT EXISTS rc_tbl (
+	a bigint UNSIGNED NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY RANGE COLUMNS (a, b, c) (
+	PARTITION p0 VALUES LESS THAN (100, '2012-12-12 11:11:11', 'abc'),
+	PARTITION p1 VALUES LESS THAN (200, '2012-12-11 11:11:11', 'abc'),
+	PARTITION p2 VALUES LESS THAN (300, '2012-12-11 11:11:11', 'abc')
+);
+INSERT INTO rc_tbl
+VALUES (100, '2012-12-12 11:11:11', 'A'),
+	(101, '2012-12-12 11:11:11', 'A'),
+	(102, '2012-12-12 11:11:11', 'A'),
+	(200, '2014-12-12 11:11:11', 'B'),
+	(201, '2014-12-12 11:11:11', 'B'),
+	(202, '2014-12-12 11:11:11', 'B');
+DROP TABLE IF EXISTS lc_tbl;
+CREATE TABLE IF NOT EXISTS lc_tbl (
+	a bigint NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY LIST COLUMNS (a, b, c) (
+	PARTITION p0 VALUES IN ((100, '2012-12-12 11:11:11', 'A'), (101, '2012-12-12 11:11:11', 'A'), (102, '2012-12-12 11:11:11', 'A')),
+	PARTITION p1 VALUES IN ((200, '2014-12-12 11:11:11', 'B'), (201, '2014-12-12 11:11:11', 'B'), (202, '2014-12-12 11:11:11', 'B'))
+);
+INSERT INTO lc_tbl
+VALUES (100, '2012-12-12 11:11:11', 'A'),
+	(101, '2012-12-12 11:11:11', 'A'),
+	(102, '2012-12-12 11:11:11', 'A'),
+	(200, '2014-12-12 11:11:11', 'B'),
+	(201, '2014-12-12 11:11:11', 'B'),
+	(202, '2014-12-12 11:11:11', 'B');
+SELECT part_route('', 'key_1c_tbl', 'A')
+	, part_route('', 'hash_1c_tbl', 'A');
+part_route('', 'key_1c_tbl', 'A'),part_route('', 'hash_1c_tbl', 'A')
+p3,p3
+SELECT part_route('', 'hash_tbl', 101, '2012-12-12 11:11:11', 'A');
+part_route('', 'hash_tbl', 101, '2012-12-12 11:11:11', 'A')
+p16
+SELECT part_route('', 'key_tbl', 101, '2012-12-12 11:11:11', 'A');
+part_route('', 'key_tbl', 101, '2012-12-12 11:11:11', 'A')
+p3
+SELECT part_route('', 'rc_tbl', 101, '2012-12-12 11:11:11', 'A');
+part_route('', 'rc_tbl', 101, '2012-12-12 11:11:11', 'A')
+p1
+SELECT part_route('', 'lc_tbl', 101, '2012-12-12 11:11:11', 'A');
+part_route('', 'lc_tbl', 101, '2012-12-12 11:11:11', 'A')
+p0
+SELECT part_route('', 'hash_1c_tbl', c)
+FROM hash_1c_tbl
+ORDER BY c;
+part_route('', 'hash_1c_tbl', c)
+p3
+p3
+p3
+p13
+p13
+p13
+SELECT part_route('', 'key_1c_tbl', c)
+FROM key_1c_tbl
+ORDER BY c;
+part_route('', 'key_1c_tbl', c)
+p3
+p3
+p3
+p13
+p13
+p13
+SELECT part_route('', 'hash_tbl', a, b, c)
+FROM hash_tbl
+ORDER BY a, b, c;
+part_route('', 'hash_tbl', a, b, c)
+p8
+p16
+p8
+p9
+p9
+p9
+SELECT part_route('', 'key_tbl', a, b, c)
+FROM key_tbl
+ORDER BY a, b, c;
+part_route('', 'key_tbl', a, b, c)
+p16
+p3
+p8
+p3
+p3
+p3
+SELECT part_route('', 'rc_tbl', a, b, c)
+FROM rc_tbl
+ORDER BY a, b, c;
+part_route('', 'rc_tbl', a, b, c)
+p0
+p1
+p1
+p2
+p2
+p2
+SELECT part_route('', 'lc_tbl', a, b, c)
+FROM lc_tbl
+ORDER BY a, b, c;
+part_route('', 'lc_tbl', a, b, c)
+p0
+p0
+p0
+p1
+p1
+p1
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL,
+	b datetime NOT NULL,
+	c varchar(64) NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY RANGE COLUMNS (c, b, a) (
+	PARTITION p1 VALUES LESS THAN ('z', '2020-12-12', 100),
+	PARTITION p2 VALUES LESS THAN ('z', '2020-12-13', 200),
+	PARTITION p3 VALUES LESS THAN ('z', '2020-12-14', 300)
+);
+INSERT INTO tbl (b, a, c)
+VALUES ('2019-12-12', 101, 'z'),
+	('2020-12-13', 101, 'z'),
+	('2020-12-14', 203, 'z');
+SELECT *
+FROM tbl
+ORDER BY a, b, c;
+a,b,c
+101,2019-12-12 00:00:00.0,z
+101,2020-12-13 00:00:00.0,z
+203,2020-12-14 00:00:00.0,z
+SELECT part_route('', 'tbl', c, b, a)
+FROM tbl
+ORDER BY a, b, c;
+part_route('', 'tbl', c, b, a)
+p1
+p2
+p3

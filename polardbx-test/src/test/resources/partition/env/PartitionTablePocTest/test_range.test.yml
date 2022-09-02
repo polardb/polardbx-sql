@@ -1,0 +1,15 @@
+## test range tbl
+drop table if exists tbl_range;
+create table if not exists tbl_range (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+show create table tbl_range;
+insert into tbl_range values (10),(99),(100),(101);
+explain select * from tbl_range where a=99 order by a;
+select * from tbl_range where a=99 order by a;
+explain select * from tbl_range where a between 100 and 200 order by a;
+select * from tbl_range where a between 100 and 200 order by a;
+drop table if exists tbl_range;

@@ -1,0 +1,34 @@
+drop table if exists tbl;
+create table if not exists tbl (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+insert into tbl values (101),(102),(103),(201),(202),(203);
+select * from tbl order by a;
+
+alter table tbl single;
+show create table tbl;
+select * from tbl order by a;
+
+alter table tbl broadcast;
+show create table tbl;
+select * from tbl order by a;
+
+alter table tbl
+partition by list(a)
+(
+partition p1 values in (101,203),
+partition p2 values in (102,202),
+partition p3 values in (103,201)
+);
+show create table tbl;
+select * from tbl order by a;
+
+alter table tbl
+partition by hash(a) partitions 8;
+show create table tbl;
+select * from tbl order by a;
+
+

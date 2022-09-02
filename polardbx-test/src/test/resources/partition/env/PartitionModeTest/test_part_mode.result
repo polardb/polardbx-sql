@@ -1,0 +1,24 @@
+DROP DATABASE IF EXISTS drds_db;
+DROP DATABASE IF EXISTS drds_db2;
+DROP DATABASE IF EXISTS auto_db;
+DROP DATABASE IF EXISTS auto_db2;
+CREATE DATABASE IF NOT EXISTS drds_db MODE 'drds';
+CREATE DATABASE IF NOT EXISTS auto_db MODE 'auto';
+CREATE DATABASE IF NOT EXISTS drds_db2 MODE 'sharding';
+CREATE DATABASE IF NOT EXISTS auto_db2 MODE 'partitioning';
+SHOW CREATE DATABASE drds_db;
+Database,Create Database
+drds_db,CREATE DATABASE `drds_db` /* MODE = 'drds' */
+SHOW CREATE DATABASE drds_db2;
+Database,Create Database
+drds_db2,CREATE DATABASE `drds_db2` /* MODE = 'drds' */
+SHOW CREATE DATABASE auto_db;
+Database,Create Database
+auto_db,CREATE DATABASE `auto_db` /* MODE = 'auto' */
+SHOW CREATE DATABASE auto_db2;
+Database,Create Database
+auto_db2,CREATE DATABASE `auto_db2` /* MODE = 'auto' */
+DROP DATABASE IF EXISTS drds_db;
+DROP DATABASE IF EXISTS drds_db2;
+DROP DATABASE IF EXISTS auto_db;
+DROP DATABASE IF EXISTS auto_db2;

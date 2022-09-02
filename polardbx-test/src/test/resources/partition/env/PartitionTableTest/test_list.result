@@ -1,0 +1,90 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL
+)
+PARTITION BY LIST (a) (
+	PARTITION p0 VALUES IN (1, 2, 3), 
+	PARTITION p1 VALUES IN (40, 50, 60)
+);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+PARTITION BY LIST(`a`)
+(PARTITION p0 VALUES IN (1,2,3) ENGINE = InnoDB,
+ PARTITION p1 VALUES IN (40,50,60) ENGINE = InnoDB)
+INSERT INTO tbl
+VALUES (1),
+	(2),
+	(40),
+	(60);
+SELECT *
+FROM tbl
+ORDER BY a ASC;
+a
+1
+2
+40
+60
+EXPLAIN SELECT *
+FROM tbl
+WHERE a = 40;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p1]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a < 5;
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` < ?)")
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a datetime NOT NULL
+)
+PARTITION BY LIST (year(a)) (
+	PARTITION p0 VALUES IN (1999, 2000), 
+	PARTITION p1 VALUES IN (2001, 2002), 
+	PARTITION p2 VALUES IN (2003, 2004)
+);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` datetime NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+PARTITION BY LIST(YEAR(`a`))
+(PARTITION p0 VALUES IN (1999,2000) ENGINE = InnoDB,
+ PARTITION p1 VALUES IN (2001,2002) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (2003,2004) ENGINE = InnoDB)
+INSERT INTO tbl
+VALUES ('1999-10-01 10:10:10'),
+	('2001-10-01 10:10:10'),
+	('2003-10-01 10:10:10');
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+1999-10-01 10:10:10.0
+2001-10-01 10:10:10.0
+2003-10-01 10:10:10.0
+EXPLAIN SELECT *
+FROM tbl
+WHERE a = '1999-10-01 10:10:10'
+ORDER BY a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p0]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a < '2000-10-01 10:10:10'
+ORDER BY a;
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` < ?) ORDER BY `a`")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a <= '2001-10-01 10:10:10'
+ORDER BY a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl[p0,p1]", shardCount=2, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` <= ?) ORDER BY `a`")
+DROP TABLE IF EXISTS tbl;

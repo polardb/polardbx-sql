@@ -43,7 +43,6 @@ import java.util.List;
 /**
  * DRDS 事务执行器。
  *
- * @author <a href="mailto:changyuan.lh@taobao.com">Changyuan.lh</a>
  * @since 5.1.28
  */
 @Activate(order = 1)

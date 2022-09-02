@@ -29,7 +29,6 @@ import java.util.Map;
 /**
  * 事务管理器对象
  *
- * @author <a href="mailto:changyuan.lh@taobao.com">Changyuan.lh</a>
  * @since 5.1.28
  */
 public interface ITransactionManager extends Lifecycle, ITransactionManagerUtil {

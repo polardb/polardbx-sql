@@ -22,7 +22,6 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.optimizer.parse.HintParser;
 
 /**
- * @author <a href="junyu@taobao.com">junyu</a>
  * @version 1.0
  * @since 1.6
  */

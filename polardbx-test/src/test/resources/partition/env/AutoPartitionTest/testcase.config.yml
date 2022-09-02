@@ -1,0 +1,17 @@
+test_simple
+test_create_with_idx
+test_create_with_local_idx
+test_create_with_gsi
+test_create_with_clustered
+test_create_explicit_partition
+test_create_index_type_not_support
+test_create_single
+test_create_broadcast
+test_create_with_ugsi
+test_add_index
+test_add_clustered
+test_drop_index
+test_create_drop_index
+test_composite_pk
+test_composite_index
+test_add_idx_not_support
