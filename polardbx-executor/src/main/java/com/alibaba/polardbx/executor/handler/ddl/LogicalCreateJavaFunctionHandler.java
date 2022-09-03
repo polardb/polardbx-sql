@@ -6,6 +6,8 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.sync.CreateJavaFunctionSyncAction;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -119,6 +121,8 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     Connection connection = MetaDbUtil.getConnection();
     UserDefinedJavaFunctionAccessor.insertFunction(funcName.toLowerCase(), className, CODE, "Java",
         connection, buildInputTypeString(inputTypes), returnType);
+
+    SyncManagerHelper.sync(new CreateJavaFunctionSyncAction(funcName));
 
     return new AffectRowCursor(0);
   }

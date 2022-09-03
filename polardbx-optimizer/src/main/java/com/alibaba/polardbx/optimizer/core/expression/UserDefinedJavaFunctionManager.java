@@ -54,7 +54,7 @@ public class UserDefinedJavaFunctionManager{
     return javaFunctionCaches.containsKey(name);
   }
 
-  public static void removeFunction(String name) {
+  public static void removeFunctionFromCache(String name) {
     javaFunctionCaches.remove(name);
   }
 
@@ -83,6 +83,15 @@ public class UserDefinedJavaFunctionManager{
     } catch (Exception e) {
       throw GeneralUtil.nestedException(e);
     }
+  }
+
+  public static void dropFunction(String funcNameUpper) {
+    UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
+    ReflectiveSqlOperatorTable.remove(funcNameUpper);
+    System.gc();
+
+    Connection connection = MetaDbUtil.getConnection();
+    UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
   }
 
   public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {

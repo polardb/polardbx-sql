@@ -6,6 +6,8 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.sync.DropJavaFunctionSyncAction;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -40,14 +42,9 @@ public class LogicalDropJavaFunctionHandler extends HandlerCommon {
       throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String.format("Java function %s not found", funcNameUpper));
     }
 
-    UserDefinedJavaFunctionManager.removeFunction(funcNameUpper);
+    UserDefinedJavaFunctionManager.dropFunction(funcNameUpper);
 
-    ReflectiveSqlOperatorTable.remove(funcNameUpper);
-
-    System.gc();
-
-    Connection connection = MetaDbUtil.getConnection();
-    UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
+    SyncManagerHelper.sync(new DropJavaFunctionSyncAction(funcNameUpper.toLowerCase()));
 
     return new AffectRowCursor(0);
 
