@@ -8,45 +8,41 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.DropJavaFunctionSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropJavaFunction;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlDropJavaFunction;
-import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
-
-import java.sql.Connection;
 
 public class LogicalDropJavaFunctionHandler extends HandlerCommon {
-  public LogicalDropJavaFunctionHandler(IRepository repo) {
-    super(repo);
-  }
-  @Override
-  public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-
-    final LogicalDropJavaFunction logicalDropJavaFunction = (LogicalDropJavaFunction) logicalPlan;
-    final SqlDropJavaFunction sqlDropJavaFunction = (SqlDropJavaFunction) logicalDropJavaFunction.getNativeSqlNode();
-    final String funcNameUpper = sqlDropJavaFunction.getFuncName().toString().toUpperCase();
-    final boolean ifExist = sqlDropJavaFunction.isIfExists();
-
-    if (funcNameUpper.equals("")) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Create java_function syntax error");
+    public LogicalDropJavaFunctionHandler(IRepository repo) {
+        super(repo);
     }
 
-    if (!UserDefinedJavaFunctionManager.containsFunction(funcNameUpper)) {
-      if (ifExist) {
+    @Override
+    public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        final LogicalDropJavaFunction logicalDropJavaFunction = (LogicalDropJavaFunction) logicalPlan;
+        final SqlDropJavaFunction sqlDropJavaFunction =
+            (SqlDropJavaFunction) logicalDropJavaFunction.getNativeSqlNode();
+        final String funcNameUpper = sqlDropJavaFunction.getFuncName().toString().toUpperCase();
+        final boolean ifExist = sqlDropJavaFunction.isIfExists();
+
+        if (funcNameUpper.equals("")) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Drop java_function syntax error");
+        }
+
+        if (!UserDefinedJavaFunctionManager.containsFunction(funcNameUpper)) {
+            if (ifExist) {
+                return new AffectRowCursor(0);
+            }
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format("Java function %s not found", funcNameUpper));
+        }
+
+        UserDefinedJavaFunctionManager.dropFunction(funcNameUpper);
+
+        SyncManagerHelper.sync(new DropJavaFunctionSyncAction(funcNameUpper.toLowerCase()));
+
         return new AffectRowCursor(0);
-      }
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String.format("Java function %s not found", funcNameUpper));
     }
-
-    UserDefinedJavaFunctionManager.dropFunction(funcNameUpper);
-
-    SyncManagerHelper.sync(new DropJavaFunctionSyncAction(funcNameUpper.toLowerCase()));
-
-    return new AffectRowCursor(0);
-
-  }
 }

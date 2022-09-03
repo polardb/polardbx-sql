@@ -3735,7 +3735,7 @@ public class SQLStatementParser extends SQLParser {
             if (!text.contains("ENDIMPORT")) {
                 throw new ParserException("Need ENDIMPORT in your syntax");
             }
-            String importString = originText.substring(text.indexOf("IMPORT")+5, text.indexOf("ENDIMPORT")).trim();
+            String importString = originText.substring(text.indexOf("IMPORT") + 5, text.indexOf("ENDIMPORT")).trim();
             stmt.setImportString(importString);
         }
 
@@ -3744,11 +3744,11 @@ public class SQLStatementParser extends SQLParser {
             if (!text.contains("ENDCODE")) {
                 throw new ParserException("Need ENDCODE in your syntax");
             }
-            javaCode = originText.substring(text.indexOf("CODE")+4, text.indexOf("ENDCODE")).trim();
+            javaCode = originText.substring(text.indexOf("CODE") + 4, text.indexOf("ENDCODE")).trim();
             stmt.setJavaCode(javaCode);
         }
 
-        for ( ; ;) {
+        for (; ; ) {
             if (lexer.token() == Token.EOF) {
                 break;
             }

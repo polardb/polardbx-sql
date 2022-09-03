@@ -69,7 +69,9 @@ public class ExtraFunctionManager {
             AbstractScalarFunction function =
                 UserDefinedJavaFunctionManager.
                     getUserDefinedJavaFunction(functionName, operandTypes, resultType);
-            if (function != null) return function;
+            if (function != null) {
+                return function;
+            }
         }
 
         if (constructor == null) {
@@ -101,8 +103,10 @@ public class ExtraFunctionManager {
 
     }
 
-    public static Map<FunctionSignature, Constructor<?>> getFunctionCaches() {
-        return functionCaches;
+    public static boolean constainsFunction(String funcName) {
+        return functionCaches.containsKey(
+            FunctionSignature.
+                getFunctionSignature(null, funcName));
     }
 
     private static void initFunctions() {

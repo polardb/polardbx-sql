@@ -40,166 +40,164 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class UserDefinedJavaFunctionManager{
+public class UserDefinedJavaFunctionManager {
 
-  private static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunctionManager.class);
-  public static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+    private static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunctionManager.class);
+    public static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
-  public static Map<String, Constructor<?>> javaFunctionCaches = new HashMap<>();
+    public static Map<String, Constructor<?>> javaFunctionCaches = new HashMap<>();
 
-  public static Map<String, List<DataType>> userInputTypesByFuncName = new HashMap<>();
-  public static Map<String, DataType>  userResultTypeByFuncName = new HashMap<>();
+    public static Map<String, List<DataType>> userInputTypesByFuncName = new HashMap<>();
+    public static Map<String, DataType> userResultTypeByFuncName = new HashMap<>();
 
-  public static boolean containsFunction(String name) {
-    return javaFunctionCaches.containsKey(name);
-  }
+    public static boolean containsFunction(String name) {
+        return javaFunctionCaches.containsKey(name);
+    }
 
-  public static void removeFunctionFromCache(String name) {
-    javaFunctionCaches.remove(name);
-  }
+    public static void removeFunctionFromCache(String name) {
+        javaFunctionCaches.remove(name);
+    }
 
-  public static void removeRedundant(List<UserDefinedJavaFunctionRecord> records) {
-    List<String> nameList = records.stream().map(record -> record.funcName).collect(Collectors.toList());
-    javaFunctionCaches = javaFunctionCaches.entrySet().stream()
-        .filter(entry -> nameList.contains(entry.getKey()))
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-  }
+    public static void addFunction(Class type, List<DataType> inputTypes, DataType resultType) {
 
-  public static void addFunction(Class type, List<DataType> inputTypes, DataType resultType) {
+        try {
+            Constructor constructor = type.getConstructor(List.class, DataType.class);
+            AbstractScalarFunction sample = (AbstractScalarFunction) constructor.newInstance(null, null);
 
-    try {
-      Constructor constructor = type.getConstructor(List.class, DataType.class);
-      AbstractScalarFunction sample = (AbstractScalarFunction) constructor.newInstance(null, null);
-
-      for (String functionName : sample.getFunctionNames()) {
-        Constructor oldConstructor = javaFunctionCaches.put(functionName, constructor);
-        if (oldConstructor != null) {
-          logger.warn(" dup function :" + functionName + ", old class : " + oldConstructor.getClass()
-              .getName());
+            for (String functionName : sample.getFunctionNames()) {
+                Constructor oldConstructor = javaFunctionCaches.put(functionName, constructor);
+                if (oldConstructor != null) {
+                    logger.warn(" dup function :" + functionName + ", old class : " + oldConstructor.getClass()
+                        .getName());
+                }
+                userInputTypesByFuncName.put(functionName, inputTypes);
+                userResultTypeByFuncName.put(functionName, resultType);
+            }
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
         }
-        userInputTypesByFuncName.put(functionName, inputTypes);
-        userResultTypeByFuncName.put(functionName, resultType);
-      }
-    } catch (Exception e) {
-      throw GeneralUtil.nestedException(e);
     }
-  }
 
-  public static void dropFunction(String funcNameUpper) {
-    UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
-    ReflectiveSqlOperatorTable.remove(funcNameUpper);
-    System.gc();
+    public static void dropFunction(String funcNameUpper) {
+        UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
+        ReflectiveSqlOperatorTable.remove(funcNameUpper);
+        System.gc();
 
-    Connection connection = MetaDbUtil.getConnection();
-    UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
-  }
+        Connection connection = MetaDbUtil.getConnection();
+        UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
+    }
 
-  public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {
-      String funcName = record.funcName;
-      String className = record.className;
-      String code = record.code;
+    public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {
+        String funcName = record.funcName;
+        String className = record.className;
+        String code = record.code;
 
-      ClassLoader cl = compileAndLoadClass(funcName, code, className);
+        ClassLoader cl = compileAndLoadClass(code, className);
 
-      //compute type
-      List<DataType> inputDataTypes = new ArrayList<>();
-      for (String type : record.inputTypes.split(",")) {
-        inputDataTypes.add(computeDataType(type));
-      }
-      DataType resultDataType = computeDataType(record.resultType);
+        //compute type
+        List<DataType> inputDataTypes = new ArrayList<>();
+        for (String type : record.inputTypes.split(",")) {
+            inputDataTypes.add(computeDataType(type));
+        }
+        DataType resultDataType = computeDataType(record.resultType);
 
-      //add function
-      try {
-        addFunction(cl.loadClass(String.format("com.alibaba.polardbx.optimizer.core.function.calc.scalar.%s", className)), inputDataTypes, resultDataType);
-        final SqlFunction UserDefinedJavaFunction= new SqlFunction(
-            record.funcName.toUpperCase(),
-            SqlKind.OTHER_FUNCTION,
-            computeReturnType(record.resultType),
-            InferTypes.FIRST_KNOWN,
-            OperandTypes.ONE_OR_MORE,
-            SqlFunctionCategory.SYSTEM
+        //add function
+        try {
+            addFunction(
+                cl.loadClass(String.format("com.alibaba.polardbx.optimizer.core.function.calc.scalar.%s", className)),
+                inputDataTypes, resultDataType);
+            final SqlFunction UserDefinedJavaFunction = new SqlFunction(
+                record.funcName.toUpperCase(),
+                SqlKind.OTHER_FUNCTION,
+                computeReturnType(record.resultType),
+                InferTypes.FIRST_KNOWN,
+                OperandTypes.ONE_OR_MORE,
+                SqlFunctionCategory.SYSTEM
+            );
+            RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
+            ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Initialize function error");
+        }
+    }
+
+    public static void initFunctions() {
+        Connection connection = MetaDbUtil.getConnection();
+        List<UserDefinedJavaFunctionRecord> records = UserDefinedJavaFunctionAccessor.queryAllFunctions(connection);
+
+        if (records.size() == 0) {
+            return;
+        }
+
+        records.stream()
+            .filter(record -> !containsFunction(record.funcName))
+            .forEach(UserDefinedJavaFunctionManager::addFunctionFromMeta);
+    }
+
+    public static AbstractScalarFunction getUserDefinedJavaFunction(String functionName, List<DataType> operandTypes,
+                                                                    DataType resultType) {
+        Constructor constructor = javaFunctionCaches.get(functionName);
+
+        if (constructor == null) {
+            return null;
+        }
+
+        try {
+            UserDefinedJavaFunction sample =
+                (UserDefinedJavaFunction) constructor.newInstance(operandTypes, resultType);
+
+            List<DataType> userInputTypes = userInputTypesByFuncName.get(functionName);
+            DataType userResultType = userResultTypeByFuncName.get(functionName);
+            if (userResultType == null || userInputTypes.isEmpty()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Need input type and result type");
+            }
+            sample.setUserInputType(userInputTypes);
+            sample.setUserResultType(userResultType);
+
+            return (AbstractScalarFunction) sample;
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public static ClassLoader compileAndLoadClass(String code, String className) {
+        final String packageName = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
+
+        CompilerFactory compilerFactory = new CompilerFactory();
+        ICompiler compiler = compilerFactory.newCompiler();
+        Map<String, byte[]> classes = new HashMap<>();
+        compiler.setClassFileCreator(new MapResourceCreator(classes));
+
+        try {
+            compiler.compile(new Resource[] {
+                new StringResource(
+                    String.format("%s/%s.java", packageName, className),
+                    code
+                )
+            });
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e.toString());
+        }
+        return new ResourceFinderClassLoader(
+            new MapResourceFinder(classes),    // resourceFinder
+            ClassLoader.getSystemClassLoader() // parent
         );
-        RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
-        ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
-      } catch (Exception e) {
-        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Initialize function error");
-      }
-  }
-
-  public static void initFunctions() {
-    Connection connection = MetaDbUtil.getConnection();
-    List<UserDefinedJavaFunctionRecord> records = UserDefinedJavaFunctionAccessor.queryAllFunctions(connection);
-
-    if (records.size() == 0) return;
-
-    records.stream()
-        .filter(record -> !containsFunction(record.funcName))
-        .forEach(UserDefinedJavaFunctionManager::addFunctionFromMeta);
-  }
-
-  public static AbstractScalarFunction getUserDefinedJavaFunction(String functionName, List<DataType> operandTypes,
-                                                                  DataType resultType) {
-    Constructor constructor = javaFunctionCaches.get(functionName);
-
-    if (constructor == null) {
-        return null;
     }
 
-    try {
-      UserDefinedJavaFunction sample = (UserDefinedJavaFunction) constructor.newInstance(operandTypes, resultType);
-
-      List<DataType> userInputTypes = userInputTypesByFuncName.get(functionName);
-      DataType userResultType = userResultTypeByFuncName.get(functionName);
-      if (userResultType == null || userInputTypes.isEmpty()) {
-        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Need input type and result type");
-      }
-      sample.setUserInputType(userInputTypes);
-      sample.setUserResultType(userResultType);
-
-      return (AbstractScalarFunction) sample;
-    } catch (Exception e) {
-      throw GeneralUtil.nestedException(e);
+    public static DataType computeDataType(String type) {
+        SqlTypeName name = SqlTypeName.get(type.toUpperCase());
+        if (name == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type " + type);
+        }
+        return DataTypeUtil.calciteToDrdsType(factory.createSqlType(name));
     }
-  }
 
-  public static ClassLoader compileAndLoadClass(String funcName, String code, String className) {
-    final String packageName = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
-
-    CompilerFactory compilerFactory = new CompilerFactory();
-    ICompiler compiler = compilerFactory.newCompiler();
-    Map<String, byte[]> classes = new HashMap<>();
-    compiler.setClassFileCreator(new MapResourceCreator(classes));
-
-    try {
-      compiler.compile(new Resource[] {
-          new StringResource(
-              String.format("%s/%s.java", packageName, className),
-              code
-          )
-      });
-    } catch (Exception e) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e.toString());
+    public static SqlReturnTypeInference computeReturnType(String returnType) {
+        SqlTypeName name = SqlTypeName.get(returnType.toUpperCase());
+        if (name == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport return type " + returnType);
+        }
+        return ReturnTypes.explicit(name);
     }
-    return new ResourceFinderClassLoader(
-        new MapResourceFinder(classes),    // resourceFinder
-        ClassLoader.getSystemClassLoader() // parent
-    );
-  }
-
-  public static DataType computeDataType(String type) {
-    SqlTypeName name = SqlTypeName.get(type.toUpperCase());
-    if (name == null) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type "+type);
-    }
-    return DataTypeUtil.calciteToDrdsType(factory.createSqlType(name));
-  }
-
-  public static SqlReturnTypeInference computeReturnType(String returnType) {
-    SqlTypeName name = SqlTypeName.get(returnType.toUpperCase());
-    if (name == null) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport return type " + returnType);
-    }
-    return ReturnTypes.explicit(name);
-  }
 
 }

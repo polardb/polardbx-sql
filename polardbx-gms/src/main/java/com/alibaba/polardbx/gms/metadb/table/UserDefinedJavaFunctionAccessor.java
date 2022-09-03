@@ -11,7 +11,6 @@ import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +20,8 @@ public class UserDefinedJavaFunctionAccessor extends AbstractAccessor {
     private static final Logger logger = LoggerFactory.getLogger("oss");
     private static final String FUNCTION_TABLE = wrap(GmsSystemTables.USER_DEFINED_JAVA_CODE);
 
-    private static final String INSERT_FUNCTION = "insert ignore into " + FUNCTION_TABLE + "(id, func_name, class_name, code, code_language, input_types, result_type) values (null, ?, ?, ?, ?, ?, ?)";
+    private static final String INSERT_FUNCTION = "insert ignore into " + FUNCTION_TABLE
+        + "(id, func_name, class_name, code, code_language, input_types, result_type) values (null, ?, ?, ?, ?, ?, ?)";
     private static final String DELETE_FUNCTION = "delete from " + FUNCTION_TABLE + "where func_name='%s'";
     private static final String QUERY_ALL_FUNCTION = "select * from " + FUNCTION_TABLE;
     private static final String QUERY_FUNCTION_BY_NAME = "select * from " + FUNCTION_TABLE + "where func_name='%s'";
@@ -73,7 +73,8 @@ public class UserDefinedJavaFunctionAccessor extends AbstractAccessor {
 
     public static List<UserDefinedJavaFunctionRecord> queryFunctionByName(String name, Connection connection) {
         try {
-            return MetaDbUtil.query(String.format(QUERY_FUNCTION_BY_NAME, name), UserDefinedJavaFunctionRecord.class, connection);
+            return MetaDbUtil.query(String.format(QUERY_FUNCTION_BY_NAME, name), UserDefinedJavaFunctionRecord.class,
+                connection);
         } catch (Exception e) {
             logger.error("Failed to query the system table " + FUNCTION_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",

@@ -261,7 +261,6 @@
             <groupId>com.cronutils</groupId>
             <artifactId>cron-utils</artifactId>
         </dependency>
-
     </dependencies>
 
     <build>

@@ -45,7 +45,6 @@ import org.apache.calcite.linq4j.function.Function2;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.prepare.Prepare;
-import org.apache.calcite.rel.ddl.DropJavaFunction;
 import org.apache.calcite.rel.type.DynamicRecordType;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -4204,7 +4203,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
             break;
         case DROP_JAVA_FUNCTION:
             final DropJavaFunctionNamespace dropJavaFunctionNamespace =
-            new DropJavaFunctionNamespace(this, (SqlDdl) node, enclosingNode, parentScope);
+                new DropJavaFunctionNamespace(this, (SqlDdl) node, enclosingNode, parentScope);
             registerNamespace(usingScope, alias, dropJavaFunctionNamespace, forceNullable);
             break;
         case LOCK_TABLE:
@@ -7747,7 +7746,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         private final SqlValidatorScope scope;
 
         CreateJavaFunctionNamespace(SqlValidatorImpl validator, SqlDdl node,
-                                SqlNode enclosingNode, SqlValidatorScope scope) {
+                                    SqlNode enclosingNode, SqlValidatorScope scope) {
             super(validator, enclosingNode);
             this.current = Preconditions.checkNotNull(node);
             this.scope = scope;
@@ -7769,7 +7768,7 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
         private final SqlValidatorScope scope;
 
         DropJavaFunctionNamespace(SqlValidatorImpl validator, SqlDdl node,
-                                    SqlNode enclosingNode, SqlValidatorScope scope) {
+                                  SqlNode enclosingNode, SqlValidatorScope scope) {
             super(validator, enclosingNode);
             this.current = Preconditions.checkNotNull(node);
             this.scope = scope;
