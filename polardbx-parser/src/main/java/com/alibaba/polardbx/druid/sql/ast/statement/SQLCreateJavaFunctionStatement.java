@@ -1,6 +1,5 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
-
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectWithDataType;
@@ -9,71 +8,73 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.List;
 
-public class SQLCreateJavaFunctionStatement extends SQLStatementImpl implements SQLCreateStatement, SQLObjectWithDataType {
-  public SQLCreateJavaFunctionStatement() {
+public class SQLCreateJavaFunctionStatement extends SQLStatementImpl
+    implements SQLCreateStatement, SQLObjectWithDataType {
+    public SQLCreateJavaFunctionStatement() {
 
-  }
-  protected SQLName name;
-  protected String  javaCode;
-  protected String returnType;
-  protected List<String> inputType;
-  protected String importString;
-
-  @Override
-  public void accept0(SQLASTVisitor visitor) {
-    if (visitor.visit(this)) {
-      acceptChild(visitor, name);
     }
-    visitor.endVisit(this);
-  }
 
-  public String getJavaCode() {
-    return javaCode;
-  }
+    protected SQLName name;
+    protected String javaCode;
+    protected String returnType;
+    protected List<String> inputType;
+    protected String importString;
 
-  public void setJavaCode(String javaCode) {
-    this.javaCode = javaCode;
-  }
+    @Override
+    public void accept0(SQLASTVisitor visitor) {
+        if (visitor.visit(this)) {
+            acceptChild(visitor, name);
+        }
+        visitor.endVisit(this);
+    }
 
-  public SQLName getName() {
-    return name;
-  }
+    public String getJavaCode() {
+        return javaCode;
+    }
 
-  public void setName(SQLName name) {
-    this.name = name;
-  }
+    public void setJavaCode(String javaCode) {
+        this.javaCode = javaCode;
+    }
 
-  public String getReturnType() {
-    return returnType;
-  }
+    public SQLName getName() {
+        return name;
+    }
 
-  public void setReturnType(String returnType) {
-    this.returnType = returnType;
-  }
+    public void setName(SQLName name) {
+        this.name = name;
+    }
 
-  public List<String> getInputTypes() {
-    return inputType;
-  }
+    public String getReturnType() {
+        return returnType;
+    }
 
-  public void setInputTypes(List<String> inputType) {
-    this.inputType = inputType;
-  }
+    public void setReturnType(String returnType) {
+        this.returnType = returnType;
+    }
 
-  public String getImportString() {
-    return importString;
-  }
+    public List<String> getInputTypes() {
+        return inputType;
+    }
 
-  public void setImportString(String importString) {
-    this.importString = importString;
-  }
+    public void setInputTypes(List<String> inputType) {
+        this.inputType = inputType;
+    }
 
-  @Override
-  public SQLDataType getDataType() {
-    return null;
-  }
+    public String getImportString() {
+        return importString;
+    }
 
-  @Override
-  public void setDataType(SQLDataType dataType) {
+    public void setImportString(String importString) {
+        this.importString = importString;
+    }
 
-  }
+    @Override
+    public SQLDataType getDataType() {
+        return null;
+    }
+
+    @Override
+    public void setDataType(SQLDataType dataType) {
+
+    }
 }

@@ -38,7 +38,6 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSequenceWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.clearspring.analytics.util.Lists;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import org.apache.calcite.avatica.util.ByteString;
@@ -104,8 +103,7 @@ public class RexUtils {
         TddlOperatorTable.IS_USED_LOCK,
         TddlOperatorTable.ASSIGNMENT,
         TddlOperatorTable.VERSION,
-        TddlOperatorTable.PART_ROUTE,
-        TddlOperatorTable.ACOS
+        TddlOperatorTable.PART_ROUTE
     ));
 
     public static void addUnpushableFunction(SqlOperator func) {

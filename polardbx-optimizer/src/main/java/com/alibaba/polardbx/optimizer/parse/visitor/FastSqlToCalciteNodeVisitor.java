@@ -3868,18 +3868,18 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             x.getInputTypes(),
             x.getJavaCode(),
             x.getImportString());
-      addPrivilegeVerifyItem(null, null, PrivilegePoint.CREATE);
-      return false;
+        addPrivilegeVerifyItem(null, null, PrivilegePoint.CREATE);
+        return false;
     }
 
     @Override
     public boolean visit(SQLDropJavaFunctionStatement x) {
-      final SqlIdentifier funcName = (SqlIdentifier) convertToSqlNode(x.getName());
-      this.sqlNode = SqlDdlNodes.dropJavaFunction(SqlParserPos.ZERO,
-          funcName,
-          x.isIfExists());
-      addPrivilegeVerifyItem(null, null, PrivilegePoint.DROP);
-      return false;
+        final SqlIdentifier funcName = (SqlIdentifier) convertToSqlNode(x.getName());
+        this.sqlNode = SqlDdlNodes.dropJavaFunction(SqlParserPos.ZERO,
+            funcName,
+            x.isIfExists());
+        addPrivilegeVerifyItem(null, null, PrivilegePoint.DROP);
+        return false;
     }
 
     @Override

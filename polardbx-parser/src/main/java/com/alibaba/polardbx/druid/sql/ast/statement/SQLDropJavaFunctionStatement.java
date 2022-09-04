@@ -8,39 +8,39 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLDropJavaFunctionStatement extends SQLStatementImpl implements SQLDropStatement, SQLReplaceable {
 
-  protected SQLName           name;
-  private boolean             ifExists;
+    protected SQLName name;
+    private boolean ifExists;
 
-  public SQLDropJavaFunctionStatement() {
+    public SQLDropJavaFunctionStatement() {
 
-  }
-
-  @Override
-  protected void accept0(SQLASTVisitor visitor) {
-    if (visitor.visit(this)) {
-      acceptChild(visitor, name);
     }
-    visitor.endVisit(this);
-  }
 
-  public SQLName getName() {
-    return name;
-  }
+    @Override
+    protected void accept0(SQLASTVisitor visitor) {
+        if (visitor.visit(this)) {
+            acceptChild(visitor, name);
+        }
+        visitor.endVisit(this);
+    }
 
-  public void setName(SQLName name) {
-    this.name = name;
-  }
+    public SQLName getName() {
+        return name;
+    }
 
-  public boolean isIfExists() {
-    return ifExists;
-  }
+    public void setName(SQLName name) {
+        this.name = name;
+    }
 
-  public void setIfExists(boolean ifExists) {
-    this.ifExists = ifExists;
-  }
+    public boolean isIfExists() {
+        return ifExists;
+    }
 
-  @Override
-  public boolean replace(SQLExpr expr, SQLExpr target) {
-    return false;
-  }
+    public void setIfExists(boolean ifExists) {
+        this.ifExists = ifExists;
+    }
+
+    @Override
+    public boolean replace(SQLExpr expr, SQLExpr target) {
+        return false;
+    }
 }

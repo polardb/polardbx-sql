@@ -194,8 +194,6 @@ import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.FnvHash.Constants;
 import com.alibaba.polardbx.druid.util.MySqlUtils;
 import com.alibaba.polardbx.druid.util.StringUtils;
-import com.sun.prism.PixelFormat;
-import org.apache.log4j.spi.ErrorCode;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -3705,47 +3703,55 @@ public class SQLStatementParser extends SQLParser {
 
         stmt.setName(this.exprParser.name());
 
-        if (identifierEquals("RETURNTYPE")) {
-            lexer.nextToken();
-            String returnType = lexer.stringVal();
-            stmt.setReturnType(returnType);
-            lexer.nextToken();
-        }
-
-        //TODO 解析生成SqlDataType
-        List<String> inputTypes = new ArrayList<String>();
-        if (identifierEquals("INPUTTYPE")) {
-            lexer.nextToken();
-            String inputType = lexer.stringVal();
-            inputTypes.add(inputType);
-            lexer.nextToken();
-            while (lexer.token == COMMA) {
-                lexer.nextToken();
-                String type = lexer.stringVal();
-                inputTypes.add(type);
-                lexer.nextToken();
-            }
-            stmt.setInputTypes(inputTypes);
-        }
-
         String originText = lexer.text.toString();
         String text = originText.toUpperCase();
+        List<String> inputTypes = new ArrayList<String>();
 
-        if (identifierEquals("IMPORT")) {
-            if (!text.contains("ENDIMPORT")) {
-                throw new ParserException("Need ENDIMPORT in your syntax");
+        for (; ; ) {
+            if (identifierEquals("RETURNTYPE")) {
+                lexer.nextToken();
+                String returnType = lexer.stringVal();
+                stmt.setReturnType(returnType);
+                lexer.nextToken();
+                continue;
             }
-            String importString = originText.substring(text.indexOf("IMPORT") + 5, text.indexOf("ENDIMPORT")).trim();
-            stmt.setImportString(importString);
-        }
 
-        if (identifierEquals("CODE")) {
-            String javaCode;
-            if (!text.contains("ENDCODE")) {
-                throw new ParserException("Need ENDCODE in your syntax");
+            if (identifierEquals("INPUTTYPE")) {
+                lexer.nextToken();
+                String inputType = lexer.stringVal();
+                inputTypes.add(inputType);
+                lexer.nextToken();
+                while (lexer.token == COMMA) {
+                    lexer.nextToken();
+                    String type = lexer.stringVal();
+                    inputTypes.add(type);
+                    lexer.nextToken();
+                }
+                stmt.setInputTypes(inputTypes);
+                continue;
             }
-            javaCode = originText.substring(text.indexOf("CODE") + 4, text.indexOf("ENDCODE")).trim();
-            stmt.setJavaCode(javaCode);
+
+            if (identifierEquals("IMPORT")) {
+                if (!text.contains("ENDIMPORT")) {
+                    throw new ParserException("Need ENDIMPORT in your syntax");
+                }
+                String importString =
+                    originText.substring(text.indexOf("IMPORT") + 5, text.indexOf("ENDIMPORT")).trim();
+                stmt.setImportString(importString);
+                continue;
+            }
+
+            if (identifierEquals("CODE")) {
+                String javaCode;
+                if (!text.contains("ENDCODE")) {
+                    throw new ParserException("Need ENDCODE in your syntax");
+                }
+                javaCode = originText.substring(text.indexOf("CODE") + 4, text.indexOf("ENDCODE")).trim();
+                stmt.setJavaCode(javaCode);
+                continue;
+            }
+
+            break;
         }
 
         for (; ; ) {

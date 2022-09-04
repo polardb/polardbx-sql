@@ -1039,7 +1039,7 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
-    public void endVisit(SQLCreateJavaFunctionStatement x){
+    public void endVisit(SQLCreateJavaFunctionStatement x) {
 
     }
 
@@ -1049,7 +1049,7 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
-    public void endVisit(SQLDropJavaFunctionStatement x){
+    public void endVisit(SQLDropJavaFunctionStatement x) {
 
     }
 
@@ -1057,7 +1057,6 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public boolean visit(SQLDropJavaFunctionStatement x) {
         return true;
     }
-
 
     @Override
     public boolean visit(SQLAlterTableDropIndex x) {

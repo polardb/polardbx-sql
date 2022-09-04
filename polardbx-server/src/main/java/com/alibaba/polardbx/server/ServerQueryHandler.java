@@ -51,16 +51,11 @@ import com.alibaba.polardbx.optimizer.parse.mysql.ansiquote.MySQLANSIQuoteTransf
 import java.nio.charset.Charset;
 import java.sql.SQLSyntaxErrorException;
 import java.util.List;
-import java.util.Locale;
-import java.util.regex.Pattern;
 
 /**
  * @author xianmao.hexm
  */
 public class ServerQueryHandler implements QueryHandler {
-
-    private static final Pattern CREATE_JAVA_FUNCTION_PATTERN = Pattern.compile("^\\s*create\\s+java_function\\s+.*$",
-        Pattern.CASE_INSENSITIVE);
 
     private final ServerConnection source;
 
