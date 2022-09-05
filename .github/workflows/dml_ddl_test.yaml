@@ -16,7 +16,7 @@ on:
 
 concurrency: 
   # main branch should complete running
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('ci-master-{0}', github.sha) || format('ci-{0}', github.ref) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && format('ci-pull-{0}', github.event.pull_request.number) || format('ci-main-{0}', github.sha) }}
   cancel-in-progress: true
 
 permissions:
