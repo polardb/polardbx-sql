@@ -3707,6 +3707,7 @@ public class SQLStatementParser extends SQLParser {
         String text = originText.toUpperCase();
         List<String> inputTypes = new ArrayList<String>();
 
+        __PARSE_LOOP:
         for (; ; ) {
             if (identifierEquals("RETURNTYPE")) {
                 lexer.nextToken();
@@ -3736,9 +3737,18 @@ public class SQLStatementParser extends SQLParser {
                     throw new ParserException("Need ENDIMPORT in your syntax");
                 }
                 String importString =
-                    originText.substring(text.indexOf("IMPORT") + 5, text.indexOf("ENDIMPORT")).trim();
+                    originText.substring(text.indexOf("IMPORT") + 6, text.indexOf("ENDIMPORT")).trim();
                 stmt.setImportString(importString);
-                continue;
+                for (; ; ) {
+                    if (lexer.token() == Token.EOF) {
+                        break;
+                    }
+                    if (identifierEquals("ENDIMPORT")) {
+                        lexer.nextToken();
+                        continue __PARSE_LOOP;
+                    }
+                    lexer.nextToken();
+                }
             }
 
             if (identifierEquals("CODE")) {
@@ -3748,7 +3758,16 @@ public class SQLStatementParser extends SQLParser {
                 }
                 javaCode = originText.substring(text.indexOf("CODE") + 4, text.indexOf("ENDCODE")).trim();
                 stmt.setJavaCode(javaCode);
-                continue;
+                for (; ; ) {
+                    if (lexer.token() == Token.EOF) {
+                        break;
+                    }
+                    if (identifierEquals("ENDCODE")) {
+                        lexer.nextToken();
+                        continue __PARSE_LOOP;
+                    }
+                    lexer.nextToken();
+                }
             }
 
             break;

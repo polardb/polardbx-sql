@@ -41,7 +41,7 @@ public class LogicalDropJavaFunctionHandler extends HandlerCommon {
 
         UserDefinedJavaFunctionManager.dropFunction(funcNameUpper);
 
-        SyncManagerHelper.sync(new DropJavaFunctionSyncAction(funcNameUpper.toLowerCase()));
+        SyncManagerHelper.sync(new DropJavaFunctionSyncAction(funcNameUpper));
 
         return new AffectRowCursor(0);
     }

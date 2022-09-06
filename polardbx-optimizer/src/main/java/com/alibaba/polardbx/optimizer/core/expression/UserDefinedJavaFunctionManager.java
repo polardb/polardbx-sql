@@ -12,6 +12,7 @@ import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.dialect.MySqlDialect;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.core.function.calc.UserDefinedJavaFunction;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
@@ -38,7 +39,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class UserDefinedJavaFunctionManager {
 
@@ -51,7 +51,7 @@ public class UserDefinedJavaFunctionManager {
     public static Map<String, DataType> userResultTypeByFuncName = new HashMap<>();
 
     public static boolean containsFunction(String name) {
-        return javaFunctionCaches.containsKey(name);
+        return javaFunctionCaches.containsKey(name.toUpperCase());
     }
 
     public static void removeFunctionFromCache(String name) {
@@ -97,7 +97,7 @@ public class UserDefinedJavaFunctionManager {
         //compute type
         List<DataType> inputDataTypes = new ArrayList<>();
         for (String type : record.inputTypes.split(",")) {
-            inputDataTypes.add(computeDataType(type));
+            inputDataTypes.add(computeDataType(type.trim()));
         }
         DataType resultDataType = computeDataType(record.resultType);
 
@@ -186,16 +186,24 @@ public class UserDefinedJavaFunctionManager {
 
     public static DataType computeDataType(String type) {
         SqlTypeName name = SqlTypeName.get(type.toUpperCase());
-        if (name == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type " + type);
+        if (name == null || "ENUM".equals(type.toUpperCase())) {
+            MySqlDialect dialect = new MySqlDialect();
+            name = dialect.getSqlTypeName(type);
+            if (name == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type " + type);
+            }
         }
         return DataTypeUtil.calciteToDrdsType(factory.createSqlType(name));
     }
 
     public static SqlReturnTypeInference computeReturnType(String returnType) {
         SqlTypeName name = SqlTypeName.get(returnType.toUpperCase());
-        if (name == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport return type " + returnType);
+        if (name == null || "ENUM".equals(returnType.toUpperCase())) {
+            MySqlDialect dialect = new MySqlDialect();
+            name = dialect.getSqlTypeName(returnType);
+            if (name == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Unsupport type " + returnType);
+            }
         }
         return ReturnTypes.explicit(name);
     }

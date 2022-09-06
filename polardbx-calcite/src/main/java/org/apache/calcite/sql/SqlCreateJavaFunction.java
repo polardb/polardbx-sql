@@ -57,9 +57,9 @@ public class SqlCreateJavaFunction extends SqlDdl {
             writer.keyword("ENDIMPORT");
         }
         if (TStringUtil.isNotBlank(javaCode)) {
-            writer.keyword("#CODE");
+            writer.keyword("CODE");
             writer.literal(javaCode);
-            writer.keyword("#ENDCODE");
+            writer.keyword("ENDCODE");
         }
     }
 
