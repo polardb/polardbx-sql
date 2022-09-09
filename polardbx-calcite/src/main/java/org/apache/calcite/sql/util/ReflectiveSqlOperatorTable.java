@@ -134,11 +134,12 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
   }
 
   public static void remove(String name) {
-    Key toRemove =
-        operators.keySet().stream().filter(key -> key.getKey().equals(name)).collect(Collectors.toList()).get(0);
-    if (toRemove == null) {
+    List<Key> keys =
+        operators.keySet().stream().filter(key -> key.getKey().equals(name)).collect(Collectors.toList());
+    if (keys.isEmpty()) {
       return;
     }
+    Key toRemove = keys.get(0);
     operators.removeAll(toRemove);
   }
 

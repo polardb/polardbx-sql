@@ -31,10 +31,7 @@ public class LogicalDropJavaFunctionHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Drop java_function syntax error");
         }
 
-        if (!UserDefinedJavaFunctionManager.containsFunction(funcNameUpper)) {
-            if (ifExist) {
-                return new AffectRowCursor(0);
-            }
+        if (!UserDefinedJavaFunctionManager.containsFunction(funcNameUpper) && !ifExist) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 String.format("Java function %s not found", funcNameUpper));
         }

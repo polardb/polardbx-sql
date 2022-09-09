@@ -28,6 +28,7 @@ import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
@@ -73,7 +74,8 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Create java_function syntax error");
         }
 
-        if (ExtraFunctionManager.constainsFunction(funcName)) {
+        if (ExtraFunctionManager.constainsFunction(funcName.toUpperCase())
+            || UserDefinedJavaFunctionManager.containsFunction(funcName.toUpperCase())) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 String.format("Function %s already exists", funcName));
         }

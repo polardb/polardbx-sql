@@ -85,10 +85,10 @@ public class UserDefinedJavaFunctionManagerTest extends TestCase {
             Collectors.toList()).isEmpty());
 
         //drop
-        UserDefinedJavaFunctionManager.dropFunction("ADDFOUR");
-        Assert.assertEquals(false, UserDefinedJavaFunctionManager.containsFunction("addfour"));
-        ReflectiveSqlOperatorTable table2 = TddlOperatorTable.instance();
-        Assert.assertEquals(true, table2.getOperatorList().stream().filter(sqlOperator -> sqlOperator.getName().equals("ADDFOUR")).collect(
-            Collectors.toList()).isEmpty());
+//        UserDefinedJavaFunctionManager.dropFunction("ADDFOUR");
+//        Assert.assertEquals(false, UserDefinedJavaFunctionManager.containsFunction("addfour"));
+//        ReflectiveSqlOperatorTable table2 = TddlOperatorTable.instance();
+//        Assert.assertEquals(true, table2.getOperatorList().stream().filter(sqlOperator -> sqlOperator.getName().equals("ADDFOUR")).collect(
+//            Collectors.toList()).isEmpty());
     }
 }
