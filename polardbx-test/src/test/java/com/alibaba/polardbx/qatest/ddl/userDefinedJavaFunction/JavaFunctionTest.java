@@ -7,7 +7,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.sql.Blob;
 import java.sql.Connection;
 import java.sql.Date;
@@ -77,27 +76,65 @@ public class JavaFunctionTest {
             + "         }"
             + "         return -1;"
             + "    }\n"
+            + "ENDCODE",
+        "CREATE java_function testDate\n"
+            + "returnType date\n"
+            + "inputType date\n"
+            + "import\n"
+            + "import java.sql.Date;\n"
+            + "endimport\n"
+            + "CODE\n"
+            + "    public Object compute(Object[] args) {\n"
+            + "        Date a = (Date) args[0];\n"
+            + "        Date b = new Date(a.getTime() + 1000*60*60*24);\n"
+            + "         return b;\n"
+            + "    }\n"
+            + "ENDCODE",
+        "CREATE java_function testBlob\n"
+            + "returnType varchar\n"
+            + "inputType blob\n"
+            + "import\n"
+            + "import java.sql.Blob;\n"
+            + "endimport\n"
+            + "CODE\n"
+            + "    public Object compute(Object[] args) {\n"
+            + "String s = \"\";\n"
+            + "try {"
+            + "        Blob b = (Blob) args[0];\n"
+            + "        s = new String(b.getBytes((long)1, (int)b.length()));;\n"
+            + "        \n"
+            + "} catch (Exception e) {  e.printStackTrace();\n}"
+            + "        return s;"
+            + "    }\n"
             + "ENDCODE"
     );
     private List<String> queryString = Arrays.asList(
         "select addfour(1,2)",
         "select testString(col1) from test",
-        "select testEnum(col4) from test"
+        "select testEnum(col4) from test",
+        "select testDate(col5) from test",
+        "select testBlob(col7) from test"
     );
     private List<String> deleteString = Arrays.asList(
         "drop java_function if exists addfour",
         "drop java_function if exists testString",
-        "drop java_function if exists testEnum"
+        "drop java_function if exists testEnum",
+        "drop java_function if exists testDate",
+        "drop java_function if exists testBlob"
     );
     private List<String> expectString = Arrays.asList(
         "3",
         "testsuffix",
-        "1"
+        "1",
+        "2006-01-13",
+        "test"
     );
     private List<String> colIndex = Arrays.asList(
         "addfour(1, 2)",
         "testString(col1)",
-        "testEnum(col4)"
+        "testEnum(col4)",
+        "testDate(col5)",
+        "testBlob(col7)"
     );
 
     @Before
@@ -116,6 +153,7 @@ public class JavaFunctionTest {
             }
             tddlCon.close();
         } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -152,10 +190,10 @@ public class JavaFunctionTest {
             insertstmt.setBigDecimal(3, new BigDecimal("10.1"));
             insertstmt.setBigDecimal(4, new BigDecimal("15.5"));
             insertstmt.setString(5, "value1");
-            insertstmt.setDate(6, new Date(2021, 12, 1));
+            insertstmt.setDate(6, new Date(1137075575000L));
             insertstmt.setTimestamp(7, new Timestamp(Long.parseLong("1137075575000")));
             Blob b = tddlCon.createBlob();
-            b.setBytes(1, new String("test").getBytes());
+            b.setBytes(1, "test".getBytes());
             insertstmt.setBlob(8, b);
 
             insertstmt.execute();
