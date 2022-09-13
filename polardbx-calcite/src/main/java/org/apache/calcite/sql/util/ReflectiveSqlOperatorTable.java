@@ -134,9 +134,9 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
   }
 
   public void remove(String name) {
-    name = name.toUpperCase();
+    final String nameUpper = name.toUpperCase();
     List<Key> keys =
-        operators.keySet().stream().filter(key -> key.getKey().equals(name)).collect(Collectors.toList());
+        operators.keySet().stream().filter(key -> key.getKey().equals(nameUpper)).collect(Collectors.toList());
     if (keys.isEmpty()) {
       return;
     }
