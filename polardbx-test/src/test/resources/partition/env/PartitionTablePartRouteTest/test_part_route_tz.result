@@ -1,0 +1,95 @@
+DROP TABLE IF EXISTS rc_tbl;
+CREATE TABLE IF NOT EXISTS rc_tbl (
+	a bigint UNSIGNED NOT NULL,
+	b timestamp NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY RANGE (unix_timestamp(b)) (
+	PARTITION p0 VALUES LESS THAN (1355155200),
+	PARTITION p1 VALUES LESS THAN (1355241600),
+	PARTITION p2 VALUES LESS THAN (1355328000)
+);
+SET time_zone = '+08:00';
+INSERT INTO rc_tbl (a, b, c)
+VALUES (1, '2012-12-11 23:00:00', ''),
+	(2, '2012-12-12 01:00:00', '');
+SET time_zone = '+00:00';
+INSERT INTO rc_tbl (a, b, c)
+VALUES (3, '2012-12-11 15:00:00', ''),
+	(4, '2012-12-11 17:00:00', '');
+SET time_zone = '+10:00';
+INSERT INTO rc_tbl (a, b, c)
+VALUES (5, '2012-12-12 01:00:00', ''),
+	(6, '2012-12-12 03:00:00', '');
+SET time_zone = '+08:00';
+EXPLAIN SELECT b
+FROM rc_tbl
+WHERE b = '2012-12-11 23:00:00'
+	OR b = '2012-12-12 01:00:00';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc_tbl[p1,p2]", shardCount=2, sql="SELECT `b` FROM `rc_tbl` AS `rc_tbl` WHERE ((`b` = ?) OR (`b` = ?))")
+SELECT part_route('', 'rc_tbl', '2012-12-11 23:00:00')
+	, part_route('', 'rc_tbl', '2012-12-12 01:00:00');
+part_route('', 'rc_tbl', '2012-12-11 23:00:00'),part_route('', 'rc_tbl', '2012-12-12 01:00:00')
+p1,p2
+SET time_zone = '+00:00';
+EXPLAIN SELECT b
+FROM rc_tbl
+WHERE b = '2012-12-11 15:00:00'
+	OR b = '2012-12-11 17:00:00';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc_tbl[p1,p2]", shardCount=2, sql="SELECT `b` FROM `rc_tbl` AS `rc_tbl` WHERE ((`b` = ?) OR (`b` = ?))")
+SELECT part_route('', 'rc_tbl', '2012-12-11 15:00:00')
+	, part_route('', 'rc_tbl', '2012-12-11 17:00:00');
+part_route('', 'rc_tbl', '2012-12-11 15:00:00'),part_route('', 'rc_tbl', '2012-12-11 17:00:00')
+p1,p2
+SET time_zone = '+10:00';
+EXPLAIN SELECT b
+FROM rc_tbl
+WHERE b = '2012-12-12 01:00:00'
+	OR b = '2012-12-12 03:00:00';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="rc_tbl[p1,p2]", shardCount=2, sql="SELECT `b` FROM `rc_tbl` AS `rc_tbl` WHERE ((`b` = ?) OR (`b` = ?))")
+SELECT part_route('', 'rc_tbl', '2012-12-12 01:00:00')
+	, part_route('', 'rc_tbl', '2012-12-12 03:00:00');
+part_route('', 'rc_tbl', '2012-12-12 01:00:00'),part_route('', 'rc_tbl', '2012-12-12 03:00:00')
+p1,p2
+SET time_zone = '+08:00';
+SELECT a, b
+	, part_route('', 'rc_tbl', b)
+FROM rc_tbl
+ORDER BY b, a;
+a,b,part_route('', 'rc_tbl', b)
+1,2012-12-11 23:00:00.0,p1
+3,2012-12-11 23:00:00.0,p1
+5,2012-12-11 23:00:00.0,p1
+2,2012-12-12 01:00:00.0,p2
+4,2012-12-12 01:00:00.0,p2
+6,2012-12-12 01:00:00.0,p2
+SET time_zone = '+00:00';
+SELECT a, b
+	, part_route('', 'rc_tbl', b)
+FROM rc_tbl
+ORDER BY b, a;
+a,b,part_route('', 'rc_tbl', b)
+1,2012-12-11 15:00:00.0,p1
+3,2012-12-11 15:00:00.0,p1
+5,2012-12-11 15:00:00.0,p1
+2,2012-12-11 17:00:00.0,p2
+4,2012-12-11 17:00:00.0,p2
+6,2012-12-11 17:00:00.0,p2
+SET time_zone = '+10:00';
+SELECT a, b
+	, part_route('', 'rc_tbl', b)
+FROM rc_tbl
+ORDER BY b, a;
+a,b,part_route('', 'rc_tbl', b)
+1,2012-12-12 01:00:00.0,p1
+3,2012-12-12 01:00:00.0,p1
+5,2012-12-12 01:00:00.0,p1
+2,2012-12-12 03:00:00.0,p2
+4,2012-12-12 03:00:00.0,p2
+6,2012-12-12 03:00:00.0,p2

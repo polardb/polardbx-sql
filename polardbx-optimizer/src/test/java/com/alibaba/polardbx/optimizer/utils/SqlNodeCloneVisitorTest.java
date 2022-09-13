@@ -25,11 +25,13 @@ import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.junit.Ignore;
 import org.junit.Test;
 
 /**
  * @author lingce.ldm 2018-02-02 15:55
  */
+@Ignore
 public class SqlNodeCloneVisitorTest {
 
     @Test

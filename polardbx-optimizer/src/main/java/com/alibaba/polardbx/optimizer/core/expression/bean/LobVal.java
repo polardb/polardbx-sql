@@ -26,7 +26,6 @@ import java.util.Arrays;
 /**
  * 带前缀的字符串, 例如：x'20', b'1100', _utf8'x', _latin1'x', _binary'u'.
  *
- * @author <a href="mailto:changyuan.lh@taobao.com">Changyuan.lh</a>
  * @since 5.0.0
  */
 public class LobVal implements Comparable<String> {

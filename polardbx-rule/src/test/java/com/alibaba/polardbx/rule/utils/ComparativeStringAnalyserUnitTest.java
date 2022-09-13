@@ -25,7 +25,6 @@ import org.junit.Test;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 
 /**
- * @author <a href="junyu@taobao.com">junyu</a>
  * @version 1.0
  * @since 1.6
  * @date 2011-9-16 11:00:47

@@ -1,0 +1,45 @@
+## Test time_zone for part_route
+drop table if exists hash_tbl;
+drop table if exists hash_tbl2;
+
+create table if not exists hash_tbl (a bigint unsigned, b timestamp, c varchar(128) not null)
+partition by key(c,b,a) partitions 64;
+select part_route('','hash_tbl', null,null,null) as part_rs;
+explain select c,b,a from hash_tbl where (c,b,a)=(null,null,null);
+explain select c,b,a from hash_tbl where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
+select part_route('','hash_tbl', null,"2020-12-12 00:00:00",10000) as part_rs;
+explain select c,b,a from hash_tbl where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
+
+create table if not exists hash_tbl2 (a bigint unsigned, b timestamp, c varchar(128) not null)
+partition by hash(c,b,a) partitions 64;
+select part_route('','hash_tbl2', null,null,null) as part_rs;
+explain select c,b,a from hash_tbl2 where (c,b,a)=(null,null,null);
+select part_route('','hash_tbl2', null,"2020-12-12 00:00:00",10000) as part_rs;
+explain select c,b,a from hash_tbl2 where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
+
+drop table if exists rc_tbl;
+create table if not exists rc_tbl (a bigint unsigned, b datetime, c varchar(128) not null)
+partition by range columns(c,b,a) (
+partition p0 values less than ('H','2021-11-11 00:00:00', 999999),
+partition p1 values less than ('Z','2021-11-11 00:00:00', 999999),
+partition p2 values less than (maxvalue,maxvalue,maxvalue)
+);
+select part_route('','rc_tbl', null,null,null) as part_rs;
+explain select c,b,a from rc_tbl where (c,b,a)=(null,null,null);
+select part_route('','rc_tbl', 'H',"2020-12-12 00:00:00",10000) as part_rs;
+explain select c,b,a from rc_tbl where (c,b,a)=('H',"2020-12-12 00:00:00",10000);
+select part_route('','rc_tbl', 'H') as part_rs;
+explain select c,b,a from rc_tbl where (c)=('H');
+
+create table if not exists lc_tbl (a bigint unsigned, b datetime, c varchar(128) not null)
+partition by list columns(c) (
+partition p0 values in ('1','4','8'),
+partition p1 values in ('2','5','7'),
+partition p2 values in ('3','6','9', null)
+);
+
+select part_route('','lc_tbl', null) as part_rs;
+explain select c,b,a from lc_tbl where (c)=(null);
+
+select part_route('','lc_tbl', '6') as part_rs;
+explain select c,b,a from lc_tbl where (c)=('6');

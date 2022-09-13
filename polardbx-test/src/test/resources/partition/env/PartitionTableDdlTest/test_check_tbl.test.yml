@@ -1,0 +1,20 @@
+drop table if exists tbl1;
+drop table if exists tbl2;
+drop table if exists tbl3;
+create table if not exists tbl1 (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+
+create table if not exists tbl2 (a int not null,primary key (`a`))
+single;
+
+create table if not exists tbl3 (a int not null,primary key (`a`))
+broadcast;
+
+check table tbl1;
+check table tbl2;
+check table tbl3;
+

@@ -1,0 +1,89 @@
+DROP TABLE IF EXISTS t1;
+CREATE TABLE IF NOT EXISTS t1 (
+	a varchar(128) NOT NULL
+)
+PARTITION BY LIST COLUMNS (a) (
+	PARTITION p0 VALUES IN ('A'), 
+	PARTITION p1 VALUES IN ('B')
+);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` varchar(128) NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p0 VALUES IN ('A') ENGINE = InnoDB,
+ PARTITION p1 VALUES IN ('B') ENGINE = InnoDB)
+INSERT INTO t1
+VALUES ('A'),
+	('B');
+SELECT *
+FROM t1
+ORDER BY a ASC;
+a
+A
+B
+EXPLAIN SELECT *
+FROM t1
+WHERE a = 'A';
+Logical ExecutionPlan
+LogicalView(tables="t1[p0]", sql="SELECT `a` FROM `t1` AS `t1` WHERE (`a` = ?)")
+DROP TABLE IF EXISTS t2;
+CREATE TABLE IF NOT EXISTS t2 (
+	a bigint NOT NULL,
+	b datetime NOT NULL,
+	c varchar(128) NOT NULL
+)
+PARTITION BY LIST COLUMNS (a, b, c) (
+	PARTITION p0 VALUES IN ((100, '2012-12-12 11:11:11', 'A'), (101, '2012-12-12 11:11:11', 'A'), (102, '2012-12-12 11:11:11', 'A')), 
+	PARTITION p1 VALUES IN ((200, '2014-12-12 11:11:11', 'B'), (201, '2014-12-12 11:11:11', 'B'), (202, '2014-12-12 11:11:11', 'B'))
+);
+SHOW CREATE TABLE t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` bigint(20) NOT NULL,
+	`b` datetime NOT NULL,
+	`c` varchar(128) NOT NULL,
+	KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+PARTITION BY LIST COLUMNS(`a`,`b`,`c`)
+(PARTITION p0 VALUES IN ((100,'2012-12-12 11:11:11','A'),(101,'2012-12-12 11:11:11','A'),(102,'2012-12-12 11:11:11','A')) ENGINE = InnoDB,
+ PARTITION p1 VALUES IN ((200,'2014-12-12 11:11:11','B'),(201,'2014-12-12 11:11:11','B'),(202,'2014-12-12 11:11:11','B')) ENGINE = InnoDB)
+INSERT INTO t2
+VALUES (100, '2012-12-12 11:11:11', 'A'),
+	(101, '2012-12-12 11:11:11', 'A'),
+	(102, '2012-12-12 11:11:11', 'A'),
+	(200, '2014-12-12 11:11:11', 'B'),
+	(201, '2014-12-12 11:11:11', 'B'),
+	(202, '2014-12-12 11:11:11', 'B');
+SELECT *
+FROM t2
+ORDER BY a ASC;
+a,b,c
+100,2012-12-12 11:11:11.0,A
+101,2012-12-12 11:11:11.0,A
+102,2012-12-12 11:11:11.0,A
+200,2014-12-12 11:11:11.0,B
+201,2014-12-12 11:11:11.0,B
+202,2014-12-12 11:11:11.0,B
+EXPLAIN SELECT *
+FROM t2
+WHERE a = 'A';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t2[]", shardCount=0, sql="SELECT `a`, `b`, `c` FROM `t2` AS `t2` WHERE (`a` = ?)")
+EXPLAIN SELECT *
+FROM t2
+WHERE a = 101
+	AND b = '2012-12-12 11:11:11'
+	AND c = 'A';
+Logical ExecutionPlan
+LogicalView(tables="t2[p0]", sql="SELECT `a`, `b`, `c` FROM `t2` AS `t2` WHERE (((`a` = ?) AND (`b` = ?)) AND (`c` = ?))")
+SELECT *
+FROM t2
+WHERE a = 101
+	AND b = '2012-12-12 11:11:11'
+	AND c = 'A';
+a,b,c
+101,2012-12-12 11:11:11.0,A

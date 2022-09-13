@@ -8327,7 +8327,6 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(MySqlChangeMasterStatement x) {
-        //2do
         List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
         for (SQLAssignItem option : x.getOptions()) {
             SqlNode key = convertToSqlNode(option.getTarget());
@@ -8352,7 +8351,13 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             SqlNode value = convertToSqlNode(option.getValue());
             options.add(Pair.of(key, value));
         }
-        sqlNode = new SqlChangeReplicationFilter(SqlParserPos.ZERO, options);
+        final SQLCharExpr channel = x.getChannel();
+        if (channel == null) {
+            sqlNode = new SqlChangeReplicationFilter(SqlParserPos.ZERO, options);
+        } else {
+            SqlNode ch = convertToSqlNode(channel);
+            sqlNode = new SqlChangeReplicationFilter(SqlParserPos.ZERO, options, ch);
+        }
         return false;
     }
 

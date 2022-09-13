@@ -1,0 +1,9 @@
+drop table if exists t1;
+create table if not exists t1 (c1 varchar(8) CHARACTER SET utf8 COLLATE utf8_general_ci default null,c2 datetime default null,c3 bigint unsigned default null) partition by list columns(c1,c2,c3) (partition p0 values in ((null,null,null),('', '0000-00-00 00:00:00', 0),('a', '2020-10-11 00:00:00', 123)),partition p1 values in (('b', '2020-11-11 00:00:00', 123),('世界', '2020-11-11 00:00:00', 145)),partition p2 values in (('a', '2020-11-11 00:00:00', 123),('a', '2020-12-11 00:00:00', 123),('a', '2021-12-11 00:00:00', 123)),partition p3 values in (('a', '2021-12-11 00:00:00', 125),('b', '2021-12-11 00:00:00', 125)));
+insert into t1(c1,c2,c3) values (null,null,null),('', '0000-00-00 00:00:00', 0),('a', '2020-10-11 00:00:00', 123),('b', '2020-11-11 00:00:00', 123),('世界', '2020-11-11 00:00:00', 145),('a', '2020-11-11 00:00:00', 123),('a', '2020-12-11 00:00:00', 123),('a', '2021-12-11 00:00:00', 123),('a', '2021-12-11 00:00:00', 125),('b', '2021-12-11 00:00:00', 125);
+
+select c1,c2,c3 from t1 where ((c1,c2,c3) = ('a', '2021-12-11 00:00:00', 123)) order by c1,c2,c3;
+select c1,c2,c3 from t1 where ((c1,c2,c3) >= ('a', '2021-12-11 00:00:00', 123)) order by c1,c2,c3;
+select c1,c2,c3 from t1 where ((c1,c2,c3) > ('a', '2021-12-11 00:00:00', 123)) order by c1,c2,c3;
+select c1,c2,c3 from t1 where ((c1,c2,c3) <= ('a', '2021-12-11 00:00:00', 123)) order by c1,c2,c3;
+select c1,c2,c3 from t1 where ((c1,c2,c3) < ('a', '2021-12-11 00:00:00', 123)) order by c1,c2,c3;

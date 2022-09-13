@@ -1,0 +1,35 @@
+## test hash/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,101),
+  partition p2 values in (99,100,98),
+  partition p3 values in (200,201)
+);
+create tablegroup tbl_tg;
+alter table tbl set tablegroup=tbl_tg;
+
+## test split
+alter tablegroup tbl_tg split partition p2 into
+ (partition p4 values in (98,99),
+  partition p5 values in (100));
+show create table tbl;
+
+## insert to new split partition: p4
+insert into tbl values (99);
+select * from tbl partition(p4);
+
+## insert to new split partition: p5
+insert into tbl values (100);
+select * from tbl partition(p5);
+
+# clear data
+delete from tbl where 1=1;
+
+## test merge
+alter tablegroup tbl_tg merge partitions p1,p4 to p2;
+show create table tbl;
+
+## test insert into new merge partition p2
+insert into tbl values (98);
+select * from tbl partition(p2);

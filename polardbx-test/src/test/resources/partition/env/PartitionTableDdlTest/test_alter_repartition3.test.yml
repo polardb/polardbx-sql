@@ -1,0 +1,35 @@
+drop table if exists tbl;
+create table if not exists tbl (
+a int not null,
+b int not null,
+c int not null,
+d int not null,
+primary key (`a`))
+partition by key(a);
+
+insert into tbl values (101, 101, 101, 101),
+(102, 102, 102, 102),
+(103, 103, 103, 103),
+(201, 201, 201, 201),
+(202, 202, 202, 202),
+(203, 203, 203, 203);
+
+select * from tbl order by a;
+
+alter table tbl partition by key(a, b);
+show create table tbl;
+select * from tbl order by a;
+
+alter table tbl partition by key(a, c);
+show create table tbl;
+select * from tbl order by a;
+
+alter table tbl partition by key(a, b, c);
+show create table tbl;
+select * from tbl order by a;
+
+alter table tbl partition by key(d);
+show create table tbl;
+select * from tbl order by a;
+
+

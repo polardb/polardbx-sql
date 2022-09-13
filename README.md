@@ -89,15 +89,14 @@ The CDC Node provides change data capture capability that is fully compatible wi
 
 PolarDB-X provides tool to manage the above components through K8S Operator, and the RPC between the CN and DN can be done through private protocol component. The corresponding repositories of these components are as follows.
 
-| **Component Name** | **Repository** |
-| --- | --- |
-| CN (Compute Node) | [galaxysql](https://github.com/ApsaraDB/galaxysql) |
-| GMS (Global Meta Service) | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) |
-| DN (Data Node) | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) |
-| CDC (Change Data Capture) | [galaxycdc](https://github.com/ApsaraDB/galaxycdc) |
-| RPC | [galaxyglue](https://github.com/ApsaraDB/galaxyglue) |
-| K8S Operator | [galaxykube](https://github.com/ApsaraDB/galaxykube) |
-
+| **Component Name**        | **Repository** | **Version** |
+|---------------------------| --- |---|
+| CN (Compute Node)         | [galaxysql](https://github.com/ApsaraDB/galaxysql) | v5.4.13-16615127 |
+| GMS (Global Meta Service) | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
+| DN (Data Node)            | [galaxyengine](https://github.com/ApsaraDB/galaxyengine) | v1.0.2 |
+| CDC (Change Data Capture) | [galaxycdc](https://github.com/ApsaraDB/galaxycdc) | v5.4.13 |
+| RPC                       | [galaxyglue](https://github.com/ApsaraDB/galaxyglue) | v5.4.13-16615127 |
+| K8S Operator              | [galaxykube](https://github.com/ApsaraDB/galaxykube) | v1.2.2 |
 
 
 ## What is ApsaraDB GalaxySQL ？

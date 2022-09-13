@@ -1,0 +1,30 @@
+DROP TABLE IF EXISTS ugsi_pk;
+CREATE TABLE ugsi_pk (
+	a int NOT NULL,
+	b int NOT NULL,
+	UNIQUE INDEX ugsi_b (b)
+);
+SHOW FULL CREATE TABLE ugsi_pk;
+Table,Create Table
+ugsi_pk,CREATE PARTITION TABLE `ugsi_pk` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE GLOBAL INDEX /* ugsi_b_$ */ `ugsi_b` (`b`) PARTITION BY KEY (`b`) PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_ugsi_b` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE ugsi_b;
+Table,Create Table
+ugsi_b_$,CREATE TABLE `ugsi_b_$` (
+	`b` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_b` USING BTREE (`b`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`)
+PARTITIONS #@#
+/* tablegroup = `tg` */

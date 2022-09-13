@@ -19,9 +19,11 @@ package com.alibaba.polardbx.executor.vectorized.binding;
 import org.junit.Ignore;
 import org.junit.Test;
 
+@Ignore
 public class BindingTest extends BindingTestBase {
 
     @Test
+    @Ignore
     public void testCaseWhen() {
         initTable("test_case_when",
             "CREATE TABLE `test_case_when` (\n"

@@ -1,0 +1,100 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a bigint NOT NULL,
+	b bigint NOT NULL
+)
+PARTITION BY HASH (a) PARTITIONS 4;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` bigint(20) NOT NULL,
+	`b` bigint(20) NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+INSERT INTO tbl
+VALUES (10, 100),
+	(99, 100),
+	(100, 200),
+	(101, 200);
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b
+10,100
+99,100
+100,200
+101,200
+SELECT count(1)
+FROM tbl;
+count(1)
+4
+SELECT count(1) AS cnt, b
+FROM tbl
+WHERE b < 101
+GROUP BY b
+ORDER BY cnt, b DESC;
+cnt,b
+2,100
+SELECT count(1) AS cnt, a
+FROM tbl
+WHERE a < 100
+GROUP BY a
+ORDER BY cnt, a DESC;
+cnt,a
+1,99
+1,10
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a bigint NOT NULL,
+	b bigint NOT NULL
+)
+PARTITION BY RANGE (a) (
+	PARTITION p0 VALUES LESS THAN (100),
+	PARTITION p1 VALUES LESS THAN (200),
+	PARTITION p2 VALUES LESS THAN (300)
+);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` bigint(20) NOT NULL,
+	`b` bigint(20) NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p0 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (300) ENGINE = InnoDB)
+INSERT INTO tbl
+VALUES (10, 100),
+	(99, 100),
+	(100, 200),
+	(101, 200);
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b
+10,100
+99,100
+100,200
+101,200
+SELECT count(1)
+FROM tbl;
+count(1)
+4
+SELECT count(1) AS cnt, b
+FROM tbl
+WHERE b < 101
+GROUP BY b
+ORDER BY cnt, b DESC;
+cnt,b
+2,100
+SELECT count(1) AS cnt, a
+FROM tbl
+WHERE a < 100
+GROUP BY a
+ORDER BY cnt, a DESC;
+cnt,a
+1,99
+1,10

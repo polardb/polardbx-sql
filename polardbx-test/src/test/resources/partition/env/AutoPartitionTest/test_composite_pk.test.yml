@@ -1,0 +1,53 @@
+
+# 2 col pk
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+  `x` int NOT NULL AUTO_INCREMENT,
+  `y` int NOT NULL,
+  `z` int NOT NULL,
+  `d` int NOT NULL,
+  PRIMARY KEY (x,y)
+);
+show create table `t_order`;
+show full create table `t_order`;
+
+# 3 col pk
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+  `x` int NOT NULL AUTO_INCREMENT,
+  `y` int NOT NULL,
+  `z` int NOT NULL,
+  `d` int NOT NULL,
+  PRIMARY KEY (x,y,z)
+);
+show create table `t_order`;
+show full create table `t_order`;
+
+# 6 col pk
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+  `x` int NOT NULL AUTO_INCREMENT,
+  `y` int NOT NULL,
+  `z` int NOT NULL,
+  `d` int NOT NULL,
+  `e` int NOT NULL,
+  `f` int NOT NULL,
+  PRIMARY KEY (x,y,z,d,e,f)
+);
+show create table `t_order`;
+show full create table `t_order`;
+
+# 4 col pk with one not support
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+  `x` int NOT NULL AUTO_INCREMENT,
+  `y` int NOT NULL,
+  `z` float NOT NULL,
+  `d` int NOT NULL,
+  PRIMARY KEY (x,y,z,d)
+);
+show create table `t_order`;
+show full create table `t_order`;
+
+# cleanup
+drop table if exists `t_order`;

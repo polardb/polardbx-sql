@@ -1,0 +1,8 @@
+| windows | PC     | NULL         |        3 |
+| linux   | PC     | NULL         |        1 |
+| linux   | Phone  | NULL         |        1 |
+| windows | Phone  | NULL         |        1 |
+| ios     | Phone  | NULL         |        1 |
+| NULL    | NULL   | Shijiazhuang |        3 |
+| NULL    | NULL   | Beijing      |        4 |
+| NULL    | NULL   | NULL         |        7 |

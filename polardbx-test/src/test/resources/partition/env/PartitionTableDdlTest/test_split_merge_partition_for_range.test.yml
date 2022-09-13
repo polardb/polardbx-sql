@@ -1,0 +1,35 @@
+## test hash/one col/int
+drop table if exists tbl;
+create table if not exists tbl (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+  partition p2 values less than (200),
+  partition p3 values less than (300)
+);
+create tablegroup tbl_tg;
+alter table tbl set tablegroup=tbl_tg;
+
+## test split
+alter tablegroup tbl_tg split partition p3 INTO 
+ (partition p4 VALUES LESS THAN (250),
+  partition p5 VALUES LESS THAN (300));
+show create table tbl;
+
+## test insert into new split partition p4
+insert into tbl values (220);
+select * from tbl partition(p4);
+## test insert into new split partition p5
+insert into tbl values (270);
+select * from tbl partition(p5);
+
+delete from tbl where 1=1;
+
+## test merge
+alter tablegroup tbl_tg merge partitions p2,p4 to p3;
+show create table tbl;
+
+## test insert into new merge partition p3
+insert into tbl values (230);
+select * from tbl partition(p3);
+
+

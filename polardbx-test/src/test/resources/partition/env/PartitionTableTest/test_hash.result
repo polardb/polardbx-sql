@@ -1,0 +1,147 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL
+)
+PARTITION BY HASH (a) PARTITIONS 4;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+INSERT INTO tbl
+VALUES (10),
+	(99),
+	(100),
+	(101);
+SELECT *
+FROM tbl
+WHERE a = 10
+ORDER BY a;
+a
+10
+SELECT *
+FROM tbl
+WHERE a = 99
+ORDER BY a;
+a
+99
+SELECT *
+FROM tbl
+WHERE a = 100
+ORDER BY a;
+a
+100
+SELECT *
+FROM tbl
+WHERE a = 101
+ORDER BY a;
+a
+101
+SELECT *
+FROM tbl
+WHERE a = 200
+ORDER BY a;
+a
+SELECT *
+FROM tbl
+WHERE a < 200
+ORDER BY a;
+a
+10
+99
+100
+101
+DROP TABLE IF EXISTS tbl;
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a datetime NOT NULL
+)
+PARTITION BY HASH (year(a)) PARTITIONS 4;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` datetime NOT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(YEAR(`a`))
+PARTITIONS 4
+INSERT INTO tbl
+VALUES ('2012-10-12 12:12:12'),
+	('2010-10-12 12:12:12'),
+	('2011-10-12 12:12:12'),
+	('2014-10-12 12:12:12');
+SELECT *
+FROM tbl
+WHERE a = '2012-10-12 12:12:12'
+ORDER BY a;
+a
+2012-10-12 12:12:12.0
+SELECT *
+FROM tbl
+WHERE a = '2010-10-12 12:12:12'
+ORDER BY a;
+a
+2010-10-12 12:12:12.0
+SELECT *
+FROM tbl
+WHERE a = '2011-10-12 12:12:12'
+ORDER BY a;
+a
+2011-10-12 12:12:12.0
+SELECT *
+FROM tbl
+WHERE a > '2010-10-12 12:12:12'
+ORDER BY a;
+a
+2011-10-12 12:12:12.0
+2012-10-12 12:12:12.0
+2014-10-12 12:12:12.0
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL,
+	b varchar(64) NOT NULL,
+	c datetime NOT NULL
+)
+PARTITION BY HASH (a, b, c) PARTITIONS 4;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` varchar(64) NOT NULL,
+	`c` datetime NOT NULL,
+	KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`a`,`b`,`c`)
+PARTITIONS 4
+INSERT INTO tbl (a, b, c)
+VALUES (10, 'a', '2020-12-12'),
+	(20, 'b', '2021-12-12'),
+	(30, 'c', '2022-12-12'),
+	(50, 'f', '2024-12-12'),
+	(80, 'i', '2027-12-12');
+EXPLAIN SELECT *
+FROM tbl
+WHERE a = 10
+	AND b = 'a'
+	AND c = '2020-12-12'
+ORDER BY a;
+Logical ExecutionPlan
+LogicalView(tables="tbl[p2]", sql="SELECT `a`, `b`, `c` FROM `tbl` AS `tbl` WHERE (((`a` = ?) AND (`b` = ?)) AND (`c` = ?)) ORDER BY `a`")
+EXPLAIN SELECT *
+FROM tbl
+WHERE a = 10
+ORDER BY a;
+Logical ExecutionPlan
+MergeSort(sort="a ASC")
+  LogicalView(tables="tbl[p1,p2,p3,p4]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+SELECT *
+FROM tbl
+WHERE a >= 10
+	AND a <= 14
+ORDER BY a;
+a,b,c
+10,a,2020-12-12 00:00:00.0
+DROP TABLE IF EXISTS tbl;

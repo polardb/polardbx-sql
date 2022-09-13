@@ -1,0 +1,34 @@
+drop table if exists tbl;
+create table if not exists tbl (a int not null, b datetime not null, c varchar(64) not null,primary key (`a`))
+partition by range columns (c,b,a)
+( partition p1 values less than ('z', '2020-12-12', 100),
+  partition p2 values less than ('z', '2020-12-13', 200),
+  partition p3 values less than ('z', '2020-12-14', 300)
+);
+insert into tbl (b,a,c) values ('2019-12-12',101,'z'),('2020-12-13',102,'z'),('2020-12-14',203,'z');
+select * from tbl order by a;
+
+alter table tbl single;
+show create table tbl;
+select * from tbl order by a;
+
+alter table tbl broadcast;
+show create table tbl;
+select * from tbl order by a;
+
+#alter table tbl
+#partition by list(a)
+#(
+#partition p1 values in (101,203),
+#partition p2 values in (102,202),
+#partition p3 values in (103,201)
+#);
+#show create table tbl;
+#select * from tbl order by a;
+#
+#alter table tbl
+#partition by hash(a) partitions 8;
+#show create table tbl;
+#select * from tbl order by a;
+
+
