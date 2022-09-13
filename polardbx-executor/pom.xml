@@ -14,7 +14,6 @@
 
     <properties>
         <dep.airlift.version>0.178</dep.airlift.version>
-        <hadoop.version>3.2.2</hadoop.version>
         <orc.version>1.6.9</orc.version>
         <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
         <hadoop-aliyun.version>3.2.2</hadoop-aliyun.version>
@@ -255,7 +254,13 @@
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-client</artifactId>
-            <version>${hadoop.version}</version>
+            <version>${hadoop-client.version}</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>slf4j-reload4j</artifactId>
+                    <groupId>org.slf4j</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.cronutils</groupId>

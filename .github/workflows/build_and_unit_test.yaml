@@ -6,7 +6,7 @@ on:
     paths-ignore:
       - "README.md"
       - "docs/**"
-  pull_request:
+  pull_request_target:
     branches:
       - "main"
     paths-ignore:
@@ -18,20 +18,22 @@ env:
 
 concurrency: 
   # main branch should complete running
-  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && format('ci-master-{0}', github.sha) || format('ci-{0}', github.ref) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && format('ci-pull-{0}', github.event.pull_request.number) || format('ci-main-{0}', github.sha) }}
   cancel-in-progress: true
+
+permissions:
+  checks: write
+  contents: read
+  issues: read
+  pull-requests: write
 
 jobs:
   Build_Unit_Test:
     runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      contents: read
-      issues: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v3
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
           submodules: 'true'
       - uses: actions/setup-java@v1
         with:
