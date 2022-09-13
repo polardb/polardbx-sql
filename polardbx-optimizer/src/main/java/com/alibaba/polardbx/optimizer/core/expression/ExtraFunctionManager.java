@@ -54,7 +54,7 @@ public class ExtraFunctionManager {
 
     static {
         initFunctions();
-        UserDefinedJavaFunctionManager.initFunctions();
+//        UserDefinedJavaFunctionManager.initFunctions();
     }
 
     /**

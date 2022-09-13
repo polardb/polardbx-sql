@@ -42,6 +42,10 @@ import java.util.Map;
 
 public class UserDefinedJavaFunctionManager {
 
+    static {
+        initFunctions();
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunctionManager.class);
     public static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
