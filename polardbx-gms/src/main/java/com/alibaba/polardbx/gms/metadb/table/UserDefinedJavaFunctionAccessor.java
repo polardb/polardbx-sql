@@ -21,12 +21,13 @@ public class UserDefinedJavaFunctionAccessor extends AbstractAccessor {
     private static final String FUNCTION_TABLE = wrap(GmsSystemTables.USER_DEFINED_JAVA_CODE);
 
     private static final String INSERT_FUNCTION = "insert ignore into " + FUNCTION_TABLE
-        + "(id, func_name, class_name, code, code_language, input_types, result_type) values (null, ?, ?, ?, ?, ?, ?)";
+        + "(func_name, class_name, code, code_language, input_types, result_type) values (?, ?, ?, ?, ?, ?)";
     private static final String DELETE_FUNCTION = "delete from " + FUNCTION_TABLE + "where func_name='%s'";
     private static final String QUERY_ALL_FUNCTION = "select * from " + FUNCTION_TABLE;
     private static final String QUERY_FUNCTION_BY_NAME = "select * from " + FUNCTION_TABLE + "where func_name='%s'";
 
     public static void deleteFunctionByName(String funcName, Connection connection) {
+        funcName = funcName.toLowerCase();
         try {
             String deleteFunctionSql = String.format(DELETE_FUNCTION, funcName);
             MetaDbUtil.delete(deleteFunctionSql, connection);
@@ -36,12 +37,12 @@ public class UserDefinedJavaFunctionAccessor extends AbstractAccessor {
                 FUNCTION_TABLE,
                 e.getMessage());
         }
-
     }
 
     public static void insertFunction(String funcName, String className, String code,
                                       String codeLanguage, Connection connection,
                                       String inputTypes, String resultType) {
+        funcName = funcName.toLowerCase();
         Map<Integer, ParameterContext> params = new HashMap<>();
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, funcName);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, className);
@@ -72,6 +73,7 @@ public class UserDefinedJavaFunctionAccessor extends AbstractAccessor {
     }
 
     public static List<UserDefinedJavaFunctionRecord> queryFunctionByName(String name, Connection connection) {
+        name = name.toLowerCase();
         try {
             return MetaDbUtil.query(String.format(QUERY_FUNCTION_BY_NAME, name), UserDefinedJavaFunctionRecord.class,
                 connection);

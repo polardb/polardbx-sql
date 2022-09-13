@@ -11,6 +11,7 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
 import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
@@ -104,15 +105,18 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
                 OperandTypes.ONE_OR_MORE,
                 SqlFunctionCategory.SYSTEM
             );
-            ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
+            TddlOperatorTable.instance().register(UserDefinedJavaFunction);
             RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Add function error");
         }
 
-        Connection connection = MetaDbUtil.getConnection();
-        UserDefinedJavaFunctionAccessor.insertFunction(funcName.toLowerCase(), className, code, "Java",
-            connection, buildInputTypeString(inputTypes), returnType);
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            UserDefinedJavaFunctionAccessor.insertFunction(funcName.toLowerCase(), className, code, "Java",
+                connection, buildInputTypeString(inputTypes), returnType);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
+        }
 
         SyncManagerHelper.sync(new CreateJavaFunctionSyncAction(funcName));
 

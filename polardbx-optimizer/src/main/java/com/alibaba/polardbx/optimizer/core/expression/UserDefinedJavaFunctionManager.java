@@ -8,6 +8,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
 import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -24,7 +25,6 @@ import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlReturnTypeInference;
 import org.apache.calcite.sql.type.SqlTypeName;
-import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 import org.codehaus.commons.compiler.util.ResourceFinderClassLoader;
 import org.codehaus.commons.compiler.util.resource.MapResourceCreator;
 import org.codehaus.commons.compiler.util.resource.MapResourceFinder;
@@ -79,16 +79,19 @@ public class UserDefinedJavaFunctionManager {
     }
 
     public static void dropFunction(String funcNameUpper) {
+        funcNameUpper = funcNameUpper.toUpperCase();
         UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
-        ReflectiveSqlOperatorTable.remove(funcNameUpper);
+        TddlOperatorTable.instance().remove(funcNameUpper);
         System.gc();
 
-        Connection connection = MetaDbUtil.getConnection();
-        UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
+        }
     }
 
     public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {
-        String funcName = record.funcName;
         String className = record.className;
         String code = record.code;
 
@@ -115,27 +118,33 @@ public class UserDefinedJavaFunctionManager {
                 SqlFunctionCategory.SYSTEM
             );
             RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
-            ReflectiveSqlOperatorTable.register(UserDefinedJavaFunction);
+            TddlOperatorTable.instance().register(UserDefinedJavaFunction);
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Initialize function error");
         }
     }
 
     public static void initFunctions() {
-        Connection connection = MetaDbUtil.getConnection();
-        List<UserDefinedJavaFunctionRecord> records = UserDefinedJavaFunctionAccessor.queryAllFunctions(connection);
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            List<UserDefinedJavaFunctionRecord> records = UserDefinedJavaFunctionAccessor.queryAllFunctions(connection);
 
-        if (records.size() == 0) {
-            return;
+            if (records.size() == 0) {
+                return;
+            }
+
+            records.stream()
+                .filter(record -> !containsFunction(record.funcName))
+                .forEach(UserDefinedJavaFunctionManager::addFunctionFromMeta);
+
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
         }
 
-        records.stream()
-            .filter(record -> !containsFunction(record.funcName))
-            .forEach(UserDefinedJavaFunctionManager::addFunctionFromMeta);
     }
 
     public static AbstractScalarFunction getUserDefinedJavaFunction(String functionName, List<DataType> operandTypes,
                                                                     DataType resultType) {
+        functionName = functionName.toUpperCase();
         Constructor constructor = javaFunctionCaches.get(functionName);
 
         if (constructor == null) {
