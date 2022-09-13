@@ -141,7 +141,7 @@ public class UserDefinedJavaFunctionManager {
                 .forEach(UserDefinedJavaFunctionManager::addFunctionFromMeta);
 
         } catch (Exception e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
+            //throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
         }
 
     }
