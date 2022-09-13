@@ -1,5 +1,7 @@
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
 import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionRecord;
@@ -29,9 +31,12 @@ public class CreateJavaFunctionSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        Connection conn = MetaDbUtil.getConnection();
-        UserDefinedJavaFunctionRecord record = UserDefinedJavaFunctionAccessor.queryFunctionByName(funcName, conn).get(0);
-        UserDefinedJavaFunctionManager.addFunctionFromMeta(record);
+        try (Connection conn = MetaDbUtil.getConnection()) {
+            UserDefinedJavaFunctionRecord record = UserDefinedJavaFunctionAccessor.queryFunctionByName(funcName, conn).get(0);
+            UserDefinedJavaFunctionManager.addFunctionFromMeta(record);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
+        }
         return null;
     }
 }
