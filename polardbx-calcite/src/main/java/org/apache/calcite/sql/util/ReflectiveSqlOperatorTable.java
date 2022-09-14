@@ -27,6 +27,7 @@ import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 /**
  * ReflectiveSqlOperatorTable implements the {@link SqlOperatorTable} interface
@@ -130,6 +131,17 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
    */
   public void register(SqlOperator op) {
     operators.put(new Key(op.getName(), op.getSyntax()), op);
+  }
+
+  public void remove(String name) {
+    final String nameUpper = name.toUpperCase();
+    List<Key> keys =
+        operators.keySet().stream().filter(key -> key.getKey().equals(nameUpper)).collect(Collectors.toList());
+    if (keys.isEmpty()) {
+      return;
+    }
+    Key toRemove = keys.get(0);
+    operators.removeAll(toRemove);
   }
 
   public List<SqlOperator> getOperatorList() {

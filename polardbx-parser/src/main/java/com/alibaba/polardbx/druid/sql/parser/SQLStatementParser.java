@@ -86,6 +86,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateRoleStatement;
@@ -103,6 +104,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropEventStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
@@ -929,6 +931,9 @@ public class SQLStatementParser extends SQLParser {
                 dropFunc.setTemporary(true);
             }
             stmt = dropFunc;
+            break;
+        case JAVA_FUNCTION:
+            stmt = parseDropJavaFunction(false);
             break;
         case TABLESPACE:
             stmt = parseDropTablespace(false);
@@ -2924,6 +2929,26 @@ public class SQLStatementParser extends SQLParser {
         return stmt;
     }
 
+    protected SQLDropJavaFunctionStatement parseDropJavaFunction(boolean acceptDrop) {
+        if (acceptDrop) {
+            accept(Token.DROP);
+        }
+        SQLDropJavaFunctionStatement stmt = new SQLDropJavaFunctionStatement();
+
+        accept(Token.JAVA_FUNCTION);
+
+        if (lexer.token == Token.IF) {
+            lexer.nextToken();
+            accept(Token.EXISTS);
+            stmt.setIfExists(true);
+        }
+
+        SQLName name = this.exprParser.name();
+        stmt.setName(name);
+
+        return stmt;
+    }
+
     protected SQLDropTableSpaceStatement parseDropTablespace(boolean acceptDrop) {
         SQLDropTableSpaceStatement stmt = new SQLDropTableSpaceStatement(getDbType());
 
@@ -3477,6 +3502,12 @@ public class SQLStatementParser extends SQLParser {
             SQLStatement stmt = createFunct;
             return stmt;
         }
+        case JAVA_FUNCTION: {
+            lexer.reset(markBp, markChar, Token.CREATE);
+            SQLStatement createJavaFunct = this.parseCreateJavaFunction();
+            SQLStatement stmt = createJavaFunct;
+            return stmt;
+        }
         default:
             if (token == Token.OR) {
                 lexer.nextToken();
@@ -3503,6 +3534,11 @@ public class SQLStatementParser extends SQLParser {
                 if (lexer.token == Token.FUNCTION) {
                     lexer.reset(markBp, markChar, Token.CREATE);
                     return parseCreateFunction();
+                }
+
+                if (lexer.token == Token.JAVA_FUNCTION) {
+                    lexer.reset(markBp, markChar, Token.CREATE);
+                    return parseCreateJavaFunction();
                 }
 
                 if (lexer.identifierEquals(FnvHash.Constants.PACKAGE)) {
@@ -3653,6 +3689,98 @@ public class SQLStatementParser extends SQLParser {
 
     public SQLCreateFunctionStatement parseCreateFunction() {
         throw new ParserException("TODO " + lexer.token);
+    }
+
+    public SQLCreateJavaFunctionStatement parseCreateJavaFunction() {
+        SQLCreateJavaFunctionStatement stmt = new SQLCreateJavaFunctionStatement();
+        stmt.setDbType(dbType);
+
+        if (lexer.token == Token.CREATE) {
+            lexer.nextToken();
+        }
+
+        accept(Token.JAVA_FUNCTION);
+
+        stmt.setName(this.exprParser.name());
+
+        String originText = lexer.text.toString();
+        String text = originText.toUpperCase();
+        List<String> inputTypes = new ArrayList<String>();
+
+        __PARSE_LOOP:
+        for (; ; ) {
+            if (identifierEquals("RETURNTYPE")) {
+                lexer.nextToken();
+                String returnType = lexer.stringVal();
+                stmt.setReturnType(returnType);
+                lexer.nextToken();
+                continue;
+            }
+
+            if (identifierEquals("INPUTTYPE")) {
+                lexer.nextToken();
+                String inputType = lexer.stringVal();
+                inputTypes.add(inputType);
+                lexer.nextToken();
+                while (lexer.token == COMMA) {
+                    lexer.nextToken();
+                    String type = lexer.stringVal();
+                    inputTypes.add(type);
+                    lexer.nextToken();
+                }
+                stmt.setInputTypes(inputTypes);
+                continue;
+            }
+
+            if (identifierEquals("IMPORT")) {
+                if (!text.contains("ENDIMPORT")) {
+                    throw new ParserException("Need ENDIMPORT in your syntax");
+                }
+                String importString =
+                    originText.substring(text.indexOf("IMPORT") + 6, text.indexOf("ENDIMPORT")).trim();
+                stmt.setImportString(importString);
+                for (; ; ) {
+                    if (lexer.token() == Token.EOF) {
+                        break;
+                    }
+                    if (identifierEquals("ENDIMPORT")) {
+                        lexer.nextToken();
+                        continue __PARSE_LOOP;
+                    }
+                    lexer.nextToken();
+                }
+            }
+
+            if (identifierEquals("CODE")) {
+                String javaCode;
+                if (!text.contains("ENDCODE")) {
+                    throw new ParserException("Need ENDCODE in your syntax");
+                }
+                javaCode = originText.substring(text.indexOf("CODE") + 4, text.indexOf("ENDCODE")).trim();
+                stmt.setJavaCode(javaCode);
+                for (; ; ) {
+                    if (lexer.token() == Token.EOF) {
+                        break;
+                    }
+                    if (identifierEquals("ENDCODE")) {
+                        lexer.nextToken();
+                        continue __PARSE_LOOP;
+                    }
+                    lexer.nextToken();
+                }
+            }
+
+            break;
+        }
+
+        for (; ; ) {
+            if (lexer.token() == Token.EOF) {
+                break;
+            }
+            lexer.nextToken();
+        }
+
+        return stmt;
     }
 
     public SQLStatement parseCreateMaterializedView() {

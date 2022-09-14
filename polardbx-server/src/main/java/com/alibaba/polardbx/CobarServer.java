@@ -59,6 +59,7 @@ import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.util.TimeUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
+import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.sequence.ISequenceManager;
 import com.alibaba.polardbx.rpc.CdcRpcClient;
@@ -470,6 +471,8 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
     private void warmup() {
         // init all functions
         ExtraFunctionManager.getExtraFunction("warmup", null, null);
+        UserDefinedJavaFunctionManager.getUserDefinedJavaFunction("warmup", null, null);
+
 
         // init all collation configurations.
         CharsetFactory.INSTANCE.createCharsetHandler();

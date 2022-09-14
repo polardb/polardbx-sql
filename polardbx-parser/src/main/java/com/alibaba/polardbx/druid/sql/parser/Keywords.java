@@ -62,6 +62,7 @@ public class Keywords {
         map.put("TABLESPACE", Token.TABLESPACE);
         map.put("PROCEDURE", Token.PROCEDURE);
         map.put("FUNCTION", Token.FUNCTION);
+        map.put("JAVA_FUNCTION", Token.JAVA_FUNCTION);
 
         map.put("DELETE", Token.DELETE);
         map.put("DESC", Token.DESC);

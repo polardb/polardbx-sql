@@ -108,6 +108,12 @@ public class ServerQueryHandler implements QueryHandler {
             return;
         }
 
+        String sqlString = sql.toString().toLowerCase();
+        if (sqlString.contains("create") && sqlString.contains("java_function")) {
+            executeStatement(c, sql, false);
+            return;
+        }
+
         for (int i = 0; i < statements.size(); i++) {
             executeStatement(c, statements.get(i), i < statements.size() - 1);
         }

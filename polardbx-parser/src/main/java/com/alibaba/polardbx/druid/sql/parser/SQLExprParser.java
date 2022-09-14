@@ -806,6 +806,7 @@ public class SQLExprParser extends SQLParser {
         case TRUNCATE:
         case EXCEPTION:
         case FUNCTION:
+        case JAVA_FUNCTION:
         case IDENTITY:
         case EXTRACT:
         case DESC:
@@ -2061,6 +2062,7 @@ public class SQLExprParser extends SQLParser {
             case JOIN:
             case TYPE:
             case FUNCTION:
+            case JAVA_FUNCTION:
             case KEY:
             case UNIQUE:
             case SCHEMA:
