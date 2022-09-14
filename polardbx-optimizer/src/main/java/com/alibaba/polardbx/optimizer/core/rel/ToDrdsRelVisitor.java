@@ -46,6 +46,7 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.PhyDal;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFileStorage;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJavaFunction;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterRule;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterSystemSetConfig;
@@ -71,6 +72,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateView;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropJavaFunction;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropView;
@@ -127,11 +129,13 @@ import org.apache.calcite.rel.ddl.ChangeConsensusRole;
 import org.apache.calcite.rel.ddl.CreateDatabase;
 import org.apache.calcite.rel.ddl.CreateFileStorage;
 import org.apache.calcite.rel.ddl.CreateIndex;
+import org.apache.calcite.rel.ddl.CreateJavaFunction;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
 import org.apache.calcite.rel.ddl.DropDatabase;
 import org.apache.calcite.rel.ddl.DropFileStorage;
 import org.apache.calcite.rel.ddl.DropIndex;
+import org.apache.calcite.rel.ddl.DropJavaFunction;
 import org.apache.calcite.rel.ddl.DropTable;
 import org.apache.calcite.rel.ddl.DropTableGroup;
 import org.apache.calcite.rel.ddl.GenericDdl;
@@ -866,6 +870,12 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
             } else if (ddl instanceof DropDatabase) {
                 return LogicalDropDatabase.create((DropDatabase) ddl);
+            }
+
+            if (ddl instanceof CreateJavaFunction) {
+                return LogicalCreateJavaFunction.create((CreateJavaFunction) ddl);
+            } else if (ddl instanceof DropJavaFunction) {
+                return LogicalDropJavaFunction.create((DropJavaFunction) ddl);
             }
 
             if (ddl.getSqlNode() instanceof SqlCreateView) {

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.handler.LogicalClearCclRulesHandler;
 import com.alibaba.polardbx.executor.handler.LogicalClearCclTriggersHandler;
 import com.alibaba.polardbx.executor.handler.LogicalCreateCclRuleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalCreateCclTriggerHandler;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateJavaFunctionHandler;
 import com.alibaba.polardbx.executor.handler.LogicalCreateScheduleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalDropCclRuleHandler;
 import com.alibaba.polardbx.executor.handler.LogicalDropCclTriggerHandler;
@@ -84,6 +85,7 @@ import com.alibaba.polardbx.executor.handler.ddl.LogicalCreateViewHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropDatabaseHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropFileStorageHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropIndexHandler;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalDropJavaFunctionHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropTableHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalDropViewHandler;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalGenericDdlHandler;
@@ -140,12 +142,14 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJavaFunction;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateView;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropJavaFunction;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropView;
@@ -255,6 +259,9 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
 
         LOGICAL_CREATE_DATABASE_HANDLER = new LogicalCreateDatabaseHandler(repo);
         LOGICAL_DROP_DATABASE_HANDLER = new LogicalDropDatabaseHandler(repo);
+
+        LOGICAL_CREATE_JAVA_FUNCTION_HANDLER = new LogicalCreateJavaFunctionHandler(repo);
+        LOGICAL_DROP_JAVA_FUNTION_HANDLER = new LogicalDropJavaFunctionHandler(repo);
 
         SHOW_DDL_JOBS_HANDLER = new DdlEngineShowJobsHandler(repo);
         RECOVER_DDL_JOBS_HANDLER = new DdlEngineRecoverJobsHandler(repo);
@@ -424,6 +431,10 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler LOGICAL_CREATE_DATABASE_HANDLER;
     private final PlanHandler LOGICAL_DROP_DATABASE_HANDLER;
 
+    //java udf
+    private final PlanHandler LOGICAL_CREATE_JAVA_FUNCTION_HANDLER;
+    private final PlanHandler LOGICAL_DROP_JAVA_FUNTION_HANDLER;
+
     private final PlanHandler SHOW_DDL_JOBS_HANDLER;
     private final PlanHandler CANCEL_DDL_JOBS_HANDLER;
     private final PlanHandler ROLLBACK_DDL_JOBS_HANDLER;
@@ -582,6 +593,10 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
             return LOGICAL_CREATE_DATABASE_HANDLER;
         } else if (logicalPlan instanceof LogicalDropDatabase) {
             return LOGICAL_DROP_DATABASE_HANDLER;
+        } else if (logicalPlan instanceof LogicalCreateJavaFunction) {
+            return LOGICAL_CREATE_JAVA_FUNCTION_HANDLER;
+        } else if (logicalPlan instanceof LogicalDropJavaFunction) {
+            return LOGICAL_DROP_JAVA_FUNTION_HANDLER;
         } else if (logicalPlan instanceof LogicalRebalance) {
             return LOGICAL_REBALANCE_HANDLER;
         } else if (logicalPlan instanceof LogicalChangeConsensusLeader) {

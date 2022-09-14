@@ -140,12 +140,14 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraintImpl;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropTableStatement;
@@ -3854,6 +3856,29 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
     @Override
     public boolean visit(SQLColumnDefinition x) {
         this.sqlNode = FastSqlConstructUtils.convertColumnDefinition(x, context, ec);
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLCreateJavaFunctionStatement x) {
+        final SqlIdentifier funcName = (SqlIdentifier) convertToSqlNode(x.getName());
+        this.sqlNode = SqlDdlNodes.createJavaFunction(SqlParserPos.ZERO,
+            funcName,
+            x.getReturnType(),
+            x.getInputTypes(),
+            x.getJavaCode(),
+            x.getImportString());
+        addPrivilegeVerifyItem(null, null, PrivilegePoint.CREATE);
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLDropJavaFunctionStatement x) {
+        final SqlIdentifier funcName = (SqlIdentifier) convertToSqlNode(x.getName());
+        this.sqlNode = SqlDdlNodes.dropJavaFunction(SqlParserPos.ZERO,
+            funcName,
+            x.isIfExists());
+        addPrivilegeVerifyItem(null, null, PrivilegePoint.DROP);
         return false;
     }
 

@@ -74,6 +74,7 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -93,7 +94,7 @@ import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
  * Created by chuanqin on 17/8/7.
  */
 public class RexUtils {
-    private final static List<SqlOperator> UN_PUSHABLE_FUNCTION = ImmutableList.of(
+    private final static List<SqlOperator> UN_PUSHABLE_FUNCTION = new ArrayList<>(Arrays.asList(
         TddlOperatorTable.CAN_ACCESS_TABLE,
         TddlOperatorTable.GET_LOCK,
         TddlOperatorTable.RELEASE_LOCK,
@@ -103,7 +104,11 @@ public class RexUtils {
         TddlOperatorTable.ASSIGNMENT,
         TddlOperatorTable.VERSION,
         TddlOperatorTable.PART_ROUTE
-    );
+    ));
+
+    public static void addUnpushableFunction(SqlOperator func) {
+        UN_PUSHABLE_FUNCTION.add(func);
+    }
 
     private final static RelDataTypeFactory FACTORY = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
     private final static RexBuilder REX_BUILDER = new RexBuilder(FACTORY);
