@@ -1431,6 +1431,8 @@ public enum SqlKind {
 
     SHOW_PROCESSLIST,
 
+    SHOW_JAVA_FUNCTION,
+
     SHOW_TABLE_STATUS,
 
     SHOW_SLOW,
@@ -1760,6 +1762,7 @@ public enum SqlKind {
         SHOW_PROCEDURE_STATUS,
         SHOW_VARIABLES,
         SHOW_PROCESSLIST,
+        SHOW_JAVA_FUNCTION,
         SHOW_TABLE_STATUS,
         SHOW_SLOW,
         SHOW_STC,

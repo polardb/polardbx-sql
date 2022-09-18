@@ -1,3 +1,19 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.alibaba.polardbx.optimizer.core.expression;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -43,12 +59,12 @@ import java.util.Map;
 public class UserDefinedJavaFunctionManager {
 
     private static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunctionManager.class);
-    public static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+    private static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
-    public static Map<String, Constructor<?>> javaFunctionCaches = new HashMap<>();
+    private static Map<String, Constructor<?>> javaFunctionCaches = new HashMap<>();
 
-    public static Map<String, List<DataType>> userInputTypesByFuncName = new HashMap<>();
-    public static Map<String, DataType> userResultTypeByFuncName = new HashMap<>();
+    private static Map<String, List<DataType>> userInputTypesByFuncName = new HashMap<>();
+    private static Map<String, DataType> userResultTypeByFuncName = new HashMap<>();
 
     static {
         initFunctions();
@@ -56,6 +72,10 @@ public class UserDefinedJavaFunctionManager {
 
     public static boolean containsFunction(String name) {
         return javaFunctionCaches.containsKey(name.toUpperCase());
+    }
+
+    public static List<String> getFunctionList() {
+        return new ArrayList<>(javaFunctionCaches.keySet());
     }
 
     public static void removeFunctionFromCache(String name) {
@@ -103,9 +123,12 @@ public class UserDefinedJavaFunctionManager {
 
         //compute type
         List<DataType> inputDataTypes = new ArrayList<>();
-        for (String type : record.inputTypes.split(",")) {
-            inputDataTypes.add(computeDataType(type.trim()));
+        if (!record.inputTypes.equalsIgnoreCase("NULL")) {
+            for (String type : record.inputTypes.split(",")) {
+                inputDataTypes.add(computeDataType(type.trim()));
+            }
         }
+
         DataType resultDataType = computeDataType(record.resultType);
 
         //add function
@@ -118,7 +141,7 @@ public class UserDefinedJavaFunctionManager {
                 SqlKind.OTHER_FUNCTION,
                 computeReturnType(record.resultType),
                 InferTypes.FIRST_KNOWN,
-                OperandTypes.ONE_OR_MORE,
+                inputDataTypes.isEmpty()? OperandTypes.NILADIC : OperandTypes.ONE_OR_MORE,
                 SqlFunctionCategory.SYSTEM
             );
             RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
@@ -161,8 +184,8 @@ public class UserDefinedJavaFunctionManager {
 
             List<DataType> userInputTypes = userInputTypesByFuncName.get(functionName);
             DataType userResultType = userResultTypeByFuncName.get(functionName);
-            if (userResultType == null || userInputTypes.isEmpty()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Need input type and result type");
+            if (userResultType == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Need result type");
             }
             sample.setUserInputType(userInputTypes);
             sample.setUserResultType(userResultType);

@@ -15,7 +15,6 @@ import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
 import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
-import com.alibaba.polardbx.optimizer.core.expression.bean.FunctionSignature;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJavaFunction;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.rel.RelNode;
@@ -25,11 +24,13 @@ import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.OperandTypes;
-import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Collectors;
 
 public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
@@ -39,22 +40,6 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
     }
 
     private final String PACKAGE_NAME = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
-    private final String CODE_FORMAT = "package %s;\n" +
-        "import com.alibaba.polardbx.optimizer.core.function.calc.UserDefinedJavaFunction;\n" +
-        "import com.alibaba.polardbx.optimizer.core.datatype.DataType;\n" +
-        "import java.util.List;\n" +
-        "%s\n" +
-        "public class %s extends UserDefinedJavaFunction {\n" +
-        "        public %s(List<DataType> operandTypes, DataType resultType) {\n" +
-        "        super(operandTypes, resultType);\n" +
-        "    }\n" +
-        "@Override\n" +
-        "public String[] getFunctionNames() {\n" +
-        "    return new String[] {\"%s\"};\n" +
-        "}\n" +
-        "@Override\n" +
-        "%s" +
-        "}";
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
@@ -82,15 +67,29 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         }
 
         String className = funcName.substring(0, 1).toUpperCase() + funcName.substring(1).toLowerCase();
-        String code =
-            String.format(CODE_FORMAT, PACKAGE_NAME, userImportString, className, className, funcName.toUpperCase(),
-                userJavaCode);
+
+        String code;
+        try {
+            code = readTemplateToString()
+                .replaceAll("\\$\\{importString}", userImportString)
+                .replaceAll("\\$\\{className}", className)
+                .replaceAll("\\$\\{funcNameUpper}", funcName.toUpperCase())
+                .replaceAll("\\$\\{userJavaCode}", userJavaCode);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Read code template error");
+        }
 
         ClassLoader cl = UserDefinedJavaFunctionManager.compileAndLoadClass(code, className);
 
-        List<DataType> inputDataTypes = inputTypes.stream()
-            .map(UserDefinedJavaFunctionManager::computeDataType)
-            .collect(Collectors.toList());
+        List<DataType> inputDataTypes;
+        //for non-input functions
+        if (inputTypes.size() == 1 && inputTypes.get(0).equalsIgnoreCase("NULL")) {
+            inputDataTypes = new ArrayList<>();
+        } else {
+            inputDataTypes = inputTypes.stream()
+                .map(UserDefinedJavaFunctionManager::computeDataType)
+                .collect(Collectors.toList());
+        }
 
         DataType resultDataType = UserDefinedJavaFunctionManager.computeDataType(returnType);
 
@@ -102,7 +101,7 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
                 SqlKind.OTHER_FUNCTION,
                 UserDefinedJavaFunctionManager.computeReturnType(returnType),
                 InferTypes.FIRST_KNOWN,
-                OperandTypes.ONE_OR_MORE,
+                inputDataTypes.isEmpty()? OperandTypes.NILADIC : OperandTypes.ONE_OR_MORE,
                 SqlFunctionCategory.SYSTEM
             );
             TddlOperatorTable.instance().register(UserDefinedJavaFunction);
@@ -131,6 +130,20 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
             sb.append(",");
         }
         sb.append(inputTypes.get(size - 1));
+        return sb.toString();
+    }
+
+    private static String readTemplateToString() throws Exception {
+        final String TEMPLATE_PATH = "polardbx-executor/src/main/codegen/templates/UserDefinedJavaFunctionTemplate.txt";
+        File file = new File(TEMPLATE_PATH);
+        FileReader reader = new FileReader(file);
+        BufferedReader bReader = new BufferedReader(reader);
+        StringBuilder sb = new StringBuilder();
+        String s = "";
+        while ((s = bReader.readLine()) != null) {
+            sb.append(s + "\n");
+        }
+        bReader.close();
         return sb.toString();
     }
 

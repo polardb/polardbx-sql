@@ -178,6 +178,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowDatabasesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecylebinStatement;
@@ -552,6 +553,7 @@ import org.apache.calcite.sql.SqlShowGrants;
 import org.apache.calcite.sql.SqlShowGrantsLegacy;
 import org.apache.calcite.sql.SqlShowHtc;
 import org.apache.calcite.sql.SqlShowIndex;
+import org.apache.calcite.sql.SqlShowJavaFunction;
 import org.apache.calcite.sql.SqlShowLocalDeadlocks;
 import org.apache.calcite.sql.SqlShowMasterStatus;
 import org.apache.calcite.sql.SqlShowMetadataLock;
@@ -7136,6 +7138,12 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
         this.sqlNode = SqlShowProcesslist.create(SqlParserPos.ZERO, x.isFull(), false, null, where, orderBy, limit);
 
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLShowJavaFunctionStatement x) {
+        this.sqlNode = SqlShowJavaFunction.create(SqlParserPos.ZERO);
         return false;
     }
 

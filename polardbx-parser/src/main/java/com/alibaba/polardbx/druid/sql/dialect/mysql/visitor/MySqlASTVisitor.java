@@ -28,6 +28,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropCheck;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowColumnsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIgnoreIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
@@ -977,6 +978,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     boolean visit(MySqlShowPlanCacheStatement x);
 
     void endVisit(MySqlShowPlanCacheStatement x);
+
+    boolean visit(SQLShowJavaFunctionStatement x);
+
+    void endVisit(SQLShowJavaFunctionStatement x);
 
     boolean visit(MySqlShowPhysicalProcesslistStatement x);
 

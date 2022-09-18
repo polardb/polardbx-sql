@@ -160,6 +160,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowDatabasesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowFunctionsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowQueryTaskStatement;
@@ -3663,6 +3664,12 @@ public class MySqlStatementParser extends SQLStatementParser {
             }
 
             return stmt;
+        }
+
+        if (lexer.token() == Token.JAVA_FUNCTION) {
+            lexer.nextToken();
+
+            return new SQLShowJavaFunctionStatement();
         }
 
         if (lexer.identifierEquals("COLUMNS") || lexer.identifierEquals("FIELDS")) {

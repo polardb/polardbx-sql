@@ -28,6 +28,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowColumnsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlForceIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlIgnoreIndexHint;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
@@ -2087,6 +2088,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     @Override
     public void endVisit(MySqlShowPlanCacheStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLShowJavaFunctionStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLShowJavaFunctionStatement x) {
 
     }
 

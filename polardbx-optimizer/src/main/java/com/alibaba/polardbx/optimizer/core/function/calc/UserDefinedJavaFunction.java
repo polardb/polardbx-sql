@@ -26,9 +26,6 @@ public abstract class UserDefinedJavaFunction extends AbstractScalarFunction {
 
   @Override
   public Object compute(Object[] args, ExecutionContext ec) {
-    if (userInputType.isEmpty()) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Need input type");
-    }
     if (args.length != userInputType.size()) {
       throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Parameters do not match input types");
     }

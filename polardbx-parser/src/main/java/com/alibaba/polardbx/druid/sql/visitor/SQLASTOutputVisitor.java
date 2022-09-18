@@ -327,6 +327,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowErrorsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowFunctionsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPackagesStatement;
@@ -9511,6 +9512,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             limit.accept(this);
         }
 
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLShowJavaFunctionStatement x) {
+        print0(ucase ? "SHOW " : "show ");
+        print0(ucase ? "JAVA_FUNCTION " : "java_function ");
         return false;
     }
 

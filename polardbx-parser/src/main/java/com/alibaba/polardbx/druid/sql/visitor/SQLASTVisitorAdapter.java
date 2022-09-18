@@ -315,6 +315,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowErrorsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowFunctionsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPackagesStatement;
@@ -2746,6 +2747,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(SQLAlterTableSetOption x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLShowJavaFunctionStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLShowJavaFunctionStatement x) {
 
     }
 

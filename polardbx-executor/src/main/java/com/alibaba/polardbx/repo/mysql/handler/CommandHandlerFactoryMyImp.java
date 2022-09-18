@@ -229,6 +229,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_SHOW_PROCEDURE_STATUS_HANDLER = new LogicalShowProcedureStatusMyHandler(repo);
         LOGICAL_SHOW_VARIABLES_HANDLER = new LogicalShowVariablesMyHandler(repo);
         LOGICAL_SHOW_PROCESSLIST_HANDLER = new LogicalShowProcesslistHandler(repo);
+        LOGICAL_SHOW_JAVA_FUNCTION_HANDLER = new LogicalShowJavaFunctionHandler(repo);
         LOGICAL_SHOW_TABLE_STATUS_HANDLER = new LogicalShowTableStatusHandler(repo);
         LOGICAL_SHOW_SLOW_HANDLER = new LogicalShowSlowHandler(repo);
         LOGICAL_SHOW_STC_HANDLER = new LogicalShowStcHandler(repo);
@@ -261,7 +262,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         LOGICAL_DROP_DATABASE_HANDLER = new LogicalDropDatabaseHandler(repo);
 
         LOGICAL_CREATE_JAVA_FUNCTION_HANDLER = new LogicalCreateJavaFunctionHandler(repo);
-        LOGICAL_DROP_JAVA_FUNTION_HANDLER = new LogicalDropJavaFunctionHandler(repo);
+        LOGICAL_DROP_JAVA_FUNCTION_HANDLER = new LogicalDropJavaFunctionHandler(repo);
 
         SHOW_DDL_JOBS_HANDLER = new DdlEngineShowJobsHandler(repo);
         RECOVER_DDL_JOBS_HANDLER = new DdlEngineRecoverJobsHandler(repo);
@@ -396,6 +397,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
     private final PlanHandler LOGICAL_SHOW_PROCEDURE_STATUS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_VARIABLES_HANDLER;
     private final PlanHandler LOGICAL_SHOW_PROCESSLIST_HANDLER;
+    private final PlanHandler LOGICAL_SHOW_JAVA_FUNCTION_HANDLER;
     private final PlanHandler LOGICAL_SHOW_TABLE_STATUS_HANDLER;
     private final PlanHandler LOGICAL_SHOW_SLOW_HANDLER;
     private final PlanHandler LOGICAL_SHOW_STC_HANDLER;
@@ -433,7 +435,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
 
     //java udf
     private final PlanHandler LOGICAL_CREATE_JAVA_FUNCTION_HANDLER;
-    private final PlanHandler LOGICAL_DROP_JAVA_FUNTION_HANDLER;
+    private final PlanHandler LOGICAL_DROP_JAVA_FUNCTION_HANDLER;
 
     private final PlanHandler SHOW_DDL_JOBS_HANDLER;
     private final PlanHandler CANCEL_DDL_JOBS_HANDLER;
@@ -596,7 +598,7 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
         } else if (logicalPlan instanceof LogicalCreateJavaFunction) {
             return LOGICAL_CREATE_JAVA_FUNCTION_HANDLER;
         } else if (logicalPlan instanceof LogicalDropJavaFunction) {
-            return LOGICAL_DROP_JAVA_FUNTION_HANDLER;
+            return LOGICAL_DROP_JAVA_FUNCTION_HANDLER;
         } else if (logicalPlan instanceof LogicalRebalance) {
             return LOGICAL_REBALANCE_HANDLER;
         } else if (logicalPlan instanceof LogicalChangeConsensusLeader) {
@@ -695,6 +697,8 @@ public class CommandHandlerFactoryMyImp implements ICommandHandlerFactory {
                 return LOGICAL_SHOW_VARIABLES_HANDLER;
             case SHOW_PROCESSLIST:
                 return LOGICAL_SHOW_PROCESSLIST_HANDLER;
+            case SHOW_JAVA_FUNCTION:
+                return LOGICAL_SHOW_JAVA_FUNCTION_HANDLER;
             case SHOW_TABLE_STATUS:
                 return LOGICAL_SHOW_TABLE_STATUS_HANDLER;
             case SHOW_SLOW:
