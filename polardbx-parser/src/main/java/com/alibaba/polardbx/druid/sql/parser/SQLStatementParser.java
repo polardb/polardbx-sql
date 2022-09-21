@@ -926,13 +926,12 @@ public class SQLStatementParser extends SQLParser {
             }
             break;
         case FUNCTION:
-            SQLDropFunctionStatement dropFunc = parseDropFunction(false);
-            if (temporary) {
-                dropFunc.setTemporary(true);
-            }
-            stmt = dropFunc;
-            break;
-        case JAVA_FUNCTION:
+//            SQLDropFunctionStatement dropFunc = parseDropFunction(false);
+//            if (temporary) {
+//                dropFunc.setTemporary(true);
+//            }
+//            stmt = dropFunc;
+//            break;
             stmt = parseDropJavaFunction(false);
             break;
         case TABLESPACE:
@@ -2935,7 +2934,7 @@ public class SQLStatementParser extends SQLParser {
         }
         SQLDropJavaFunctionStatement stmt = new SQLDropJavaFunctionStatement();
 
-        accept(Token.JAVA_FUNCTION);
+        accept(Token.FUNCTION);
 
         if (lexer.token == Token.IF) {
             lexer.nextToken();
@@ -3498,14 +3497,14 @@ public class SQLStatementParser extends SQLParser {
             return parseCreateRole();
         case FUNCTION: {
             lexer.reset(markBp, markChar, Token.CREATE);
+            String createStmt = lexer.text.toString().toLowerCase();
+            if (createStmt.contains("returntype") && createStmt.contains("code")) {
+                SQLStatement createJavaFunct = this.parseCreateJavaFunction();
+                SQLStatement stmt = createJavaFunct;
+                return stmt;
+            }
             SQLStatement createFunct = this.parseCreateFunction();
             SQLStatement stmt = createFunct;
-            return stmt;
-        }
-        case JAVA_FUNCTION: {
-            lexer.reset(markBp, markChar, Token.CREATE);
-            SQLStatement createJavaFunct = this.parseCreateJavaFunction();
-            SQLStatement stmt = createJavaFunct;
             return stmt;
         }
         default:
@@ -3533,12 +3532,11 @@ public class SQLStatementParser extends SQLParser {
 
                 if (lexer.token == Token.FUNCTION) {
                     lexer.reset(markBp, markChar, Token.CREATE);
+                    String createStmt = lexer.text.toString().toLowerCase();
+                    if (createStmt.contains("returntype") && createStmt.contains("code")) {
+                        return parseCreateJavaFunction();
+                    }
                     return parseCreateFunction();
-                }
-
-                if (lexer.token == Token.JAVA_FUNCTION) {
-                    lexer.reset(markBp, markChar, Token.CREATE);
-                    return parseCreateJavaFunction();
                 }
 
                 if (lexer.identifierEquals(FnvHash.Constants.PACKAGE)) {
@@ -3699,7 +3697,7 @@ public class SQLStatementParser extends SQLParser {
             lexer.nextToken();
         }
 
-        accept(Token.JAVA_FUNCTION);
+        accept(Token.FUNCTION);
 
         stmt.setName(this.exprParser.name());
 

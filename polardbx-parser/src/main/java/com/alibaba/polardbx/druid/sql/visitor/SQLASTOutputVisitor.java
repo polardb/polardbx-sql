@@ -9518,7 +9518,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     @Override
     public boolean visit(SQLShowJavaFunctionStatement x) {
         print0(ucase ? "SHOW " : "show ");
-        print0(ucase ? "JAVA_FUNCTION " : "java_function ");
+        print0(ucase ? "FUNCTION " : "function ");
         return false;
     }
 

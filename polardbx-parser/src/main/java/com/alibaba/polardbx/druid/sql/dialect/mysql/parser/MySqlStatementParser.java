@@ -775,12 +775,11 @@ public class MySqlStatementParser extends SQLStatementParser {
             if (replace) {
                 lexer.reset(mark);
             }
-            return parseCreateFunction();
-        case JAVA_FUNCTION:
-            if (replace) {
-                lexer.reset(mark);
+            String createStmt = lexer.text.toString().toLowerCase();
+            if (createStmt.contains("returntype") && createStmt.contains("code")) {
+                return parseCreateJavaFunction();
             }
-            return parseCreateJavaFunction();
+            return parseCreateFunction();
         case SEQUENCE:
             lexer.reset(mark);
             return parseCreateSequence(true);
@@ -845,10 +844,11 @@ public class MySqlStatementParser extends SQLStatementParser {
             return parseCreateView();
         } else if (lexer.token() == Token.FUNCTION) {
             lexer.reset(mark);
+            String createStmt = lexer.text.toString().toLowerCase();
+            if (createStmt.contains("returntype") && createStmt.contains("code")) {
+                return parseCreateJavaFunction();
+            }
             return parseCreateFunction();
-        } else if (lexer.token() == Token.JAVA_FUNCTION) {
-            lexer.reset(mark);
-            return parseCreateJavaFunction();
         } else if (lexer.token() == PROCEDURE) {
             lexer.reset(mark);
             return parseCreateProcedure();
@@ -3666,12 +3666,6 @@ public class MySqlStatementParser extends SQLStatementParser {
             return stmt;
         }
 
-        if (lexer.token() == Token.JAVA_FUNCTION) {
-            lexer.nextToken();
-
-            return new SQLShowJavaFunctionStatement();
-        }
-
         if (lexer.identifierEquals("COLUMNS") || lexer.identifierEquals("FIELDS")) {
             lexer.nextToken();
 
@@ -4193,20 +4187,24 @@ public class MySqlStatementParser extends SQLStatementParser {
                 stmt.setName(this.exprParser.name());
                 return stmt;
             }
+            if (lexer.identifierEquals(STATUS)) {
+                acceptIdentifier(STATUS);
+                MySqlShowFunctionStatusStatement stmt = new MySqlShowFunctionStatusStatement();
 
-            acceptIdentifier(STATUS);
-            MySqlShowFunctionStatusStatement stmt = new MySqlShowFunctionStatusStatement();
+                if (lexer.token() == Token.LIKE) {
+                    lexer.nextTokenValue();
+                    stmt.setLike(this.exprParser.expr());
+                }
 
-            if (lexer.token() == Token.LIKE) {
-                lexer.nextTokenValue();
-                stmt.setLike(this.exprParser.expr());
+                if (lexer.token() == Token.WHERE) {
+                    lexer.nextToken();
+                    stmt.setWhere(this.exprParser.expr());
+                }
+                return stmt;
             }
 
-            if (lexer.token() == Token.WHERE) {
-                lexer.nextToken();
-                stmt.setWhere(this.exprParser.expr());
-            }
-            return stmt;
+            return new SQLShowJavaFunctionStatement();
+
         }
 
         // MySqlShowFunctionStatusStatement

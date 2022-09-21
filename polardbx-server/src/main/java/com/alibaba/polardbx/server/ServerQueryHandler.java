@@ -109,7 +109,7 @@ public class ServerQueryHandler implements QueryHandler {
         }
 
         String sqlString = sql.toString().toLowerCase();
-        if (sqlString.contains("create") && sqlString.contains("java_function")) {
+        if (sqlString.contains("create") && sqlString.contains("function")) {
             executeStatement(c, sql, false);
             return;
         }

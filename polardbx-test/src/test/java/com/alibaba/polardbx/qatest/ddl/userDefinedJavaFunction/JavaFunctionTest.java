@@ -51,7 +51,7 @@ public class JavaFunctionTest {
         "insert into test (id, col1, col2, col3, col4, col5, col6, col7) values (? ,?, ?, ?, ?, ?,?,?)";
 
     private List<String> createFunctionStmt = Arrays.asList(
-        "CREATE java_function Addfour\n"
+        "CREATE function Addfour\n"
             + "returnType bigint\n"
             + "inputType bigint, bigint\n"
             + "import\n"
@@ -65,7 +65,7 @@ public class JavaFunctionTest {
             + "        return a + b;\n"
             + "    }\n"
             + "ENDCODE",
-        "CREATE java_function testString\n"
+        "CREATE function testString\n"
             + "returnType varchar\n"
             + "inputType varchar\n"
             + "import\n"
@@ -78,7 +78,7 @@ public class JavaFunctionTest {
             + "    }\n"
             + "ENDCODE",
         //对于enum列来说，每行数据都应该对应着一个enum值，因此可以当作varchar来处理
-        "CREATE java_function testEnum\n"
+        "CREATE function testEnum\n"
             + "returnType Integer\n"
             + "inputType varchar\n"
             + "CODE\n"
@@ -93,7 +93,7 @@ public class JavaFunctionTest {
             + "         return -1;"
             + "    }\n"
             + "ENDCODE",
-        "CREATE java_function testDate\n"
+        "CREATE function testDate\n"
             + "returnType date\n"
             + "inputType date\n"
             + "import\n"
@@ -106,7 +106,7 @@ public class JavaFunctionTest {
             + "         return b;\n"
             + "    }\n"
             + "ENDCODE",
-        "CREATE java_function testBlob\n"
+        "CREATE function testBlob\n"
             + "returnType varchar\n"
             + "inputType blob\n"
             + "import\n"
@@ -132,11 +132,11 @@ public class JavaFunctionTest {
         "select testBlob(col7) from test"
     );
     private List<String> deleteString = Arrays.asList(
-        "drop java_function if exists addfour",
-        "drop java_function if exists testString",
-        "drop java_function if exists testEnum",
-        "drop java_function if exists testDate",
-        "drop java_function if exists testBlob"
+        "drop function if exists addfour",
+        "drop function if exists testString",
+        "drop function if exists testEnum",
+        "drop function if exists testDate",
+        "drop function if exists testBlob"
     );
     private List<String> expectString = Arrays.asList(
         "3",

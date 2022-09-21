@@ -46,7 +46,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
     @Test
     public void testVisitCreate() {
         visitor = new FastSqlToCalciteNodeVisitor(new ContextParameters(), new ExecutionContext());
-        String name = "CREATE java_function TESTFOO\n";
+        String name = "CREATE function TESTFOO\n";
         String returnType = "returnType bigint\n";
         String input = "inputType bigint, bigint\n";
         String importString = "import\n"
@@ -105,7 +105,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
     @Test
     public void testVisitDrop() {
         visitor = new FastSqlToCalciteNodeVisitor(new ContextParameters(), new ExecutionContext());
-        String sql = "drop java_function hundred";
+        String sql = "drop function hundred";
         SQLStatementParser sqlStatementParser = new SQLStatementParser(sql);
         SQLDropJavaFunctionStatement sqlDropJavaFunctionStatement =
             (SQLDropJavaFunctionStatement) sqlStatementParser.parseDrop();
