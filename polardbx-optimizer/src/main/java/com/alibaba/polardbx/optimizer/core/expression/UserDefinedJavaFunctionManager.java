@@ -147,7 +147,7 @@ public class UserDefinedJavaFunctionManager {
             RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
             TddlOperatorTable.instance().register(UserDefinedJavaFunction);
         } catch (Exception e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Initialize function error");
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Load function from meta error");
         }
     }
 

@@ -109,23 +109,6 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
 
         DataType resultDataType = UserDefinedJavaFunctionManager.computeDataType(returnType);
 
-        try {
-            UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", PACKAGE_NAME, className)),
-                inputDataTypes, resultDataType);
-            final SqlFunction UserDefinedJavaFunction = new SqlFunction(
-                funcName.toUpperCase(),
-                SqlKind.OTHER_FUNCTION,
-                UserDefinedJavaFunctionManager.computeReturnType(returnType),
-                InferTypes.FIRST_KNOWN,
-                inputDataTypes.isEmpty()? OperandTypes.NILADIC : OperandTypes.ONE_OR_MORE,
-                SqlFunctionCategory.SYSTEM
-            );
-            TddlOperatorTable.instance().register(UserDefinedJavaFunction);
-            RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
-        } catch (Exception e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Add function error");
-        }
-
         try (Connection connection = MetaDbUtil.getConnection()) {
             UserDefinedJavaFunctionAccessor.insertFunction(funcName.toLowerCase(), className, code, "Java",
                 connection, buildInputTypeString(inputTypes), returnType);
@@ -134,6 +117,23 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         }
 
         SyncManagerHelper.sync(new CreateJavaFunctionSyncAction(funcName));
+
+        try {
+            UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", PACKAGE_NAME, className)),
+                inputDataTypes, resultDataType);
+            final SqlFunction UserDefinedJavaFunction = new SqlFunction(
+                funcName.toUpperCase(),
+                SqlKind.OTHER_FUNCTION,
+                UserDefinedJavaFunctionManager.computeReturnType(returnType),
+                InferTypes.FIRST_KNOWN,
+                inputDataTypes.isEmpty() ? OperandTypes.NILADIC : OperandTypes.ONE_OR_MORE,
+                SqlFunctionCategory.SYSTEM
+            );
+            TddlOperatorTable.instance().register(UserDefinedJavaFunction);
+            RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Add function error");
+        }
 
         return new AffectRowCursor(0);
     }
@@ -149,8 +149,10 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         return sb.toString();
     }
 
-    private static String readTemplateToString() throws Exception {
-        final String TEMPLATE_PATH = "polardbx-executor/src/main/codegen/templates/UserDefinedJavaFunctionTemplate.txt";
+
+    private String readTemplateToString() throws Exception {
+        final String TEMPLATE_PATH =
+            "polardbx-optimizer/src/main/java/com/alibaba/polardbx/optimizer/core/function/calc/scalar/UserDefinedJavaFunctionTemplate.txt";
         File file = new File(TEMPLATE_PATH);
         FileReader reader = new FileReader(file);
         BufferedReader bReader = new BufferedReader(reader);

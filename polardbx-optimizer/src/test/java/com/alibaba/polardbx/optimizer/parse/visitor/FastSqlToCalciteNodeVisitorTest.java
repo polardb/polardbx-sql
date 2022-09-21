@@ -46,7 +46,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
     @Test
     public void testVisitCreate() {
         visitor = new FastSqlToCalciteNodeVisitor(new ContextParameters(), new ExecutionContext());
-        String name = "CREATE java_function Addfour\n";
+        String name = "CREATE java_function TESTFOO\n";
         String returnType = "returnType bigint\n";
         String input = "inputType bigint, bigint\n";
         String importString = "import\n"
@@ -72,7 +72,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
         SQLCreateJavaFunctionStatement sqlCreateJavaFunctionStatement = sqlStatementParser.parseCreateJavaFunction();
         visitor.visit(sqlCreateJavaFunctionStatement);
         SqlCreateJavaFunction node = (SqlCreateJavaFunction) SqlDdlNodes.createJavaFunction(SqlParserPos.ZERO,
-            (SqlIdentifier) visitor.convertToSqlNode(new SQLIdentifierExpr("Addfour", 0)),
+            (SqlIdentifier) visitor.convertToSqlNode(new SQLIdentifierExpr("TESTFOO", 0)),
             "bigint",
             Arrays.asList("bigint", "bigint"),
             sql.substring(sql.indexOf("CODE") + 4, sql.indexOf("ENDCODE")).trim(),
@@ -93,7 +93,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
         sqlCreateJavaFunction.unparse(writer, 0, 0);
 
         Assert.assertEquals(
-            "CREATE JAVA FUNCTION `Addfour` RETURNTYPE bigint INPUTTYPE bigint, bigint IMPORT import java.util.Date; ENDIMPORT CODE public Object compute(Object[] args) {\n"
+            "CREATE JAVA FUNCTION `TESTFOO` RETURNTYPE bigint INPUTTYPE bigint, bigint IMPORT import java.util.Date; ENDIMPORT CODE public Object compute(Object[] args) {\n"
                 + "        int a = Integer.parseInt(args[0].toString());\n"
                 + "        int b = Integer.parseInt(args[1].toString());\n"
                 + "\n"
