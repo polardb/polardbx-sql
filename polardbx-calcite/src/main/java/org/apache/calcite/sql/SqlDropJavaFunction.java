@@ -43,7 +43,7 @@ public class SqlDropJavaFunction extends SqlDdl {
 
     @Override
     public void unparse(SqlWriter writer, int lefPrec, int rightPrec) {
-        writer.keyword("DROP JAVA FUNCTION");
+        writer.keyword("DROP FUNCTION");
 
         if (ifExists) {
             writer.keyword("IF EXISTS");

@@ -50,13 +50,10 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
         String returnType = "returnType bigint\n";
         String input = "inputType bigint, bigint\n";
         String importString = "import\n"
-            + "import java.util.Date;\n"
+            + "import java.util.Map;\n"
             + "endimport\n";
         String code = "CODE\n"
-            + "    public Object compute(Object[] args) {\n"
-            + "        int a = Integer.parseInt(args[0].toString());\n"
-            + "        int b = Integer.parseInt(args[1].toString());\n"
-            + "\n"
+            + "    public Object compute(int a, int b) {\n"
             + "        return a + b;\n"
             + "    }\n"
             + "ENDCODE\n";
@@ -76,7 +73,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
             "bigint",
             Arrays.asList("bigint", "bigint"),
             sql.substring(sql.indexOf("CODE") + 4, sql.indexOf("ENDCODE")).trim(),
-            "import java.util.Date;");
+            "import java.util.Map;");
         SqlCreateJavaFunction sqlCreateJavaFunction = (SqlCreateJavaFunction) visitor.getSqlNode();
 
         Assert.assertEquals(sqlCreateJavaFunction.getJavaCode(), node.getJavaCode());
@@ -93,7 +90,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
         sqlCreateJavaFunction.unparse(writer, 0, 0);
 
         Assert.assertEquals(
-            "CREATE JAVA FUNCTION `TESTFOO` RETURNTYPE bigint INPUTTYPE bigint, bigint IMPORT import java.util.Date; ENDIMPORT CODE public Object compute(Object[] args) {\n"
+            "CREATE FUNCTION `TESTFOO` RETURNTYPE bigint INPUTTYPE bigint, bigint IMPORT import java.util.Date; ENDIMPORT CODE public Object compute(Object[] args) {\n"
                 + "        int a = Integer.parseInt(args[0].toString());\n"
                 + "        int b = Integer.parseInt(args[1].toString());\n"
                 + "\n"
@@ -119,6 +116,6 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
         writer.setIndentation(0);
         sqlDropJavaFunction.unparse(writer, 0, 0);
 
-        Assert.assertEquals("DROP JAVA FUNCTION `hundred`", writer.toString());
+        Assert.assertEquals("DROP FUNCTION `hundred`", writer.toString());
     }
 }

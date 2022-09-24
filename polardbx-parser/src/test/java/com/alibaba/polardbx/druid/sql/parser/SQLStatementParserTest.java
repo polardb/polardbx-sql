@@ -85,7 +85,7 @@ public class SQLStatementParserTest {
 
     @Test
     public void testCreateJavaFunctionStatement() throws SQLException {
-        String name = "CREATE java_function Addfour\n";
+        String name = "CREATE function Addfour\n";
         String returnType = "returnType bigint\n";
         String input = "inputType bigint, bigint, date\n";
         String importString = "import\n"

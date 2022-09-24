@@ -51,7 +51,7 @@ public class SqlCreateJavaFunction extends SqlDdl {
 
     @Override
     public void unparse(SqlWriter writer, int lefPrec, int rightPrec) {
-        writer.keyword("CREATE JAVA FUNCTION");
+        writer.keyword("CREATE FUNCTION");
 
         funcName.unparse(writer, lefPrec, rightPrec);
 
