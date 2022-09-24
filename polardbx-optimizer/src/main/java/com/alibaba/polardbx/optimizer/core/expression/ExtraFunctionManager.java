@@ -62,6 +62,7 @@ public class ExtraFunctionManager {
     public static AbstractScalarFunction getExtraFunction(String functionName, List<DataType> operandTypes,
                                                           DataType resultType) {
         String name = functionName;
+        String a = "";
         Constructor constructor = functionCaches.get(FunctionSignature.getFunctionSignature(null, name));
 
         if (constructor == null) {
