@@ -146,6 +146,10 @@
                     <artifactId>jsr311-api</artifactId>
                     <groupId>javax.ws.rs</groupId>
                 </exclusion>
+                <exclusion>
+                    <artifactId>slf4j-reload4j</artifactId>
+                    <groupId>org.slf4j</groupId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
