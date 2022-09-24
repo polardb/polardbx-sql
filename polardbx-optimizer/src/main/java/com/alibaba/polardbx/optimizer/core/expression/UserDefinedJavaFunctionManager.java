@@ -221,8 +221,9 @@ public class UserDefinedJavaFunctionManager {
     }
 
     public static DataType computeDataType(String type) {
-        SqlTypeName name = SqlTypeName.get(type.toUpperCase());
-        if (name == null || "ENUM".equals(type.toUpperCase())) {
+        type = type.toUpperCase();
+        SqlTypeName name = SqlTypeName.get(type);
+        if (name == null || "ENUM".equalsIgnoreCase(type)) {
             MySqlDialect dialect = new MySqlDialect();
             name = dialect.getSqlTypeName(type);
             if (name == null) {

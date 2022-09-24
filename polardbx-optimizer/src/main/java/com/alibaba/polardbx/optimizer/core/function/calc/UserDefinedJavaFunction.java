@@ -21,53 +21,75 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.AbstractDataType;
 import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.datatype.ULongType;
+import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 
+import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.List;
 
 @SuppressWarnings("rawtypes")
 public abstract class UserDefinedJavaFunction extends AbstractScalarFunction {
-  protected static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunction.class);
-  protected List<DataType> userInputType;
-  protected DataType userResultType;
+    protected static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunction.class);
+    protected List<DataType> userInputType;
+    protected DataType userResultType;
+    private Class curClazz;
 
-  protected UserDefinedJavaFunction(List<DataType> operandTypes, DataType resultType) {
-    super(operandTypes, resultType);
-  }
-
-  @Override
-  public Object compute(Object[] args, ExecutionContext ec) {
-    if (args.length != userInputType.size()) {
-      throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Parameters do not match input types");
+    protected UserDefinedJavaFunction(List<DataType> operandTypes, DataType resultType) {
+        super(operandTypes, resultType);
     }
 
-    //对入参进行处理
-    for (int i = 0; i < args.length; i++) {
-      DataType type = userInputType.get(i);
+    @Override
+    public Object compute(Object[] args, ExecutionContext ec) {
+        if (args.length != userInputType.size()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Parameters do not match input types");
+        }
+        //对入参进行处理
+        Class[] inputClazz = new Class[userInputType.size()];
+        for (int i = 0; i < args.length; i++) {
+            DataType type = userInputType.get(i);
 
-      if (type instanceof VarcharType || type instanceof CharType) {
-        args[i] = DataTypes.StringType.convertFrom(args[i]);
-        continue;
-      }
+            if (type instanceof VarcharType || type instanceof CharType) {
+                args[i] = DataTypes.StringType.convertFrom(args[i]);
+                inputClazz[i] = DataTypes.StringType.getDataClass();
+                continue;
+            }
 
-      args[i] = type.convertFrom(args[i]);
+            if (type instanceof DecimalType) {
+                args[i] = DataTypes.DecimalType.convertFrom(args[i]).toBigDecimal();
+                inputClazz[i] = BigDecimal.class;
+            }
+
+            args[i] = type.convertFrom(args[i]);
+            inputClazz[i] = type.getDataClass();
+        }
+
+        Method userMethod;
+        Object result;
+        try {
+            userMethod = curClazz.getMethod("compute", inputClazz);
+            result =
+                userMethod.invoke(curClazz.getDeclaredConstructor(List.class, DataType.class).newInstance(null, null),
+                    args);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Cannot find such method according to input types");
+        }
+
+        return resultType.convertFrom(result);
     }
-    return resultType.convertFrom(compute(args));
-  }
 
-  //用户复写方法
-  public abstract Object compute(Object[] input);
+    public void setUserInputType(List<DataType> userInputType) {
+        this.userInputType = userInputType;
+    }
 
-  public void setUserInputType(List<DataType> userInputType) {
-    this.userInputType = userInputType;
-  }
+    public void setUserResultType(DataType userResultType) {
+        this.userResultType = userResultType;
+    }
 
-  public void setUserResultType(DataType userResultType) {
-    this.userResultType = userResultType;
-  }
+    public void setClazz(Class curClazz) {
+        this.curClazz = curClazz;
+    }
 }
