@@ -59,7 +59,7 @@ public enum Token {
     SESSION("SESSION"),
     PROCEDURE("PROCEDURE"),
     FUNCTION("FUNCTION"),
-
+    
     PRIMARY("PRIMARY"), 
     KEY("KEY"), 
     DEFAULT("DEFAULT"), 
