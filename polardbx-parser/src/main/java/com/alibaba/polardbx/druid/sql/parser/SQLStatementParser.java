@@ -926,6 +926,7 @@ public class SQLStatementParser extends SQLParser {
             }
             break;
         case FUNCTION:
+//            seems like polardb-x doesn't support mysql create function syntax now
 //            SQLDropFunctionStatement dropFunc = parseDropFunction(false);
 //            if (temporary) {
 //                dropFunc.setTemporary(true);

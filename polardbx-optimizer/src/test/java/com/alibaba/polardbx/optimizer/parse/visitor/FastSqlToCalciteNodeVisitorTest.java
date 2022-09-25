@@ -90,10 +90,7 @@ public class FastSqlToCalciteNodeVisitorTest extends TestCase {
         sqlCreateJavaFunction.unparse(writer, 0, 0);
 
         Assert.assertEquals(
-            "CREATE FUNCTION `TESTFOO` RETURNTYPE bigint INPUTTYPE bigint, bigint IMPORT import java.util.Date; ENDIMPORT CODE public Object compute(Object[] args) {\n"
-                + "        int a = Integer.parseInt(args[0].toString());\n"
-                + "        int b = Integer.parseInt(args[1].toString());\n"
-                + "\n"
+            "CREATE FUNCTION `TESTFOO` RETURNTYPE bigint INPUTTYPE bigint, bigint IMPORT import java.util.Map; ENDIMPORT CODE public Object compute(int a, int b) {\n"
                 + "        return a + b;\n"
                 + "    } ENDCODE", writer.toString());
 
