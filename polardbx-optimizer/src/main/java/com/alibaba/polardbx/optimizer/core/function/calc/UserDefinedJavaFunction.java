@@ -70,7 +70,11 @@ public abstract class UserDefinedJavaFunction extends AbstractScalarFunction {
         Method userMethod;
         Object result;
         try {
-            userMethod = curClazz.getMethod("compute", inputClazz);
+            if (userInputType.isEmpty()) {
+                userMethod = curClazz.getMethod("compute");
+            } else {
+                userMethod = curClazz.getMethod("compute", inputClazz);
+            }
             result =
                 userMethod.invoke(curClazz.getDeclaredConstructor(List.class, DataType.class).newInstance(null, null),
                     args);
