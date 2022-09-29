@@ -52,9 +52,8 @@ public class LogicalDropJavaFunctionHandler extends HandlerCommon {
                 String.format("Java function %s not found", funcNameUpper));
         }
 
-        UserDefinedJavaFunctionManager.dropFunction(funcNameUpper);
-
         SyncManagerHelper.sync(new DropJavaFunctionSyncAction(funcNameUpper));
+        UserDefinedJavaFunctionManager.dropFunction(funcNameUpper);
 
         return new AffectRowCursor(0);
     }

@@ -1,14 +1,14 @@
 create table test (id integer not null AUTO_INCREMENT primary key,col1 varchar(20),col2 decimal,col3 numeric,col4 ENUM ('value1','value2','value3'),col5 date ,col6 datetime ,col7 blob)dbpartition by hash(id) tbpartition by hash(id) tbpartitions 3
 
-drop function if exists addfour
+drop function if exists addtwo
 drop function if exists testString
 drop function if exists testEnum
 drop function if exists testDate
 drop function if exists testBlob
 
-create function addfour returntype bigint inputtype bigint, bigint code     public Object compute(Long a, Long b) {          return a + b;     } endcode
-select addfour(1,2)
-addfour(1, 2)
+create function addtwo returntlype bigint inputtype bigint, bigint code     public Object compute(Long a, Long b) {          return a + b;     } endcode
+select addtwo(1,2)
+addtwo(1, 2)
 3
 
 create function teststring returntype varchar inputtype varchar import import java.util.Map; endimport code     public Object compute(String a) {             return a + "suffix";     } endcode
@@ -31,7 +31,14 @@ select testBlob(col7) from test
 testBlob(col7)
 test
 
-drop function if exists addfour
+show function
+addtwo
+testString
+testEnum
+testdate
+testblob
+
+drop function if exists addtwo
 drop function if exists testString
 drop function if exists testEnum
 drop function if exists testDate

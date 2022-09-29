@@ -61,6 +61,8 @@ public class UserDefinedJavaFunctionManager {
     private static final Logger logger = LoggerFactory.getLogger(UserDefinedJavaFunctionManager.class);
     private static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
+    public static final String PACKAGE_NAME = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
+
     private static Map<String, Constructor<?>> javaFunctionCaches = new HashMap<>();
 
     private static Map<String, List<DataType>> userInputTypesByFuncName = new HashMap<>();
@@ -104,15 +106,15 @@ public class UserDefinedJavaFunctionManager {
 
     public static void dropFunction(String funcNameUpper) {
         funcNameUpper = funcNameUpper.toUpperCase();
-        UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
-        TddlOperatorTable.instance().remove(funcNameUpper);
-        System.gc();
 
         try (Connection connection = MetaDbUtil.getConnection()) {
             UserDefinedJavaFunctionAccessor.deleteFunctionByName(funcNameUpper.toLowerCase(), connection);
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
         }
+        UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
+        TddlOperatorTable.instance().remove(funcNameUpper);
+        System.gc();
     }
 
     public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {
@@ -134,7 +136,7 @@ public class UserDefinedJavaFunctionManager {
         //add function
         try {
             addFunction(
-                cl.loadClass(String.format("com.alibaba.polardbx.optimizer.core.function.calc.scalar.%s", className)),
+                cl.loadClass(String.format("%s.%s", PACKAGE_NAME, className)),
                 inputDataTypes, resultDataType);
             final SqlFunction UserDefinedJavaFunction = new SqlFunction(
                 record.funcName.toUpperCase(),

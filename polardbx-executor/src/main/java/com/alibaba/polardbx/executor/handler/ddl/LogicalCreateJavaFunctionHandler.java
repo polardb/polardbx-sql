@@ -55,8 +55,6 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         super(repo);
     }
 
-    private final String PACKAGE_NAME = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
-
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         final LogicalCreateJavaFunction logicalCreateJavaFunction = (LogicalCreateJavaFunction) logicalPlan;
@@ -119,7 +117,7 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         SyncManagerHelper.sync(new CreateJavaFunctionSyncAction(funcName));
 
         try {
-            UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", PACKAGE_NAME, className)),
+            UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", UserDefinedJavaFunctionManager.PACKAGE_NAME, className)),
                 inputDataTypes, resultDataType);
             final SqlFunction UserDefinedJavaFunction = new SqlFunction(
                 funcName.toUpperCase(),
