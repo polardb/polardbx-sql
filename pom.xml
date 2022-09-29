@@ -72,7 +72,7 @@
         <javax.servlet-api.version>3.1.0</javax.servlet-api.version>
         <stream.version>2.9.5</stream.version>
 <!--        <sum.tools.version>1.8</sum.tools.version>-->
-        <snakeyaml.version>1.19</snakeyaml.version>
+        <snakeyaml.version>1.31</snakeyaml.version>
         <java-ipv6.version>0.17</java-ipv6.version>
 
         <!-- mpp -->
