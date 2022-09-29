@@ -119,7 +119,12 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Meta Connection error");
         }
 
-        SyncManagerHelper.sync(new CreateJavaFunctionSyncAction(funcName));
+        try {
+            SyncManagerHelper.sync(new CreateJavaFunctionSyncAction(funcName));
+        } catch (Exception e) {
+            UserDefinedJavaFunctionManager.dropFunction(funcName);
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Add function failed because of sync error");
+        }
 
         try {
             UserDefinedJavaFunctionManager.addFunction(

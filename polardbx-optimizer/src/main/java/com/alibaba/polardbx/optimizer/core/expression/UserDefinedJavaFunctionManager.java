@@ -117,7 +117,6 @@ public class UserDefinedJavaFunctionManager {
         UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
         TddlOperatorTable.instance().remove(funcNameUpper);
         System.gc();
-        currentUdfNum--;
     }
 
     public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {
