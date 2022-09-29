@@ -67,6 +67,11 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
             sqlCreateJavaFunction.getImportString() == null ? "" : sqlCreateJavaFunction.getImportString();
         final String userJavaCode = sqlCreateJavaFunction.getJavaCode();
 
+        if (UserDefinedJavaFunctionManager.currentUdfNum
+            >= UserDefinedJavaFunctionManager.SUPPORT_MAX_REGISTER_UDF_NUM) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Cannot add more java_functions");
+        }
+
         if (funcName.equals("") ||
             inputTypes.isEmpty() ||
             returnType.equals("") ||
@@ -117,7 +122,8 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         SyncManagerHelper.sync(new CreateJavaFunctionSyncAction(funcName));
 
         try {
-            UserDefinedJavaFunctionManager.addFunction(cl.loadClass(String.format("%s.%s", UserDefinedJavaFunctionManager.PACKAGE_NAME, className)),
+            UserDefinedJavaFunctionManager.addFunction(
+                cl.loadClass(String.format("%s.%s", UserDefinedJavaFunctionManager.PACKAGE_NAME, className)),
                 inputDataTypes, resultDataType);
             final SqlFunction UserDefinedJavaFunction = new SqlFunction(
                 funcName.toUpperCase(),
@@ -129,6 +135,7 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
             );
             TddlOperatorTable.instance().register(UserDefinedJavaFunction);
             RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
+            UserDefinedJavaFunctionManager.currentUdfNum++;
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Add function error");
         }
@@ -146,7 +153,6 @@ public class LogicalCreateJavaFunctionHandler extends HandlerCommon {
         sb.append(inputTypes.get(size - 1));
         return sb.toString();
     }
-
 
     private String readTemplateToString() throws Exception {
         final String TEMPLATE_PATH =

@@ -62,6 +62,8 @@ public class UserDefinedJavaFunctionManager {
     private static TddlTypeFactoryImpl factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
 
     public static final String PACKAGE_NAME = "com.alibaba.polardbx.optimizer.core.function.calc.scalar";
+    public static int SUPPORT_MAX_REGISTER_UDF_NUM = 1000;
+    public static int currentUdfNum = 0;
 
     private static Map<String, Constructor<?>> javaFunctionCaches = new HashMap<>();
 
@@ -115,6 +117,7 @@ public class UserDefinedJavaFunctionManager {
         UserDefinedJavaFunctionManager.removeFunctionFromCache(funcNameUpper);
         TddlOperatorTable.instance().remove(funcNameUpper);
         System.gc();
+        currentUdfNum--;
     }
 
     public static void addFunctionFromMeta(UserDefinedJavaFunctionRecord record) {
@@ -143,11 +146,12 @@ public class UserDefinedJavaFunctionManager {
                 SqlKind.OTHER_FUNCTION,
                 computeReturnType(record.resultType),
                 InferTypes.FIRST_KNOWN,
-                inputDataTypes.isEmpty()? OperandTypes.NILADIC : OperandTypes.ONE_OR_MORE,
+                inputDataTypes.isEmpty() ? OperandTypes.NILADIC : OperandTypes.ONE_OR_MORE,
                 SqlFunctionCategory.SYSTEM
             );
             RexUtils.addUnpushableFunction(UserDefinedJavaFunction);
             TddlOperatorTable.instance().register(UserDefinedJavaFunction);
+            currentUdfNum++;
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Load function from meta error");
         }
@@ -156,7 +160,6 @@ public class UserDefinedJavaFunctionManager {
     public static void initFunctions() {
         try (Connection connection = MetaDbUtil.getConnection()) {
             List<UserDefinedJavaFunctionRecord> records = UserDefinedJavaFunctionAccessor.queryAllFunctions(connection);
-
             if (records.size() == 0) {
                 return;
             }
