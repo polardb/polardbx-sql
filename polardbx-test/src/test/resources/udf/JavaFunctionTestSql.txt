@@ -6,7 +6,7 @@ drop function if exists testEnum
 drop function if exists testDate
 drop function if exists testBlob
 
-create function addtwo returntlype bigint inputtype bigint, bigint code     public Object compute(Long a, Long b) {          return a + b;     } endcode
+create function addtwo returntype bigint inputtype bigint, bigint code     public Object compute(Long a, Long b) {          return a + b;     } endcode
 select addtwo(1,2)
 addtwo(1, 2)
 3
