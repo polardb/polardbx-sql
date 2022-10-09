@@ -75,6 +75,12 @@ public class GmsSystemTables {
     public static final String NODE_INFO = "node_info";
 
     /**
+     * user defined java code
+     */
+    public static final String USER_DEFINED_JAVA_CODE = "user_defined_java_code";
+
+
+    /**
      * Global Secondary Index
      */
     public static final String BACKFILL_OBJECTS = "backfill_objects";
@@ -215,6 +221,7 @@ public class GmsSystemTables {
         register(PARTITION_GROUP);
         register(REFERENTIAL_CONSTRAINTS);
         register(NODE_INFO);
+        register(USER_DEFINED_JAVA_CODE);
         register(BACKFILL_OBJECTS);
         register(BASELINE_INFO);
         register(CHECKER_REPORTS);

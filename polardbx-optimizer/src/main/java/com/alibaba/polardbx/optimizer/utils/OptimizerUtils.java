@@ -132,6 +132,8 @@ public class OptimizerUtils {
         case ALTER_RULE:
         case CREATE_DATABASE:
         case DROP_DATABASE:
+        case CREATE_JAVA_FUNCTION:
+        case DROP_JAVA_FUNCTION:
         case CHANGE_CONSENSUS_ROLE:
         case ALTER_SYSTEM_SET_CONFIG:
         case LOCK_TABLE:

@@ -128,6 +128,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCopyFromStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
@@ -159,6 +160,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowCreateViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowDatabasesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowFunctionsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowQueryTaskStatement;
@@ -773,6 +775,10 @@ public class MySqlStatementParser extends SQLStatementParser {
             if (replace) {
                 lexer.reset(mark);
             }
+            String createStmt = lexer.text.toString().toLowerCase();
+            if (createStmt.contains("returntype") && createStmt.contains("code")) {
+                return parseCreateJavaFunction();
+            }
             return parseCreateFunction();
         case SEQUENCE:
             lexer.reset(mark);
@@ -838,6 +844,10 @@ public class MySqlStatementParser extends SQLStatementParser {
             return parseCreateView();
         } else if (lexer.token() == Token.FUNCTION) {
             lexer.reset(mark);
+            String createStmt = lexer.text.toString().toLowerCase();
+            if (createStmt.contains("returntype") && createStmt.contains("code")) {
+                return parseCreateJavaFunction();
+            }
             return parseCreateFunction();
         } else if (lexer.token() == PROCEDURE) {
             lexer.reset(mark);
@@ -4177,20 +4187,24 @@ public class MySqlStatementParser extends SQLStatementParser {
                 stmt.setName(this.exprParser.name());
                 return stmt;
             }
+            if (lexer.identifierEquals(STATUS)) {
+                acceptIdentifier(STATUS);
+                MySqlShowFunctionStatusStatement stmt = new MySqlShowFunctionStatusStatement();
 
-            acceptIdentifier(STATUS);
-            MySqlShowFunctionStatusStatement stmt = new MySqlShowFunctionStatusStatement();
+                if (lexer.token() == Token.LIKE) {
+                    lexer.nextTokenValue();
+                    stmt.setLike(this.exprParser.expr());
+                }
 
-            if (lexer.token() == Token.LIKE) {
-                lexer.nextTokenValue();
-                stmt.setLike(this.exprParser.expr());
+                if (lexer.token() == Token.WHERE) {
+                    lexer.nextToken();
+                    stmt.setWhere(this.exprParser.expr());
+                }
+                return stmt;
             }
 
-            if (lexer.token() == Token.WHERE) {
-                lexer.nextToken();
-                stmt.setWhere(this.exprParser.expr());
-            }
-            return stmt;
+            return new SQLShowJavaFunctionStatement();
+
         }
 
         // MySqlShowFunctionStatusStatement

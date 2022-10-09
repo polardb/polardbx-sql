@@ -65,6 +65,15 @@ public class ExtraFunctionManager {
         Constructor constructor = functionCaches.get(FunctionSignature.getFunctionSignature(null, name));
 
         if (constructor == null) {
+            AbstractScalarFunction function =
+                UserDefinedJavaFunctionManager.
+                    getUserDefinedJavaFunction(functionName, operandTypes, resultType);
+            if (function != null) {
+                return function;
+            }
+        }
+
+        if (constructor == null) {
             return new Dummy(functionName, operandTypes, resultType);
         }
 
@@ -91,6 +100,12 @@ public class ExtraFunctionManager {
             throw GeneralUtil.nestedException(e);
         }
 
+    }
+
+    public static boolean constainsFunction(String funcName) {
+        return functionCaches.containsKey(
+            FunctionSignature.
+                getFunctionSignature(null, funcName));
     }
 
     private static void initFunctions() {

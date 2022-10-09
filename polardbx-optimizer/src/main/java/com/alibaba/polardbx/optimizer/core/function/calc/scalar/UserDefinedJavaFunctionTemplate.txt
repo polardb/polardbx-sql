@@ -1,0 +1,25 @@
+package com.alibaba.polardbx.optimizer.core.function.calc.scalar;
+
+import com.alibaba.polardbx.optimizer.core.function.calc.UserDefinedJavaFunction;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import java.util.List;
+import java.sql.Blob;
+import java.sql.Date;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.math.BigDecimal;
+${importString}
+
+public class ${className} extends UserDefinedJavaFunction {
+    public ${className} (List<DataType> operandTypes, DataType resultType) {
+        super(operandTypes, resultType);
+        super.setClazz(this.getClass());
+    }
+
+    @Override
+    public String[] getFunctionNames() {
+        return new String[] {"${funcNameUpper}"};
+    }
+
+    ${userJavaCode}
+}

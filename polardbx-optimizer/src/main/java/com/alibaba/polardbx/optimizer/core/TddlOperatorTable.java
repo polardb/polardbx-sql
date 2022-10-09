@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core;
 
+import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionAccessor;
+import com.alibaba.polardbx.gms.metadb.table.UserDefinedJavaFunctionRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
 import com.alibaba.polardbx.optimizer.core.function.AddTimeFunction;
 import com.alibaba.polardbx.optimizer.core.function.FunctionWithVariadicArg;
 import com.alibaba.polardbx.optimizer.core.function.FunctionWithoutArg;
@@ -74,7 +78,9 @@ import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.calcite.util.Util;
 
+import java.sql.Connection;
 import java.util.List;
 import java.util.Set;
 
