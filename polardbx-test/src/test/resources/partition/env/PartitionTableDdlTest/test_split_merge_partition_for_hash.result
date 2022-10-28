@@ -1,0 +1,54 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup tbl_tg;
+drop table if exists tbl;
+CREATE TABLE hash_tbl(
+id bigint,
+bid int,
+name varchar(30),
+birthday datetime not null
+)
+PARTITION BY HASH(name, birthday)
+PARTITIONS 8;
+alter table hash_tbl set tablegroup=tbl_tg;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table hash_tbl;
+Table,Create Table
+hash_tbl,CREATE TABLE `hash_tbl` (
+	`id` bigint(20) DEFAULT NULL,
+	`bid` int(11) DEFAULT NULL,
+	`name` varchar(30) DEFAULT NULL,
+	`birthday` datetime NOT NULL,
+	KEY `auto_shard_key_name_birthday` USING BTREE (`name`, `birthday`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`name`,`birthday`)
+PARTITIONS 8
+(PARTITION p1 VALUES LESS THAN (-6917529027641081843) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (-4611686018427387893) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (-2305843009213693943) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (7) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (2305843009213693957) ENGINE = InnoDB,
+ PARTITION p6 VALUES LESS THAN (4611686018427387907) ENGINE = InnoDB,
+ PARTITION p7 VALUES LESS THAN (6917529027641081857) ENGINE = InnoDB,
+ PARTITION p8 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `tbl_tg`
+alter tablegroup `tbl_tg` split partition `p1` into (partition p1_0 values less than (-8058255643327868833), partition p1_1 values less than (-6917529027641081843));
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table hash_tbl;
+Table,Create Table
+hash_tbl,CREATE TABLE `hash_tbl` (
+	`id` bigint(20) DEFAULT NULL,
+	`bid` int(11) DEFAULT NULL,
+	`name` varchar(30) DEFAULT NULL,
+	`birthday` datetime NOT NULL,
+	KEY `auto_shard_key_name_birthday` USING BTREE (`name`, `birthday`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`name`,`birthday`)
+PARTITIONS 9
+(PARTITION p1_0 VALUES LESS THAN (-8058255643327868833) ENGINE = InnoDB,
+ PARTITION p1_1 VALUES LESS THAN (-6917529027641081843) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (-4611686018427387893) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (-2305843009213693943) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (7) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (2305843009213693957) ENGINE = InnoDB,
+ PARTITION p6 VALUES LESS THAN (4611686018427387907) ENGINE = InnoDB,
+ PARTITION p7 VALUES LESS THAN (6917529027641081857) ENGINE = InnoDB,
+ PARTITION p8 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `tbl_tg`

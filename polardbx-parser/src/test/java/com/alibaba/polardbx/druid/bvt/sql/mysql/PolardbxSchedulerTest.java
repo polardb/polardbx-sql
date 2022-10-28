@@ -90,4 +90,32 @@ public class PolardbxSchedulerTest extends MysqlTest {
             SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
+    public void test_4() {
+        String sql = "PAUSE SCHEDULE 11111111111";
+        SQLStatementParser parser = new MySqlStatementParser(sql, SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL);
+        List<SQLStatement> stmtList = parser.parseStatementList();
+
+        SQLStatement result = stmtList.get(0);
+        Assert.assertEquals(
+                "PAUSE SCHEDULE 11111111111",
+                SQLUtils.toMySqlString(result));
+        Assert.assertEquals(
+                "pause schedule 11111111111",
+                SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+    }
+
+    public void test_5() {
+        String sql = "CONTINUE SCHEDULE 11111111111";
+        SQLStatementParser parser = new MySqlStatementParser(sql, SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL);
+        List<SQLStatement> stmtList = parser.parseStatementList();
+
+        SQLStatement result = stmtList.get(0);
+        Assert.assertEquals(
+                "CONTINUE SCHEDULE 11111111111",
+                SQLUtils.toMySqlString(result));
+        Assert.assertEquals(
+                "continue schedule 11111111111",
+                SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+    }
+
 }

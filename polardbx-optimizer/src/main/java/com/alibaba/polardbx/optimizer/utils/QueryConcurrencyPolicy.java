@@ -33,6 +33,17 @@ public enum QueryConcurrencyPolicy {
     CONCURRENT,
 
     /**
+     * 宽松的库间并发，适用于Auto数据库的分片的读写
+     * <pre>
+     *     该并发策略的并发度是介乎于 GROUP_CONCURRENT_BLOCK 与 CONCURRENT 之间，
+     *     因为它支持每个分库按固定的并行度进行执行，
+     *     比如 一个Auto数据库有2个物理库，每个物理库支持的最大并行度是4（预设参数），
+     *     则整体最大支持的并行度是8
+     * </pre>
+     */
+    RELAXED_GROUP_CONCURRENT,
+
+    /**
      * 库（Group）级并发
      */
     GROUP_CONCURRENT_BLOCK,

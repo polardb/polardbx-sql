@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.planmanager;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -25,27 +24,28 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.util.JdbcUtils;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.google.common.collect.Maps;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * @author dylan
  */
-public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo {
+public class PolarDbXSystemTableBaselineInfo {
     private static final Logger logger = LoggerFactory.getLogger(PolarDbXSystemTableBaselineInfo.class);
 
     public static final String TABLE_NAME = GmsSystemTables.BASELINE_INFO;
@@ -65,7 +65,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         "ALTER TABLE " + TABLE_NAME + " DROP COLUMN `tables_hashcode`";
 
     private static final String LOAD_DATA_SQL =
-        "SELECT BASELINE_INFO.ID, BASELINE_INFO.SQL, BASELINE_INFO.TABLE_SET, BASELINE_INFO.EXTEND_FIELD, PLAN_INFO.TABLES_HASHCODE, "
+        "SELECT BASELINE_INFO.SCHEMA_NAME, BASELINE_INFO.ID, BASELINE_INFO.SQL, BASELINE_INFO.TABLE_SET, BASELINE_INFO.EXTEND_FIELD, PLAN_INFO.TABLES_HASHCODE, "
             +
             "PLAN_INFO.ID, PLAN_INFO.PLAN, UNIX_TIMESTAMP(PLAN_INFO.LAST_EXECUTE_TIME), PLAN_INFO.CHOOSE_COUNT, PLAN_INFO.COST, PLAN_INFO.ESTIMATE_EXECUTION_TIME, "
             +
@@ -75,7 +75,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
             "`" + TABLE_NAME + "` AS BASELINE_INFO INNER JOIN `" + PolarDbXSystemTablePlanInfo.TABLE_NAME
             + "` AS PLAN_INFO " +
             "ON BASELINE_INFO.SCHEMA_NAME = PLAN_INFO.SCHEMA_NAME AND BASELINE_INFO.ID = PLAN_INFO.BASELINE_ID " +
-            "WHERE BASELINE_INFO.SCHEMA_NAME = ? AND UNIX_TIMESTAMP(BASELINE_INFO"
+            "WHERE UNIX_TIMESTAMP(BASELINE_INFO"
             + ".GMT_MODIFIED) > ? AND "
             + "UNIX_TIMESTAMP"
             + "(PLAN_INFO"
@@ -103,52 +103,15 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
     public static final String DELETE_ALL_SQL = "DELETE FROM " + TABLE_NAME +
         " WHERE SCHEMA_NAME = ?";
 
-    private DataSource dataSource;
-
-    private String schemaName;
-
-    private PolarDbXSystemTablePlanInfo polarDbXSystemTablePlanInfo;
-
-    private boolean checkTableFromCache() {
-        try {
-            return APPNAME_BASELINE_INFO_ENABLED.get(schemaName, this::checkTable);
-        } catch (ExecutionException e) {
-            logger.error("APPNAME_BASELINE_INFO_ENABLED.get error", e);
-            return false;
-        }
-    }
-
-    public PolarDbXSystemTableBaselineInfo(DataSource dataSource, String schemaName,
-                                           PolarDbXSystemTablePlanInfo polarDbXSystemTablePlanInfo) {
-        if (dataSource == null) {
-            logger.error("PolarDbXSystemTableBaselineInfo dataSource is null");
-        }
-        if (schemaName == null) {
-            logger.error("PolarDbXSystemTableBaselineInfo schemaName is null");
-        }
-        this.dataSource = dataSource;
-        this.schemaName = schemaName;
-        this.polarDbXSystemTablePlanInfo = polarDbXSystemTablePlanInfo;
-    }
-
-    @Override
-    public void resetDataSource(DataSource dataSource) {
-        if (dataSource == null) {
-            logger.error("resetDataSource dataSource is null");
-        }
-        this.dataSource = dataSource;
-    }
-
-    @Override
-    public void createTableIfNotExist() {
-        if (!canWrite()) {
+    public static void createTableIfNotExist() {
+        if (cannotWrite()) {
             return;
         }
         Connection conn = null;
         PreparedStatement ps = null;
         PreparedStatement psDropColumn = null;
         try {
-            conn = dataSource.getConnection();
+            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             ps = conn.prepareStatement(CREATE_TABLE_IF_NOT_EXIST_SQL);
             ps.executeUpdate();
             psDropColumn = conn.prepareStatement(DROP_TABLES_HASHCODE_COLUMN);
@@ -156,6 +119,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         } catch (Exception e) {
             if (e instanceof SQLException && e.getMessage().contains("Can't DROP ")) {
                 // ignore drop column error
+                logger.debug("create " + TABLE_NAME + " if not exist error", e);
             } else {
                 logger.error("create " + TABLE_NAME + " if not exist error", e);
             }
@@ -169,60 +133,29 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
     /**
      * @param sinceTime unix time
      */
-    @Override
-    public void loadData(PlanManager planManager, long sinceTime) {
-        loadData(planManager, sinceTime, null);
-    }
-
-    @Override
-    public void loadData(PlanManager planManager, long sinceTime, Integer searchBaselineId) {
-        if (!canRead()) {
-            return;
-        }
-        if (!checkTableFromCache()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.canRead()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.checkTableFromCache()) {
-            return;
-        }
-        Set<Integer> invalidBaselineInfoIdSet = new HashSet<>();
+    public static Map<String, Map<String, BaselineInfo>> loadData(long sinceTime,
+                                                                  int maxBaselineSize, int maxSqlLength,
+                                                                  int maxPlanLength) {
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
+        Map<String, Map<String, BaselineInfo>> baselineMap = Maps.newConcurrentMap();
         try {
-            final int maxBaselineSize = planManager.getParamManager().getInt(ConnectionParams.SPM_MAX_BASELINE_SIZE);
-            final int maxBaselineInfoSqlLength =
-                planManager.getParamManager().getInt(ConnectionParams.SPM_MAX_BASELINE_INFO_SQL_LENGTH);
-            final int maxPlanInfoSqlLength =
-                planManager.getParamManager().getInt(ConnectionParams.SPM_MAX_PLAN_INFO_PLAN_LENGTH);
-            conn = dataSource.getConnection();
-            if (searchBaselineId != null) {
-                ps = conn.prepareStatement(LOAD_DATA_SQL_WITH_ID);
-                ps.setString(1, schemaName.toLowerCase());
-                ps.setLong(2, sinceTime);
-                ps.setLong(3, sinceTime);
-                ps.setLong(4, searchBaselineId);
-            } else {
-                ps = conn.prepareStatement(LOAD_DATA_SQL);
-                ps.setString(1, schemaName.toLowerCase());
-                ps.setLong(2, sinceTime);
-                ps.setLong(3, sinceTime);
-            }
+            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
+
+            ps = conn.prepareStatement(LOAD_DATA_SQL);
+            ps.setLong(1, sinceTime);
+            ps.setLong(2, sinceTime);
+            int count = 0;
             rs = ps.executeQuery();
             while (rs.next()) {
                 try {
                     int baselineId = rs.getInt("BASELINE_INFO.ID");
+                    String schema = rs.getString("BASELINE_INFO.SCHEMA_NAME");
                     String parameterSql = rs.getString("BASELINE_INFO.SQL");
                     Set<Pair<String, String>> tableSet =
                         BaselineInfo.deserializeTableSet(rs.getString("BASELINE_INFO.TABLE_SET"));
-                    int tablesHashCode = PlanInfo.INVAILD_HASH_CODE;
-                    try {
-                        tablesHashCode = rs.getInt("PLAN_INFO.TABLES_HASHCODE");
-                    } catch (Throwable t) {
-                    }
+                    int tablesHashCode = rs.getInt("PLAN_INFO.TABLES_HASHCODE");
 
                     int planId = rs.getInt("PLAN_INFO.ID");
                     String planString = rs.getString("PLAN_INFO.PLAN");
@@ -241,20 +174,30 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                     String planExtendField = rs.getString("PLAN_EXTEND");
                     String extendField = rs.getString("BASELINE_INFO.EXTEND_FIELD");
 
-                    if (parameterSql.length() > maxBaselineInfoSqlLength
-                        || planString.length() > maxPlanInfoSqlLength) {
+                    if (parameterSql.length() > maxSqlLength
+                        || planString.length() > maxPlanLength) {
                         continue;
                     }
 
-                    BaselineInfo baselineInfo = planManager.getBaselineMap().get(parameterSql);
-                    if (baselineInfo == null) {
-                        baselineInfo = new BaselineInfo(parameterSql, tableSet);
-                        assert baselineInfo.getId() == baselineId;
-                        if (planManager.getBaselineMap().size() > maxBaselineSize) {
-                            continue;
-                        }
-                        planManager.getBaselineMap().put(parameterSql, baselineInfo);
+                    BaselineInfo baselineInfo;
+                    if (!baselineMap.containsKey(schema)) {
+                        Map<String, BaselineInfo> newSchemaMap = Maps.newConcurrentMap();
+                        baselineMap.put(schema, newSchemaMap);
                     }
+
+                    if (baselineMap.get(schema).containsKey(parameterSql)) {
+                        baselineInfo = baselineMap.get(schema).get(parameterSql);
+                    } else {
+                        // sql -> baseline
+                        baselineInfo = new BaselineInfo(parameterSql, tableSet);
+                        baselineMap.get(schema).put(baselineInfo.getParameterSql(), baselineInfo);
+                    }
+
+                    assert baselineInfo.getId() == baselineId;
+                    if (count > maxBaselineSize) {
+                        continue;
+                    }
+
                     baselineInfo.setExtend(extendField);
                     PlanInfo planInfo =
                         new PlanInfo(baselineId, planString, createTime, lastExecuteTime, chooseCount, cost,
@@ -267,6 +210,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                         baselineInfo.addUnacceptedPlan(planInfo);
                     }
 
+                    count++;
                 } catch (Exception e) {
                     logger.error("parse row of " + TABLE_NAME + " error", e);
                 }
@@ -278,28 +222,17 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
         }
-        /* try to delete invalid baseline */
-        deleteBaselineList(new ArrayList<>(invalidBaselineInfoIdSet));
+        return baselineMap;
     }
 
-    @Override
-    public void deletePlan(int baselineInfoId, int planInfoId) {
-        if (!canWrite()) {
-            return;
-        }
-        if (!checkTableFromCache()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.canWrite()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.checkTableFromCache()) {
+    public static void deletePlan(String schemaName, int baselineInfoId, int planInfoId) {
+        if (cannotWrite()) {
             return;
         }
         Connection conn = null;
         PreparedStatement ps = null;
         try {
-            conn = dataSource.getConnection();
+            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             ps = conn.prepareStatement(PolarDbXSystemTablePlanInfo.DELETE_SQL);
             ps.setString(1, schemaName.toLowerCase());
             ps.setLong(2, baselineInfoId);
@@ -313,27 +246,18 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         }
     }
 
-    @Override
-    public void updatePlan(BaselineInfo baselineInfo, PlanInfo updatePlanInfo, int originPlanId) {
-        if (!canWrite()) {
-            return;
-        }
-        if (!checkTableFromCache()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.canWrite()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.checkTableFromCache()) {
+    public static void updatePlan(String schemaName, BaselineInfo baselineInfo, PlanInfo updatePlanInfo,
+                                  int originPlanId) {
+        if (cannotWrite()) {
             return;
         }
 
-        deletePlan(baselineInfo.getId(), originPlanId);
+        deletePlan(schemaName, baselineInfo.getId(), originPlanId);
 
         Connection conn = null;
         PreparedStatement pps = null;
         try {
-            conn = dataSource.getConnection();
+            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             pps = conn.prepareStatement(PolarDbXSystemTablePlanInfo.REPLACE_SQL);
             if (updatePlanInfo != null) {
                 pps.setString(1, schemaName.toLowerCase());
@@ -356,7 +280,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                 pps.setString(14, updatePlanInfo.encodeExtend());
                 pps.execute();
             } else {
-                logger.warn("Don't exist the planInfo " + updatePlanInfo);
+                logger.warn("Don't exist the planInfo ");
             }
         } catch (SQLException e) {
             logger.error("Replace planInfo failed for " + updatePlanInfo, e);
@@ -366,11 +290,15 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         }
     }
 
-    public static boolean deleteAll(String schemaName, Connection conn) {
+    public static boolean deleteAll(String schemaName) {
+        if (cannotWrite()) {
+            return false;
+        }
+
         PreparedStatement ps = null;
         String sql = "";
-        try {
-            ps = conn.prepareStatement(DELETE_ALL_SQL);
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            ps = metaDbConn.prepareStatement(DELETE_ALL_SQL);
             ps.setString(1, schemaName.toLowerCase());
             ps.executeUpdate();
             return true;
@@ -382,34 +310,12 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         }
     }
 
-    @Override
-    public boolean deleteAll(Connection conn) {
-        if (!canWrite()) {
-            return false;
-        }
-        if (!checkTableFromCache()) {
-            return false;
-        }
-        return deleteAll(schemaName, conn);
+    public static void delete(String schemaName, int baselineInfoId) {
+        deleteBaselineList(schemaName, Collections.singletonList(baselineInfoId));
     }
 
-    @Override
-    public void delete(int baselineInfoId) {
-        deleteBaselineList(Arrays.asList(baselineInfoId));
-    }
-
-    @Override
-    public void deleteBaselineList(List<Integer> baselineInfoIdList) {
-        if (!canWrite()) {
-            return;
-        }
-        if (!checkTableFromCache()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.canWrite()) {
-            return;
-        }
-        if (!polarDbXSystemTablePlanInfo.checkTableFromCache()) {
+    public static void deleteBaselineList(String schemaName, List<Integer> baselineInfoIdList) {
+        if (cannotWrite()) {
             return;
         }
         if (baselineInfoIdList == null) {
@@ -421,7 +327,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         Connection conn = null;
         PreparedStatement ps = null;
         try {
-            conn = dataSource.getConnection();
+            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             ps = conn.prepareStatement(DELETE_SQL);
             int batchSize = 32;
             int listSize = baselineInfoIdList.size();
@@ -451,29 +357,16 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         }
     }
 
-    @Override
-    public SystemTableBaselineInfo.PersistResult persist(BaselineInfo baselineInfo) {
-        SystemTableBaselineInfo.PersistResult persistResult = innerPersist(baselineInfo);
+    public static SystemTableBaselineInfo.PersistResult persist(String schemaName, BaselineInfo baselineInfo) {
+        SystemTableBaselineInfo.PersistResult persistResult = innerPersist(schemaName, baselineInfo);
         if (persistResult == SystemTableBaselineInfo.PersistResult.TABLE_MISS) {
-            createTableIfNotExist();
-            polarDbXSystemTablePlanInfo.createTableIfNotExist();
-            return innerPersist(baselineInfo);
-        } else {
-            return persistResult;
+            logger.error("persist error :" + persistResult);
         }
+        return persistResult;
     }
 
-    private SystemTableBaselineInfo.PersistResult innerPersist(BaselineInfo baselineInfo) {
-        if (!canWrite()) {
-            return SystemTableBaselineInfo.PersistResult.DO_NOTHING;
-        }
-        if (!checkTableFromCache()) {
-            return SystemTableBaselineInfo.PersistResult.DO_NOTHING;
-        }
-        if (!polarDbXSystemTablePlanInfo.canWrite()) {
-            return SystemTableBaselineInfo.PersistResult.DO_NOTHING;
-        }
-        if (!polarDbXSystemTablePlanInfo.checkTableFromCache()) {
+    private static SystemTableBaselineInfo.PersistResult innerPersist(String schemaName, BaselineInfo baselineInfo) {
+        if (cannotWrite()) {
             return SystemTableBaselineInfo.PersistResult.DO_NOTHING;
         }
         if (baselineInfo == null) {
@@ -482,9 +375,9 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         Connection conn = null;
         PreparedStatement pps = null;
         ResultSet resultSet = null;
-        SystemTableBaselineInfo.PersistResult persistResult = null;
+        SystemTableBaselineInfo.PersistResult persistResult;
         try {
-            conn = dataSource.getConnection();
+            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             conn.setAutoCommit(false);
             pps = conn.prepareStatement(SELECT_SQL);
             pps.setString(1, schemaName.toLowerCase());
@@ -498,7 +391,7 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                     return SystemTableBaselineInfo.PersistResult.CONFLICT;
                 }
 
-                /** UPDATE */
+                // UPDATE
                 resultSet.close();
                 pps.close();
                 pps = conn.prepareStatement(UPDATE_SQL);
@@ -507,10 +400,10 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                 pps.setInt(3, baselineInfo.getId());
                 pps.executeUpdate();
                 pps.close();
-                persistResult = SystemTableBaselineInfo.PersistResult.INSERT;
+                persistResult = SystemTableBaselineInfo.PersistResult.UPDATE;
                 LoggerUtil.logSpm(schemaName, "baseline update:" + BaselineInfo.serializeBaseInfoToJson(baselineInfo));
             } else {
-                /** insert */
+                // insert
                 resultSet.close();
                 pps.close();
                 pps = conn.prepareStatement(INSERT_SQL);
@@ -525,6 +418,13 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
                 // TODO log baseline create
                 LoggerUtil.logSpm(schemaName, "baseline create:" + BaselineInfo.serializeBaseInfoToJson(baselineInfo));
             }
+
+            // delete plan
+            pps = conn.prepareStatement(PolarDbXSystemTablePlanInfo.DELETE_BY_BASELINE_SQL);
+            pps.setString(1, schemaName.toLowerCase());
+            pps.setInt(2, baselineInfo.getId());
+            pps.executeUpdate();
+            pps.close();
 
             int acceptedPlanCount = 0;
             pps = conn.prepareStatement(PolarDbXSystemTablePlanInfo.REPLACE_SQL);
@@ -591,37 +491,8 @@ public class PolarDbXSystemTableBaselineInfo implements SystemTableBaselineInfo 
         }
     }
 
-    private boolean canRead() {
-        return dataSource != null;
-    }
-
-    private boolean canWrite() {
-        return ConfigDataMode.isMasterMode() && dataSource != null;
-    }
-
-    private boolean checkTable() {
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-        try {
-            conn = dataSource.getConnection();
-            ps = conn.prepareStatement("show tables like '" + TABLE_NAME + "'");
-            ps.executeQuery();
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                logger.debug("[debug] check table = true");
-                return true;
-            } else {
-                logger.debug("[debug] check table = false");
-                return false;
-            }
-        } catch (Exception e) {
-            logger.error("check " + TABLE_NAME + " exist error", e);
-            return false;
-        } finally {
-            JdbcUtils.close(ps);
-            JdbcUtils.close(conn);
-            JdbcUtils.close(rs);
-        }
+    private static boolean cannotWrite() {
+        boolean canWrite = ConfigDataMode.isMasterMode() && LeaderStatusBridge.getInstance().hasLeadership();
+        return !canWrite;
     }
 }

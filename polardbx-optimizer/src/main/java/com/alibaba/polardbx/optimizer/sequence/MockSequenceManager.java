@@ -61,6 +61,15 @@ public class MockSequenceManager extends MemorySequenceManager {
     }
 
     @Override
+    public Long currValue(String schemaName, String seqName) {
+        try {
+            return schemaSequenceMap.get(schemaName).currValue(schemaName, seqName);
+        } catch (ExecutionException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    @Override
     public boolean exhaustValue(String schemaName, String seqName) {
         try {
             return schemaSequenceMap.get(schemaName).exhaustValue(schemaName, seqName);
@@ -106,15 +115,6 @@ public class MockSequenceManager extends MemorySequenceManager {
     }
 
     @Override
-    public void validateDependence(String schemaName) {
-        try {
-            schemaSequenceMap.get(schemaName).validateDependence(schemaName);
-        } catch (ExecutionException e) {
-            throw GeneralUtil.nestedException(e);
-        }
-    }
-
-    @Override
     public SequenceAttribute.Type checkIfExists(String schemaName, String seqName) {
         try {
             return schemaSequenceMap.get(schemaName).checkIfExists(schemaName, seqName);
@@ -145,15 +145,6 @@ public class MockSequenceManager extends MemorySequenceManager {
     public String getCurrentSeqRange(String schemaName, String seqName) {
         try {
             return schemaSequenceMap.get(schemaName).getCurrentSeqRange(schemaName, seqName);
-        } catch (ExecutionException e) {
-            throw GeneralUtil.nestedException(e);
-        }
-    }
-
-    @Override
-    public boolean isCustomUnitGroupSeqSupported(String schemaName) {
-        try {
-            return schemaSequenceMap.get(schemaName).isCustomUnitGroupSeqSupported(schemaName);
         } catch (ExecutionException e) {
             throw GeneralUtil.nestedException(e);
         }

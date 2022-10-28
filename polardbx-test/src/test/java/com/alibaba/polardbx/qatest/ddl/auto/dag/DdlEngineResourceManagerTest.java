@@ -19,7 +19,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.dag;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineResourceManager;
-import com.alibaba.polardbx.executor.ddl.newengine.meta.PersistentReadWriteLock;
+import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;

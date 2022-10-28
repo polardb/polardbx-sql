@@ -21,11 +21,10 @@ import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.atom.utils.EncodingUtils;
 import com.alibaba.polardbx.atom.utils.NetworkUtils;
 import com.alibaba.polardbx.common.exception.NotSupportException;
-import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ConnectionStats;
-import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
-import com.alibaba.polardbx.common.jdbc.ReadViewConn;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -33,6 +32,8 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
 import com.alibaba.polardbx.optimizer.biv.MockConnection;
 import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.mysql.jdbc.ConnectionImpl;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Array;
@@ -50,8 +51,6 @@ import java.sql.SQLXML;
 import java.sql.Savepoint;
 import java.sql.Statement;
 import java.sql.Struct;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
@@ -62,7 +61,7 @@ import java.util.concurrent.Executor;
  * @author 梦实 2017年11月7日 下午1:59:01
  * @since 5.0.0
  */
-public class TGroupDirectConnection extends ReadViewConn {
+public class TGroupDirectConnection implements IConnection {
 
     private static final Logger log = LoggerFactory.getLogger(TGroupDirectConnection.class);
 
@@ -477,58 +476,6 @@ public class TGroupDirectConnection extends ReadViewConn {
     }
 
     @Override
-    public long getLastInsertId() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setLastInsertId(long id) {
-        throw new UnsupportedOperationException();
-
-    }
-
-    @Override
-    public long getReturnedLastInsertId() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setReturnedLastInsertId(long id) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public List<Long> getGeneratedKeys() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setGeneratedKeys(List<Long> ids) {
-        throw new UnsupportedOperationException();
-
-    }
-
-    @Override
-    public ITransactionPolicy getTrxPolicy() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setTrxPolicy(ITransactionPolicy trxPolicy) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public BatchInsertPolicy getBatchInsertPolicy(Map<String, Object> extraCmds) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setBatchInsertPolicy(BatchInsertPolicy policy) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public String getEncoding() {
         return this.encoding;
     }
@@ -554,6 +501,24 @@ public class TGroupDirectConnection extends ReadViewConn {
     }
 
     @Override
+    public boolean isBytesSqlSupported() throws SQLException {
+        if (conn.isWrapperFor(XConnection.class)) {
+            return conn.unwrap(XConnection.class).supportRawString();
+        }
+        return false;
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(BytesSql sql, byte[] hint) throws SQLException {
+        if (conn instanceof XConnection) {
+            return ((XConnection) conn).prepareStatement(sql, hint);
+        } else {
+            throw new NotSupportException(
+                "bytes sql not supported in TGroupDirectConnection:" + conn.getClass().getName());
+        }
+    }
+
+    @Override
     public Map<String, Object> getServerVariables() {
         return this.serverVariables;
     }
@@ -569,51 +534,17 @@ public class TGroupDirectConnection extends ReadViewConn {
         } else {
             throw new NotSupportException("xproto required");
         }
-        // TODO: this is not good taste
-        Properties props = MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
-        Map<String, Object> globalServerVariables = new HashMap<>();
-        for (String key : props.stringPropertyNames()) {
-            globalServerVariables.put(key, props.getProperty(key));
-        }
+        Map<String, Object> globalServerVariables =
+            MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
         setGlobalServerVariables(globalServerVariables);
     }
 
     @Override
     public void setGlobalServerVariables(Map<String, Object> globalServerVariables) throws SQLException {
         this.globalServerVariables = globalServerVariables;
-        if (globalServerVariables != null) {
+        if (globalServerVariables != null && !globalServerVariables.isEmpty()) {
             conn.unwrap(XConnection.class).setGlobalVariables(globalServerVariables);
         }
-    }
-
-    @Override
-    public long getFoundRows() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setFoundRows(long foundRows) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public long getAffectedRows() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setAffectedRows(long affectedRows) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String getUser() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setUser(String userName) {
-        throw new UnsupportedOperationException();
     }
 
     protected void setCurrentStatement(Statement stmt) {

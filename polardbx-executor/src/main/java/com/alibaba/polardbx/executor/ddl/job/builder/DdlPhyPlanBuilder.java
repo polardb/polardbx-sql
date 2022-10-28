@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.Engine;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -218,8 +219,8 @@ public abstract class DdlPhyPlanBuilder {
                 }
                 phyDdlTable.setTableNames(ImmutableList.of(subTableNames));
                 phyDdlTable.setKind(sqlTemplate.getKind());
-                Pair<String, Map<Integer, ParameterContext>> sqlAndParam = buildSqlAndParam(subTableNames);
-                phyDdlTable.setSqlTemplate(sqlAndParam.getKey());
+                Pair<BytesSql, Map<Integer, ParameterContext>> sqlAndParam = buildSqlAndParam(subTableNames);
+                phyDdlTable.setBytesSql(sqlAndParam.getKey());
                 phyDdlTable.setNativeSqlNode(sqlTemplate);
                 phyDdlTable.setDbType(DbType.MYSQL);
                 phyDdlTable.setParam(sqlAndParam.getValue());
@@ -260,7 +261,7 @@ public abstract class DdlPhyPlanBuilder {
         this.originSqlTemplate = this.sqlTemplate;
     }
 
-    private Pair<String, Map<Integer, ParameterContext>> buildSqlAndParam(List<String> tableNames) {
+    private Pair<BytesSql, Map<Integer, ParameterContext>> buildSqlAndParam(List<String> tableNames) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
         String sql;
         Engine engine;
@@ -268,13 +269,13 @@ public abstract class DdlPhyPlanBuilder {
             && Engine.isFileStore(engine = ((SqlCreateTable) this.sqlTemplate).getEngine())) {
             // for file-store engine, avoid to generate MySQL physical sql with engine info.
             ((SqlCreateTable) this.sqlTemplate).setEngine(Engine.INNODB);
-            sql = RelUtils.toNativeSql(sqlTemplate, DbType.MYSQL);
+            sql = RelUtils.toNativeSql(sqlTemplate);
             ((SqlCreateTable) this.sqlTemplate).setEngine(engine);
         } else {
             sql = RelUtils.toNativeSql(sqlTemplate, DbType.MYSQL);
         }
         Map<Integer, ParameterContext> params = buildParams(tableNames);
-        return new Pair<>(sql, params);
+        return new Pair<>(BytesSql.getBytesSql(sql), params);
     }
 
     private Map<Integer, ParameterContext> buildParams(List<String> tableNames) {
@@ -286,7 +287,7 @@ public abstract class DdlPhyPlanBuilder {
         final ColumnMeta columnMeta =
             tableMeta.getPhysicalColumns().stream().filter(col -> col.getName().equalsIgnoreCase(indexColName))
                 .findFirst().orElseThrow(() -> new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                "Unknown GSI column '" + indexColName + "'"));
+                    "Unknown GSI column '" + indexColName + "'"));
         final String typeName = columnMeta.getField().getDataType().getStringSqlType().toLowerCase();
         return SqlValidatorImpl.assignAutoPartition(new SqlIdentifier(indexColName, SqlParserPos.ZERO), typeName);
     }
@@ -305,6 +306,10 @@ public abstract class DdlPhyPlanBuilder {
 
     public Map<String, List<List<String>>> getTableTopology() {
         return tableTopology;
+    }
+
+    public void setTableTopology(Map<String, List<List<String>>> tableTopology) {
+        this.tableTopology = tableTopology;
     }
 
     public List<PhyDdlTableOperation> getPhysicalPlans() {

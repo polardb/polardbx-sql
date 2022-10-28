@@ -27,8 +27,10 @@ import com.alibaba.polardbx.executor.gsi.BackfillExecutor;
 import com.alibaba.polardbx.executor.gsi.corrector.GsiChecker;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.GsiBackfill;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
@@ -74,6 +76,8 @@ public class GsiBackfillHandler extends HandlerCommon {
 
         executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, 1);
 
+        PhyTableOperationUtil.disableIntraGroupParallelism(schemaName, executionContext);
+
         // Force master first and following will copy this EC.
         executionContext.getExtraCmds().put(ConnectionProperties.MASTER, true);
         int affectRows;
@@ -100,8 +104,13 @@ public class GsiBackfillHandler extends HandlerCommon {
 
         // TODO(moyi) separate check to another task
         for (String indexName : indexNames) {
+            boolean isPrimaryBroadCast =
+                OptimizerContext.getContext(schemaName).getRuleManager().isBroadCast(baseTableName);
+            boolean isGsiBroadCast = OptimizerContext.getContext(schemaName).getRuleManager().isBroadCast(indexName);
+
             CheckGsiTask checkTask =
-                new CheckGsiTask(schemaName, baseTableName, indexName, lockMode, lockMode, params, false, "");
+                new CheckGsiTask(schemaName, baseTableName, indexName, lockMode, lockMode, params, false, "",
+                    isPrimaryBroadCast, isGsiBroadCast);
 
             checkTask.checkInBackfill(executionContext);
         }

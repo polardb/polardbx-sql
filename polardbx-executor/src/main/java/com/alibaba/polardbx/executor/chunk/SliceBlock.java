@@ -31,6 +31,7 @@ import org.openjdk.jol.info.ClassLayout;
 
 import java.lang.ref.WeakReference;
 
+import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 public class SliceBlock extends AbstractCommonBlock {
@@ -175,7 +176,8 @@ public class SliceBlock extends AbstractCommonBlock {
         if (isNull(position)) {
             sink.putBytes(EMPTY_BYTES);
         } else {
-            sink.putBytes(copyBytes(position));
+            Slice encodedSlice = dataType.getCharsetHandler().encodeFromUtf8(getRegion(position));
+            sink.putBytes(encodedSlice.getBytes());
         }
     }
 
@@ -192,6 +194,17 @@ public class SliceBlock extends AbstractCommonBlock {
             int endOffset = endOffset(position);
             return data.hashCode(beginOffset, endOffset - beginOffset);
         }
+    }
+
+    @Override
+    public int checksum(int position) {
+        if (isNull(position)) {
+            return NULL_TAG;
+        }
+        position = realPositionOf(position);
+        int beginOffset = beginOffset(position);
+        int endOffset = endOffset(position);
+        return ChunkUtil.hashCode(data, beginOffset, endOffset);
     }
 
     public int equals(int position, Slice that) {

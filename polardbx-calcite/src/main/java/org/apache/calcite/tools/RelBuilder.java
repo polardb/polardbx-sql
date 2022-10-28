@@ -1618,6 +1618,17 @@ public class RelBuilder {
     return this;
   }
 
+  public RelBuilder logicalSemiJoin(Iterable<? extends RexNode> conditions, JoinRelType joinRelType, SqlNodeList hints,
+                                    boolean fromSetOP) {
+    final Frame right = stack.pop();
+    final RelNode left = peek();
+    final JoinInfo joinInfo = JoinInfo.of(left, right.rel, and(conditions));
+    final RelNode semiJoin = LogicalSemiJoin.create(
+        peek(), right.rel, and(conditions), joinInfo.leftKeys, joinInfo.rightKeys, joinRelType, hints, fromSetOP);
+    replaceTop(semiJoin);
+    return this;
+  }
+
   public RelBuilder logicalSemiJoin(List<RexNode> conditions, SqlOperator operator, JoinRelType joinRelType, List<RexNode> linkRexNode,
                                     Set<CorrelationId> variablesSet, SqlNodeList hints, String position) {
     Frame right = stack.pop();
@@ -1943,6 +1954,8 @@ public class RelBuilder {
   }
 
   /**
+   * in polardbx-calcite, cast was skipped
+   *
    * Creates a projection that converts the current relational expression's
    * output to a desired row type.
    *
@@ -1954,6 +1967,14 @@ public class RelBuilder {
     final RelNode r = build();
     final RelNode r2 =
         RelOptUtil.createCastRel(r, castRowType, rename, projectFactory);
+    push(r2);
+    return this;
+  }
+
+  public RelBuilder convertWithCast(RelDataType castRowType, boolean rename) {
+    final RelNode r = build();
+    final RelNode r2 =
+        RelOptUtil.createCastRelWithCast(r, castRowType, rename, projectFactory);
     push(r2);
     return this;
   }

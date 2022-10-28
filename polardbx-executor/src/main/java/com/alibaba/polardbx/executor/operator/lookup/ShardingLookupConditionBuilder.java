@@ -16,37 +16,34 @@
 
 package com.alibaba.polardbx.executor.operator.lookup;
 
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.optimizer.core.rel.ShardProcessor;
-import com.alibaba.polardbx.optimizer.core.rel.SimpleShardProcessor;
-import com.google.common.collect.Iterables;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.partitionmanagement.PartitionUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
-import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
+import com.alibaba.polardbx.optimizer.core.join.LookupEquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.ShardProcessor;
+import com.alibaba.polardbx.optimizer.core.rel.SimpleShardProcessor;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartLookupPruningCache;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
+import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.Field;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
 import com.google.common.collect.Iterables;
-import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rex.RexBuilder;
-import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
@@ -61,9 +58,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder.getIdentifierByIndex;
+import static com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder.getJoinKeyColumnName;
 
 /**
  * ShardingLookupConditionBuilder builds lookup condition for each shards
@@ -79,15 +77,35 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
     private final List<String> joinKeyColumnNames;
     private final int[] shardingColumn2LookupSideInputRef;
 
-    ShardingLookupConditionBuilder(List<EquiJoinKey> jk, LookupPredicate p, LogicalView v, ExecutionContext ec) {
+    ShardingLookupConditionBuilder(List<LookupEquiJoinKey> jk, LookupPredicate p, LogicalView v, ExecutionContext ec) {
         super(jk, p, v, ec);
         this.joinKeyColumnNames = collectJoinKeyColumns();
         this.shardingColumns = collectShardingColumnMeta();
         this.shardingKeyPositions = buildShardingKeyPositions(shardingColumns);
-        this.shardingColumn2LookupSideInputRef = buildShardingColumn2LookupSideInputRef(shardingColumns);
+        this.shardingColumn2LookupSideInputRef = buildShardingColumn2LookupSideInputRef(
+            shardingColumns);
     }
 
-    public Map<String, Map<String, SqlNode>> buildShardedCondition(Chunk joinKeysChunk, ExecutionContext context) {
+    private PartLookupPruningCache initLookupPruningCache() {
+        TddlRuleManager ruleManager = ec.getSchemaManager(v.getSchemaName()).getTddlRuleManager();
+        PartitionInfo partitionInfo = ruleManager.getPartitionInfoManager().getPartitionInfo(v.getLogicalTableName());
+        boolean enableBkaInValuesPruning =
+            ec.getParamManager().getBoolean(ConnectionParams.ENABLE_BKA_IN_VALUES_PRUNING);
+        PartLookupPruningCache cache =
+            new PartLookupPruningCache(ec, partitionInfo, v, shardingColumns, this.shardingColumn2LookupSideInputRef,
+                isSinglePredicateShardingKey() && canPerformInValuesPruning() && enableBkaInValuesPruning);
+        return cache;
+    }
+
+    public PartLookupPruningCache buildLookupPruningCache() {
+        if (!v.isNewPartDbTbl()) {
+            return null;
+        }
+        return initLookupPruningCache();
+    }
+
+    public Map<String, Map<String, SqlNode>> buildShardedCondition(Chunk joinKeysChunk, ExecutionContext context,
+                                                                   PartLookupPruningCache cache) {
         final OptimizerContext oc = OptimizerContext.getContext(v.getSchemaName());
         TddlRuleManager ruleManager = context.getSchemaManager(v.getSchemaName()).getTddlRuleManager();
         /*
@@ -116,7 +134,8 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
                     shardingColumns.get(0),
                     ruleManager,
                     oc.getPartitionInfoManager(),
-                    context
+                    context,
+                    cache
                 );
             }
         }
@@ -126,7 +145,8 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
             ruleManager.getTableRule(v.getShardingTable()),
             ruleManager,
             oc.getPartitionInfoManager(),
-            context
+            context,
+            cache
         );
     }
 
@@ -151,6 +171,24 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         }
 
         return !v.isNewPartDbTbl() && ShardProcessor.isSimpleRule(tableRule);
+    }
+
+    private boolean canPerformInValuesPruning() {
+        if (p.size() != 1 || shardingColumns.size() != 1) {
+            return false;
+        }
+        // canShard() ensures joinkey contains shardingkey
+        boolean joinKeysContainPredicate = false;
+        for (String joinKey : joinKeyColumnNames) {
+            if (joinKey.equalsIgnoreCase(p.getColumn(0).getSimple())) {
+                joinKeysContainPredicate = true;
+                break;
+            }
+        }
+        if (!joinKeysContainPredicate) {
+            return false;
+        }
+        return v.isNewPartDbTbl();
     }
 
     /**
@@ -227,42 +265,69 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
     private Map<String, Map<String, SqlNode>> buildSimpleShardedCondition(
         SqlIdentifier key, List<Object> values,
         ColumnMeta shardingKeyMeta, TddlRuleManager tddlRuleManager, PartitionInfoManager partitionInfoManager,
-        ExecutionContext context) {
+        ExecutionContext context,
+        PartLookupPruningCache cache) {
 
+        Partitioner partitioner = OptimizerContext.getContext(tddlRuleManager.getSchemaName()).getPartitioner();
         Map<Integer, ParameterContext> params =
             context.getParams() == null ? null : context.getParams().getCurrentParameter();
         final List<TargetDB> targetDbList;
+        Map<String, Map<String, List<Object>>> prunedInValues = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        boolean needPerformInValuesPruning = false;
         if (!v.isNewPartDbTbl()) {
-            Map<String, Comparative> comparatives = TddlRuleManager.getComparativeORWithSingleColumn(
+            Map<String, Comparative> comparatives = Partitioner.getComparativeORWithSingleColumn(
                 shardingKeyMeta, values, shardingKeyMeta.getName());
 
             // fullComparative保障了分表条件可见
-            Map<String, Comparative> fullComparative = TddlRuleManager.getInsertFullComparative(comparatives);
+
+            Map<String, Comparative> fullComparative = partitioner.getInsertFullComparative(comparatives);
             Map<String, Object> calcParams = new HashMap<>();
             calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, false);
             calcParams.put(CalcParamsAttribute.COM_DB_TB, fullComparative);
             calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, context.getTimeZone());
-
+            calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, context);
             targetDbList = tddlRuleManager.shard(v.getShardingTable(), false, false,
                 comparatives, params, calcParams, context);
         } else {
-            PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(v.getLogicalTableName());
+            boolean allowPerformInValuesPruning = cache.isAllowPerformInValuesPruning();
+            List<Object> val = new ArrayList<>();
+            val.add(new Object());
+            PartPrunedResult partPruningRs = null;
+            if (cache.isAllowPerformInValuesPruning()) {
+                needPerformInValuesPruning = true;
+            }
+            for (int i = 0; i < values.size(); i++) {
+                Object tarVal = values.get(i);
+                val.set(0, tarVal);
+                PartPrunedResult rs = cache.doLookupPruning(val);
+                if (allowPerformInValuesPruning && rs != null) {
+                    List<PhysicalPartitionInfo> phyPartInfos = rs.getPrunedPartitions();
+                    for (int j = 0; j < phyPartInfos.size(); j++) {
+                        String grpKey = phyPartInfos.get(j).getGroupKey();
+                        String phyTb = phyPartInfos.get(j).getPhyTable();
+                        Map<String, List<Object>> inValsOfOnePhyDb = prunedInValues.get(grpKey);
+                        if (inValsOfOnePhyDb == null) {
+                            inValsOfOnePhyDb =
+                                new TreeMap<String, List<Object>>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+                            prunedInValues.putIfAbsent(grpKey, inValsOfOnePhyDb);
+                        }
+                        List<Object> inValsOfOnePhyTb = inValsOfOnePhyDb.get(phyTb);
+                        if (inValsOfOnePhyTb == null) {
+                            inValsOfOnePhyTb = new ArrayList<>();
+                            inValsOfOnePhyDb.put(phyTb, inValsOfOnePhyTb);
+                        }
+                        inValsOfOnePhyTb.add(tarVal);
+                    }
 
-            RexBuilder rexBuilder = v.getCluster().getRexBuilder();
-            int targetIndex = shardingColumn2LookupSideInputRef[0];
-            List<RexNode> rexValues = values.stream().map(
-                x -> rexBuilder.makeLiteral(shardingKeyMeta.getDataType().convertJavaFrom(x),
-                    v.getRowType().getFieldList().get(targetIndex).getType(),
-                    false)).collect(Collectors.toList());
-            RexNode inRow = rexBuilder.makeCall(TddlOperatorTable.ROW, rexValues);
-            RexNode in = rexBuilder.makeCall(TddlOperatorTable.IN, rexBuilder.makeInputRef(v, targetIndex), inRow);
-
-            PartitionPruneStep
-                pruneStepInfo = PartitionPruner.generatePartitionPrueStepInfo(partitionInfo, v, in, context);
-            ExecutionContext tmpContext = context.copy();
-            PartPrunedResult partPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, context);
-
-            targetDbList = PartitionPrunerUtils.buildTargetDbsByPartPrunedResults(partPrunedResult);
+                }
+                if (partPruningRs == null) {
+                    partPruningRs = rs;
+                    continue;
+                } else {
+                    partPruningRs.getPartBitSet().or(rs.getPartBitSet());
+                }
+            }
+            targetDbList = PartitionPrunerUtils.buildTargetDbsByPartPrunedResults(partPruningRs);
         }
 
         Map<String, Map<String, SqlNode>> shardedConditions = new HashMap<>(targetDbList.size());
@@ -271,11 +336,29 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
             for (Map.Entry<String, Field> tableNameField : targetDB.getTableNameMap().entrySet()) {
                 Field field = tableNameField.getValue();
                 SqlNode sqlNode;
-                if (field == null) {
-                    // 考虑不带sourceKey的情况
-                    sqlNode = buildSimpleCondition(key, values);
+                List<Object> actualInValues = values;
+                if (needPerformInValuesPruning) {
+                    String grpKey = targetDB.getDbIndex();
+                    String phyTb = tableNameField.getKey();
+                    Map<String, List<Object>> inValsOfOneDb = prunedInValues.get(grpKey);
+                    if (inValsOfOneDb != null) {
+                        List<Object> inValsOfOneTb = inValsOfOneDb.get(phyTb);
+                        if (inValsOfOneTb != null) {
+                            actualInValues = inValsOfOneTb;
+                        }
+                    }
+                }
+
+                if (needPerformInValuesPruning) {
+                    // use the pruned in values instead
+                    sqlNode = buildSimpleCondition(key, actualInValues);
                 } else {
-                    sqlNode = buildSimpleCondition(key, field.getSourceKeys().get(key.getSimple()));
+                    if (field == null) {
+                        // 考虑不带sourceKey的情况
+                        sqlNode = buildSimpleCondition(key, values);
+                    } else {
+                        sqlNode = buildSimpleCondition(key, field.getSourceKeys().get(key.getSimple()));
+                    }
                 }
                 if (sqlNode == FALSE_CONDITION) {
                     continue;
@@ -290,10 +373,10 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
     private Map<String, Map<String, SqlNode>> buildGeneralShardedCondition(
         Iterable<Tuple> joinKeyTuples, List<ColumnMeta> shardingKeyMetas,
         TableRule rule, TddlRuleManager tddlRuleManager, PartitionInfoManager partitionInfoManager,
-        ExecutionContext context) {
-
+        ExecutionContext context,
+        PartLookupPruningCache cache) {
+        Partitioner partitioner = OptimizerContext.getContext(context.getSchemaName()).getPartitioner();
         PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(v.getLogicalTableName());
-
         final boolean shardByTable;
         if (!v.isNewPartDbTbl()) {
             // ensured by `canShard()`
@@ -325,7 +408,8 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         if (!v.isNewPartDbTbl()) {
             topology = rule.getActualTopology();
         } else {
-            topology = PartitionUtils.partitionInfoToTopology(partitionInfo);
+            //topology = PartitionUtils.partitionInfoToTopology(partitionInfo);
+            topology = partitionInfo.getTopology();
         }
 
         topology.forEach((dbKey, tables) -> {
@@ -343,7 +427,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, false);
         calcParams.put(CalcParamsAttribute.COM_DB_TB, new Object());
         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, context.getTimeZone());
-
+        calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, context);
         for (Tuple tuple : joinKeyTuples) {
             for (int i = 0; i < shardingKeyPositions.length; i++) {
                 shardingKeyValues.set(i, tuple.get(shardingKeyPositions[i]));
@@ -384,43 +468,22 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
 
             if (!v.isNewPartDbTbl()) {
                 Map<String, Comparative> comparatives =
-                    TddlRuleManager.getLookupComparative(shardingKeyValues, shardingKeyMetas);
+                    Partitioner.getLookupComparative(shardingKeyValues, shardingKeyMetas);
 
                 // fullComparative保障了分表条件可见
-                Map<String, Comparative> fullComparative = TddlRuleManager.getInsertFullComparative(comparatives);
+                Map<String, Comparative> fullComparative = partitioner.getInsertFullComparative(comparatives);
                 calcParams.put(CalcParamsAttribute.COM_DB_TB, fullComparative);
 
                 targetDbs = tddlRuleManager.shard(v.getShardingTable(), false, false,
                     comparatives, params, calcParams, context);
+
             } else {
-                RexBuilder rexBuilder = v.getCluster().getRexBuilder();
-
-                RexNode condition;
-                List<RexNode> equals = new ArrayList<>();
-                for (int k = 0; k < shardingKeyMetas.size(); k++) {
-                    Object convertedValue =
-                        shardingKeyMetas.get(k).getDataType().convertJavaFrom(shardingKeyValues.get(k));
-                    RexNode equal = rexBuilder.makeCall(TddlOperatorTable.EQUALS,
-                        rexBuilder.makeInputRef(v, shardingColumn2LookupSideInputRef[k]),
-                        rexBuilder.makeLiteral(convertedValue,
-                            v.getRowType().getFieldList()
-                                .get(shardingColumn2LookupSideInputRef[k]).getType(),
-                            false));
-                    equals.add(equal);
+                PartPrunedResult pruningResult = cache.doLookupPruning(shardingKeyValues);
+                if (pruningResult.isEmpty()) {
+                    continue;
                 }
-                if (equals.size() == 1) {
-                    condition = equals.get(0);
-                } else {
-                    condition = rexBuilder.makeCall(TddlOperatorTable.AND, equals);
-                }
-                PartitionPruneStep
-                    pruneStepInfo =
-                    PartitionPruner.generatePartitionPrueStepInfo(partitionInfo, v, condition, context);
-                PartPrunedResult partPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, context);
-
-                targetDbs = PartitionPrunerUtils.buildTargetDbsByPartPrunedResults(partPrunedResult);
+                targetDbs = PartitionPrunerUtils.buildTargetDbsByPartPrunedResults(pruningResult);
             }
-
             if (!v.isNewPartDbTbl()) {
                 if (targetDbs.size() != 1) {
                     throw new RuntimeException("expect one target db"); // see canShard()
@@ -431,7 +494,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
                 }
             }
 
-            for ( TargetDB targetDb : targetDbs) {
+            for (TargetDB targetDb : targetDbs) {
                 Collection<String> targetTables;
                 if (shardByTable) {
                     targetTables = targetDb.getTableNames();
@@ -521,16 +584,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         for (int i = 0; i < shardingKeyMetas.size(); i++) {
             int position = -1;
             for (int j = 0; j < jk.size(); j++) {
-                int joinKeyPosition;
-                RelNode lookupSide;
-                if (isMaterializedSemiJoin()) {
-                    joinKeyPosition = jk.get(j).getOuterIndex();
-                    lookupSide = v.getJoin().getLeft();
-                } else {
-                    joinKeyPosition = jk.get(j).getInnerIndex();
-                    lookupSide = v.getJoin().getInner();
-                }
-                String joinColumnName = getIdentifierByIndex(lookupSide, joinKeyPosition).getSimple();
+                String joinColumnName = getJoinKeyColumnName(jk.get(j));
                 if (shardingKeyMetas.get(i).getName().equalsIgnoreCase(joinColumnName)) {
                     position = j;
                     break;
@@ -548,19 +602,10 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         int[] shardingColumn2LookupSideInputRef = new int[shardingKeyMetas.size()];
         for (int i = 0; i < shardingKeyMetas.size(); i++) {
             int position = -1;
-            for (int j = 0; j < jk.size(); j++) {
-                int joinKeyPosition;
-                RelNode lookupSide;
-                if (isMaterializedSemiJoin()) {
-                    joinKeyPosition = jk.get(j).getOuterIndex();
-                    lookupSide = v.getJoin().getLeft();
-                } else {
-                    joinKeyPosition = jk.get(j).getInnerIndex();
-                    lookupSide = v.getJoin().getInner();
-                }
-                String joinColumnName = getIdentifierByIndex(lookupSide, joinKeyPosition).getSimple();
+            for (int j = 0; j < p.getLvOriginNames().size(); j++) {
+                String joinColumnName = p.getLvOriginNames().get(j);
                 if (shardingKeyMetas.get(i).getName().equalsIgnoreCase(joinColumnName)) {
-                    position = joinKeyPosition;
+                    position = j;
                     break;
                 }
             }

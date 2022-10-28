@@ -23,28 +23,29 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 public class ExecutableScheduledJob implements SystemTableRecord {
-    
+
     private long scheduleId;
     private String tableSchema;
     private String tableName;
+    private String tableGroupName;
 
-    private String  scheduleName;
-    private String  scheduleComment;
-    private String  executorType;
-    private String  scheduleContext;
-    private String  executorContents;
-    private String  status;
-    private String  scheduleType;
-    private String  scheduleExpr;
-    private String  timeZone;
-    private String  schedulePolicy;
+    private String scheduleName;
+    private String scheduleComment;
+    private String executorType;
+    private String scheduleContext;
+    private String executorContents;
+    private String status;
+    private String scheduleType;
+    private String scheduleExpr;
+    private String timeZone;
+    private String schedulePolicy;
 
-    private long    fireTime;
-    private long    startTime;
-    private long    finishTime;
-    private String  state;
-    private String  remark;
-    private String  result;
+    private long fireTime;
+    private long startTime;
+    private long finishTime;
+    private String state;
+    private String remark;
+    private String result;
 
     @Override
     public ExecutableScheduledJob fill(ResultSet rs) throws SQLException {
@@ -52,6 +53,7 @@ public class ExecutableScheduledJob implements SystemTableRecord {
         this.scheduleId = rs.getLong("schedule_id");
         this.tableSchema = rs.getString("table_schema");
         this.tableName = rs.getString("table_name");
+        this.tableGroupName = rs.getString("table_group_name");
         this.scheduleName = rs.getString("schedule_name");
         this.scheduleComment = rs.getString("schedule_comment");
         this.executorType = rs.getString("executor_type");
@@ -223,5 +225,13 @@ public class ExecutableScheduledJob implements SystemTableRecord {
 
     public void setResult(final String result) {
         this.result = result;
+    }
+
+    public String getTableGroupName() {
+        return tableGroupName;
+    }
+
+    public void setTableGroupName(String tableGroupName) {
+        this.tableGroupName = tableGroupName;
     }
 }

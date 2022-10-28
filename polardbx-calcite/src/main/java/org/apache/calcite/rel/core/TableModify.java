@@ -27,6 +27,7 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.prepare.Prepare;
+import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.SingleRel;
@@ -326,6 +327,27 @@ public abstract class TableModify extends SingleRel {
     this.keywords = keywords;
   }
 
+  /**
+   * for json Deserialization
+   */
+  protected TableModify(RelInput relInput) {
+    this(relInput.getCluster(),
+        relInput.getTraitSet(),
+        relInput.getTable("table"),
+        null,
+        relInput.getInput(),
+        relInput.getEnum("operation", Operation.class),
+        relInput.getStringList("updateColumnList"),
+        relInput.getExpressionList("sourceExpressionList"),
+        relInput.getBoolean("flattened", false),
+        relInput.getStringList("keywords"),
+        0,
+        null,
+        new SqlNodeList(SqlParserPos.ZERO),
+        TableInfo.singleSource(relInput.getTable("table"))
+    );
+  }
+
   //~ Methods ----------------------------------------------------------------
 
   public Prepare.CatalogReader getCatalogReader() {
@@ -465,11 +487,12 @@ public abstract class TableModify extends SingleRel {
   @Override public RelWriter explainTerms(RelWriter pw) {
     return super.explainTerms(pw)
         .item("table", table.getQualifiedName())
-        .item("operation", getOperation())
+        .item("operation", getOperation().name())
         .itemIf("updateColumnList", updateColumnList, updateColumnList != null)
         .itemIf("sourceExpressionList", sourceExpressionList,
             sourceExpressionList != null)
-        .item("flattened", flattened);
+        .item("flattened", flattened)
+        .itemIf("keywords", keywords, keywords != null);
   }
 
   @Override

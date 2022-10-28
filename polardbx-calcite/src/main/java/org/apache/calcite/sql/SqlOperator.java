@@ -37,7 +37,6 @@ import org.apache.calcite.util.Util;
 
 import com.google.common.collect.ImmutableList;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -1004,7 +1003,7 @@ public abstract class SqlOperator {
    * @return
    */
   public boolean canPushDown() {
-    return canPushDown(false);
+    return true;
   }
 
   /**

@@ -10,7 +10,7 @@ public class SqlAlterTableRemoveLocalPartition extends SqlAlterTable {
     protected SqlNode parent;
 
     public SqlAlterTableRemoveLocalPartition(SqlIdentifier tableName) {
-        super(tableName, null, "", null, new ArrayList<>(), SqlParserPos.ZERO);
+        super(null, tableName, null, "", null, new ArrayList<>(), SqlParserPos.ZERO);
         this.name = tableName;
     }
 

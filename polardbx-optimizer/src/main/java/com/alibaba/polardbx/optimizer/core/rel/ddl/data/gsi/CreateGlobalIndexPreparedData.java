@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
@@ -59,8 +60,12 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
     private PartitionInfo primaryPartitionInfo;
     private SqlNode partitioning;
     private SqlNode tableGroupName;
+    private SqlNode joinGroupName;
     private Map<SqlNode, RexNode> partBoundExprInfo;
     private boolean indexAlignWithPrimaryTableGroup;
+    private boolean needToGetTableGroupLock = false;
+
+    private LocalityDesc locality = new LocalityDesc();
 
     /**************************************************************************/
 
@@ -230,6 +235,14 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
         this.tableGroupName = tableGroupName;
     }
 
+    public SqlNode getJoinGroupName() {
+        return joinGroupName;
+    }
+
+    public void setJoinGroupName(SqlNode joinGroupName) {
+        this.joinGroupName = joinGroupName;
+    }
+
     public Map<SqlNode, RexNode> getPartBoundExprInfo() {
         return partBoundExprInfo;
     }
@@ -270,5 +283,21 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setIndexAlignWithPrimaryTableGroup(boolean indexAlignWithPrimaryTableGroup) {
         this.indexAlignWithPrimaryTableGroup = indexAlignWithPrimaryTableGroup;
+    }
+
+    public LocalityDesc getLocality() {
+        return locality;
+    }
+
+    public void setLocality(LocalityDesc locality) {
+        this.locality = locality;
+    }
+
+    public boolean isNeedToGetTableGroupLock() {
+        return needToGetTableGroupLock;
+    }
+
+    public void setNeedToGetTableGroupLock(boolean needToGetTableGroupLock) {
+        this.needToGetTableGroupLock = needToGetTableGroupLock;
     }
 }

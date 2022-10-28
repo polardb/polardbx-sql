@@ -236,6 +236,14 @@ public class SQLAlterTableAddIndex extends SQLObjectImpl implements SQLAlterTabl
         indexDefinition.setPartitioning(x);
     }
 
+    public SQLName getTableGroup() {
+        return this.indexDefinition.getTableGroup();
+    }
+
+    public void setTableGroup(SQLName tableGroup) {
+        this.indexDefinition.setTableGroup(tableGroup);
+    }
+
     @Override
     public List<SQLName> getCovering() {
         return indexDefinition.getCovering();

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.gms.topology;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -28,6 +29,7 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
@@ -104,7 +106,11 @@ public class StorageInfoAccessor extends AbstractAccessor {
         "select distinct inst_id, storage_inst_id from storage_info where status!=2";
 
     private static final String GET_ALL_REMOVED_RO_INST_ID_FOR_SERVER =
-        "select distinct inst_id, inst_kind from storage_info where status=2 and inst_kind=1";
+        "select t1.inst_id removed_inst_id, dn_cnt all_dn_cnt, rm_dn_cnt removed_dn_cnt  from \n"
+            + "(select inst_id, count(distinct storage_inst_id) dn_cnt from storage_info where inst_kind=1 group by inst_id ) t1 \n"
+            + " inner join\n"
+            + "(select inst_id, count(distinct storage_inst_id) rm_dn_cnt from storage_info where inst_kind=1 and status=2 group by inst_id ) t2 \n"
+            + "on t1.inst_id=t2.inst_id and t1.dn_cnt=t2.rm_dn_cnt and t1.dn_cnt>0";
 
     private static final String DELETE_REMOVED_RO_STORAGE_INFO_BY_SERVER_INST_ID =
         "delete from storage_info where status=2 and inst_kind=1 and inst_id=?";
@@ -472,11 +478,11 @@ public class StorageInfoAccessor extends AbstractAccessor {
             try {
                 stmt = this.connection.prepareStatement(GET_ALL_REMOVED_RO_INST_ID_FOR_SERVER);
                 rs = stmt.executeQuery();
-                List<String> storageInstIdList = Lists.newArrayList();
+                List<String> removedRoInstIdList = Lists.newArrayList();
                 while (rs.next()) {
-                    storageInstIdList.add(rs.getString(1));
+                    removedRoInstIdList.add(rs.getString("removed_inst_id"));
                 }
-                return storageInstIdList;
+                return removedRoInstIdList;
             } catch (Throwable ex) {
                 throw ex;
             } finally {

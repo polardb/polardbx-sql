@@ -16,11 +16,18 @@
 
 package com.alibaba.polardbx.optimizer.parse;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.ParserException;
+import com.alibaba.polardbx.druid.sql.repository.SchemaRepository;
+import com.alibaba.polardbx.druid.sql.repository.SchemaResolveVisitor;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.profiler.cpu.CpuStat;
+import com.alibaba.polardbx.optimizer.parse.visitor.PolarXBindParamTypeVisitor;
 import com.google.common.annotations.VisibleForTesting;
 import com.alibaba.polardbx.common.constants.CpuStatAttribute.CpuStatAttr;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -40,6 +47,7 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 提供Fast SQL Parser AST到Calcite AST的转换 Calcite Parser based on FastSql Parser
@@ -190,14 +198,25 @@ public class FastsqlParser {
             context.putParameter(ContextParameterKey.PARAMS, params);
         }
 
+        Map<SQLVariantRefExpr, ColumnMeta> bindMapTypes = null;
+        if (ec != null && DynamicConfig.getInstance().enableBindType() &&
+            CollectionUtils.isNotEmpty(params)) {
+            boolean allowInfer = params.stream().anyMatch(t -> byte[].class.isInstance(t));
+            if (allowInfer) {
+                SchemaRepository repository = new SchemaRepository(JdbcConstants.MYSQL);
+                repository.resolve(statement, SchemaResolveVisitor.Option.ResolveAllColumn,
+                    SchemaResolveVisitor.Option.ResolveIdentifierAlias);
+                PolarXBindParamTypeVisitor paramTypeVisitor = new PolarXBindParamTypeVisitor(ec);
+                statement.accept(paramTypeVisitor);
+                bindMapTypes = paramTypeVisitor.getDynamicParamBindColumn();
+                context.putParameter(ContextParameterKey.BIND_TYPE_PARAMS, bindMapTypes);
+            }
+        }
+
         FastSqlToCalciteNodeVisitor visitor = new FastSqlToCalciteNodeVisitor(context, ec);
         statement.accept(visitor);
 
         SqlNode result = visitor.getSqlNode();
-//        if (context.isTestMode()) {
-//            result = result.accept(new ReplaceTableNameWithTestTableVisitor(context.isTestMode()));
-//        }
-
         if (null == result) {
             throw new FastSqlParserException(FastSqlParserException.ExceptionType.NEED_IMPLEMENT,
                 "statement " + (statement != null ? statement.getClass().getName() : "null statement")

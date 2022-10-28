@@ -47,17 +47,19 @@ public interface SystemTableTableStatistic {
 
     void createTableIfNotExist();
 
-    void renameTable(String oldLogicalTableName, String newLogicalTableName);
+    void renameTable(String schema, String oldLogicalTableName, String newLogicalTableName);
 
-    void removeLogicalTableList(List<String> logicalTableNameList);
+    void removeLogicalTableList(String schema, List<String> logicalTableNameList);
 
-    boolean deleteAll(Connection conn);
+    boolean deleteAll(String schema, Connection conn);
 
     Collection<Row> selectAll(long sinceTime);
 
     void batchReplace(final List<SystemTableTableStatistic.Row> rowList);
 
     class Row {
+
+        private String schema;
 
         /**
          * logical table name
@@ -74,7 +76,8 @@ public interface SystemTableTableStatistic {
          */
         private long unixTime;
 
-        public Row(String tableName, long rowCount, long unixTime) {
+        public Row(String schema, String tableName, long rowCount, long unixTime) {
+            this.schema = schema;
             this.tableName = tableName;
             this.rowCount = rowCount;
             this.unixTime = unixTime;
@@ -98,6 +101,14 @@ public interface SystemTableTableStatistic {
 
         public long getUnixTime() {
             return unixTime;
+        }
+
+        public String getSchema() {
+            return schema;
+        }
+
+        public void setSchema(String schema) {
+            this.schema = schema;
         }
     }
 }

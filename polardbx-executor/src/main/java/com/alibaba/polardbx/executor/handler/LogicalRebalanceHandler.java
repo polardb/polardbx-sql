@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -44,7 +45,6 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
@@ -60,6 +60,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 /**
  * Rebalance command.
@@ -160,6 +162,7 @@ public class LogicalRebalanceHandler extends LogicalCommonDdlHandler {
 
     private DdlJob buildJob(ExecutionContext ec, BalanceOptions options, List<BalanceAction> actions) {
         ExecutableDdlJob job = new ExecutableDdlJob();
+        job.setMaxParallelism(ec.getParamManager().getInt(ConnectionParams.REBALANCE_TASK_PARALISM));
         if (options.explain) {
             EmptyTask emptyTask = new EmptyTask(ec.getSchemaName());
             job.addTask(emptyTask);
@@ -203,6 +206,9 @@ public class LogicalRebalanceHandler extends LogicalCommonDdlHandler {
         if (sqlRebalance.isRebalanceTable()) {
             String tableName = RelUtils.stringValue(sqlRebalance.getTableName());
             actions = balancer.rebalanceTable(ec, tableName, options);
+        } else if(sqlRebalance.isRebalanceTableGroup()){
+            String tableGroupName = RelUtils.stringValue(sqlRebalance.getTableGroupName());
+            actions = balancer.rebalanceTableGroup(ec, tableGroupName, options);
         } else if (sqlRebalance.isRebalanceDatabase()) {
             actions = balancer.rebalanceDatabase(ec, options);
         } else if (sqlRebalance.isRebalanceCluster()) {
@@ -248,7 +254,7 @@ public class LogicalRebalanceHandler extends LogicalCommonDdlHandler {
         /**
          * Fast checker if the drain node can be deletable
          */
-        if (sqlRebalance.getDrainNode() != null) {
+        if (sqlRebalance.getDrainNode() != null && !sqlRebalance.isRebalanceTableGroup()) {
             PolicyDrainNode.DrainNodeInfo drainNodeInfo = PolicyDrainNode.DrainNodeInfo.parse(sqlRebalance.getDrainNode());
             drainNodeInfo.validate();
         }
@@ -264,17 +270,29 @@ public class LogicalRebalanceHandler extends LogicalCommonDdlHandler {
                 if (tryGetLock(metaDbConn, lockResource)) {
                     DdlPlanAccessor ddlPlanAccessor = new DdlPlanAccessor();
                     ddlPlanAccessor.setConnection(metaDbConn);
+//                        sqlRebalance.getTableGroupName();
                     List<DdlPlanRecord> ddlPlanRecords = ddlPlanAccessor.queryByType(sqlRebalance.getKind().name());
                     long planId;
-                    if (GeneralUtil.isEmpty(ddlPlanRecords)) {
+                    String resource = "";
+                    if(sqlRebalance.isRebalanceTableGroup()) {
+                        resource = String.format("tablegroup:%s", sqlRebalance.getTableGroupName());
+                    }
+                    AtomicReference<Boolean> replicateRequest = new AtomicReference<>(false);
+                    String finalResource = resource;
+                    ddlPlanRecords.forEach(o -> replicateRequest.updateAndGet(v -> v | o.getResource().equals(finalResource)));
+                    if (!replicateRequest.get() || sqlRebalance.isRebalanceTableGroup()) {
                         planId = ID_GENERATOR.nextId();
                         DdlPlanRecord ddlPlanRecord =
                             DdlPlanRecord.constructNewDdlPlanRecord(schemaName, planId,
                                 sqlRebalance.getKind().name(), sqlRebalance.toString());
+                            ddlPlanRecord.setResource(resource);
                         ddlPlanAccessor.addDdlPlan(ddlPlanRecord);
                     } else {
-                        Assert.assertTrue(ddlPlanRecords.size() == 1);
-                        planId = ddlPlanRecords.get(0).getPlanId();
+//                        Assert.assertTrue(ddlPlanRecords.size() == 1);
+                        List<DdlPlanRecord> matchDdlPlanRecords = ddlPlanRecords.stream().filter(o->o.getResource().equals(finalResource))
+                            .collect(Collectors.toList());
+                        Assert.assertTrue(matchDdlPlanRecords.size() == 1);
+                        planId = matchDdlPlanRecords.get(0).getPlanId();
                     }
                     result.addRow(new Object[] {planId});
                 }

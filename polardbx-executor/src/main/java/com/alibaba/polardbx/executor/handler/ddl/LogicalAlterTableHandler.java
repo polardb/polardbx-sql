@@ -23,12 +23,18 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterPartitionTableTruncatePartitionBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableOnlineModifyColumnJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.DropIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
@@ -49,20 +55,29 @@ import com.alibaba.polardbx.executor.ddl.job.validator.ddl.RepartitionValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
+import com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableAllocateLocalPartitionHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableEngineHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableExpireLocalPartitionHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableRemoveLocalPartitionHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableRepartitionLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddPartition;
@@ -79,6 +94,8 @@ import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
+import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlAddIndex;
@@ -87,11 +104,13 @@ import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableExchangePartition;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlModifyColumn;
+import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -176,7 +195,12 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         } else if (logicalAlterTable.isTruncatePartition()) {
             return buildAlterTableTruncatePartitionJob(logicalAlterTable, executionContext);
         } else {
-            return buildAlterTableJob(logicalAlterTable, executionContext);
+            if (logicalAlterTable.getAlterTablePreparedData().isOnlineModifyColumn()
+                || logicalAlterTable.getAlterTablePreparedData().isOnlineChangeColumn()) {
+                return buildAlterTableOnlineModifyColumnJob(logicalAlterTable, executionContext);
+            } else {
+                return buildAlterTableJob(logicalAlterTable, executionContext);
+            }
         }
     }
 
@@ -258,6 +282,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             String logicalSql =
                 String.format("alter tablegroup %s add partition (%s)", targetTableGroupName, partitionSpec);
             RelNode plan = Planner.getInstance().plan(logicalSql, executionContext).getPlan();
+
             LogicalAlterTableGroupAddPartition logicalAlterTableGroupAddPartition =
                 (LogicalAlterTableGroupAddPartition) plan;
             ExecutableDdlJob addPartitionJob = (ExecutableDdlJob) new LogicalAlterTableGroupAddPartitionHandler(repo)
@@ -391,6 +416,112 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         ).create();
     }
 
+    private DdlJob buildAlterTableOnlineModifyColumnJob(LogicalAlterTable logicalAlterTable,
+                                                        ExecutionContext executionContext) {
+        AlterTablePreparedData alterTablePreparedData = logicalAlterTable.getAlterTablePreparedData();
+        AlterTableWithGsiPreparedData alterTableWithGsiPreparedData =
+            logicalAlterTable.getAlterTableWithGsiPreparedData();
+
+        ExecutorContext executorContext = ExecutorContext.getContext(alterTablePreparedData.getSchemaName());
+        if (!executorContext.getStorageInfoManager().supportsAlterType()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "DN do not support online modify column");
+        }
+
+        DdlPhyPlanBuilder alterTableBuilder =
+            AlterTableBuilder.create(logicalAlterTable.relDdl, alterTablePreparedData, executionContext).build();
+        PhysicalPlanData physicalPlanData = alterTableBuilder.genPhysicalPlanData();
+
+        if (!alterTablePreparedData.isNewColumnNullable() && (executionContext.getSqlMode() == null
+            || !TStringUtil.containsIgnoreCase(executionContext.getSqlMode(), "STRICT_TRANS_TABLES"))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                "Do not support modify/change to not nullable column in non strict mode");
+        }
+
+        // Get old column type from show create table, wish we could rename column directly in DN someday
+        if (alterTablePreparedData.isOnlineModifyColumn() || alterTablePreparedData.isOnlineChangeColumn()) {
+            String targetTableName = alterTablePreparedData.getTableName();
+            LogicalShowCreateTableHandler logicalShowCreateTablesHandler = new LogicalShowCreateTableHandler(repo);
+
+            SqlShowCreateTable sqlShowCreateTable =
+                SqlShowCreateTable.create(SqlParserPos.ZERO, new SqlIdentifier(targetTableName, SqlParserPos.ZERO));
+            PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
+            ExecutionPlan showCreateTablePlan = Planner.getInstance().getPlan(sqlShowCreateTable, plannerContext);
+            LogicalShow logicalShowCreateTable = (LogicalShow) showCreateTablePlan.getPlan();
+
+            Cursor showCreateTableCursor =
+                logicalShowCreateTablesHandler.handle(logicalShowCreateTable, executionContext);
+
+            String createTableSql = null;
+
+            Row showCreateResult = showCreateTableCursor.next();
+            if (showCreateResult != null && showCreateResult.getString(1) != null) {
+                createTableSql = showCreateResult.getString(1);
+            } else {
+                GeneralUtil.nestedException("Get reference table architecture failed.");
+            }
+
+            SQLCreateTableStatement createTableStmt =
+                (SQLCreateTableStatement) FastsqlUtils.parseSql(createTableSql).get(0);
+
+            // Do not support if table contains fulltext index on any columns
+            if (createTableStmt.existFullTextIndex()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    "Do not support online modify column on table with fulltext index");
+            }
+
+            SQLColumnDefinition colDef = createTableStmt.getColumn(alterTablePreparedData.getModifyColumnName());
+
+            final boolean forceTypeConversion =
+                executionContext.getParamManager().getBoolean(ConnectionParams.OMC_FORCE_TYPE_CONVERSION);
+            if (!forceTypeConversion && TableColumnUtils.isUnsupportedType(colDef.getDataType().getName())) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                    String.format("Converting from %s is not supported", colDef.getDataType().getName()));
+            }
+
+            alterTablePreparedData.setModifyColumnType(
+                TableColumnUtils.getDataDefFromColumnDef(alterTablePreparedData.getModifyColumnName(),
+                    colDef.toString()));
+        }
+
+        List<PhysicalPlanData> gsiPhysicalPlanData = new ArrayList<>();
+        if (alterTableWithGsiPreparedData != null
+            && alterTableWithGsiPreparedData.getGlobalIndexPreparedData() != null) {
+            for (AlterTablePreparedData gsiTablePreparedData : alterTableWithGsiPreparedData.getGlobalIndexPreparedData()) {
+                DdlPhyPlanBuilder builder =
+                    AlterTableBuilder.create(logicalAlterTable.relDdl, gsiTablePreparedData, executionContext).build();
+                PhysicalPlanData phyPlanData = builder.genPhysicalPlanData();
+                phyPlanData.setSequence(null);
+                gsiPhysicalPlanData.add(phyPlanData);
+            }
+        }
+
+        if (alterTableWithGsiPreparedData != null
+            && alterTableWithGsiPreparedData.getClusteredIndexPrepareData() != null) {
+            for (AlterTablePreparedData gsiTablePreparedData : alterTableWithGsiPreparedData.getClusteredIndexPrepareData()) {
+                DdlPhyPlanBuilder builder =
+                    AlterTableBuilder.create(logicalAlterTable.relDdl, gsiTablePreparedData, executionContext).build();
+                PhysicalPlanData phyPlanData = builder.genPhysicalPlanData();
+                phyPlanData.setSequence(null);
+                gsiPhysicalPlanData.add(phyPlanData);
+            }
+        }
+
+        ExecutableDdlJob alterTableJob =
+            new AlterTableOnlineModifyColumnJobFactory(physicalPlanData, gsiPhysicalPlanData, alterTablePreparedData,
+                alterTableWithGsiPreparedData, logicalAlterTable, executionContext).create();
+
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(alterTablePreparedData.getTableName(),
+            alterTablePreparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(alterTablePreparedData.getSchemaName(), tableVersions);
+
+        alterTableJob.addTask(validateTableVersionTask);
+        alterTableJob.addTaskRelationship(validateTableVersionTask, alterTableJob.getHead());
+
+        return alterTableJob;
+    }
+
     private DdlJob buildAlterTableJob(LogicalAlterTable logicalAlterTable, ExecutionContext executionContext) {
         AlterTablePreparedData alterTablePreparedData = logicalAlterTable.getAlterTablePreparedData();
         CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTable);
@@ -398,15 +529,23 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             AlterTableBuilder.create(logicalAlterTable.relDdl, alterTablePreparedData, executionContext).build();
         PhysicalPlanData physicalPlanData = alterTableBuilder.genPhysicalPlanData();
 
-        ExecutableDdlJob alterTableJob =
-            new AlterTableJobFactory(physicalPlanData, alterTablePreparedData, logicalAlterTable, executionContext)
-                .create();
+        AlterTableJobFactory alterTableJobFactory =
+            new AlterTableJobFactory(physicalPlanData, alterTablePreparedData, logicalAlterTable, executionContext);
+
+        TableMeta tableMeta =
+            OptimizerContext.getContext(alterTablePreparedData.getSchemaName()).getLatestSchemaManager()
+                .getTable(alterTablePreparedData.getTableName());
+        if (tableMeta.isGsi()) {
+            alterTableJobFactory.withAlterGsi(true, tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName);
+        }
+
+        ExecutableDdlJob alterTableJob = alterTableJobFactory.create();
 
         Map<String, Long> tableVersions = new HashMap<>();
 
         // Apply local index modification to clustered-index table
         AlterTableWithGsiPreparedData gsiData = logicalAlterTable.getAlterTableWithGsiPreparedData();
-        if (gsiData != null) {
+        if (gsiData != null && !logicalAlterTable.getAlterTablePreparedData().isOnlineModifyColumnIndexTask()) {
             // add local index
             CreateIndexWithGsiPreparedData createIndexWithGsi = gsiData.getCreateIndexWithGsiPreparedData();
             if (createIndexWithGsi != null) {
@@ -450,10 +589,15 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             });
 
             for (AlterTablePreparedData clusteredTable : alterOnGsi) {
+                clusteredTable.setColumnAfterAnother(new ArrayList<>());
+                clusteredTable.setIsGsi(true);
+
                 DdlPhyPlanBuilder builder =
                     AlterTableBuilder.create(logicalAlterTable.relDdl, clusteredTable, executionContext).build();
 
                 PhysicalPlanData clusterIndexPlan = builder.genPhysicalPlanData();
+                clusterIndexPlan.setSequence(null);
+
                 AlterTableJobFactory jobFactory =
                     new AlterTableJobFactory(clusterIndexPlan, clusteredTable, logicalAlterTable, executionContext);
                 jobFactory.validateExistence(false);
@@ -477,6 +621,18 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
 
     private DdlJob buildRepartitionJob(LogicalAlterTable logicalAlterTable, ExecutionContext executionContext) {
         initPrimaryTableDefinition(logicalAlterTable, executionContext);
+
+        SqlAlterTablePartitionKey ast = (SqlAlterTablePartitionKey) logicalAlterTable.relDdl.sqlNode;
+
+        //validate
+        RepartitionValidator.validate(
+            ast.getSchemaName(),
+            ast.getPrimaryTableName(),
+            ast.getDbPartitionBy(),
+            ast.isBroadcast(),
+            ast.isSingle(),
+            false
+        );
 
         logicalAlterTable.prepareData();
 
@@ -517,17 +673,6 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         }
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData();
 
-        SqlAlterTablePartitionKey ast = (SqlAlterTablePartitionKey) logicalAlterTable.relDdl.sqlNode;
-
-        //validate
-        RepartitionValidator.validate(
-            ast.getSchemaName(),
-            ast.getPrimaryTableName(),
-            ast.getDbPartitionBy(),
-            ast.isBroadcast(),
-            ast.isSingle()
-        );
-
         return new RepartitionJobFactory(
             globalIndexPreparedData,
             repartitionPrepareData,
@@ -552,6 +697,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         ExecutableDdlJob gsiJob =
             CreatePartitionGsiJobFactory.create(logicalAlterTable.relDdl, globalIndexPreparedData, executionContext);
 
+        if (globalIndexPreparedData.isNeedToGetTableGroupLock()) {
+            return gsiJob;
+        }
         gsiJob.addTask(validateTableVersionTask);
         gsiJob.addTaskRelationship(validateTableVersionTask, gsiJob.getHead());
 
@@ -658,13 +806,17 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             String targetTableName =
                 executionContext.getParamManager().getString(ConnectionParams.REPARTITION_FORCE_GSI_NAME);
             if (StringUtils.isEmpty(targetTableName)) {
-                targetTableName = generateRandomGsiName(primaryTableName);
+                targetTableName = GsiUtils.generateRandomGsiName(primaryTableName);
             }
             ast.setLogicalSecondaryTableName(targetTableName);
 
             List<SqlIndexDefinition> gsiList = new ArrayList<>();
             SqlIndexDefinition repartitionGsi =
-                initIndexInfo(primaryTableInfo.getValue(), ast, primaryTableInfo.getKey());
+                AlterRepartitionUtils.initIndexInfo(
+                    primaryTableInfo.getValue(),
+                    ast,
+                    primaryTableInfo.getKey()
+                );
             gsiList.add(repartitionGsi);
             List<SqlAddIndex> sqlAddIndexList = gsiList.stream().map(e ->
                 new SqlAddIndex(SqlParserPos.ZERO, e.getIndexName(), e)
@@ -677,80 +829,6 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             addIndex.getIndexDef().setPrimaryTableNode(primaryTableInfo.getValue());
 
         }
-    }
-
-    private static String generateRandomGsiName(String logicalSourceTableName) {
-        String randomSuffix =
-            RandomStringUtils.randomAlphanumeric(RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME).toLowerCase();
-        String targetTableName = logicalSourceTableName + "_" + randomSuffix;
-        return targetTableName;
-    }
-
-    /**
-     * generate GSI according the primary table information
-     */
-    private static SqlIndexDefinition initIndexInfo(SqlCreateTable primaryTableNode,
-                                                    SqlAlterTablePartitionKey alterTablePartitionKey,
-                                                    String primaryTableDefinition) {
-        if (StringUtils.isEmpty(alterTablePartitionKey.getLogicalSecondaryTableName())) {
-            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, "partition table name is empty");
-        }
-        Set<String> partitionColumnSet = new HashSet<>();
-        if (!alterTablePartitionKey.isBroadcast() && !alterTablePartitionKey.isSingle()) {
-            SqlNode[] dbPartitionColumns = ((SqlBasicCall) alterTablePartitionKey.getDbPartitionBy()).getOperands();
-            partitionColumnSet.addAll(
-                Stream.of(dbPartitionColumns)
-                    .filter(e -> e instanceof SqlIdentifier)
-                    .map(e -> RelUtils.stringValue(e))
-                    .collect(Collectors.toSet()));
-            if (alterTablePartitionKey.getTablePartitionBy() != null) {
-                SqlNode[] tbPartitionColumns =
-                    ((SqlBasicCall) alterTablePartitionKey.getTablePartitionBy()).getOperands();
-                partitionColumnSet.addAll(
-                    Stream.of(tbPartitionColumns)
-                        .filter(e -> e instanceof SqlIdentifier)
-                        .map(e -> RelUtils.stringValue(e))
-                        .collect(Collectors.toSet()));
-            }
-        } else {
-            final String schemaName = alterTablePartitionKey.getOriginTableName().getComponent(0).getLastName();
-            final String sourceLogicalTable = alterTablePartitionKey.getOriginTableName().getComponent(1).getLastName();
-            TableMeta tableMeta =
-                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(sourceLogicalTable);
-            List<String> primaryKeys =
-                GlobalIndexMeta.getPrimaryKeys(tableMeta).stream().map(String::toLowerCase).collect(
-                    Collectors.toList());
-            partitionColumnSet.addAll(primaryKeys);
-        }
-
-        List<SqlIndexColumnName> indexColumns = partitionColumnSet.stream()
-            .map(e -> new SqlIndexColumnName(SqlParserPos.ZERO, new SqlIdentifier(e, SqlParserPos.ZERO), null, null))
-            .collect(Collectors.toList());
-
-        List<SqlIndexColumnName> coveringColumns = primaryTableNode.getColDefs().stream()
-            .filter(e -> !partitionColumnSet.contains(e.getKey().getLastName()))
-            .map(e -> new SqlIndexColumnName(SqlParserPos.ZERO, e.getKey(), null, null))
-            .collect(Collectors.toList());
-
-        SqlIndexDefinition indexDef = SqlIndexDefinition.globalIndex(SqlParserPos.ZERO,
-            false,
-            null,
-            null,
-            null,
-            new SqlIdentifier(alterTablePartitionKey.getLogicalSecondaryTableName(), SqlParserPos.ZERO),
-            (SqlIdentifier) primaryTableNode.getTargetTable(),
-            indexColumns,
-            coveringColumns,
-            alterTablePartitionKey.getDbPartitionBy(),
-            alterTablePartitionKey.getTablePartitionBy(),
-            alterTablePartitionKey.getTbpartitions(),
-            null,
-            new LinkedList<>());
-        indexDef.setBroadcast(alterTablePartitionKey.isBroadcast());
-        indexDef.setSingle(alterTablePartitionKey.isSingle());
-        indexDef.setPrimaryTableNode(primaryTableNode);
-        indexDef.setPrimaryTableDefinition(primaryTableDefinition);
-        return indexDef;
     }
 
 }

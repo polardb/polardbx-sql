@@ -16,8 +16,15 @@
 
 package com.alibaba.polardbx.common.properties;
 
+import com.alibaba.polardbx.common.statementsummary.StatementSummaryManager;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 
+import java.util.regex.Pattern;
+
+/**
+ * @version 1.0
+ */
 public class DynamicConfig {
 
     public static DynamicConfig getInstance() {
@@ -39,6 +46,19 @@ public class DynamicConfig {
                 xprotoMaxDnWaitConnection = parseValue(value, Long.class, xprotoMaxDnWaitConnectionDefault);
                 break;
 
+            case ConnectionProperties.XPROTO_ALWAYS_KEEP_FILTER_ON_XPLAN_GET:
+                xprotoAlwaysKeepFilterOnXplanGet =
+                    parseValue(value, Boolean.class, xprotoAlwaysKeepFilterOnXplanGetDefault);
+                break;
+
+            case ConnectionProperties.XPROTO_PROBE_TIMEOUT:
+                xprotoProbeTimeout = parseValue(value, Integer.class, xprotoProbeTimeoutDefault);
+                break;
+
+            case ConnectionProperties.XPROTO_GALAXY_PREPARE:
+                xprotoGalaxyPrepare = parseValue(value, Boolean.class, xprotoGalaxyPrepareDefault);
+                break;
+
             case ConnectionProperties.AUTO_PARTITION_PARTITIONS:
                 autoPartitionPartitions = parseValue(value, Long.class, autoPartitionPartitionsDefault);
                 break;
@@ -55,6 +75,9 @@ public class DynamicConfig {
             case ConnectionProperties.FORCE_RECREATE_GROUP_DATASOURCE:
                 enableCreateGroupDataSource = parseValue(value, Boolean.class, false);
                 break;
+            case ConnectionProperties.ENABLE_PLAN_TYPE_DIGEST:
+                enablePlanTypeDigest = parseValue(value, Boolean.class, true);
+                break;
             case ConnectionProperties.PURGE_HISTORY_MS: {
                 long tempPurgeHistoryMs = parseValue(value, Long.class, 600 * 1000L);
                 if (tempPurgeHistoryMs > 0 && tempPurgeHistoryMs < purgeHistoryMs) {
@@ -69,6 +92,80 @@ public class DynamicConfig {
                 maxPartitionColumnCount = parseValue(value, Integer.class, maxPartitionColumnCountDefault);
                 break;
 
+            case ConnectionProperties.MAX_SESSION_PREPARED_STMT_COUNT:
+                maxSessionPreparedStmtCount = parseValue(value, Integer.class, maxSessionPreparedStmtCountDefault);
+                break;
+
+            case ConnectionProperties.ENABLE_TRANS_LOG:
+                enableTransLog = parseValue(value, Boolean.class, true);
+                break;
+
+            case ConnectionProperties.PLAN_CACHE_EXPIRE_TIME:
+                planCacheExpireTime = parseValue(value, Integer.class, 12 * 3600 * 1000);   // 12h
+                break;
+            case ConnectionProperties.ENABLE_EXTREME_PERFORMANCE:
+                enableExtremePerformance = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENBALE_BIND_PARAM_TYPE:
+                enableBindType = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_CLEAN_FAILED_PLAN:
+                enableClearFailedPlan = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.USE_PARAMETER_DELEGATE:
+                useParameterDelegate = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.USE_JDK_DEFAULT_SER:
+                useJdkDefaultSer = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.ENABLE_STATEMENTS_SUMMARY:
+                int enableStatementsSummary = parseValue(value, Boolean.class, true) ? 1 : 0;
+                StatementSummaryManager.getInstance().getConfig().setEnableStmtSummary(enableStatementsSummary);
+                break;
+            case ConnectionProperties.STATEMENTS_SUMMARY_PERIOD_SEC:
+                long stmtSummaryRefreshInterval = parseValue(value, Long.class,
+                    (long) StatementSummaryManager.StatementSummaryConfig.USE_DEFAULT_VALUE);
+                StatementSummaryManager.getInstance().getConfig()
+                    .setStmtSummaryRefreshInterval(stmtSummaryRefreshInterval);
+                break;
+            case ConnectionProperties.STATEMENTS_SUMMARY_HISTORY_PERIOD_NUM:
+                int stmtSummaryHistorySize =
+                    parseValue(value, Integer.class, StatementSummaryManager.StatementSummaryConfig.USE_DEFAULT_VALUE);
+                StatementSummaryManager.getInstance().getConfig().setStmtSummaryHistorySize(stmtSummaryHistorySize);
+                break;
+            case ConnectionProperties.STATEMENTS_SUMMARY_MAX_SQL_TEMPLATE_COUNT:
+                int stmtSummaryMaxStmtCount =
+                    parseValue(value, Integer.class, StatementSummaryManager.StatementSummaryConfig.USE_DEFAULT_VALUE);
+                StatementSummaryManager.getInstance().getConfig().setStmtSummaryMaxStmtCount(stmtSummaryMaxStmtCount);
+                break;
+            case ConnectionProperties.STATEMENTS_SUMMARY_RECORD_INTERNAL:
+                int recordIntervalStatement = parseValue(value, Boolean.class, true) ? 1 : 0;
+                StatementSummaryManager.getInstance().getConfig().setRecordIntervalStatement(recordIntervalStatement);
+                break;
+            case ConnectionProperties.STATEMENTS_SUMMARY_MAX_SQL_LENGTH:
+                int stmtSummaryMaxSqlLength =
+                    parseValue(value, Integer.class, StatementSummaryManager.StatementSummaryConfig.USE_DEFAULT_VALUE);
+                StatementSummaryManager.getInstance().getConfig().setStmtSummaryMaxSqlLength(stmtSummaryMaxSqlLength);
+                break;
+            case ConnectionProperties.STATEMENTS_SUMMARY_PERCENT:
+                int stmtSummaryPercent = parseValue(value, Integer.class,
+                    StatementSummaryManager.StatementSummaryConfig.DEFAULT_VALUE_PERCENT);
+                StatementSummaryManager.getInstance().getConfig().setStmtSummaryPercent(stmtSummaryPercent);
+                break;
+            case ConnectionProperties.PASSWORD_CHECK_PATTERN:
+                String patternStr = parseValue(value, String.class, DEFAULT_PASSWORD_CHECK_PATTERN_STR);
+                if (StringUtils.isBlank(patternStr)) {
+                    patternStr = DEFAULT_PASSWORD_CHECK_PATTERN_STR;
+                }
+                Pattern pattern;
+                try {
+                    pattern = Pattern.compile(patternStr);
+                } catch (Throwable t) {
+                    logger.error(t.getMessage());
+                    pattern = DEFAULT_PASSWORD_CHECK_PATTERN;
+                }
+                this.passwordCheckPattern = pattern;
+                break;
             default:
                 break;
             }
@@ -99,6 +196,32 @@ public class DynamicConfig {
         return xprotoMaxDnWaitConnection;
     }
 
+    // XPROTO_ALWAYS_KEEP_FILTER_ON_XPLAN_GET
+    private static final boolean xprotoAlwaysKeepFilterOnXplanGetDefault =
+        parseValue(ConnectionParams.XPROTO_ALWAYS_KEEP_FILTER_ON_XPLAN_GET.getDefault(), Boolean.class, true);
+    private volatile boolean xprotoAlwaysKeepFilterOnXplanGet = xprotoAlwaysKeepFilterOnXplanGetDefault;
+
+    public boolean getXprotoAlwaysKeepFilterOnXplanGet() {
+        return xprotoAlwaysKeepFilterOnXplanGet;
+    }
+
+    // XPROTO_PROBE_TIMEOUT
+    private static final int xprotoProbeTimeoutDefault =
+        parseValue(ConnectionParams.XPROTO_PROBE_TIMEOUT.getDefault(), Integer.class, 5000);
+    private volatile int xprotoProbeTimeout = xprotoProbeTimeoutDefault;
+
+    public int getXprotoProbeTimeout() {
+        return xprotoProbeTimeout;
+    }
+
+    private static final boolean xprotoGalaxyPrepareDefault =
+        parseValue(ConnectionParams.XPROTO_GALAXY_PREPARE.getDefault(), Boolean.class, false);
+    private volatile boolean xprotoGalaxyPrepare = xprotoGalaxyPrepareDefault;
+
+    public boolean getXprotoGalaxyPrepare() {
+        return xprotoGalaxyPrepare;
+    }
+
     private static final long autoPartitionPartitionsDefault =
         parseValue(ConnectionParams.AUTO_PARTITION_PARTITIONS.getDefault(), Long.class, 64L);
     private volatile long autoPartitionPartitions = autoPartitionPartitionsDefault;
@@ -125,10 +248,22 @@ public class DynamicConfig {
         return keepTsoBasedCDC;
     }
 
+    private volatile boolean enableTransLog = true;
+
+    public boolean isEnableTransLog() {
+        return enableTransLog;
+    }
+
     private volatile boolean enableCreateGroupDataSource = false;
 
     public boolean forceCreateGroupDataSource() {
         return enableCreateGroupDataSource;
+    }
+
+    private volatile boolean enablePlanTypeDigest = true;
+
+    public boolean enablePlanTypeDigest() {
+        return enablePlanTypeDigest;
     }
 
     private static final long defaultPurgeHistoryMs = 600 * 1000L;
@@ -141,12 +276,70 @@ public class DynamicConfig {
         return purgeHistoryMs;
     }
 
+    private volatile int planCacheExpireTime = 12 * 3600 * 1000; // 12h
+
+    public int planCacheExpireTime() {
+        return planCacheExpireTime;
+    }
+
     private static final int maxPartitionColumnCountDefault =
         parseValue(ConnectionParams.MAX_PARTITION_COLUMN_COUNT.getDefault(), Integer.class, 3);
     private volatile int maxPartitionColumnCount = maxPartitionColumnCountDefault;
 
     public int getMaxPartitionColumnCount() {
         return maxPartitionColumnCount;
+    }
+
+    private volatile boolean enableExtremePerformance = false;
+
+    public boolean enableExtremePerformance() {
+        return enableExtremePerformance;
+    }
+
+    private volatile boolean enableBindType = true;
+
+    public boolean enableBindType() {
+        return enableBindType;
+    }
+
+    private volatile boolean enableClearFailedPlan = true;
+
+    public boolean enableClearFailedPlan() {
+        return enableClearFailedPlan;
+    }
+
+    private volatile boolean useParameterDelegate = true;
+
+    public boolean useParameterDelegate() {
+        return useParameterDelegate;
+    }
+
+    private volatile boolean useJdkDefaultSer = true;
+
+    public boolean useJdkDefaultSer() {
+        return useJdkDefaultSer;
+    }
+
+    private static final int maxSessionPreparedStmtCountDefault =
+        parseValue(ConnectionParams.MAX_SESSION_PREPARED_STMT_COUNT.getDefault(), Integer.class, 100);
+
+    private volatile int maxSessionPreparedStmtCount = maxSessionPreparedStmtCountDefault;
+
+    public int getMaxSessionPreparedStmtCount() {
+        return maxSessionPreparedStmtCount;
+    }
+
+    private static final String DEFAULT_PASSWORD_CHECK_PATTERN_STR = "^[0-9A-Za-z@#$%^&+=]{6,20}$";
+    private static final Pattern DEFAULT_PASSWORD_CHECK_PATTERN = Pattern.compile(DEFAULT_PASSWORD_CHECK_PATTERN_STR);
+
+    private volatile Pattern passwordCheckPattern = DEFAULT_PASSWORD_CHECK_PATTERN;
+
+    public Pattern getPasswordCheckPattern() {
+        return passwordCheckPattern;
+    }
+
+    public boolean isDefaultPasswordCheckPattern() {
+        return DEFAULT_PASSWORD_CHECK_PATTERN_STR.equals(passwordCheckPattern.pattern());
     }
 
     public static <T> T parseValue(String value, Class<T> type, T defaultValue) {

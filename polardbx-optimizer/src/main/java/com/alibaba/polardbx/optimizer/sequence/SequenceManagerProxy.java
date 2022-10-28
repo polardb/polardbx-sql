@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
 
+import java.util.Map;
+
 /**
  * sequence proxy实现,基于extenstion查找具体实现
  *
@@ -37,12 +39,10 @@ public class SequenceManagerProxy extends AbstractLifecycle implements ISequence
                 if (instance == null) {
                     SequenceManagerProxy seq = new SequenceManagerProxy();
                     seq.init();
-
                     instance = seq;
                 }
             }
         }
-
         return instance;
     }
 
@@ -67,6 +67,11 @@ public class SequenceManagerProxy extends AbstractLifecycle implements ISequence
     @Override
     public Long nextValue(String schemaName, String seqName, int batchSize) {
         return delegate.nextValue(schemaName, seqName, batchSize);
+    }
+
+    @Override
+    public Long currValue(String schemaName, String seqName) {
+        return delegate.currValue(schemaName, seqName);
     }
 
     @Override
@@ -95,11 +100,6 @@ public class SequenceManagerProxy extends AbstractLifecycle implements ISequence
     }
 
     @Override
-    public void validateDependence(String schemaName) {
-        delegate.validateDependence(schemaName);
-    }
-
-    @Override
     public Type checkIfExists(String schemaName, String seqName) {
         return delegate.checkIfExists(schemaName, seqName);
     }
@@ -125,11 +125,6 @@ public class SequenceManagerProxy extends AbstractLifecycle implements ISequence
     }
 
     @Override
-    public boolean isCustomUnitGroupSeqSupported(String schemaName) {
-        return delegate.isCustomUnitGroupSeqSupported(schemaName);
-    }
-
-    @Override
     public int[] getCustomUnitArgsForGroupSeq(String schemaName) {
         return delegate.getCustomUnitArgsForGroupSeq(schemaName);
     }
@@ -137,5 +132,15 @@ public class SequenceManagerProxy extends AbstractLifecycle implements ISequence
     @Override
     public boolean areAllSequencesSameType(String schemaName, Type seqType) {
         return delegate.areAllSequencesSameType(schemaName, seqType);
+    }
+
+    @Override
+    public void reloadConnProps(String schemaName, Map<String, Object> connProps) {
+        delegate.reloadConnProps(schemaName, connProps);
+    }
+
+    @Override
+    public void resetNewSeqResources(String schemaName) {
+        delegate.resetNewSeqResources(schemaName);
     }
 }

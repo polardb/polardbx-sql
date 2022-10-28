@@ -42,6 +42,12 @@ public class RexDynamicParam extends RexVariable {
    *  index = -3, it means the content of RexDynamicParam is apply subquery.
    */
   private final int     index;
+
+  // index for IN expr
+  private int subIndex = -1;
+
+  // the col index of ROW expr
+  private int skIndex = -1;
   private       RelNode rel;
   private       Object  value;
   private       boolean maxOnerow = true;
@@ -51,6 +57,7 @@ public class RexDynamicParam extends RexVariable {
   private SemiJoinType semiType;
   private Enum dynamicType = DYNAMIC_TYPE_VALUE.DEFAULT;
   private List<RexNode> leftCondition;
+  private String dynamicRexName;
 
   //~ Constructors -----------------------------------------------------------
 
@@ -65,6 +72,7 @@ public class RexDynamicParam extends RexVariable {
       int index) {
     super("?" + index, type);
     this.index = index;
+    this.dynamicRexName = this.name;
   }
 
   public RexDynamicParam(
@@ -74,25 +82,42 @@ public class RexDynamicParam extends RexVariable {
     this.index = index;
     assert dynamicType != null;
     this.dynamicType = dynamicType;
+    this.dynamicRexName = this.name;
   }
 
   public RexDynamicParam(
           RelDataType type,
           int index,
           RelNode rel) {
-    super("subquery", type);
+    super(buildDigiestWithSubQuery(index, rel, null, null, null, DYNAMIC_TYPE_VALUE.DEFAULT), type);
     this.index = index;
     this.rel = rel;
+    this.dynamicType = DYNAMIC_TYPE_VALUE.DEFAULT;
+    this.dynamicRexName = this.name;
+  }
+
+  public RexDynamicParam(
+      RelDataType type,
+      int index,
+      Enum dynamicType,
+      RelNode rel) {
+    super(buildDigiestWithSubQuery(index, rel, null, null, null, dynamicType), type);
+    this.index = index;
+    this.rel = rel;
+    this.dynamicType = dynamicType;
+    this.dynamicRexName = this.name;
   }
 
   public RexDynamicParam(RelDataType type, int index, RelNode rel, ImmutableList<RexNode> operands, SqlOperator op,
                          SqlKind kind) {
-    super("subquery", type);
+    super(buildDigiestWithSubQuery(index, rel, operands, op, kind, DYNAMIC_TYPE_VALUE.DEFAULT), type);
     this.index = index;
     this.rel = rel;
     this.subqueryOperands = operands;
     this.subqueryOp = op;
     this.subqueryKind = kind;
+    this.dynamicType = DYNAMIC_TYPE_VALUE.DEFAULT;
+    this.dynamicRexName = this.name;
   }
 
     //~ Methods ----------------------------------------------------------------
@@ -119,10 +144,21 @@ public class RexDynamicParam extends RexVariable {
 
   public void setRel(RelNode rel) {
     this.rel = rel;
+    this.digest = buildDigiestWithSubQuery(index, this.rel, null, null, null, this.dynamicType);
+    this.dynamicRexName = this.digest;
   }
 
   public Object getValue() {
     return value;
+  }
+
+  @Override
+  public String toString() {
+    if (getSubIndex() == -1) {
+      return getName();
+    } else {
+      return getName() + ":" + getSubIndex() + ( getSkIndex() >= 0 ? ":" + getSkIndex() : "") ;
+    }
   }
 
   public void setValue(Object value) {
@@ -181,6 +217,27 @@ public class RexDynamicParam extends RexVariable {
     this.maxOnerow = maxOnerow;
   }
 
+  public int getSubIndex() {
+    return subIndex;
+  }
+
+  public void setSubIndex(int subIndex) {
+    this.subIndex = subIndex;
+  }
+
+  public int getSkIndex() {
+    return skIndex;
+  }
+
+  public void setSkIndex(int skIndex) {
+    this.skIndex = skIndex;
+  }
+
+  @Override
+  public String getName() {
+    return this.dynamicRexName;
+  }
+
   //~ Enum
   public enum DYNAMIC_SPECIAL_VALUE{
     EMPTY,
@@ -194,9 +251,76 @@ public class RexDynamicParam extends RexVariable {
      */
     SINGLE_PARALLEL,
     SEQUENCE,
-    REX_CALL
+    REX_CALL,
+
+    /**
+     * Only used as a temporary variable by performing SubQuery-In Pruning of new Partitioned table,
+     * the value type of SUBQUERY_TEMP_VAR means the value of this RexDynamicParam
+     * is from the ec.ScalarSubQueryExecContext.nextValue() instead of fetching from ec.getParams()
+     * <pre>
+     *     e.g The shard predicate "shardKey in (select a from tbl order by limit 5)" are as followed steps:
+     *     =>1. build: shardKey in (scalarSubQuery), scalarSubQuery="select a from tbl order by limit 5"
+     *     =>2. eval subQuery value, shardKey in (scalarSubQuery),
+     *            scalarSubQuery="1,2,3,4,5" which values are saved in ec.ScalarSubQueryExecContext
+     *     =>3. pruning: shardKey in (scalarSubQuery),scalarSubQuery="1,2,3,4,5"
+     *            for each val in scalarSubQuery
+     *              SUBQUERY_TEMP_VAR=val
+     *              partBitSet |= pruning(shardKey=(SUBQUERY_TEMP_VAR)),
+     *                  which SUBQUERY_TEMP_VAR is from  ec.ScalarSubQueryExecContext
+     *           return partBitSet
+     * </pre>
+     */
+    SUBQUERY_TEMP_VAR
   }
 
+  private static String buildDigiestWithSubQuery(int index,
+                                                 RelNode rel,
+                                                 ImmutableList<RexNode> operands,
+                                                 SqlOperator op,
+                                                 SqlKind kind,
+                                                 Enum dynamicType) {
+
+    StringBuilder sb = new StringBuilder();
+    if ( dynamicType != null && dynamicType == DYNAMIC_TYPE_VALUE.SUBQUERY_TEMP_VAR) {
+      sb.append("#tmpVar@(relId=").append(rel.getId()).append(")");
+      return sb.toString();
+    }
+
+    if (index == -2) {
+      sb.append("scalarSubQueryParam");
+    } else if (index == -3) {
+      sb.append("applySubQueryParam");
+    }
+    sb.append("[");
+    if (rel != null) {
+      sb.append("relId=").append(rel.getId());
+      sb.append(",relatedId=").append(rel.getRelatedId());
+    }
+
+    if (op != null) {
+      sb.append(",");
+      sb.append("op=").append(op);
+    }
+
+    if (kind != null) {
+      sb.append(",");
+      sb.append("kind=").append(kind);
+    }
+
+    if (operands != null) {
+      sb.append(",");
+      sb.append("rexOp=[");
+      for (int i = 0; i < operands.size(); i++) {
+        if (i > 0) {
+          sb.append(",");
+        }
+        sb.append(operands.get(i).digest);
+      }
+      sb.append("]");
+    }
+    sb.append("]");
+    return sb.toString();
+  }
 }
 
 // End RexDynamicParam.java

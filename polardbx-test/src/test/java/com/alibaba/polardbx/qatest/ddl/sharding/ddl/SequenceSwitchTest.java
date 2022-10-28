@@ -55,7 +55,7 @@ public class SequenceSwitchTest extends DDLBaseNewDBTestCase {
      */
     @Test
     public void testWhereSequenceCreated() throws Exception {
-        dropSeqence(seqName);
+        dropSequence(seqName);
 
         String sqlCreate = "create sequence " + seqName;
         JdbcUtil.executeUpdateSuccess(tddlConnection, sqlCreate);
@@ -65,7 +65,7 @@ public class SequenceSwitchTest extends DDLBaseNewDBTestCase {
 
         Assert.assertTrue(newSeq || oldSeq);
 
-        dropSeqence(seqName);
+        dropSequence(seqName);
     }
 
 }

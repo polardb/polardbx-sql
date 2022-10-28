@@ -49,7 +49,8 @@ public class LogicalAlterTableAllocateLocalPartitionHandler extends LogicalCommo
 
         //3. 执行
         ReorganizeLocalPartitionJobFactory jobFactory =
-            new ReorganizeLocalPartitionJobFactory(schemaName, primaryTableName, logicalDdlPlan.relDdl, executionContext);
+            new ReorganizeLocalPartitionJobFactory(schemaName, primaryTableName, logicalDdlPlan.relDdl,
+                executionContext);
         return jobFactory.create();
     }
 

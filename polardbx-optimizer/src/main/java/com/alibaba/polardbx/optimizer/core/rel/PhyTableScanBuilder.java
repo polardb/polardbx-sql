@@ -16,25 +16,48 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
-import com.alibaba.polardbx.optimizer.core.dialect.DbType;
-import com.alibaba.polardbx.optimizer.core.rel.util.DynamicParamInfo;
-import com.alibaba.polardbx.optimizer.core.rel.util.IndexedDynamicParamInfo;
-import com.alibaba.polardbx.optimizer.core.rel.util.RuntimeFilterDynamicParamInfo;
-import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
-import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
-import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
-import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
-import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.google.common.base.Preconditions;
-import com.google.protobuf.ByteString;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
+import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.jdbc.UnionBytesSql;
+import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.planner.Xplanner.SpecialFunctionRelFinder;
+import com.alibaba.polardbx.optimizer.core.rel.util.DynamicParamInfo;
+import com.alibaba.polardbx.optimizer.core.rel.util.IndexedDynamicParamInfo;
+import com.alibaba.polardbx.optimizer.core.rel.util.RuntimeFilterDynamicParamInfo;
+import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.rule.TableRule;
+import com.alibaba.polardbx.optimizer.utils.TargetTableInfo;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.protobuf.ByteString;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -52,9 +75,7 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.Util;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -66,7 +87,6 @@ import static org.apache.calcite.sql.SqlKind.PLUS;
 /**
  * 构建 PhyTableOperation, 做 UNION 优化
  * <p>
- * TODO: UNION 优化需要根据 HINT 以及其他参数控制
  *
  * @author lingce.ldm 2017-11-15 14:00
  */
@@ -105,10 +125,12 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
     protected final List<String> logicalTableNames;
     protected UnionOptHelper unionOptHelper;
     protected ExecutionContext executionContext;
+    protected boolean buildForPushDownOneShardOnly = false;
 
     public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
                                ExecutionContext executionContext, RelNode parent, DbType dbType,
-                               RelDataType rowType, String schemaName, List<String> logicalTableNames) {
+                               RelDataType rowType, String schemaName, List<String> logicalTableNames,
+                               boolean useCache) {
         this.executionContext = executionContext;
         this.targetTables = targetTables;
         this.params = executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
@@ -116,7 +138,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         this.dbType = dbType;
         this.rowType = rowType;
 
-        boolean usingPhySqlCache = executionContext.enablePhySqlCache();
+        boolean usingPhySqlCache = executionContext.enablePhySqlCache() & useCache;
         if (usingPhySqlCache &&
             (executionContext.getCorrelateFieldInViewMap() == null || executionContext
                 .getCorrelateFieldInViewMap().isEmpty())) {
@@ -124,7 +146,8 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
             this.sqlTemplate.accept(new FetchPreprocessor(params, true));
         } else {
             this.sqlTemplate = (SqlSelect) sqlTemplate.accept(
-                new ReplaceTableNameWithSomethingVisitor(executionContext.getCorrelateFieldInViewMap(), schemaName,
+                new ReplaceTableNameWithSomethingVisitor(executionContext.getCorrelateFieldInViewMap(),
+                    schemaName,
                     executionContext) {
                     @Override
                     protected SqlNode buildSth(SqlNode sqlNode) {
@@ -143,7 +166,14 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                                ExecutionContext executionContext, RelNode parent, DbType dbType, String schemaName,
                                List<String> logicalTableName) {
         this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(), schemaName,
-            logicalTableName);
+            logicalTableName, true);
+    }
+
+    public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
+                               ExecutionContext executionContext, RelNode parent, DbType dbType, String schemaName,
+                               List<String> logicalTableName, boolean useCache) {
+        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(), schemaName,
+            logicalTableName, useCache);
     }
 
     private static class FetchPreprocessor extends SqlShuttle {
@@ -238,39 +268,171 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
     public List<RelNode> build(ExecutionContext executionContext) {
         convertParameters(this.params, executionContext);
 
-        List<RelNode> phyTableScans = new ArrayList<>();
+        List<RelNode> allPhyTableScans = new ArrayList<>();
         CursorMeta cursorMeta = CursorMeta.build(CalciteUtils.buildColumnMeta(rowType, "TableScan"));
 
-        String sqlTemplateStr;
-        if (parent instanceof LogicalView
-            && ((LogicalView) parent).getSqlTemplate() == sqlTemplate) {
-            sqlTemplateStr = ((LogicalView) parent).getSqlTemplateStr();
+        final XPlanTemplate XPlan;
+        final BytesSql bytesSql;
+        if (parent instanceof LogicalView && ((LogicalView) parent).getSqlTemplate(executionContext) == sqlTemplate) {
+            bytesSql = ((LogicalView) parent).getBytesSql(sqlTemplate);
+            XPlan = ((LogicalView) parent).getXPlan();
         } else {
-            sqlTemplateStr = RelUtils.toNativeSql(sqlTemplate, dbType);
+            bytesSql = RelUtils.toNativeBytesSql(sqlTemplate, dbType);
+            XPlan = null;
         }
 
         ByteString sqlTemplateDigest = null;
         // Init sql digest.
         try {
-            sqlTemplateDigest = com.google.protobuf.ByteString
-                .copyFrom(MessageDigest.getInstance("md5").digest(sqlTemplateStr.getBytes()));
+            sqlTemplateDigest = bytesSql.digest();
         } catch (Exception ignore) {
         }
 
-        ShardPlanMemoryContext shardPlanMemoryContext = buildShardPlanMemoryContext(parent,
-            sqlTemplateStr,
-            (AbstractRelNode) parent,
-            this.params,
-            this.targetTables,
-            this.executionContext);
+        // prepare GP digest
+        final ByteString galaxyPrepareDigest = parent instanceof LogicalView ?
+            ((LogicalView) parent).getGalaxyPrepareDigest(executionContext, bytesSql) :
+            Planner.calcGalaxyPrepareDigest(schemaName, bytesSql, logicalTableNames, executionContext);
+        final boolean supportGalaxyPrepare;
+        if (null == galaxyPrepareDigest) {
+            supportGalaxyPrepare = false;
+        } else if (parent instanceof LogicalView) {
+            supportGalaxyPrepare = ((LogicalView) parent).isSupportGalaxyPrepare();
+        } else {
+            final SpecialFunctionRelFinder finder = new SpecialFunctionRelFinder();
+            finder.go(parent);
+            supportGalaxyPrepare = finder.supportGalaxyPrepare();
+        }
+
+        if (parent instanceof LogicalView) {
+            LogicalView lv = (LogicalView) parent;
+            boolean isNeedPrune = isNeedPrune((LogicalView) parent, executionContext);
+            if (isNeedPrune) {
+                /**
+                 * prune step 1: find all raw strings
+                 */
+                Map<Integer, RawString> rawStrings = findAllRawStrings(executionContext);
+
+                // step 2: prune args(rawstring)
+                int step = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_STEP_SIZE);
+                int maxPruneTime = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_MAX_TIME);
+                if (rawStrings.size() == 1) {
+                    RawString r = rawStrings.values().iterator().next();
+                    step = r.size() / maxPruneTime > step ? r.size() / maxPruneTime : step;
+                    int currenteIndex = 0;
+                    Map<Pair<String, List<String>>, Parameters> pruneRawStringMap = Maps.newHashMap();
+                    while (currenteIndex < r.size()) {
+                        Parameters parameters = executionContext.getParams().clone();
+
+                        // split rawstring ( args of in expr)
+                        PruneRawString p =
+                            new PruneRawString(r.getObjList(), PruneRawString.PRUNE_MODE.RANGE, currenteIndex,
+                                (currenteIndex + step) > r.size() ? r.size() : (currenteIndex + step),
+                                null);
+
+                        // sub parameter
+                        ParameterContext parameterContext = new ParameterContext();
+                        Object[] objs = new Object[2];
+                        objs[0] = rawStrings.keySet().iterator().next();
+                        objs[1] = p;
+                        parameterContext.setArgs(objs);
+                        parameterContext.setParameterMethod(ParameterMethod.setObject1);
+                        parameters.getCurrentParameter().put(rawStrings.keySet().iterator().next(), parameterContext);
+
+                        // sub context
+                        ExecutionContext e = executionContext.copy(parameters);
+
+                        // cal prune
+                        Map<String, List<List<String>>> groupAndTables = lv.buildTargetTables(e);
+
+                        for (Map.Entry<String, List<List<String>>> entry1 : groupAndTables.entrySet()) {
+                            String group = entry1.getKey();
+                            List<List<String>> tables = entry1.getValue();
+                            for (List<String> tbls : tables) {
+                                Pair<String, List<String>> pairs = new Pair<>(group, tbls);
+                                if (pruneRawStringMap.get(pairs) == null) {
+                                    pruneRawStringMap.put(pairs, parameters);
+                                } else {
+                                    pruneRawStringMap.put(pairs,
+                                        mergeRawStringParameters(parameters, pruneRawStringMap.get(pairs)));
+                                }
+                            }
+                        }
+                        currenteIndex += step;
+                    }
+
+                    executionContext.setPruneRawStringMap(pruneRawStringMap);
+                }
+            }
+        }
+
+        int totalCount = 0;
+        for (Map.Entry<String, List<List<String>>> t : targetTables.entrySet()) {
+            totalCount += t.getValue().size();
+        }
+
+        String schemaName = this.schemaName;
+        List<String> logTblNames = this.logicalTableNames;
+        Map<String, List<List<String>>> tmpTargetTables = targetTables;
+        SqlSelect.LockMode lockMode = sqlTemplate.getLockMode();
+        boolean isForUpdate =
+            lockMode == SqlSelect.LockMode.EXCLUSIVE_LOCK || lockMode == SqlSelect.LockMode.SHARED_LOCK;
+
+
+        Boolean enableGrpParallelism =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_GROUP_PARALLELISM);
+        if (enableGrpParallelism) {
+            TargetTableInfo targetTableInfo =
+                PhyTableOperationUtil.groupTargetTablesByGroupConnId(schemaName, logTblNames, targetTables, isForUpdate,
+                    executionContext);
+            ShardPlanMemoryContext shardPlanMemoryContext = buildShardPlanMemoryContext(parent,
+                bytesSql,
+                (AbstractRelNode) parent,
+                this.params,
+                tmpTargetTables,
+                this.executionContext);
+            for (Map<String, List<List<String>>> targeTableItemsOfOneGrpConnId : targetTableInfo.getGrpConnIdTargetTablesMap()
+                .values()) {
+                List<RelNode> phyTableScans =
+                    buildPhyScanOp(cursorMeta, bytesSql, XPlan, sqlTemplateDigest, supportGalaxyPrepare,
+                        galaxyPrepareDigest, targeTableItemsOfOneGrpConnId, totalCount, shardPlanMemoryContext);
+                allPhyTableScans.addAll(phyTableScans);
+            }
+        } else {
+            ShardPlanMemoryContext shardPlanMemoryContext = buildShardPlanMemoryContext(parent,
+                bytesSql,
+                (AbstractRelNode) parent,
+                this.params,
+                tmpTargetTables,
+                this.executionContext);
+            List<RelNode> phyTableScans =
+                buildPhyScanOp(cursorMeta, bytesSql, XPlan, sqlTemplateDigest, supportGalaxyPrepare,
+                    galaxyPrepareDigest, tmpTargetTables, totalCount, shardPlanMemoryContext);
+            allPhyTableScans.addAll(phyTableScans);
+        }
+
+        if (buildForPushDownOneShardOnly && allPhyTableScans.size() > 1) {
+            throw new IllegalArgumentException(
+                "Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly="
+                    + buildForPushDownOneShardOnly);
+        }
+        return allPhyTableScans;
+    }
+
+    private List<RelNode> buildPhyScanOp(CursorMeta cursorMeta, BytesSql bytesSql,XPlanTemplate XPlan, ByteString sqlTemplateDigest,
+                                        boolean supportGalaxyPrepare, ByteString galaxyPrepareDigest, Map<String, List<List<String>>> tmpTargetTables,
+                                         int totalPhyTblCnt, ShardPlanMemoryContext shardPlanMemoryContext) {
+        List<RelNode> phyTableScans = new ArrayList<>();
         MemoryAllocatorCtx maOfPlanBuildingPool = shardPlanMemoryContext.memoryAllocator;
         long phyOpMemSize = shardPlanMemoryContext.phyOpMemSize;
-        final XPlanTemplate XPlan = parent instanceof LogicalView ? ((LogicalView) parent).getXPlan() : null;
-        for (Map.Entry<String, List<List<String>>> t : targetTables.entrySet()) {
+
+        for (Map.Entry<String, List<List<String>>> t : tmpTargetTables.entrySet()) {
             String group = t.getKey();
             List<List<String>> tableNames = t.getValue();
             int realUnionSize =
-                unionOptHelper != null ? unionOptHelper.calMergeUnionSize(tableNames.size(), group) : unionSize;
+                unionOptHelper != null ? unionOptHelper.calMergeUnionSize(totalPhyTblCnt, tableNames.size(), group) :
+                    unionOptHelper != null ?
+                        unionOptHelper.calMergeUnionSize(totalPhyTblCnt, tableNames.size(), group) :
+                        unionSize;
             if (realUnionSize <= 0) {
                 /**
                  * UNION all native sql at one group.
@@ -281,14 +443,21 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                 PhyTableOperation phyTableOp = buildOnePhyTableOperatorForScan(group,
                     tableNames,
                     cursorMeta,
-                    sqlTemplateStr,
+                    bytesSql,
                     1,
                     rowType,
+                    XPlan,
+                    sqlTemplateDigest,
+                    supportGalaxyPrepare,
+                    galaxyPrepareDigest,
                     maOfPlanBuildingPool);
-                phyTableOp.setLogicalTableNames(logicalTableNames);
-                phyTableOp.setXTemplate(XPlan);
-                phyTableOp.setSqlDigest(sqlTemplateDigest);
+
+//                phyTableOp.setLogicalTableNames(logicalTableNames);
+//                phyTableOp.setXTemplate(XPlan);
+//                phyTableOp.setSqlDigest(sqlTemplateDigest);
+
                 phyTableScans.add(phyTableOp);
+
             } else {
                 for (int i = 0; i < tableNames.size(); ) {
                     int endIndex = i + realUnionSize;
@@ -301,19 +470,55 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     PhyTableOperation phyTableOp = buildOnePhyTableOperatorForScan(group,
                         subTableNames,
                         cursorMeta,
-                        sqlTemplateStr,
+                        bytesSql,
                         realUnionSize,
                         rowType,
+                        XPlan,
+                        sqlTemplateDigest,
+                        supportGalaxyPrepare,
+                        galaxyPrepareDigest,
                         maOfPlanBuildingPool);
-                    phyTableOp.setLogicalTableNames(logicalTableNames);
-                    phyTableOp.setXTemplate(XPlan);
-                    phyTableOp.setSqlDigest(sqlTemplateDigest);
+//                    phyTableOp.setLogicalTableNames(logicalTableNames);
+//                    phyTableOp.setXTemplate(XPlan);
+//                    phyTableOp.setSqlDigest(sqlTemplateDigest);
+
                     phyTableScans.add(phyTableOp);
                     i = endIndex;
                 }
             }
         }
         return phyTableScans;
+    }
+
+    private Parameters mergeRawStringParameters(Parameters parameterContexts,
+                                                Parameters parameterContexts1) {
+        Map<Integer, ParameterContext> map = parameterContexts.getCurrentParameter();
+        for (Map.Entry<Integer, ParameterContext> entry : map.entrySet()) {
+            if (entry.getValue() != null && entry.getValue().getValue() instanceof PruneRawString) {
+                PruneRawString pruneRawString = (PruneRawString) entry.getValue().getValue();
+                PruneRawString pruneRawString1 =
+                    (PruneRawString) parameterContexts1.getCurrentParameter().get(entry.getKey()).getValue();
+                pruneRawString.merge(pruneRawString1);
+            }
+        }
+        return new Parameters(map);
+    }
+
+    private Map<Integer, RawString> findAllRawStrings(ExecutionContext executionContext) {
+        Map<Integer, RawString> allRawString = Maps.newHashMap();
+        if (executionContext.getParams() != null) {
+            Map<Integer, ParameterContext> parameterContextMap = executionContext.getParams().getCurrentParameter();
+            for (Map.Entry<Integer, ParameterContext> entry : parameterContextMap.entrySet()) {
+                if (entry.getValue() != null && entry.getValue().getValue() instanceof RawString) {
+                    RawString rawString = (RawString) entry.getValue().getValue();
+                    int pruneSize = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_SIZE);
+                    if (rawString.size() > pruneSize) {
+                        allRawString.put(entry.getKey(), rawString);
+                    }
+                }
+            }
+        }
+        return allRawString;
     }
 
     /**
@@ -343,64 +548,20 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         return;
     }
 
-//    public List<ParameterContext> buildParams(PhyTableOperation phyTableOp) {
-//        Preconditions.checkArgument(CollectionUtils.isNotEmpty(phyTableOp.getTableNames()));
-//
-//        List<ParameterContext> params = new ArrayList<>();
-//        for (List<String> ts : phyTableOp.getTableNames()) {
-//            Preconditions.checkArgument(CollectionUtils.isNotEmpty(ts));
-//
-//            int tableIndex = -1;
-//            for (int i : paramIndex) {
-//                if (i == TABLE_NAME_PARAM_INDEX) {
-//                    tableIndex += 1;
-//                    params.add(buildParameterContextForTableName(ts.get(tableIndex), 0));
-//                } else if (i == SCALAR_SUBQUERY_PARAM_INDEX) {
-//                    // do nothing
-//                } else if (i == APPLY_SUBQUERY_PARAM_INDEX) {
-//                    // do nothing
-//                } else {
-//                    params.add(this.params.get(i + 1));
-//                }
-//            }
-//        }
-//        return params;
-//    }
-//
-//    public String buildSql(PhyTableOperation phyTableOp, String prefix) {
-//        return RelUtils.unionSql(phyTableOp.getTableNames().size(),
-//            phyTableOp.getNativeSql(),
-//            sqlTemplate,
-//            dbType,
-//            prefix);
-//    }
-
-    /**
-     * 构建 SQL 对应的参数信息
-     */
-//    protected Map<Integer, ParameterContext> buildParams(List<List<String>> tableNames) {
-//        Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
-//
-//        int index = 1;
-//        Map<Integer, ParameterContext> params = new HashMap<>();
-//        for (List<String> ts : tableNames) {
-//            index = buildParam(params, index, ts);
-//        }
-//        return params;
-//    }
-    public List<ParameterContext> buildParams(List<List<String>> tableNames) {
+    public List<ParameterContext> buildParams(String group, List<List<String>> tableNames) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
 
         List<ParameterContext> results = new ArrayList<>();
         for (List<String> ts : tableNames) {
             Preconditions.checkArgument(CollectionUtils.isNotEmpty(ts));
-            results.addAll(buildSplitParams(ts));
+            results.addAll(buildSplitParams(group, ts, false));
         }
         return results;
     }
 
-    public List<ParameterContext> buildSplitParams(List<String> tables) {
+    public List<ParameterContext> buildSplitParams(String group, List<String> tables, boolean useDelegate) {
         List<ParameterContext> results = new ArrayList<>();
+        Map<Integer, ParameterContext> currentParams = executionContext.getPruneParams(group, tables);
         int tableIndex = -1;
         for (DynamicParamInfo dynamicParamInfo : dynamicParamList) {
             if (dynamicParamInfo instanceof IndexedDynamicParamInfo) {
@@ -409,11 +570,28 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     tableIndex += 1;
                     results.add(PlannerUtils.buildParameterContextForTableName(tables.get(tableIndex), 0));
                 } else if (i == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
+                    int dynamicKey = ((IndexedDynamicParamInfo) dynamicParamInfo).getDynamicKey();
+                    if (dynamicKey != -1) {
+                        ParameterContext parameterContext = new ParameterContext();
+                        parameterContext.setParameterMethod(ParameterMethod.setObject1);
+                        Object[] args = new Object[2];
+                        args[1] = executionContext.getScalarSubqueryVal(dynamicKey);
+                        parameterContext.setArgs(args);
+                        results.add(parameterContext);
+                    }
                     // do nothing
                 } else if (i == PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
                     // do nothing
                 } else {
-                    results.add(this.params.get(i + 1));
+                    if (currentParams != null) {
+                        results.add(currentParams.get(i + 1));
+                    } else {
+                        if (useDelegate) {
+                            results.add(new ParameterContext(ParameterMethod.setDelegate, new Object[] {i + 1}));
+                        } else {
+                            results.add(params.get(i + 1));
+                        }
+                    }
                 }
             } else if (dynamicParamInfo instanceof RuntimeFilterDynamicParamInfo) {
                 results.add(((RuntimeFilterDynamicParamInfo) dynamicParamInfo).toParameterContext());
@@ -446,31 +624,6 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         }
         return results;
     }
-//    /**
-//     * Build parameters of NativeSql
-//     */
-//    protected int buildParam(Map<Integer, ParameterContext> params, int index, List<String> tableNames) {
-//        Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
-//
-//        int tableIndex = -1;
-//        for (int i : paramIndex) {
-//            if (i == TABLE_NAME_PARAM_INDEX) {
-//
-//                tableIndex += 1;
-//                params.put(index, buildParameterContextForTableName(tableNames.get(tableIndex), index));
-//                index++;
-//
-//            } else if (i == SCALAR_SUBQUERY_PARAM_INDEX) {
-//                //do nothing
-//            } else if (i == APPLY_SUBQUERY_PARAM_INDEX) {
-//                //do nothing
-//            } else {
-//                params.put(index, changeParameterContextIndex(this.params.get(i + 1), index));
-//                index++;
-//            }
-//        }
-//        return index;
-//    }
 
     public void setUnionSize(int unionSize) {
         this.unionSize = unionSize;
@@ -480,80 +633,63 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         this.unionOptHelper = unionOptHelper;
     }
 
-    protected PhyTableOperation buildOnePhyTableOperatorForScan(String group, List<List<String>> tableNames,
-                                                                CursorMeta cursorMeta, String sqlTemplateStr,
-                                                                int realUnionSize, RelDataType rowTyppe,
+    protected PhyTableOperation buildOnePhyTableOperatorForScan(String group,
+                                                                List<List<String>> tableNames,
+                                                                CursorMeta cursorMeta,
+                                                                BytesSql bytesSql,
+                                                                int realUnionSize,
+                                                                RelDataType rowType,
+                                                                XPlanTemplate xPlan,
+                                                                ByteString sqlTemplateDigest,
+                                                                boolean supportGalaxyPrepare,
+                                                                ByteString galaxyPrepareDigest,
                                                                 MemoryAllocatorCtx maOfPlanBuildingPool) {
-        PhyTableOperation phyTableOp =
-            new PhyTableOperation(parent.getCluster(), parent.getTraitSet(), parent.getRowType(), cursorMeta, parent);
-        phyTableOp.setDbIndex(group);
-        phyTableOp.setTableNames(tableNames);
-        phyTableOp.setNativeSqlNode(sqlTemplate);
-        phyTableOp.setDbType(dbType);
-        phyTableOp.setSchemaName(schemaName);
-        phyTableOp.setLockMode(sqlTemplate.getLockMode());
-        phyTableOp.setSqlTemplate(sqlTemplateStr);
-        phyTableOp.setRowType(rowTyppe);
-        phyTableOp.setPhyOperationBuilder(this);
-        phyTableOp.setUnionSize(realUnionSize);
-        phyTableOp.setMemoryAllocator(maOfPlanBuildingPool);
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setSchemaName(schemaName);
+        buildParams.setLogTables(logicalTableNames);
+        buildParams.setGroupName(group);
+        buildParams.setPhyTables(tableNames);
+        buildParams.setSqlKind(SqlKind.SELECT);
+        buildParams.setLockMode(sqlTemplate.getLockMode());
+        buildParams.setOnlyOnePartitionAfterPruning(buildForPushDownOneShardOnly);
 
-        return phyTableOp;
+        buildParams.setLogicalPlan(parent);
+        buildParams.setCluster(parent.getCluster());
+        buildParams.setTraitSet(parent.getTraitSet());
+        buildParams.setRowType(rowType);
+        buildParams.setCursorMeta(cursorMeta);
+        buildParams.setNativeSqlNode(sqlTemplate);
+
+        buildParams.setxTemplate(xPlan);
+        buildParams.setSqlDigest(sqlTemplateDigest);
+        buildParams.setSupportGalaxyPrepare(supportGalaxyPrepare);
+        buildParams.setGalaxyPrepareDigest(galaxyPrepareDigest);
+        buildParams.setMemoryAllocator(maOfPlanBuildingPool);
+        buildParams.setBuilderCommon(this);
+        buildParams.setUnionSize(realUnionSize);
+
+        buildParams.setBytesSql(bytesSql);
+        buildParams.setDbType(dbType);
+        buildParams.setDynamicParams(params);
+        buildParams.setBatchParameters(null);
+
+        return PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
     }
 
     public Map<Integer, ParameterContext> getParams() {
         return params;
     }
 
-    public final static String UNION_KW = "\nUNION ALL\n";
-    public final static String ORDERBY_KW = " ORDER BY ";
-    public final static String LIMIT_KW = " LIMIT ";
-    public final static String UNION_ALIAS = "__DRDS_ALIAS_T_";
-
-    public String buildSql(PhyTableOperation phyTableOp, String prefix) {
-        int tableCount = phyTableOp.getTableNames().size();
+    public BytesSql buildBytesSql(PhyTableOperation phyTableOp) {
+        int unionSize = phyTableOp.getTableNames().size();
         String orderBy = buildPhysicalOrderByClause();
-        return buildPhysicalQuery(tableCount, phyTableOp.getNativeSql(), orderBy, prefix, -1);
-    }
-
-    /**
-     * Use union all to reduce the amount of physical sql.
-     *
-     * @param num number of sub-queries
-     */
-    public static String buildPhysicalQuery(int num, String sqlTemplateStr, String orderBy, String prefix, long limit) {
-        Preconditions.checkArgument(num > 0, "The number of tables must great than 0 when build UNION ALL sql");
-        if (num == 1) {
-            if (StringUtils.isNotEmpty(prefix)) {
-                return prefix + sqlTemplateStr;
-            } else {
-                return sqlTemplateStr;
-            }
+        Preconditions.checkArgument(unionSize > 0, "The number of tables must great than 0 when build UNION ALL sql");
+        if (unionSize == 1) {
+            return phyTableOp.getBytesSql();
         }
-
-        StringBuilder builder = new StringBuilder();
-        if (prefix != null) {
-            builder.append(prefix);
-        }
-        if (orderBy != null) {
-            builder.append("SELECT * FROM (");
-        }
-
-        builder.append("( ").append(sqlTemplateStr).append(" )");
-        for (int i = 1; i < num; i++) {
-            builder.append(UNION_KW).append("( ").append(sqlTemplateStr).append(") ");
-        }
-
-        // 最终生成的 UNION ALL SQL,需要在最外层添加 OrderBy
-        // 不能添加limit 和 offset, 有聚合函数的情况下会导致结果错误
-        if (orderBy != null) {
-            builder.append(") ").append(UNION_ALIAS).append(" ").append(ORDERBY_KW).append(orderBy);
-        }
-
-        if (limit > 0) {
-            builder.append(LIMIT_KW).append(limit);
-        }
-        return builder.toString();
+        return new UnionBytesSql(phyTableOp.getBytesSql().getBytesArray(), phyTableOp.getBytesSql().isParameterLast(),
+            unionSize, orderBy == null ? null : orderBy.getBytes(),
+            null);
     }
 
     /**
@@ -594,5 +730,32 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
     public boolean containLimit() {
         return sqlTemplate.getFetch() != null || sqlTemplate.getOffset() != null;
+    }
+
+    private boolean isNeedPrune(LogicalView logicalView, ExecutionContext executionContext) {
+        if (logicalView.hasDynamicPruning() && executionContext.getParams() != null) {
+            Map<Integer, ParameterContext> parameterContextMap = executionContext.getParams().getCurrentParameter();
+            boolean needPrune = false;
+            for (ParameterContext parameterContext : parameterContextMap.values()) {
+                if (parameterContext != null && parameterContext.getValue() instanceof RawString) {
+                    RawString rawString = (RawString) parameterContext.getValue();
+                    int pruneSize = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_SIZE);
+                    int pruneStep = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_STEP_SIZE);
+                    int maxPruneTime = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_MAX_TIME);
+                    if (rawString.size() > pruneStep * maxPruneTime) {
+                        return false;
+                    }
+                    if (rawString.size() > pruneSize) {
+                        needPrune = true;
+                    }
+                }
+            }
+            return needPrune;
+        }
+        return false;
+    }
+
+    public void setBuildForPushDownOneShardOnly(boolean buildForPushDownOneShardOnly) {
+        this.buildForPushDownOneShardOnly = buildForPushDownOneShardOnly;
     }
 }

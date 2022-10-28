@@ -17,20 +17,115 @@
 package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import org.apache.orc.ColumnStatistics;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 public class StripeColumnMeta {
-    private OrcBloomFilter bloomFilter;
+    private static Map<Engine, Cache<String, OrcBloomFilter>> ORC_BLOOM_FILTER_CACHE = new ConcurrentHashMap<>();
+
+    private Engine engine;
+
+    private String bloomFilterPath;
+
+    private ColumnMetasRecord record;
+
     private ColumnStatistics columnStatistics;
     private StripeInfo stripeInfo;
 
-    public static OrcBloomFilter parseBloomFilter(ColumnMetasRecord record) {
+    public StripeColumnMeta () {}
+
+    public long getStripeIndex() {
+        return stripeInfo.getStripeIndex();
+    }
+
+    public long getStripeOffset() {
+        return stripeInfo.getStripeOffset();
+    }
+
+    public long getStripeLength() {
+        return stripeInfo.getStripeLength();
+    }
+
+    public OrcBloomFilter getBloomFilter() {
+        if (engine != null && bloomFilterPath != null) {
+            return getBloomFilterImpl(engine, bloomFilterPath);
+        } else {
+            return null;
+        }
+    }
+
+    public ColumnStatistics getColumnStatistics() {
+        return columnStatistics;
+    }
+
+    public void setColumnStatistics(ColumnStatistics columnStatistics) {
+        this.columnStatistics = columnStatistics;
+    }
+
+    public void setStripeInfo(StripeInfo stripeInfo) {
+        this.stripeInfo = stripeInfo;
+    }
+
+    public Engine getEngine() {
+        return engine;
+    }
+
+    public void setEngine(Engine engine) {
+        this.engine = engine;
+    }
+
+    public String getBloomFilterPath() {
+        return bloomFilterPath;
+    }
+
+    public ColumnMetasRecord getRecord() {
+        return record;
+    }
+
+    public void setRecord(ColumnMetasRecord record) {
+        this.record = record;
+    }
+
+    public void setBloomFilterPath(String bloomFilterPath) {
+        this.bloomFilterPath = bloomFilterPath;
+    }
+
+    private static Cache<String, OrcBloomFilter> buildCache(long maxSize) {
+        int planCacheExpireTime = DynamicConfig.getInstance().planCacheExpireTime();
+        return CacheBuilder.newBuilder()
+                .maximumSize(maxSize)
+                .expireAfterWrite(planCacheExpireTime, TimeUnit.MILLISECONDS)
+                .softValues()
+                .build();
+    }
+
+    private OrcBloomFilter getBloomFilterImpl(Engine engine, String path) {
+        // Init caches for specific engine.
+        Cache<String, OrcBloomFilter> cache = ORC_BLOOM_FILTER_CACHE.computeIfAbsent(engine,
+            a -> buildCache(TddlConstants.DEFAULT_ORC_BLOOM_FILTER_CACHE_SIZE));
+
+        try {
+            // Parse the bloom filter from part of oss files and cache in local.
+            return cache.get(path, () -> parseBloomFilter());
+        } catch (ExecutionException executionException) {
+            return null;
+        }
+    }
+
+    public OrcBloomFilter parseBloomFilter() {
         if (record == null) {
             return null;
         }
@@ -70,35 +165,4 @@ public class StripeColumnMeta {
         }
     }
 
-    public long getStripeIndex() {
-        return stripeInfo.getStripeIndex();
-    }
-
-    public long getStripeOffset() {
-        return stripeInfo.getStripeOffset();
-    }
-
-    public long getStripeLength() {
-        return stripeInfo.getStripeLength();
-    }
-
-    public OrcBloomFilter getBloomFilter() {
-        return bloomFilter;
-    }
-
-    public void setBloomFilter(OrcBloomFilter bloomFilter) {
-        this.bloomFilter = bloomFilter;
-    }
-
-    public ColumnStatistics getColumnStatistics() {
-        return columnStatistics;
-    }
-
-    public void setColumnStatistics(ColumnStatistics columnStatistics) {
-        this.columnStatistics = columnStatistics;
-    }
-
-    public void setStripeInfo(StripeInfo stripeInfo) {
-        this.stripeInfo = stripeInfo;
-    }
 }

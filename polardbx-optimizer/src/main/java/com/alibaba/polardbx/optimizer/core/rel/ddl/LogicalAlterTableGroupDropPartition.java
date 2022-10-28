@@ -16,10 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupDropPartition;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
@@ -29,15 +30,13 @@ import org.apache.calcite.sql.SqlIdentifier;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class LogicalAlterTableGroupDropPartition extends BaseDdlOperation {
-
-    private AlterTableGroupDropPartitionPreparedData preparedData;
+public class LogicalAlterTableGroupDropPartition extends LogicalAlterTableDropPartition {
 
     public LogicalAlterTableGroupDropPartition(DDL ddl) {
-        super(ddl);
+        super(ddl, true);
     }
 
-    public void preparedData() {
+    public void preparedData(ExecutionContext ec) {
         AlterTableGroupDropPartition alterTableGroupDropPartition = (AlterTableGroupDropPartition) relDdl;
         String tableGroupName = alterTableGroupDropPartition.getTableGroupName();
         String tableName = alterTableGroupDropPartition.getTableName().toString();
@@ -46,7 +45,7 @@ public class LogicalAlterTableGroupDropPartition extends BaseDdlOperation {
             (SqlAlterTableDropPartition) sqlAlterTableGroup.getAlters().get(0);
 
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
-            TableGroupLocation.getOrderedGroupList(schemaName);
+            LocalityInfoUtils.getAllowedGroupInfoOfTableGroup(schemaName, tableGroupName);
 
         preparedData = new AlterTableGroupDropPartitionPreparedData();
         preparedData.setTableGroupName(tableGroupName);
@@ -66,10 +65,6 @@ public class LogicalAlterTableGroupDropPartition extends BaseDdlOperation {
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.DROP_PARTITION);
 
-    }
-
-    public AlterTableGroupDropPartitionPreparedData getPreparedData() {
-        return preparedData;
     }
 
     public static LogicalAlterTableGroupDropPartition create(DDL ddl) {

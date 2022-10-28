@@ -155,7 +155,8 @@ public class BatchUpdateBuilder extends PhysicalPlanBuilder {
                     tableNames,
                     oldPhysicalPlan.getRowType(),
                     null,
-                    LockMode.UNDEF);
+                    LockMode.UNDEF,
+                    tableMeta);
                 operation.setBatchParameters(batchParams);
 
                 newPhysicalPlans.add(operation);

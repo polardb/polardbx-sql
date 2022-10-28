@@ -66,9 +66,11 @@ public final class LookupPredicate {
     }
 
     private final List<Column> columns = new ArrayList<>();
+    private final List<String> lvOriginNames;
 
-    public LookupPredicate(boolean not) {
+    public LookupPredicate(boolean not, List<String> lvOriginNames) {
         this.not = not;
+        this.lvOriginNames = lvOriginNames;
     }
 
     /**
@@ -101,20 +103,12 @@ public final class LookupPredicate {
         return columns.get(i).targetIndex;
     }
 
-    public int getTargetIndexByColumnName(String columnName) {
-        if (columnName == null) {
-            return -1;
-        }
-        for (Column column : columns) {
-            if (columnName.equalsIgnoreCase(column.column.getSimple())) {
-                return column.targetIndex;
-            }
-        }
-        return -1;
-    }
-
     public DataType[] getDataTypes() {
         return columns.stream().map(c -> c.dataType).toArray(DataType[]::new);
+    }
+
+    public List<String> getLvOriginNames() {
+        return lvOriginNames;
     }
 
     @Override

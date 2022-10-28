@@ -52,10 +52,10 @@ import org.apache.calcite.rel.externalize.RelWriterImpl;
 import org.apache.calcite.rel.externalize.RelXmlWriter;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalCalc;
-import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.metadata.RelMdUtil;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.rules.AggregateProjectPullUpConstantsRule;
 import org.apache.calcite.rel.rules.DateRangeRules;
@@ -123,6 +123,7 @@ import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -803,6 +804,31 @@ public abstract class RelOptUtil {
     }
   }
 
+  public static RelNode createCastRelWithCast(
+      final RelNode rel,
+      RelDataType castRowType,
+      boolean rename,
+      RelFactories.ProjectFactory projectFactory) {
+    assert projectFactory != null;
+    RelDataType rowType = rel.getRowType();
+    if (areRowTypesEqual(rowType, castRowType, rename)) {
+      // nothing to do
+      return rel;
+    }
+    final RexBuilder rexBuilder = rel.getCluster().getRexBuilder();
+    final List<RexNode> castExps =
+        RexUtil.generateCastExpressionsWithCast(rexBuilder, castRowType, rowType);
+    if (rename) {
+      // Use names and types from castRowType.
+      return projectFactory.createProject(rel, castExps,
+          castRowType.getFieldNames());
+    } else {
+      // Use names from rowType, types from castRowType.
+      return projectFactory.createProject(rel, castExps,
+          rowType.getFieldNames());
+    }
+  }
+
   /**
    * Creates a LogicalAggregate that removes all duplicates from the result of
    * an underlying relational expression.
@@ -1312,6 +1338,33 @@ public abstract class RelOptUtil {
             final int leftKey = leftKeys.get(index);
             final int rightKey = rightKeys.get(index);
             return rexBuilder.makeCall(SqlStdOperatorTable.EQUALS,
+                rexBuilder.makeInputRef(leftTypes.get(leftKey), leftKey),
+                rexBuilder.makeInputRef(rightTypes.get(rightKey),
+                    leftTypes.size() + rightKey));
+          }
+
+          @Override public int size() {
+            return leftKeys.size();
+          }
+        },
+        false);
+  }
+
+  /** Builds an equi-join condition from a set of left and right keys. */
+  public static RexNode createNullSafeEquiJoinCondition(
+      final RelNode left, final List<Integer> leftKeys,
+      final RelNode right, final List<Integer> rightKeys,
+      final RexBuilder rexBuilder) {
+    final List<RelDataType> leftTypes =
+        RelOptUtil.getFieldTypeList(left.getRowType());
+    final List<RelDataType> rightTypes =
+        RelOptUtil.getFieldTypeList(right.getRowType());
+    return RexUtil.composeConjunction(rexBuilder,
+        new AbstractList<RexNode>() {
+          @Override public RexNode get(int index) {
+            final int leftKey = leftKeys.get(index);
+            final int rightKey = rightKeys.get(index);
+            return rexBuilder.makeCall(SqlStdOperatorTable.IS_NOT_DISTINCT_FROM,
                 rexBuilder.makeInputRef(leftTypes.get(leftKey), leftKey),
                 rexBuilder.makeInputRef(rightTypes.get(rightKey),
                     leftTypes.size() + rightKey));
@@ -3237,8 +3290,9 @@ public abstract class RelOptUtil {
 
   /**
    * test whether the project has subquery or not
+   *
    * @param project the project to be tested
-   * @return true if
+   * @return true if the project has no subquery
    */
   static boolean notSubquery(LogicalProject project) {
     for (RexNode r : project.getProjects()) {
@@ -3248,19 +3302,91 @@ public abstract class RelOptUtil {
     return true;
   }
 
+  public static List<RexNode> reorderFilters(List<RexNode> conditions, RelNode input) {
+    List<Pair<Integer, RexNode>> subquerys = new ArrayList<>();
+    List<Pair<Integer, RexNode>> basicFilters = new ArrayList<>();
+    List<Pair<Integer, RexNode>> complexFilters = new ArrayList<>();
+
+    for (int i = 0; i < conditions.size(); i++) {
+      RexNode r = conditions.get(i);
+      if (RexUtil.containsCorrelation(r) || RexUtil.hasSubQuery(r)) {
+        subquerys.add(new Pair<>(i, r));
+      } else {
+        if (isSimpleCondition(r)) {
+          basicFilters.add(new Pair<>(i, r));
+        } else {
+          complexFilters.add(new Pair<>(i, r));
+        }
+      }
+    }
+
+    double error = 1e-8;
+    RelMetadataQuery mq = input.getCluster().getMetadataQuery();
+    Comparator<Pair<Integer, RexNode>> comparator = (x, y) -> {
+      double xs = RelMdUtil.estimateFilteredRows(input, x.getValue(), mq);
+      double ys = RelMdUtil.estimateFilteredRows(input, y.getValue(), mq);
+      // if they are too close
+      if (Math.abs(xs - ys) < error) {
+        return Integer.compare(x.getKey(), y.getKey());
+      }
+      return Double.compare(xs, ys);
+    };
+    basicFilters.sort(comparator);
+    complexFilters.sort(comparator);
+
+    // check the filter is reordered
+    List<List<Pair<Integer, RexNode>>> results = new ArrayList<>();
+    results.add(basicFilters);
+    results.add(complexFilters);
+    results.add(subquerys);
+    if (!differentList(results)) {
+      return null;
+    }
+
+    List<RexNode> answer = new ArrayList<>(conditions.size());
+    for (List<Pair<Integer, RexNode>> filters : results) {
+      for (Pair<Integer, RexNode> pair : filters) {
+        answer.add(pair.getValue());
+      }
+    }
+    return answer;
+  }
+  private static boolean differentList(List<List<Pair<Integer, RexNode>>> results) {
+    int cnt = 0;
+    for (List<Pair<Integer, RexNode>> filters : results) {
+      for (Pair<Integer, RexNode> pair : filters) {
+        if (cnt != pair.getKey()) {
+          return true;
+        }
+        cnt++;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isSimpleCondition(RexNode rexNode) {
+    boolean simple = RelOptUtil.disjunctions(rexNode).size() <= 1;
+    if (!rexNode.getKind().belongsTo(SqlKind.SELECTABLE)) {
+      simple = false;
+    }
+    return simple;
+  }
   /**
    * push filters down projects and merge filters all
+   *
    * @param relNode the node trying to push
    * @return a rooted tree which doesn't contain the following patterns
+   *
    * 1) filter(project()) unless the project has subquery
    * 2) filter(filter())
    */
-  public static RelNode filterProject(RelNode relNode, RelBuilder relBuilder, RexSimplify simplify) {
+  public static RelNode filterProject(RelNode relNode, RelBuilder relBuilder, RexSimplify simplify,
+                                      boolean enable_filter_reorder) {
     RelNode child;
     if (relNode instanceof LogicalProject) {
       LogicalProject project = (LogicalProject)relNode;
       child = project.getInput();
-      RelNode newChild = filterProject(child, relBuilder, simplify);
+      RelNode newChild = filterProject(child, relBuilder, simplify, enable_filter_reorder);
 
       //the input of project may change when the input was a filter
       if (child != newChild) {
@@ -3281,7 +3407,7 @@ public abstract class RelOptUtil {
             ImmutableSet.<CorrelationId>builder().addAll(project.getVariablesSet()).build());
 
         //try to push the filter further
-        RelNode newChild = filterProject(newFilterRel, relBuilder, simplify);
+        RelNode newChild = filterProject(newFilterRel, relBuilder, simplify, enable_filter_reorder);
         return project.copy(project.getTraitSet(), newChild,
             project.getProjects(), project.getRowType());
       }
@@ -3290,22 +3416,27 @@ public abstract class RelOptUtil {
       if (child instanceof LogicalFilter) {
         //merge the two filters
         LogicalFilter childFilter = (LogicalFilter) child;
-        List<RexNode> newConditions = new ArrayList<>(2);
         RexBuilder rb = relBuilder.getRexBuilder();
-
+        List<RexNode> newConditions = new ArrayList<>(2);
         newConditions.add(filter.getCondition());
         newConditions.add(childFilter.getCondition());
-
-        RexNode newCondition = RexUtil.flatten(rb, rb.makeCall(AND, newConditions));
+        RexNode newCondition;
+        if (enable_filter_reorder) {
+          List<RexNode> orderConditions = RelOptUtil.reorderFilters(newConditions, childFilter.getInput());
+          if (orderConditions != null) {
+            newConditions = orderConditions;
+          }
+        }
+        newCondition = RexUtil.flatten(rb, rb.makeCall(AND, newConditions));
         LogicalFilter newFilterRel = LogicalFilter.create(childFilter.getInput(), newCondition,
             ImmutableSet.<CorrelationId>builder().
                 addAll(childFilter.getVariablesSet()).addAll(filter.getVariablesSet()).build());
 
         //try to push the new filter
-        return filterProject(newFilterRel, relBuilder, simplify);
+        return filterProject(newFilterRel, relBuilder, simplify, enable_filter_reorder);
       }
       // try to transform child
-      RelNode newChild = filterProject(child, relBuilder, simplify);
+      RelNode newChild = filterProject(child, relBuilder, simplify, enable_filter_reorder);
       return filter.copy(filter.getTraitSet(), newChild, simplify.simplify(filter.getCondition()));
     }
     return relNode;

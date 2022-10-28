@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -48,7 +49,7 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
-import com.google.common.collect.ImmutableList;
+import com.alibaba.polardbx.optimizer.utils.KeyWordsUtil;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
@@ -58,6 +59,7 @@ import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
+import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
@@ -72,7 +74,6 @@ import org.apache.commons.lang3.RandomStringUtils;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -94,7 +95,7 @@ public class AlterTableGroupSnapShotUtils {
 
     private static void generateNewPartitionsForSplitRangeWithAtVal(
         List<PartitionGroupRecord> unVisiablePartitionGroups,
-        SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition,
+        SqlAlterTableSplitPartition sqlAlterTableGroupSplitPartition,
         List<PartitionSpec> oldPartitions,
         List<PartitionSpec> newPartitions,
         List<Pair<String, String>> physicalTableAndGroupPairs,
@@ -131,7 +132,7 @@ public class AlterTableGroupSnapShotUtils {
         int partColCnt,
         int actualPartColCnt,
         List<PartitionGroupRecord> invisiblePartitionGroups,
-        SqlAlterTableGroupSplitPartition sqlAlter,
+        SqlAlterTableSplitPartition sqlAlter,
         List<PartitionSpec> oldPartitions,
         List<PartitionSpec> newPartitions,
         List<Pair<String, String>> physicalTableAndGroupPairs,
@@ -223,7 +224,6 @@ public class AlterTableGroupSnapShotUtils {
         return partFld;
     }
 
-
     private static void buildNewBoundForSplitHashOrKey(int partColCnt,
                                                        int actualPartColCnt,
                                                        PartitionStrategy strategy,
@@ -246,17 +246,28 @@ public class AlterTableGroupSnapShotUtils {
             List<PartitionField> bndFields = new ArrayList<>();
             List<SqlPartition> newPartAstList = new ArrayList<>();
             newPartAstList.add(sqlPartition);
-            int newPrefixPartColCnt = PartitionInfoUtil.getNewPrefixPartColCntBySqlPartitionAst(partColCnt, actualPartColCnt, strategy, newPartAstList);
-
-            for (int i = 0; i < newPrefixPartColCnt; i++) {
-                SqlPartitionValueItem oneValItem = partVals.getItems().get(i);
+            int newPrefixPartColCnt =
+                PartitionInfoUtil.getNewPrefixPartColCntBySqlPartitionAst(partColCnt, actualPartColCnt, strategy,
+                    newPartAstList);
+            if (newPrefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
+                newPrefixPartColCnt = partColCnt;
+            }
+            if (strategy == PartitionStrategy.HASH) {
+                SqlPartitionValueItem oneValItem = partVals.getItems().get(0);
                 PartitionField bndValPartFld = buildNewBoundPartFieldForHashValLiteral(oneValItem);
                 bndFields.add(bndValPartFld);
+            } else {
+                for (int i = 0; i < newPrefixPartColCnt; i++) {
+                    SqlPartitionValueItem oneValItem = partVals.getItems().get(i);
+                    PartitionField bndValPartFld = buildNewBoundPartFieldForHashValLiteral(oneValItem);
+                    bndFields.add(bndValPartFld);
+                }
             }
 
             if (newPrefixPartColCnt < partColCnt && strategy == PartitionStrategy.KEY) {
                 for (int i = newPrefixPartColCnt; i < partColCnt; i++) {
-                    PartitionField maxBndValPartFld = buildBoundPartFieldForHashLongVal(PartitionInfoUtil.getHashSpaceMaxValue());
+                    PartitionField maxBndValPartFld =
+                        buildBoundPartFieldForHashLongVal(PartitionInfoUtil.getHashSpaceMaxValue());
                     bndFields.add(maxBndValPartFld);
                 }
             }
@@ -266,7 +277,7 @@ public class AlterTableGroupSnapShotUtils {
     }
 
     private static Long calculateSplitAtHash(
-        SqlAlterTableGroupSplitPartition sqlAlter,
+        SqlAlterTableSplitPartition sqlAlter,
         List<PartitionSpec> oldPartitions, List<PartitionSpec> newPartitions,
         PartitionSpec splitSpec, boolean firstPartition) {
         Long atVal;
@@ -305,7 +316,7 @@ public class AlterTableGroupSnapShotUtils {
     }
 
     private static void calcSplitAtForHashOrKeyAndBuildNewBoundValue(int partColCnt,
-                                                                     SqlAlterTableGroupSplitPartition sqlAlter,
+                                                                     SqlAlterTableSplitPartition sqlAlter,
                                                                      List<PartitionSpec> oldPartitions,
                                                                      List<PartitionSpec> newPartitions,
                                                                      PartitionSpec splitSpec,
@@ -367,11 +378,12 @@ public class AlterTableGroupSnapShotUtils {
         ExecutionContext executionContext,
         PartitionInfo curPartitionInfo,
         List<PartitionGroupRecord> unVisiablePartitionGroups,
-        SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition,
+        SqlAlterTableSplitPartition sqlAlterTableGroupSplitPartition,
         List<PartitionSpec> oldPartitions,
         List<PartitionSpec> newPartitions,
         List<Pair<String, String>> physicalTableAndGroupPairs,
-        PartitionSpec splitSpec) {
+        PartitionSpec splitSpec,
+        Map<SqlNode, RexNode> partRexInfoCtx) {
         int i = 0;
         List<ColumnMeta> partColMetaList = curPartitionInfo.getPartitionBy().getPartitionFieldList();
         SearchDatumComparator comparator = curPartitionInfo.getPartitionBy().getPruningSpaceComparator();
@@ -381,7 +393,9 @@ public class AlterTableGroupSnapShotUtils {
         int fullPartColCnt = partColMetaList.size();
         int actualPartColCnt = PartitionInfoUtil.getActualPartitionColumns(curPartitionInfo).size();
         PartitionStrategy strategy = curPartitionInfo.getPartitionBy().getStrategy();
-        int newPrefixColCnt = PartitionInfoUtil.getNewPrefixPartColCntBySqlPartitionAst(fullPartColCnt,actualPartColCnt,strategy, newPartitionsAst);
+        int newPrefixColCnt =
+            PartitionInfoUtil.getNewPrefixPartColCntBySqlPartitionAst(fullPartColCnt, actualPartColCnt, strategy,
+                newPartitionsAst);
         for (SqlPartition sqlPartition : sqlAlterTableGroupSplitPartition.getNewPartitions()) {
             PartitionSpec newSpec = PartitionInfoBuilder
                 .buildPartitionSpecByPartSpecAst(
@@ -389,7 +403,7 @@ public class AlterTableGroupSnapShotUtils {
                     partColMetaList,
                     partIntFunc,
                     comparator,
-                    sqlAlterTableGroupSplitPartition.getParent().getPartRexInfoCtx(),
+                    partRexInfoCtx,
                     null,
                     sqlPartition,
                     curPartitionInfo.getPartitionBy().getStrategy(),
@@ -415,8 +429,10 @@ public class AlterTableGroupSnapShotUtils {
         PartitionInfo curPartitionInfo,
         List<PartitionGroupRecord> unVisiablePartitionGroups,
         SqlNode sqlNode,
-        String tableGroupName, String splitPartitionName,
-        List<Pair<String, String>> physicalTableAndGroupPairs) {
+        String tableGroupName,
+        String splitPartitionName,
+        List<Pair<String, String>> physicalTableAndGroupPairs,
+        Map<SqlNode, RexNode> partRexInfoCtx) {
 
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(curPartitionInfo.getTableSchema()).getTableGroupInfoManager();
@@ -436,13 +452,13 @@ public class AlterTableGroupSnapShotUtils {
         //Long atVal = null;
 
         PartitionField atVal = null;
-        SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition =
-            (SqlAlterTableGroupSplitPartition) sqlNode;
-        if (sqlAlterTableGroupSplitPartition.getAtValue() != null) {
+        SqlAlterTableSplitPartition sqlAlterTableSplitPartition =
+            (SqlAlterTableSplitPartition) sqlNode;
+        if (sqlAlterTableSplitPartition.getAtValue() != null) {
             DataType atValDataType =
                 DataTypeUtil.calciteToDrdsType(curPartitionInfo.getPartitionBy().getPartitionExprTypeList().get(0));
             atVal = PartitionFieldBuilder.createField(atValDataType);
-            SqlLiteral constLiteral = ((SqlLiteral) sqlAlterTableGroupSplitPartition.getAtValue());
+            SqlLiteral constLiteral = ((SqlLiteral) sqlAlterTableSplitPartition.getAtValue());
             String constStr = constLiteral.getValueAs(String.class);
             atVal.store(constStr, new CharType());
             //atVal = ((SqlLiteral) sqlAlterTableGroupSplitPartition.getAtValue()).getValueAs(Long.class);
@@ -460,21 +476,24 @@ public class AlterTableGroupSnapShotUtils {
             if (spec.getLocation().getPartitionGroupId().longValue() == splitPartRecord.id) {
                 if (strategy == PartitionStrategy.HASH || strategy == PartitionStrategy.KEY) {
                     generateNewPartitionsForSplitHashType(partColCnt, actualPartColCnt, unVisiablePartitionGroups,
-                        sqlAlterTableGroupSplitPartition,
+                        sqlAlterTableSplitPartition,
                         oldPartitions, newPartitions, physicalTableAndGroupPairs, spec);
                 } else if (atVal != null) {
                     assert strategy == PartitionStrategy.RANGE;
                     generateNewPartitionsForSplitRangeWithAtVal(unVisiablePartitionGroups,
-                        sqlAlterTableGroupSplitPartition,
+                        sqlAlterTableSplitPartition,
                         oldPartitions, newPartitions, physicalTableAndGroupPairs, spec, atVal);
                 } else {
                     generateNewPartitionsForSplitWithPartitionSpec(executionContext, curPartitionInfo,
                         unVisiablePartitionGroups,
-                        sqlAlterTableGroupSplitPartition,
-                        oldPartitions, newPartitions, physicalTableAndGroupPairs, spec);
+                        sqlAlterTableSplitPartition,
+                        oldPartitions, newPartitions,
+                        physicalTableAndGroupPairs,
+                        spec,
+                        partRexInfoCtx);
                 }
             } else {
-                newPartitions.add(spec);
+                newPartitions.add(spec.copy());
             }
         }
 
@@ -564,24 +583,19 @@ public class AlterTableGroupSnapShotUtils {
             lastOldPartitionSpec = null;
         }
         newPartitionInfo.getPartitionBy().setPartitions(newPartitions);
-        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartitionInfo);
-        PartitionInfoUtil.validatePartitionInfoForDdl(newPartitionInfo, executionContext);
         return newPartitionInfo;
     }
 
     public static PartitionInfo getNewPartitionInfoForMergeType(PartitionInfo curPartitionInfo,
                                                                 List<PartitionGroupRecord> unVisiablePartitionGroups,
-                                                                SqlNode sqlNode,
                                                                 String tableGroupName,
                                                                 List<Pair<String, String>> physicalTableAndGroupPairs,
-                                                                List<String> newPartitionNames) {
+                                                                Set<String> mergePartitionsName,
+                                                                List<String> newPartitionNames,
+                                                                ExecutionContext executionContext) {
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(curPartitionInfo.getTableSchema()).getTableGroupInfoManager();
-        SqlAlterTableGroupMergePartition sqlAlterTableGroupMergePartition =
-            (SqlAlterTableGroupMergePartition) sqlNode;
-        Set<String> mergePartitionsName = sqlAlterTableGroupMergePartition.getOldPartitions().stream()
-            .map(o -> Util.last(((SqlIdentifier) (o)).names).toLowerCase()).collect(
-                Collectors.toSet());
+
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         List<PartitionGroupRecord> mergePartRecords = tableGroupConfig.getPartitionGroupRecords().stream()
             .filter(o -> mergePartitionsName.contains(o.partition_name.toLowerCase())).collect(Collectors.toList());
@@ -624,7 +638,7 @@ public class AlterTableGroupSnapShotUtils {
                     listDatums.addAll(spec.getBoundSpec().getMultiDatums());
                 }
             } else {
-                newPartitions.add(spec);
+                newPartitions.add(spec.copy());
             }
         }
 
@@ -634,19 +648,19 @@ public class AlterTableGroupSnapShotUtils {
     }
 
     public static PartitionInfo getNewPartitionInfoForMoveType(PartitionInfo curPartitionInfo,
-                                                               SqlNode sqlNode,
+                                                               Map<String, Set<String>> targetPartitions,
                                                                String tableGroupName,
-                                                               List<Pair<String, String>> physicalTableAndGroupPairs) {
+                                                               List<Pair<String, String>> physicalTableAndGroupPairs,
+                                                               ExecutionContext executionContext) {
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(curPartitionInfo.getTableSchema()).getTableGroupInfoManager();
 
-        SqlAlterTableGroupMovePartition sqlAlterTableGroupMovePartition = (SqlAlterTableGroupMovePartition) sqlNode;
-        Set<String> movePartitionsName = sqlAlterTableGroupMovePartition.getOldPartitions().stream()
-            .map(o -> Util.last(((SqlIdentifier) (o)).names).toLowerCase()).collect(
-                Collectors.toSet());
+        Set<String> movePartitionsName = new TreeSet<>(String::compareToIgnoreCase);
+        targetPartitions.entrySet().stream().forEach(o -> movePartitionsName.addAll(o.getValue()));
+
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         List<PartitionGroupRecord> movePartRecords = tableGroupConfig.getPartitionGroupRecords().stream()
-            .filter(o -> movePartitionsName.contains(o.partition_name.toLowerCase())).collect(Collectors.toList());
+            .filter(o -> movePartitionsName.contains(o.partition_name)).collect(Collectors.toList());
         Set<Long> movePartGroupIds = movePartRecords.stream().map(o -> o.id).collect(Collectors.toSet());
 
         List<PartitionSpec> oldPartitions = curPartitionInfo.getPartitionBy().getPartitions();
@@ -665,7 +679,7 @@ public class AlterTableGroupSnapShotUtils {
                 newSpec.getLocation().setVisiable(false);
                 newPartitions.add(newSpec);
             } else {
-                newPartitions.add(spec);
+                newPartitions.add(spec.copy());
             }
         }
 
@@ -675,7 +689,8 @@ public class AlterTableGroupSnapShotUtils {
     }
 
     public static PartitionInfo getNewPartitionInfoForSetTableGroup(PartitionInfo curPartitionInfo,
-                                                                    SqlNode sqlNode) {
+                                                                    SqlNode sqlNode,
+                                                                    ExecutionContext executionContext) {
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(curPartitionInfo.getTableSchema()).getTableGroupInfoManager();
 
@@ -700,6 +715,8 @@ public class AlterTableGroupSnapShotUtils {
         newPartitionInfo.getPartitionBy().setPartitions(newPartitions);
         //change the tablegroup id to the target tablegroup
         newPartitionInfo.setTableGroupId(tableGroupConfig.getTableGroupRecord().getId());
+        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartitionInfo);
+        PartitionInfoUtil.validatePartitionInfoForDdl(newPartitionInfo, executionContext);
         return newPartitionInfo;
     }
 
@@ -707,13 +724,12 @@ public class AlterTableGroupSnapShotUtils {
                                                                    List<PartitionGroupRecord> unVisiablePartitionGroupRecords,
                                                                    SqlNode addPartitionAst,
                                                                    List<Pair<String, String>> physicalTableAndGroupPairs,
+                                                                   Map<SqlNode, RexNode> partBoundExprInfo,
                                                                    ExecutionContext executionContext) {
         SqlAlterTableAddPartition addPartition = (SqlAlterTableAddPartition) addPartitionAst;
-        Map<SqlNode, RexNode> partBoundExprInfo = ((SqlAlterTableGroup) addPartition.getParent()).getPartRexInfoCtx();
         PartitionInfo newPartitionInfo = PartitionInfoBuilder
             .buildNewPartitionInfoByAddingPartition(executionContext, curPartitionInfo, addPartition, partBoundExprInfo,
                 unVisiablePartitionGroupRecords, physicalTableAndGroupPairs);
-
         return newPartitionInfo;
 
     }
@@ -721,23 +737,23 @@ public class AlterTableGroupSnapShotUtils {
     public static PartitionInfo getNewPartitionInfoForDropPartition(PartitionInfo curPartitionInfo,
                                                                     List<PartitionGroupRecord> unVisiablePartitionGroupRecords,
                                                                     SqlNode sqlNode,
-                                                                    List<Pair<String, String>> physicalTableAndGroupPairs) {
+                                                                    List<Pair<String, String>> physicalTableAndGroupPairs,
+                                                                    ExecutionContext executionContext) {
         SqlAlterTableDropPartition dropPartition = (SqlAlterTableDropPartition) sqlNode;
-        return PartitionInfoBuilder
+        PartitionInfo newPartitionInfo = PartitionInfoBuilder
             .buildNewPartitionInfoByDroppingPartition(curPartitionInfo, dropPartition,
                 unVisiablePartitionGroupRecords, physicalTableAndGroupPairs);
+        return newPartitionInfo;
 
     }
 
     public static PartitionInfo getNewPartitionInfoForModifyPartition(PartitionInfo curPartitionInfo,
                                                                       SqlNode sqlNode,
-                                                                      String targetPartitionName,
+                                                                      Map<SqlNode, RexNode> partBoundExprInfo,
                                                                       List<Pair<String, String>> physicalTableAndGroupPairs,
                                                                       ExecutionContext executionContext) {
 
         SqlAlterTableModifyPartitionValues modifyPartition = (SqlAlterTableModifyPartitionValues) sqlNode;
-        Map<SqlNode, RexNode> partBoundExprInfo =
-            ((SqlAlterTableGroup) modifyPartition.getParent()).getPartRexInfoCtx();
         PartitionSpec[] outputNewPartSpec = new PartitionSpec[1];
         PartitionInfo newPartitionInfo = PartitionInfoBuilder
             .buildNewPartitionInfoByModifyingPartitionValues(curPartitionInfo, modifyPartition, partBoundExprInfo,
@@ -854,8 +870,22 @@ public class AlterTableGroupSnapShotUtils {
             lastOldPartitionSpec = null;
         }
         newPartitionInfo.getPartitionBy().setPartitions(newPartitions);
-        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartitionInfo);
-        PartitionInfoUtil.validatePartitionInfoForDdl(newPartitionInfo, executionContext);
+        return newPartitionInfo;
+    }
+
+    public static PartitionInfo getNewPartitionInfoForRenamePartition(PartitionInfo curPartitionInfo,
+                                                                      Map<String, String> changePartitionsMap) {
+        if (GeneralUtil.isEmpty(changePartitionsMap)) {
+            return curPartitionInfo;
+        }
+        PartitionInfo newPartitionInfo = curPartitionInfo.copy();
+        for (PartitionSpec partitionSpec : newPartitionInfo.getPartitionBy().getPartitions()) {
+            if (changePartitionsMap.containsKey(partitionSpec.getName())) {
+                String newName = changePartitionsMap.get(partitionSpec.getName());
+                PartitionNameUtil.validatePartName(newName, KeyWordsUtil.isKeyWord(newName));
+                partitionSpec.setName(newName);
+            }
+        }
         return newPartitionInfo;
     }
 
@@ -870,31 +900,49 @@ public class AlterTableGroupSnapShotUtils {
 
         PartitionInfo newPartInfo = null;
         if (sqlNode instanceof SqlAlterTableGroupSplitPartition) {
+            SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition =
+                (SqlAlterTableGroupSplitPartition) sqlNode;
             newPartInfo =
                 getNewPartitionInfoForSplitType(executionContext, curPartitionInfo, unVisiablePartitionGroupRecords,
                     sqlNode,
                     tableGroupName, targetPartitionNameToBeAltered,
-                    physicalTableAndGroupPairs);
+                    physicalTableAndGroupPairs,
+                    sqlAlterTableGroupSplitPartition.getParent().getPartRexInfoCtx());
         } else if (sqlNode instanceof SqlAlterTableGroupMergePartition) {
-            newPartInfo = getNewPartitionInfoForMergeType(curPartitionInfo, unVisiablePartitionGroupRecords, sqlNode,
-                tableGroupName,
-                physicalTableAndGroupPairs, newPartitionNames);
+            SqlAlterTableGroupMergePartition sqlAlterTableGroupMergePartition =
+                (SqlAlterTableGroupMergePartition) sqlNode;
+            Set<String> mergePartitionsName = sqlAlterTableGroupMergePartition.getOldPartitions().stream()
+                .map(o -> Util.last(((SqlIdentifier) (o)).names).toLowerCase()).collect(
+                    Collectors.toSet());
+            newPartInfo =
+                getNewPartitionInfoForMergeType(curPartitionInfo, unVisiablePartitionGroupRecords, tableGroupName,
+                    physicalTableAndGroupPairs, mergePartitionsName, newPartitionNames, executionContext);
         } else if (sqlNode instanceof SqlAlterTableGroupMovePartition) {
-            newPartInfo = getNewPartitionInfoForMoveType(curPartitionInfo, sqlNode, tableGroupName,
-                physicalTableAndGroupPairs);
+            SqlAlterTableGroupMovePartition sqlAlterTableGroupMovePartition =
+                (SqlAlterTableGroupMovePartition) sqlNode;
+            newPartInfo =
+                getNewPartitionInfoForMoveType(curPartitionInfo, sqlAlterTableGroupMovePartition.getTargetPartitions(),
+                    tableGroupName,
+                    physicalTableAndGroupPairs, executionContext);
         } else if (sqlNode instanceof SqlAlterTableSetTableGroup) {
-            newPartInfo = getNewPartitionInfoForSetTableGroup(curPartitionInfo, sqlNode);
+            newPartInfo = getNewPartitionInfoForSetTableGroup(curPartitionInfo, sqlNode, executionContext);
         } else if (sqlNode instanceof SqlAlterTableAddPartition) {
+            SqlAlterTableAddPartition addPartition = (SqlAlterTableAddPartition) sqlNode;
+            Map<SqlNode, RexNode> partBoundExprInfo =
+                ((SqlAlterTableGroup) addPartition.getParent()).getPartRexInfoCtx();
             newPartInfo = getNewPartitionInfoForAddPartition(curPartitionInfo, unVisiablePartitionGroupRecords, sqlNode,
-                physicalTableAndGroupPairs, executionContext);
+                physicalTableAndGroupPairs, partBoundExprInfo, executionContext);
         } else if (sqlNode instanceof SqlAlterTableDropPartition) {
             newPartInfo =
                 getNewPartitionInfoForDropPartition(curPartitionInfo, unVisiablePartitionGroupRecords, sqlNode,
-                    physicalTableAndGroupPairs);
+                    physicalTableAndGroupPairs, executionContext);
         } else if (sqlNode instanceof SqlAlterTableModifyPartitionValues) {
+            Map<SqlNode, RexNode> partBoundExprInfo =
+                ((SqlAlterTableGroup) ((SqlAlterTableModifyPartitionValues) sqlNode).getParent()).getPartRexInfoCtx();
             newPartInfo =
                 getNewPartitionInfoForModifyPartition(curPartitionInfo, sqlNode,
-                    targetPartitionNameToBeAltered, physicalTableAndGroupPairs,
+                    partBoundExprInfo,
+                    physicalTableAndGroupPairs,
                     executionContext);
         } else if (sqlNode instanceof SqlRefreshTopology) {
             newPartInfo = getNewPartitionInfoForCopyPartition(curPartitionInfo, unVisiablePartitionGroupRecords,
@@ -904,6 +952,7 @@ public class AlterTableGroupSnapShotUtils {
         }
         PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartInfo);
         PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);
+
         return newPartInfo;
 
     }

@@ -195,7 +195,6 @@ public class LogicalKillHandler extends HandlerCommon {
                             // 2.正在执行查询的连接
                             // 3.非SHOW PROCESSLIST的连接
                             if (TStringUtil.equals(user, rs.getString("User"))
-                                && TStringUtil.equalsIgnoreCase("Query", rs.getString("COMMAND"))
                                 && !TStringUtil.containsIgnoreCase(rs.getString("INFO"), SHOW_PROCESSLIST_SQL)) {
                                 processIds.add(rs.getLong("Id"));
                             }

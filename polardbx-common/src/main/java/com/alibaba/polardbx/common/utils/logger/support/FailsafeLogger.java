@@ -47,7 +47,7 @@ public class FailsafeLogger implements Logger {
         if (simple) {
             return msg;
         } else {
-            return new StringBuilder(" [TDDL] ").append(msg).append(", tddl version: ").append(version).toString();
+            return new StringBuilder(msg).append(",version: ").append(version).toString();
         }
     }
 

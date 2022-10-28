@@ -119,7 +119,7 @@ public class LogicalCreateTable extends LogicalTableOperation {
                     CreateGlobalIndexPreparedData indexTablePreparedData =
                         prepareGsiData(primaryTableName, primaryTableDefinition, gsi, false);
                     createTableWithGsiPreparedData.addIndexTablePreparedData(indexTablePreparedData);
-
+                    indexTablePreparedData.setJoinGroupName(createTablePreparedData.getJoinGroupName());
                     if (isAutoPartition) {
                         createTableWithGsiPreparedData.addLocalIndex(
                             prepareAutoPartitionLocalIndex(primaryTableName, gsi));
@@ -131,6 +131,7 @@ public class LogicalCreateTable extends LogicalTableOperation {
                 for (Pair<SqlIdentifier, SqlIndexDefinition> gusi : sqlCreateTable.getGlobalUniqueKeys()) {
                     CreateGlobalIndexPreparedData uniqueIndexTablePreparedData =
                         prepareGsiData(primaryTableName, primaryTableDefinition, gusi, true);
+                    uniqueIndexTablePreparedData.setJoinGroupName(createTablePreparedData.getJoinGroupName());
                     createTableWithGsiPreparedData.addIndexTablePreparedData(uniqueIndexTablePreparedData);
                 }
             }
@@ -139,6 +140,7 @@ public class LogicalCreateTable extends LogicalTableOperation {
                 for (Pair<SqlIdentifier, SqlIndexDefinition> gsi : sqlCreateTable.getClusteredKeys()) {
                     CreateGlobalIndexPreparedData indexTablePreparedData =
                         prepareGsiData(primaryTableName, primaryTableDefinition, gsi, false);
+                    indexTablePreparedData.setJoinGroupName(createTablePreparedData.getJoinGroupName());
                     createTableWithGsiPreparedData.addIndexTablePreparedData(indexTablePreparedData);
 
                     if (isAutoPartition) {
@@ -152,6 +154,7 @@ public class LogicalCreateTable extends LogicalTableOperation {
                 for (Pair<SqlIdentifier, SqlIndexDefinition> gusi : sqlCreateTable.getClusteredUniqueKeys()) {
                     CreateGlobalIndexPreparedData uniqueIndexTablePreparedData =
                         prepareGsiData(primaryTableName, primaryTableDefinition, gusi, true);
+                    uniqueIndexTablePreparedData.setJoinGroupName(createTablePreparedData.getJoinGroupName());
                     createTableWithGsiPreparedData.addIndexTablePreparedData(uniqueIndexTablePreparedData);
                 }
             }
@@ -168,11 +171,11 @@ public class LogicalCreateTable extends LogicalTableOperation {
         tableMeta.setSchemaName(schemaName);
 
         LocalPartitionDefinitionInfo localPartitionDefinitionInfo = LocalPartitionDefinitionInfo.create(
-                schemaName,
-                tableMeta.getTableName(),
-                (SqlPartitionByRange) sqlCreateTable.getLocalPartition()
-            );
-        if(localPartitionDefinitionInfo!=null){
+            schemaName,
+            tableMeta.getTableName(),
+            (SqlPartitionByRange) sqlCreateTable.getLocalPartition()
+        );
+        if (localPartitionDefinitionInfo != null) {
             SQLPartitionByRange sqlPartitionByRange = LocalPartitionDefinitionInfo.generateLocalPartitionStmtForCreate(
                 localPartitionDefinitionInfo,
                 localPartitionDefinitionInfo.evalPivotDate(executionContext));
@@ -190,7 +193,10 @@ public class LogicalCreateTable extends LogicalTableOperation {
             sqlCreateTable.getSqlPartition(),
             localPartitionDefinitionInfo,
             sqlCreateTable.getTableGroupName(),
-            ((CreateTable) relDdl).getPartBoundExprInfo());
+            sqlCreateTable.getJoinGroupName(),
+            sqlCreateTable.getLocality(),
+            ((CreateTable) relDdl).getPartBoundExprInfo(),
+            sqlCreateTable.getOriginalSql());
 
         boolean hasTimestampColumnDefault = false;
         for (Pair<SqlIdentifier, SqlColumnDeclaration> colDef : GeneralUtil.emptyIfNull(sqlCreateTable.getColDefs())) {
@@ -213,12 +219,8 @@ public class LogicalCreateTable extends LogicalTableOperation {
         res.setBinaryColumnDefaultValues(binaryColumnDefaultValues);
 
         // create table with locality
-        if (TStringUtil.isNotBlank(sqlCreateTable.getLocality())) {
-            LocalityDesc desc = LocalityDesc.parse(sqlCreateTable.getLocality());
-            if (!desc.isEmpty()) {
-                res.setLocality(desc);
-            }
-        }
+        LocalityDesc desc = LocalityDesc.parse(sqlCreateTable.getLocality());
+        res.setLocality(desc);
 
         if (sqlCreateTable.getLoadTableName() != null) {
             res.setLoadTableName(sqlCreateTable.getLoadTableName());
@@ -238,8 +240,9 @@ public class LogicalCreateTable extends LogicalTableOperation {
     private void prepareCreateTableLikeData() {
         // For `create table like xx` statement, we create a new "Create Table" AST for the target table
         // based on the LIKE table, then execute it as normal flow.
-        SqlCreateTable createTableAst = (SqlCreateTable) new FastsqlParser()
-            .parse(createTableSqlForLike, PlannerContext.getPlannerContext(this).getExecutionContext()).get(0);
+        SqlCreateTable createTableAst =
+            (SqlCreateTable) new FastsqlParser()
+                .parse(createTableSqlForLike, PlannerContext.getPlannerContext(this).getExecutionContext()).get(0);
 
         SqlIdentifier tableName = (SqlIdentifier) getTableNameNode();
 
@@ -310,8 +313,10 @@ public class LogicalCreateTable extends LogicalTableOperation {
                 createTablePreparedData.getLocalPartitionDefinitionInfo(),
                 isUnique,
                 indexDef.isClustered(),
-                null,
-                ((CreateTable) relDdl).getPartBoundExprInfo());
+                indexDef.getTableGroupName(),
+                createTablePreparedData.getLocality().toString(),
+                ((CreateTable) relDdl).getPartBoundExprInfo(),
+                createTablePreparedData.getSourceSql());
 
         preparedData.setIndexDefinition(indexDef);
         if (indexDef.getOptions() != null) {

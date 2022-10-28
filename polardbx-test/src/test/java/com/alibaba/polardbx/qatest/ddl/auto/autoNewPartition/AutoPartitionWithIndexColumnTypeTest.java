@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.autoNewPartition;
 
 import com.alibaba.polardbx.qatest.constant.GsiConstant;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.RandomUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.junit.After;
@@ -48,8 +49,8 @@ import static org.hamcrest.Matchers.is;
  */
 
 public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPartition {
-    public static final String TABLE_NAME = "auto_partition_idx_tb";
-    public static final String INDEX_NAME = "ap_index";
+    public String TABLE_NAME = "auto_partition_idx_tb";
+    public String INDEX_NAME = "ap_index";
 
     private static final String CREATE_TEMPLATE = "CREATE TABLE {0} ({1} {2})";
     private static final String INSERT_TEMPLATE = "INSERT INTO {0}({1}) VALUES({2})";
@@ -90,6 +91,8 @@ public class AutoPartitionWithIndexColumnTypeTest extends BaseAutoPartitionNewPa
 
     @Before
     public void before() {
+        TABLE_NAME = "auto_partition_idx_tb" +  RandomUtils.getStringBetween(1, 10);
+        INDEX_NAME = "ap_index" +  RandomUtils.getStringBetween(1, 10);
         dropTableWithGsi(TABLE_NAME, ImmutableList.of(INDEX_NAME));
     }
 

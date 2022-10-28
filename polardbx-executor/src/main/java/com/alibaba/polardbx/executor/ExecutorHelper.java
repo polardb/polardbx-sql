@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.cursor.impl.AsyncCacheCursor;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.client.DriverResultCursor;
 import com.alibaba.polardbx.executor.mpp.client.MppRunner;
@@ -78,10 +79,15 @@ public class ExecutorHelper {
     }
 
     public static Cursor execute(RelNode plan, ExecutionContext context, boolean enableMpp, boolean cacheOutput) {
-        selectExecutorMode(plan, context, enableMpp);
-        switch (context.getExecuteMode()) {
+        return execute(plan, context, enableMpp, cacheOutput, false);
+    }
+
+    public static Cursor execute(RelNode plan, ExecutionContext context, boolean enableMpp, boolean cacheOutput,
+                                 boolean asyncCacheOutput) {
+        ExecutorMode executorMode = getExecutorMode(plan, context, enableMpp);
+        switch (executorMode) {
         case CURSOR:
-            return executeByCursor(plan, context, cacheOutput);
+            return executeByCursor(plan, context, cacheOutput, asyncCacheOutput);
         case TP_LOCAL:
         case AP_LOCAL:
             return executeLocal(plan, context, true, cacheOutput);
@@ -92,13 +98,19 @@ public class ExecutorHelper {
         }
     }
 
+    public static ExecutorMode getExecutorMode(RelNode plan, ExecutionContext context, boolean enableMpp) {
+        selectExecutorMode(plan, context, enableMpp);
+        return context.getExecuteMode();
+    }
+
     public static Cursor executeLocal(RelNode plan, ExecutionContext context, boolean syncMode, boolean cacheOutput) {
         String queryId = context.getTraceId();
         if (context.isApplyingSubquery()) {
             queryId = genSubQueryTraceId(context);
         }
 
-        if (context.getExecuteMode() == ExecutorMode.TP_LOCAL) {
+        if (context.getExecuteMode() == ExecutorMode.TP_LOCAL && context.getParamManager().getInt(
+            ConnectionParams.PARALLELISM) == -1) {
             context.getExtraCmds().put(ConnectionProperties.PARALLELISM, 1);
         }
 
@@ -130,6 +142,11 @@ public class ExecutorHelper {
     }
 
     public static Cursor executeByCursor(RelNode plan, ExecutionContext context, boolean cacheOutput) {
+        return executeByCursor(plan, context, cacheOutput, false);
+    }
+
+    public static Cursor executeByCursor(RelNode plan, ExecutionContext context, boolean cacheOutput,
+                                         boolean asyncCacheOutput) {
         String schema = null;
         if (plan instanceof AbstractRelNode) {
             schema = ((AbstractRelNode) plan).getSchemaName();
@@ -159,8 +176,13 @@ public class ExecutorHelper {
 
         if (cacheOutput) {
             long estimateRowSize = MemoryEstimator.estimateRowSize(plan.getRowType());
-            return new CacheCursor(
-                context, ServiceProvider.getInstance().getServer().getSpillerFactory(), cursor, estimateRowSize);
+            if (asyncCacheOutput) {
+                return new AsyncCacheCursor(
+                    context, ServiceProvider.getInstance().getServer().getSpillerFactory(), cursor, estimateRowSize);
+            } else {
+                return new CacheCursor(
+                    context, ServiceProvider.getInstance().getServer().getSpillerFactory(), cursor, estimateRowSize);
+            }
         } else {
             return cursor;
         }

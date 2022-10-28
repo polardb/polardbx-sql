@@ -20,12 +20,14 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.PreparedStatement;
@@ -56,6 +58,9 @@ public class InstConfigAccessor extends AbstractAccessor {
     private static final String UPDATE_INST_CONFIGS_BY_INST_ID_AND_PARAM_KEY =
         "replace into " + INST_CONFIG_TABLE + " set param_val=?, param_key=?, inst_id=?";
 
+    private static final String QUERY_INST_CONFIGS_BY_INST_ID_AND_PARAM_KEY =
+        "select * from " + INST_CONFIG_TABLE + " where inst_id=? and param_key=?";
+
     public List<InstConfigRecord> getAllInstConfigsByInstId(String instId) {
         try {
             Map<Integer, ParameterContext> params = new HashMap<>();
@@ -67,6 +72,19 @@ public class InstConfigAccessor extends AbstractAccessor {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
                 INST_CONFIG_TABLE,
                 e.getMessage());
+        }
+    }
+
+    public List<InstConfigRecord> queryByParamKey(String instId, String paramKey) {
+        Map<Integer, ParameterContext> params = new HashMap<>(3);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, instId);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, paramKey);
+        try {
+            DdlMetaLogUtil.logSql(QUERY_INST_CONFIGS_BY_INST_ID_AND_PARAM_KEY, params);
+            return MetaDbUtil.query(QUERY_INST_CONFIGS_BY_INST_ID_AND_PARAM_KEY, params, InstConfigRecord.class,
+                connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
         }
     }
 

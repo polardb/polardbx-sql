@@ -95,6 +95,8 @@ public class PartClauseInfo {
      */
     protected boolean isDynamicConstOnly = false;
 
+    protected boolean isSubQueryInExpr = false;
+
     protected PartClauseInfo() {
     }
 
@@ -227,5 +229,13 @@ public class PartClauseInfo {
 
     public void setConstExprId(Integer constExprId) {
         this.constExprId = constExprId;
+    }
+
+    public boolean isSubQueryInExpr() {
+        return isSubQueryInExpr;
+    }
+
+    public void setSubQueryInExpr(boolean subQueryInExpr) {
+        isSubQueryInExpr = subQueryInExpr;
     }
 }

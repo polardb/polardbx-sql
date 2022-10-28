@@ -215,7 +215,7 @@ polardbx.instance.id=polardbx-polardbx
 mem_size=16000
 metaDb_url=jdbc:mysql://127.0.0.1:4886/polardbx_meta_db_polardbx?useSSL=false
 metaDb_username=my_polarx
-metaDb_password=HMqvkvXZtT7XedA6t2IWY8+D7fJWIJir/mIY1Nf1b58=
+metaDbPasswd=HMqvkvXZtT7XedA6t2IWY8+D7fJWIJir/mIY1Nf1b58=
 polarx_url=jdbc:mysql://127.0.0.1:8527/__cdc__
 polarx_username=polardbx_root
 polarx_password=H1AzXc2NmCs61dNjH5nMvA==

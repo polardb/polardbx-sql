@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.backfill;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -30,21 +31,27 @@ import java.util.Set;
 
 @TaskName(name = "AlterTableGroupBackFillTask")
 @Getter
-public class AlterTableGroupBackFillTask extends BaseBackfillTask {
+public class AlterTableGroupBackFillTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
 
     String logicalTableName;
     Map<String, Set<String>> sourcePhyTables;
     Map<String, Set<String>> targetPhyTables;
+    boolean broadcast;
+    boolean movePartitions;
 
     @JSONCreator
     public AlterTableGroupBackFillTask(String schemaName,
                                        String logicalTableName,
                                        Map<String, Set<String>> sourcePhyTables,
-                                       Map<String, Set<String>> targetPhyTables) {
+                                       Map<String, Set<String>> targetPhyTables,
+                                       boolean broadcast,
+                                       boolean movePartitions) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.sourcePhyTables = sourcePhyTables;
         this.targetPhyTables = targetPhyTables;
+        this.broadcast = broadcast;
+        this.movePartitions = movePartitions;
     }
 
     @Override
@@ -55,7 +62,7 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask {
         AlterTableGroupBackfill backFillPlan =
             AlterTableGroupBackfill
                 .createAlterTableGroupBackfill(schemaName, logicalTableName, executionContext, sourcePhyTables,
-                    targetPhyTables);
+                    targetPhyTables, broadcast, movePartitions);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         ExecutorHelper.execute(backFillPlan, executionContext);

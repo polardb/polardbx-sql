@@ -16,13 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.config.schema;
 
+import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.PerformanceSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.VirtualViewType;
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelProtoDataType;
 import org.apache.calcite.schema.Table;
 import org.apache.calcite.schema.impl.ViewTable;
@@ -54,11 +55,13 @@ public class PerformanceSchema extends AbsSchema {
             RelProtoDataType relProtoDataType;
             if (row.isVirtual()) {
                 VirtualViewType virtualViewType = row.getVirtualViewType();
+                // no actual performance_schema, use DefaultSchema.getSchemaName() instead
                 relProtoDataType =
-                    new TddlCalciteSchema.VirtualViewProtoDataType(virtualViewType, new ExecutionContext());
+                    new TddlCalciteSchema.VirtualViewProtoDataType(DefaultSchema.getSchemaName(), virtualViewType);
             } else {
+                // no actual performance_schema, use DefaultSchema.getSchemaName() instead
                 relProtoDataType =
-                    new TddlCalciteSchema.ViewProtoDataType(columnList, viewDefinition, new ExecutionContext());
+                    new TddlCalciteSchema.ViewProtoDataType(DefaultSchema.getSchemaName(), columnList, viewDefinition);
             }
             Table table = new ViewTable(null, relProtoDataType, viewDefinition, ImmutableList.<String>of(), null);
             return table;
@@ -67,5 +70,3 @@ public class PerformanceSchema extends AbsSchema {
         }
     }
 }
-
-

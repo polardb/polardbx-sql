@@ -122,7 +122,6 @@ public class GsiBackfillTypeTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testCreateGsiDefault() throws SQLException {
         final String indexSk = C_BIGINT_64;
 
@@ -141,7 +140,6 @@ public class GsiBackfillTypeTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testCreateGsiOnColumn() throws SQLException {
         final String indexSk = dataColumn;
 
@@ -168,7 +166,6 @@ public class GsiBackfillTypeTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testAddGsiDefault() throws SQLException {
         final String indexSk = C_BIGINT_64;
 
@@ -187,7 +184,6 @@ public class GsiBackfillTypeTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testAddGsiOnColumn() throws SQLException {
         final String indexSk = dataColumn;
 

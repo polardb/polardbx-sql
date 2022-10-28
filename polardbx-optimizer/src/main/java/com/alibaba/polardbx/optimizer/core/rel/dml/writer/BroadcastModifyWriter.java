@@ -24,7 +24,6 @@ import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.Pair;
@@ -63,13 +62,16 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
      */
     private final Mapping groupingMapping;
 
+    protected final boolean withoutPk;
+
     public BroadcastModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
-                                 Mapping updateSetMapping, Mapping groupingMapping) {
+                                 Mapping updateSetMapping, Mapping groupingMapping, boolean withoutPk) {
         super(targetTable, modify.getOperation());
         this.modify = modify;
         this.pkMapping = pkMapping;
         this.updateSetMapping = updateSetMapping;
         this.groupingMapping = groupingMapping;
+        this.withoutPk = withoutPk;
     }
 
     @Override
@@ -92,9 +94,9 @@ public class BroadcastModifyWriter extends AbstractSingleWriter implements Disti
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {
         case UPDATE:
-            return builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, shardResult);
+            return builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, qn, shardResult, ec);
         case DELETE:
-            return builder.buildDeleteWithPk(modify, shardResult, ec);
+            return builder.buildDelete(modify, qn, shardResult, ec, withoutPk);
         default:
             throw new AssertionError("Cannot handle operation " + getOperation().name());
         }

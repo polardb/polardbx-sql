@@ -18,12 +18,15 @@ package com.alibaba.polardbx.executor.ddl.newengine.meta;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlPlanState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanRecord;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 public class DdlPlanManager {
@@ -51,12 +54,12 @@ public class DdlPlanManager {
         }.execute();
     }
 
-    public List<DdlPlanRecord> getExecutableDdlPlan(DdlType ddlType){
-        return new DdlPlanAccessorDelegate<List<DdlPlanRecord>>(){
+    public List<DdlPlanRecord> getExecutableDdlPlan(DdlType ddlType) {
+        return new DdlPlanAccessorDelegate<List<DdlPlanRecord>>() {
             @Override
             protected List<DdlPlanRecord> invoke() {
                 List<DdlPlanRecord> ddlPlanRecordList = ddlPlanAccessor.queryByType(ddlType.name());
-                if(CollectionUtils.isEmpty(ddlPlanRecordList)){
+                if (CollectionUtils.isEmpty(ddlPlanRecordList)) {
                     return new ArrayList<>();
                 }
                 return ddlPlanRecordList;
@@ -64,11 +67,29 @@ public class DdlPlanManager {
         }.execute();
     }
 
-    public void incrementRetryCount(long ddlPlanId){
+    public void incrementRetryCount(long ddlPlanId) {
         new DdlPlanAccessorDelegate<Boolean>() {
             @Override
             protected Boolean invoke() {
                 return ddlPlanAccessor.incrementRetryCount(ddlPlanId);
+            }
+        }.execute();
+    }
+
+    public Optional<DdlPlanRecord> getDdlPlanByJobId(long jobId) {
+        return new DdlPlanAccessorDelegate<Optional<DdlPlanRecord>>() {
+            @Override
+            protected Optional<DdlPlanRecord> invoke() {
+                return ddlPlanAccessor.queryByJobId(jobId);
+            }
+        }.execute();
+    }
+
+    public void updateCostInfo(long planId, CostEstimableDdlTask.CostInfo costInfo) {
+        new DdlPlanAccessorDelegate<Boolean>() {
+            @Override
+            protected Boolean invoke() {
+                return ddlPlanAccessor.updateExtra(planId, TaskHelper.encodeCostInfo(costInfo));
             }
         }.execute();
     }

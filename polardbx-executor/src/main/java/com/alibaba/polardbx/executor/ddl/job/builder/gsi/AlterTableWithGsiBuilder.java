@@ -151,7 +151,7 @@ public class AlterTableWithGsiBuilder {
             final SqlAddIndex addIndex = ((SqlAddIndex) ((SqlAlterTable) originalSqlNode).getAlters().get(0));
 
             relDdl.sqlNode =
-                new SqlAlterTable(alterTable.getOriginTableName(), alterTable.getColumnOpts(), stmt.toString(),
+                new SqlAlterTable(null, alterTable.getOriginTableName(), alterTable.getColumnOpts(), stmt.toString(),
                     alterTable.getTableOptions(), ImmutableList.of(new SqlAddIndex(SqlParserPos.ZERO, localIndexName,
                     addIndex.getIndexDef().rebuildToExplicitLocal(localIndexName))), SqlParserPos.ZERO);
         }

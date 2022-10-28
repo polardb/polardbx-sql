@@ -43,7 +43,6 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTableGroup;
-import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCreateTableGroup;
@@ -85,8 +84,6 @@ public class CreateTableGroupHandler extends HandlerCommon {
 
         boolean isIfNotExists = logicalCreateTableGroup.isIfNotExists();
         String locality = sqlNode.getLocality();
-
-        LocalityManager lm = LocalityManager.getInstance();
 
         // validate the locality
         if (TStringUtil.isNotBlank(locality)) {
@@ -136,12 +133,7 @@ public class CreateTableGroupHandler extends HandlerCommon {
                 tableGroupRecord.setInited(0);
                 tableGroupRecord.meta_version = 1L;
                 tableGroupRecord.manual_create = 1;
-                long tgId = tableGroupAccessor.addNewTableGroup(tableGroupRecord);
-
-                if (TStringUtil.isNotBlank(locality)) {
-                    lm.setLocalityOfTableGroup(schemaName, tgId, locality);
-                }
-
+                tableGroupAccessor.addNewTableGroup(tableGroupRecord);
             } catch (Throwable ex) {
                 MetaDbLogUtil.META_DB_LOG.error(ex);
                 throw GeneralUtil.nestedException(ex);

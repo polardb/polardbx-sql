@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.planner.selectplan;
 
-import com.alibaba.polardbx.common.model.SqlType;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.planner.common.PlanTestCommon;
 import org.junit.runners.Parameterized.Parameters;
 

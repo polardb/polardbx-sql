@@ -15,7 +15,7 @@
  */
 package com.alibaba.polardbx.druid.sql.visitor;
 
-public enum  VisitorFeature {
+public enum VisitorFeature {
     OutputUCase,
     OutputPrettyFormat,
     OutputParameterized,
@@ -28,6 +28,7 @@ public enum  VisitorFeature {
     OutputParameterizedQuesUnMergeAnd,
     OutputParameterizedQuesUnMergeValuesList,
     OutputParameterizedUnMergeShardingTable,
+    OutputParameterizedSpecialNameWithBackTick,
     OutputParameterizedZeroReplaceNotUseOriginalSql,
     OutputRegForPresto,
     /**
@@ -36,15 +37,14 @@ public enum  VisitorFeature {
     OutputKeepParenthesisWhenNotExpr,
 
     OutputNameQuote,
-    OutputDistributedLiteralInCreateTableStmt
-    ;
+    OutputDistributedLiteralInCreateTableStmt,
+    OutputPlOnlyDefinition;
 
-    private VisitorFeature(){
+    private VisitorFeature() {
         mask = (1 << ordinal());
     }
 
     public final int mask;
-
 
     public static boolean isEnabled(int features, VisitorFeature feature) {
         return (features & feature.mask) != 0;
@@ -67,7 +67,7 @@ public enum  VisitorFeature {
 
         int value = 0;
 
-        for (VisitorFeature feature: features) {
+        for (VisitorFeature feature : features) {
             value |= feature.mask;
         }
 

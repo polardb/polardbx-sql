@@ -1,0 +1,142 @@
+lineitem:
+  596099371
+partsupp:
+  78923264
+nation:
+  25
+part:
+  19831642
+supplier:
+  990645
+orders:
+  148767864
+region:
+  5
+customer:
+  14836390
+test_index:
+  9987390
+test_index_join:
+  973210
+lineitem.l_receiptdate.cardinality:
+  3912
+lineitem.l_returnflag.cardinality:
+  3
+lineitem.l_tax.cardinality:
+  9
+lineitem.l_shipmode.cardinality:
+  7
+lineitem.l_suppkey.cardinality:
+  21204539
+lineitem.l_shipdate.cardinality:
+  2980
+lineitem.l_commitdate.cardinality:
+  2539
+lineitem.l_partkey.cardinality:
+  51142649
+lineitem.l_orderkey.cardinality:
+  60947356
+lineitem.l_quantity.cardinality:
+  50
+lineitem.l_comment.cardinality:
+  26029586
+lineitem.l_linestatus.cardinality:
+  2
+lineitem.l_extendedprice.cardinality:
+  32180648
+lineitem.l_linenumber.cardinality:
+  7
+lineitem.l_discount.cardinality:
+  11
+lineitem.l_shipinstruct.cardinality:
+  4
+partsupp.ps_availqty.cardinality:
+  10107
+partsupp.ps_suppkey.cardinality:
+  7703470
+partsupp.ps_comment.cardinality:
+  18595019
+partsupp.ps_partkey.cardinality:
+  17527005
+partsupp.ps_supplycost.cardinality:
+  1467452
+nation.n_comment.cardinality:
+  25
+nation.n_nationkey.cardinality:
+  24
+nation.n_regionkey.cardinality:
+  5
+nation.n_name.cardinality:
+  25
+part.p_partkey.cardinality:
+  11705545
+part.p_container.cardinality:
+  40
+part.p_comment.cardinality:
+  1611192
+part.p_name.cardinality:
+  12058260
+part.p_brand.cardinality:
+  25
+part.p_retailprice.cardinality:
+  822757
+part.p_type.cardinality:
+  150
+part.p_mfgr.cardinality:
+  5
+part.p_size.cardinality:
+  50
+supplier.s_comment.cardinality:
+  983347
+supplier.s_phone.cardinality:
+  983319
+supplier.s_nationkey.cardinality:
+  25
+supplier.s_name.cardinality:
+  982987
+supplier.s_acctbal.cardinality:
+  928695
+supplier.s_address.cardinality:
+  983726
+supplier.s_suppkey.cardinality:
+  983092
+orders.o_clerk.cardinality:
+  1987084
+orders.o_orderstatus.cardinality:
+  3
+orders.o_orderdate.cardinality:
+  2406
+orders.o_shippriority.cardinality:
+  1
+orders.o_custkey.cardinality:
+  23070458
+orders.o_totalprice.cardinality:
+  27255379
+orders.o_comment.cardinality:
+  28403611
+orders.o_orderkey.cardinality:
+  30764907
+orders.o_orderpriority.cardinality:
+  5
+region.r_regionkey.cardinality:
+  5
+region.r_comment.cardinality:
+  5
+region.r_name.cardinality:
+  5
+customer.c_custkey.cardinality:
+  9903406
+customer.c_acctbal.cardinality:
+  3538373
+customer.c_phone.cardinality:
+  9337909
+customer.c_mktsegment.cardinality:
+  5
+customer.c_address.cardinality:
+  10122519
+customer.c_nationkey.cardinality:
+  25
+customer.c_name.cardinality:
+  9986573
+customer.c_comment.cardinality:
+  9621150

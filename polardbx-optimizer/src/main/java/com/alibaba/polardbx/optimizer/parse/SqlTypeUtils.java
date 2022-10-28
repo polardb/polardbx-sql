@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.parse;
 
-import com.alibaba.polardbx.common.model.SqlType;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 
 import java.util.EnumSet;
 
@@ -26,43 +26,27 @@ import java.util.EnumSet;
 public class SqlTypeUtils {
 
     public static EnumSet<SqlType> INSERT_STATEMENT = EnumSet.of(SqlType.INSERT,
-        SqlType.INSERT_INTO_SELECT,
-        SqlType.MULTI_STATEMENT_INSERT);
+        SqlType.INSERT_INTO_SELECT);
 
-    public static EnumSet<SqlType> UPDATE_STATEMENT = EnumSet.of(SqlType.UPDATE,
-        SqlType.MULTI_UPDATE,
-        SqlType.MULTI_STATEMENT_UPDATE);
+    public static EnumSet<SqlType> UPDATE_STATEMENT = EnumSet.of(SqlType.UPDATE);
 
-    public static EnumSet<SqlType> DELETE_STATEMENT = EnumSet.of(SqlType.DELETE,
-        SqlType.MULTI_DELETE,
-        SqlType.MULTI_STATEMENT_DELETE);
+    public static EnumSet<SqlType> DELETE_STATEMENT = EnumSet.of(SqlType.DELETE);
 
-    public static EnumSet<SqlType> REPLACE_STATEMENT = EnumSet.of(SqlType.REPLACE,
-        SqlType.REPLACE_INTO_SELECT);
-
-    public static EnumSet<SqlType> LOAD_STATEMENT = EnumSet.of(SqlType.LOAD);
+    public static EnumSet<SqlType> REPLACE_STATEMENT = EnumSet.of(SqlType.REPLACE);
 
     public static EnumSet<SqlType> DML_STATEMENT = combine(INSERT_STATEMENT,
         UPDATE_STATEMENT,
         DELETE_STATEMENT,
-        REPLACE_STATEMENT,
-        LOAD_STATEMENT);
+        REPLACE_STATEMENT);
 
     public static EnumSet<SqlType> SHOW_STATEMENT = EnumSet.of(SqlType.SHOW,
-        SqlType.SHOW_SEQUENCES,
-        SqlType.TDDL_SHOW,
-        SqlType.SHOW_CHARSET,
         SqlType.DESC);
 
     /**
      * DQL
      */
     public static EnumSet<SqlType> SELECT_STATEMENT = EnumSet.of(SqlType.SELECT,
-        SqlType.SELECT_WITHOUT_TABLE,
-        SqlType.SELECT_FOR_UPDATE,
-        SqlType.SELECT_FROM_UPDATE,
-        SqlType.SELECT_UNION,
-        SqlType.MULTI_STATEMENT);
+        SqlType.SELECT_FOR_UPDATE);
 
     public static EnumSet<SqlType> combine(EnumSet<SqlType>... enumSets) {
         EnumSet<SqlType> result = EnumSet.noneOf(SqlType.class);

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.tablegroup;
 
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 
 import java.sql.ResultSet;
@@ -54,6 +55,7 @@ public class TableGroupRecord implements SystemTableRecord {
     public Long meta_version;
     public int manual_create;
     public int tg_type = TG_TYPE_PARTITION_TBL_TG;
+    public int auto_split_policy;
 
     /*
     use as the partition postfix when auto-genetate the partition_name or physical
@@ -71,6 +73,7 @@ public class TableGroupRecord implements SystemTableRecord {
         this.meta_version = rs.getLong("meta_version");
         this.manual_create = rs.getInt("manual_create");
         this.tg_type = rs.getInt("tg_type");
+        this.auto_split_policy = rs.getInt("auto_split_policy");
         this.locality = rs.getString("locality");
         this.inited = rs.getInt("inited");
         return this;
@@ -161,10 +164,26 @@ public class TableGroupRecord implements SystemTableRecord {
     }
 
     public boolean isBroadCastTableGroup() {
-        return tg_type==TG_TYPE_BROADCAST_TBL_TG;
+        return tg_type == TG_TYPE_BROADCAST_TBL_TG;
+    }
+
+    public boolean isSingleTableGroup() {
+        return tg_type == TG_TYPE_DEFAULT_SINGLE_TBL_TG || tg_type == TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
+    }
+
+    public boolean isLocalitySpecified() {
+        return LocalityDesc.parse(locality).holdEmptyDnList();
     }
 
     public void setTg_type(int tg_type) {
         this.tg_type = tg_type;
+    }
+
+    public int getAuto_split_policy() {
+        return auto_split_policy;
+    }
+
+    public void setAuto_split_policy(int auto_split_policy) {
+        this.auto_split_policy = auto_split_policy;
     }
 }

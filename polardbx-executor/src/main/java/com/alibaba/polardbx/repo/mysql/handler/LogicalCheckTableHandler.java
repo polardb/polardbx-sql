@@ -19,62 +19,48 @@ package com.alibaba.polardbx.repo.mysql.handler;
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.handler.LogicalCheckLocalPartitionHandler;
-import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
-import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
-import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
-import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
-import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
-import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
-import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
-import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
-import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
-import com.alibaba.polardbx.repo.mysql.checktable.CheckTableUtil;
-import com.alibaba.polardbx.repo.mysql.checktable.FieldDescription;
-import com.alibaba.polardbx.repo.mysql.checktable.TableCheckResult;
-import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
-import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
+import com.alibaba.polardbx.executor.handler.LogicalCheckLocalPartitionHandler;
+import com.alibaba.polardbx.gms.engine.FileSystemGroup;
+import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.FileMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
+import com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils;
+import com.alibaba.polardbx.optimizer.config.table.PolarDBXOrcSchema;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
+import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
@@ -86,11 +72,15 @@ import com.alibaba.polardbx.repo.mysql.checktable.TableCheckResult;
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCheckTable;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.commons.lang.StringUtils;
+import org.eclipse.jetty.util.StringUtil;
 
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -101,7 +91,9 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -118,6 +110,11 @@ public class LogicalCheckTableHandler extends HandlerCommon {
     public String displayMode = "";
 
     static String statusOK = "OK";
+
+    enum MsgType {
+        status, error, info, note, warning
+    }
+    static String statusError = "error";
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
@@ -156,9 +153,15 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                 executionContext);
             if (isTableWithPrivileges) {
                 if (DbInfoManager.getInstance().isNewPartitionDb(executionContext.getSchemaName())) {
+                    if (CBOUtil.isOss(executionContext, table)) {
+                        // check the existence of files of oss table
+                        doCheckFileStorageTable(executionContext.getSchemaName(), table, executionContext, result);
+                        continue;
+                    }
                     doCheckForOnePartTable(executionContext.getSchemaName(), table, executionContext, result);
                     doCheckForOnePartTableGsi(executionContext.getSchemaName(), table, executionContext, result);
                     doCheckTableColumn(executionContext.getSchemaName(), table, executionContext, result);
+
                 } else {
                     doCheckForOneTable(executionContext.getSchemaName(), appName, table, executionContext, result);
                 }
@@ -256,6 +259,76 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                 logicalTableName), e);
             throw GeneralUtil.nestedException(e);
         }
+    }
+
+    /**
+     * check all the files of oss tables
+     */
+    protected void doCheckFileStorageTable(String schemaName, String logicalTableName,
+                                             ExecutionContext executionContext, ArrayResultCursor result) {
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTableName);
+        String tableText = String.format("%s.%s", schemaName, logicalTableName);
+        String opText = "check";
+
+        PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(tableMeta);
+        Set<String> expectBfColumns = new TreeSet<>(String::compareToIgnoreCase);
+        expectBfColumns.addAll(orcSchema.getBfSchema().getFieldNames());
+        // check files
+        FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(tableMeta.getEngine());
+        Preconditions.checkArgument(fileSystemGroup != null);
+        for (List<FileMeta> fileMetas : tableMeta.getFlatFileMetas().values()) {
+            for (FileMeta fileMeta : fileMetas) {
+                Preconditions.checkArgument(fileMeta instanceof OSSOrcFileMeta);
+                int stripeNum = 0;
+                try {
+                    // check the existence of file record in oss
+                    if (!fileSystemGroup.exists(fileMeta.getFileName())) {
+                        result.addRow(new Object[] {tableText, opText, MsgType.error.name(),
+                            "File " + fileMeta.getFileName() + " doesn't exist"});
+                        return;
+                    }
+                    OSSOrcFileMeta ossOrcFileMeta = (OSSOrcFileMeta) fileMeta;
+
+                    for (ColumnMeta columnMeta : ossOrcFileMeta.getColumnMetas()) {
+                        Map<Long, StripeColumnMeta> stripeColumnMetaMap =
+                            ossOrcFileMeta.getStripeColumnMetas(columnMeta.getOriginColumnName());
+                        boolean checkBf = expectBfColumns.contains(columnMeta.getName().toUpperCase());
+                        stripeNum = (stripeNum == 0) ? stripeColumnMetaMap.size() : stripeNum;
+                        // each column should have the same number of stripes
+                        if (stripeNum != stripeColumnMetaMap.size()) {
+                            String msgContent = String.format(
+                                "Different stripe size of bloom filter for file %s, found size %d and %d"
+                                , fileMeta.getFileName(), stripeNum, stripeColumnMetaMap.size());
+                            result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgContent});
+                            return;
+                        }
+                        // check each bloom filter
+                        for (Map.Entry<Long, StripeColumnMeta> entry : stripeColumnMetaMap.entrySet()) {
+                            StripeColumnMeta stripeColumnMeta = entry.getValue();
+                            String path = stripeColumnMeta.getBloomFilterPath();
+                            if (checkBf && StringUtil.isEmpty(path)) {
+                                String msgContent = String.format(
+                                    "Column %s of file %s should contain bloom filter for the %d-th stripe"
+                                    , columnMeta.getName(), fileMeta.getFileName(),  entry.getKey());
+                                result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgContent});
+                                return;
+                            }
+                            // check the existence of bloom filter in oss
+                            if (!StringUtil.isEmpty(path)) {
+                                if (!fileSystemGroup.exists(path)) {
+                                    result.addRow(new Object[] {tableText, opText, MsgType.error.name(),
+                                        "Bloom filter " + path + " doesn't exist"});
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    throw GeneralUtil.nestedException(e);
+                }
+            }
+        }
+        result.addRow(new Object[] {tableText, opText, MsgType.status.name(), statusOK});
     }
 
     protected void doCheckForOnePartTableGsi(String schemaName, String logicalTableName,
@@ -591,6 +664,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             throw GeneralUtil.nestedException(e);
         }
     }
+
     protected void doCheckForOnePartTable(String schemaName, String logicalTableName,
                                           ExecutionContext executionContext, ArrayResultCursor result) {
         doCheckForOnePartTable(schemaName, logicalTableName, executionContext, result, null);
@@ -727,6 +801,11 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                     outputFieldCheckResults(result, tableText, opText, statusText, checkResult, isBroadcast);
                 }
                 isStatusOK = false;
+            }
+
+            if (isStatusOK) {
+                statusText = "status";
+                result.addRow(new Object[] {tableText, opText, statusText, "OK"});
             }
         }
     }

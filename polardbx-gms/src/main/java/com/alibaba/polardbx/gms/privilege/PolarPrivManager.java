@@ -21,11 +21,10 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.privilege.PrivilegeUtil;
+import com.alibaba.polardbx.common.utils.ExceptionUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
-import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
@@ -38,6 +37,7 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.map.HashedMap;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -46,6 +46,7 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -150,7 +151,7 @@ public class PolarPrivManager {
 
     public void incrementLoginErrorCount(String userName, String host) {
         PolarLoginErrConfig polarLoginErrConfig = getPolarLoginErrConfig();
-        int max = polarLoginErrConfig.getPasswordMaxErrorCount();
+        int max = polarLoginErrConfig.getPasswordMaxErrorCount(userName);
         if (max <= 0) {
             return;
         }
@@ -158,7 +159,7 @@ public class PolarPrivManager {
             try {
                 String limitKey = userName.toUpperCase() + "@" + host;
                 connection.setAutoCommit(false);
-                incrementLoginErrorCount(limitKey, connection);
+                incrementLoginErrorCount(userName, limitKey, connection);
                 connection.commit();
             } catch (SQLException e) {
                 logger.error(e.getMessage());
@@ -175,14 +176,14 @@ public class PolarPrivManager {
         });
     }
 
-    private void incrementLoginErrorCount(String limitKey, Connection connection)
+    private void incrementLoginErrorCount(String userName, String limitKey, Connection connection)
         throws SQLException {
         PolarLoginErrConfig polarLoginErrConfig = getPolarLoginErrConfig();
-        int max = polarLoginErrConfig.getPasswordMaxErrorCount();
+        int max = polarLoginErrConfig.getPasswordMaxErrorCount(userName);
         if (max <= 0) {
             return;
         }
-        long expireSeconds = polarLoginErrConfig.getExpireSeconds();
+        long expireSeconds = polarLoginErrConfig.getExpireSeconds(userName);
         //if cache do not contains it ,insert first and return
         if (!getLoginErrMap().containsKey(limitKey)) {
             try {
@@ -236,7 +237,7 @@ public class PolarPrivManager {
             polarLoginErr.setExpireDate(expireDate);
             enableUpdate.compareAndSet(false, true);
             if (i <= 0) {
-                incrementLoginErrorCount(limitKey, connection);
+                incrementLoginErrorCount(userName, limitKey, connection);
             }
         } else {
             enableUpdate.compareAndSet(false, true);
@@ -511,6 +512,12 @@ public class PolarPrivManager {
                     .collect(Collectors.toList()));
             } catch (Throwable t) {
                 logger.error("Failed to create accounts!", t);
+                if (ExceptionUtils.isMySQLIntegrityConstraintViolationException(t)) {
+                    if (t.getMessage() != null && t.getMessage().contains("Duplicate entry")) {
+                        throw new TddlRuntimeException(ERR_SERVER, "Failed to create account due to duplicate entry!",
+                            t);
+                    }
+                }
                 throw new TddlRuntimeException(ERR_SERVER, "Failed to persist account data!", t);
             }
         });
@@ -778,15 +785,26 @@ public class PolarPrivManager {
             return true;
         }
         PolarLoginErrConfig polarLoginErrConfig = getPolarLoginErrConfig();
-        int max = polarLoginErrConfig.getPasswordMaxErrorCount();
+        int max = polarLoginErrConfig.getPasswordMaxErrorCount(userName);
         if (max <= 0) {
             return true;
         }
         int count = polarLoginErr.getErrorCount();
-        if (max > 0) {
-            if (count >= max && polarLoginErr.getExpireDate().getTime() >= System.currentTimeMillis()) {
-                return false;
-            }
+        return count < max || polarLoginErr.getExpireDate().getTime() < System.currentTimeMillis();
+    }
+
+    public boolean checkUserPasswordExpire(String userName, String host) {
+        if (userName == null) {
+            return true;
+        }
+        PolarLoginErrConfig polarLoginErrConfig = getPolarLoginErrConfig();
+        Date expireDate = polarLoginErrConfig.getPasswordExpireDate(userName);
+        if (expireDate == null) {
+            return true;
+        }
+        Date now = new Date();
+        if (now.after(expireDate)) {
+            return false;
         }
         return true;
     }
@@ -906,11 +924,15 @@ public class PolarPrivManager {
             return true;
         }
 
-        return account.getRolePrivileges().getActiveRoleIds(context.getActiveRoles(), config.getMandatoryRoleIds())
-            .stream()
-            .map(accountPrivilegeData::getById)
-            .filter(Objects::nonNull)
-            .anyMatch(role -> PolarAuthorizer.hasPermission(role, context.getPermission()));
+        Collection<Long> activeRoleIds =
+            account.getRolePrivileges().getActiveRoleIds(context.getActiveRoles(), config.getMandatoryRoleIds());
+        for (long roleId : activeRoleIds) {
+            PolarAccountInfo role = accountPrivilegeData.getById(roleId);
+            if (role != null && PolarAuthorizer.hasPermission(role, context.getPermission())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @VisibleForTesting
@@ -968,20 +990,86 @@ public class PolarPrivManager {
                                             boolean godAllowed) {
         Preconditions.checkNotNull(user, "User can't be null!");
         Preconditions.checkState(!Iterables.isEmpty(accounts), "Accounts can't be empty!");
-
         PolarAccountInfo realUser = accountPrivilegeData.getAndCheckById(user.getAccountId());
         accounts.forEach(account -> checkModifyReservedAccount(realUser, account.getAccount(), godAllowed));
     }
 
-    public List<Object[]> listUserPrivileges() {
+    public List<Object[]> listUserPrivileges(PolarAccountInfo currentAccount) {
         List<Object[]> ret = new ArrayList<>();
+        boolean isGod = currentAccount.getAccountType() == AccountType.GOD;
         accountPrivilegeData.consumeAccountInfos(user -> {
+            if (!isGod && !StringUtils.equalsIgnoreCase(currentAccount.getUsername(), user.getUsername())) {
+                // 只有高权限账号才能查看所有用户的权限
+                return;
+            }
             String identifier = user.getIdentifier();
-            String isGradable = user.getInstPriv().hasPrivilege(PrivilegeKind.GRANT_OPTION) ? "YES" : "NO";
+            String isGrantable = user.getInstPriv().hasPrivilege(PrivilegeKind.GRANT_OPTION) ? "YES" : "NO";
             user.getInstPriv().listGrantedPrivileges()
                 .stream()
-                .map(privilege -> new Object[] {identifier, "def", privilege, isGradable})
+                .map(privilege -> new Object[] {identifier, "def", privilege, isGrantable})
                 .forEach(ret::add);
+        });
+        return ret;
+    }
+
+    /**
+     * GRANTEE:
+     * TABLE_CATALOG: def
+     * TABLE_SCHEMA:
+     * TABLE_NAME:
+     * PRIVILEGE_TYPE:
+     * IS_GRANTABLE:
+     */
+    public List<Object[]> listTablePrivileges(PolarAccountInfo currentAccount) {
+        List<Object[]> ret = new ArrayList<>();
+        boolean isGod = currentAccount.getAccountType() == AccountType.GOD;
+        accountPrivilegeData.consumeAccountInfos(user -> {
+            if (!isGod && !StringUtils.equalsIgnoreCase(currentAccount.getUsername(), user.getUsername())) {
+                // 只有高权限账号才能查看所有用户的table权限
+                return;
+            }
+            String identifier = user.getIdentifier();
+            String isGrantable = user.getInstPriv().hasPrivilege(PrivilegeKind.GRANT_OPTION) ? "YES" : "NO";
+            user.getTbPrivMap().values()
+                .forEach(tbPriv -> tbPriv.getPrivileges().entrySet()
+                    .stream()
+                    .filter(priv -> priv.getKey().hasSqlName())
+                    .filter(Map.Entry::getValue)
+                    .map(priv -> new Object[] {
+                        identifier, "def", tbPriv.getDbName(), tbPriv.getTbName(),
+                        priv.getKey().getSqlName(), isGrantable})
+                    .forEach(ret::add));
+        });
+        return ret;
+    }
+
+    /**
+     * GRANTEE:
+     * TABLE_CATALOG: def
+     * TABLE_SCHEMA:
+     * PRIVILEGE_TYPE:
+     * IS_GRANTABLE:
+     */
+    public List<Object[]> listSchemaPrivileges(PolarAccountInfo currentAccount) {
+        List<Object[]> ret = new ArrayList<>();
+        boolean isGod = currentAccount.getAccountType() == AccountType.GOD;
+        accountPrivilegeData.consumeAccountInfos(user -> {
+            if (!isGod && !StringUtils.equalsIgnoreCase(currentAccount.getUsername(), user.getUsername())) {
+                // 只有高权限账号才能查看所有用户的schema权限
+                return;
+            }
+            String identifier = user.getIdentifier();
+            String isGrantable = user.getInstPriv().hasPrivilege(PrivilegeKind.GRANT_OPTION) ? "YES" : "NO";
+            user.getDbPrivMap().entrySet()
+                .stream()
+                .filter(entry -> !StringUtils.equalsIgnoreCase(entry.getKey(), PolarPrivUtil.INFORMATION_SCHEMA))
+                .forEach(entry -> entry.getValue().getPrivileges().entrySet()
+                    .stream()
+                    .filter(priv -> priv.getKey().hasSqlName())
+                    .filter(Map.Entry::getValue)
+                    .map(priv -> new Object[] {
+                        identifier, "def", entry.getKey(), priv.getKey().getSqlName(), isGrantable})
+                    .forEach(ret::add));
         });
         return ret;
     }

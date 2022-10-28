@@ -256,10 +256,10 @@ public class OrcBloomFilter {
 
     /**
      * Serialize the bloom filter to output stream.
+     *
      * @param out output stream
      * @param bloomFilter bloom filter instance
      * @return written bytes
-     * @throws IOException
      */
     public static int serialize(OutputStream out, OrcBloomFilter bloomFilter) throws IOException {
         int bytes = 0;

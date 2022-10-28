@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.hint.operator;
 
+import com.alibaba.polardbx.common.utils.TStringUtil;
+
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-
-import com.alibaba.polardbx.common.utils.TStringUtil;
 
 /**
  * @author chenmo.cm

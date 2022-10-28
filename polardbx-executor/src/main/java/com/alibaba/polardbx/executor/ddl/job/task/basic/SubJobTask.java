@@ -16,13 +16,16 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.MockDdlJob;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
@@ -64,9 +67,8 @@ import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.TRANSIENT_S
 @TaskName(name = "SubJobTask")
 @Getter
 @Setter
-public class SubJobTask extends BaseDdlTask {
+public final class SubJobTask extends BaseDdlTask implements CostEstimableDdlTask {
 
-    private long rootJobId = 0;
     private String ddlStmt;
     /**
      * -1: TransientDdlJob
@@ -86,12 +88,11 @@ public class SubJobTask extends BaseDdlTask {
     private boolean parentAcquireResource;
 
     public SubJobTask(String schemaName, String ddlStmt, String rollbackDdlStmt) {
-        this(schemaName, 0, ddlStmt, 0, rollbackDdlStmt, 0);
+        this(schemaName, ddlStmt, 0, rollbackDdlStmt, 0);
     }
 
     @JSONCreator
     public SubJobTask(String schemaName,
-                      long rootJobId,
                       String ddlStmt,
                       long subJobId,
                       String rollbackDdlStmt,
@@ -111,12 +112,12 @@ public class SubJobTask extends BaseDdlTask {
      */
     @Override
     protected void beforeTransaction(ExecutionContext executionContext) {
-        if (subJobId == TRANSIENT_SUB_JOB_ID){
+        if (subJobId == TRANSIENT_SUB_JOB_ID) {
             LOGGER.info("subjob is transient, skip execution");
             return;
         }
         if (subJobId == 0) {
-            submitSubJob(executionContext.getDdlContext());
+            submitSubJob(executionContext.getDdlContext(), executionContext.getParamManager());
         } else {
             // Has been submitted, should recover the job
             Pair<DdlState, Boolean> stateChange = stateTransfer(subJobId, DdlState.RECOVER_JOB_STATE_TRANSFER);
@@ -135,7 +136,8 @@ public class SubJobTask extends BaseDdlTask {
             return;
         } else {
             throw DdlHelper.logAndThrowError(LOGGER,
-                String.format("Execute subjob %d failed with state %s", subJobDdlContext.getJobId(), subJobDdlContext.getState()));
+                String.format("Execute subjob %d failed with state %s", subJobDdlContext.getJobId(),
+                    subJobDdlContext.getState()));
         }
     }
 
@@ -149,7 +151,7 @@ public class SubJobTask extends BaseDdlTask {
      */
     @Override
     protected void beforeRollbackTransaction(ExecutionContext executionContext) {
-        if (subJobId == TRANSIENT_SUB_JOB_ID){
+        if (subJobId == TRANSIENT_SUB_JOB_ID) {
             LOGGER.info("Subjob is transient, skip rollback");
             return;
         }
@@ -166,7 +168,7 @@ public class SubJobTask extends BaseDdlTask {
         } else if (stateChange.getValue()) {
             // Rollback the unfinished sub job
             DdlEngineDagExecutor ddlEngineDagExecutor = DdlEngineDagExecutorMap.get(schemaName, subJobId);
-            if (ddlEngineDagExecutor != null){
+            if (ddlEngineDagExecutor != null) {
                 ddlEngineDagExecutor.interrupt();
             }
             DdlContext subJobDdlContext = executeSubJob(subJobId);
@@ -179,7 +181,7 @@ public class SubJobTask extends BaseDdlTask {
                     String.format("Rollback subjob %d failed with state %s", subJobId, subJobDdlContext.getState()));
             }
 
-        } else if (DdlState.FINISHED.contains(stateChange.getKey())) {
+        } else if (DdlState.COMPLETED == (stateChange.getKey())) {
             // Subjob already finished, we could ignore it, or submit another job to rollback.
             if (StringUtils.isEmpty(rollbackDdlStmt)) {
                 LOGGER.info(String.format("Subjob %d already completed, needn't rollback: %s", subJobId, state));
@@ -187,9 +189,11 @@ public class SubJobTask extends BaseDdlTask {
             } else {
                 LOGGER.info(String.format("Subjob %d already completed, submit a reversed job to rollback: %s",
                     subJobId, rollbackDdlStmt));
-                createReversedSubJob(executionContext.getDdlContext());
+                createReversedSubJob(executionContext.getDdlContext(), executionContext.getParamManager());
                 return;
             }
+        } else if (DdlState.ROLLBACK_COMPLETED == (stateChange.getKey())) {
+            // Subjob already rollbacked, ignore it
         } else {
             throw DdlHelper.logAndThrowError(LOGGER, String.format("Subjob %d in state %s, could not rollback",
                 subJobId, stateChange.getKey()));
@@ -197,23 +201,23 @@ public class SubJobTask extends BaseDdlTask {
     }
 
     //todo submitSubJob可以和submitRollbackSubJob合并
-    private void submitSubJob(DdlContext ddlContext) {
+    private void submitSubJob(DdlContext ddlContext, ParamManager paramManager) {
         if (FailPoint.isKeyEnable(FailPointKey.FP_HIJACK_DDL_JOB)
             && org.apache.commons.lang3.StringUtils.equalsIgnoreCase(ddlStmt, FailPointKey.FP_INJECT_SUBJOB)) {
             submitMockSubJob(ddlContext);
         }
         int count = 0;
-        while (!ddlContext.isInterrupted() && !subJobSubmitted()){
+        while (!ddlContext.isInterrupted() && !subJobSubmitted()) {
             try {
                 subJobId = DdlHelper.getServerConfigManager()
-                    .submitSubDDL(schemaName, getJobId(), getTaskId(), false, ddlStmt);
+                    .submitSubDDL(schemaName, ddlContext, getJobId(), getTaskId(), false, ddlStmt, paramManager);
                 setState(DdlTaskState.DIRTY);
                 LOGGER.info(String.format("Create subjob %d", subJobId));
-                if(subJobId == 0L){
+                if (subJobId == 0L) {
                     throw new TddlNestableRuntimeException("submit subjob error");
                 }
-            }catch (Exception e){
-                if(StringUtils.containsIgnoreCase(e.getMessage(), SUB_JOB_RETRY_ERRER_MESSAGE)){
+            } catch (Exception e) {
+                if (StringUtils.containsIgnoreCase(e.getMessage(), SUB_JOB_RETRY_ERRER_MESSAGE)) {
                     LOGGER.warn(String.format("submit subjob error, retry %d times", count++), e);
                     continue;
                 }
@@ -222,23 +226,23 @@ public class SubJobTask extends BaseDdlTask {
         }
     }
 
-    private void submitRollbackSubJob(DdlContext ddlContext) {
+    private void submitRollbackSubJob(DdlContext ddlContext, ParamManager paramManager) {
         if (FailPoint.isKeyEnable(FailPointKey.FP_HIJACK_DDL_JOB)
-            && org.apache.commons.lang3.StringUtils.equalsIgnoreCase(ddlStmt, FailPointKey.FP_INJECT_SUBJOB)) {
+            && org.apache.commons.lang3.StringUtils.equalsIgnoreCase(rollbackDdlStmt, FailPointKey.FP_INJECT_SUBJOB)) {
             submitMockSubJob(ddlContext);
         }
         int count = 0;
-        while (!ddlContext.isInterrupted() && !rollbackSubJobSubmitted()){
+        while (!ddlContext.isInterrupted() && !rollbackSubJobSubmitted()) {
             try {
-                subJobId = DdlHelper.getServerConfigManager()
-                    .submitSubDDL(schemaName, getJobId(), getTaskId(), true, ddlStmt);
-                LOGGER.info(String.format("Create subjob %d", subJobId));
-                if(subJobId == 0L){
-                    throw new TddlNestableRuntimeException("submit subjob error");
+                rollbackSubJobId = DdlHelper.getServerConfigManager()
+                    .submitSubDDL(schemaName, ddlContext, getJobId(), getTaskId(), true, ddlStmt, paramManager);
+                LOGGER.info(String.format("Create rollback subjob %d", rollbackSubJobId));
+                if (rollbackSubJobId == 0L) {
+                    throw new TddlNestableRuntimeException("submit rollback subjob error");
                 }
-            }catch (Exception e){
-                if(StringUtils.containsIgnoreCase(e.getMessage(), SUB_JOB_RETRY_ERRER_MESSAGE)){
-                    LOGGER.warn(String.format("submit subjob error, retry %d times", count++), e);
+            } catch (Exception e) {
+                if (StringUtils.containsIgnoreCase(e.getMessage(), SUB_JOB_RETRY_ERRER_MESSAGE)) {
+                    LOGGER.warn(String.format("submit rollback subjob error, retry %d times", count++), e);
                     continue;
                 }
                 throw e;
@@ -246,7 +250,7 @@ public class SubJobTask extends BaseDdlTask {
         }
     }
 
-    private boolean submitMockSubJob(DdlContext ddlContext){
+    private boolean submitMockSubJob(DdlContext ddlContext) {
         if (FailPoint.isKeyEnable(FailPointKey.FP_HIJACK_DDL_JOB)
             && org.apache.commons.lang3.StringUtils.equalsIgnoreCase(ddlStmt, FailPointKey.FP_INJECT_SUBJOB)) {
             DdlJob mockSubJob = new MockDdlJob(5, 5, 30, false).create();
@@ -258,20 +262,19 @@ public class SubJobTask extends BaseDdlTask {
     }
 
     /**
-     * @param subJobId
      * @return DdlState
      */
     private DdlContext executeSubJob(long subJobId) {
-        if(subJobId == 0L){
+        if (subJobId == 0L) {
             throw new TddlNestableRuntimeException("SubJob not submitted yet");
         }
-        if(subJobId == TRANSIENT_SUB_JOB_ID){
+        if (subJobId == TRANSIENT_SUB_JOB_ID) {
             DdlContext transientDdlContext = new DdlContext();
             transientDdlContext.unSafeSetDdlState(DdlState.COMPLETED);
             return transientDdlContext;
         }
         DdlEngineRecord subJobRecord = new DdlJobManager().fetchRecordByJobId(subJobId);
-        if(subJobRecord == null || !subJobRecord.isSubJob()){
+        if (subJobRecord == null || !subJobRecord.isSubJob()) {
             throw new TddlNestableRuntimeException(String.format("SubJob %s doesn't exist", subJobId));
         }
         return DdlHelper.getServerConfigManager().restoreDDL(subJobRecord.schemaName, subJobRecord.jobId);
@@ -303,14 +306,14 @@ public class SubJobTask extends BaseDdlTask {
      * Create a reversed job to rollback:
      * Eg. For move database a to b, the reversed job is move database b to a.
      */
-    private void createReversedSubJob(DdlContext ddlContext) {
-        if (rollbackSubJobId == TRANSIENT_SUB_JOB_ID){
+    private void createReversedSubJob(DdlContext ddlContext, ParamManager paramManager) {
+        if (rollbackSubJobId == TRANSIENT_SUB_JOB_ID) {
             LOGGER.info("rollbackSubjob is transient, skip rollback");
             return;
         }
         if (rollbackSubJobId == 0) {
             // Create a new job if not exists
-            submitRollbackSubJob(ddlContext);
+            submitRollbackSubJob(ddlContext, paramManager);
         } else {
             // Try to recover existed job
             Pair<DdlState, Boolean> stateChange = stateTransfer(rollbackSubJobId, DdlState.RECOVER_JOB_STATE_TRANSFER);
@@ -330,7 +333,7 @@ public class SubJobTask extends BaseDdlTask {
         }
     }
 
-    private ExecutionContext copyExecutionContextForSubJob(ExecutionContext context){
+    private ExecutionContext copyExecutionContextForSubJob(ExecutionContext context) {
         DdlContext copiedDdlContext = context.getDdlContext().copy();
         ExecutionContext copiedExecutionContext = context.copy();
         copiedExecutionContext.setDdlContext(copiedDdlContext);
@@ -344,12 +347,17 @@ public class SubJobTask extends BaseDdlTask {
 
     @Override
     public String remark() {
+        String costInfoStr = "";
+        if (costInfo != null) {
+            costInfoStr = String.format("|estimated rows:%s, estimated size:%s", costInfo.rows, costInfo.dataSize);
+        }
         return String.format(
-            "|subJobId:%s, rollbackSubJobId:%s, ddlStmt:%s, rollbackDdlStmt:%s",
+            "|subJobId:%s, rollbackSubJobId:%s, ddlStmt:%s, rollbackDdlStmt:%s%s",
             subJobId,
             rollbackSubJobId,
             ddlStmt,
-            rollbackDdlStmt
+            rollbackDdlStmt,
+            costInfoStr
         );
     }
 
@@ -368,11 +376,23 @@ public class SubJobTask extends BaseDdlTask {
         return "SubJobTask";
     }
 
-    public boolean subJobSubmitted(){
+    public boolean subJobSubmitted() {
         return subJobId == TRANSIENT_SUB_JOB_ID || subJobId > 0L;
     }
 
-    public boolean rollbackSubJobSubmitted(){
+    public boolean rollbackSubJobSubmitted() {
         return rollbackSubJobId == TRANSIENT_SUB_JOB_ID || rollbackSubJobId > 0L;
+    }
+
+    private transient volatile CostInfo costInfo;
+
+    @Override
+    public void setCostInfo(CostInfo costInfo) {
+        this.costInfo = costInfo;
+    }
+
+    @Override
+    public CostInfo getCostInfo() {
+        return costInfo;
     }
 }

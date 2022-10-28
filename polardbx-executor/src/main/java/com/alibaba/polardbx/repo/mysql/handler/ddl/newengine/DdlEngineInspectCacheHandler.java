@@ -16,13 +16,17 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
+import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlCacheCollectionSyncAction;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.gms.node.NodeInfo;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
@@ -68,6 +72,32 @@ public class DdlEngineInspectCacheHandler extends DdlEngineJobsHandler {
                     }
                 }
             }
+        });
+
+        //legacy engine
+//        List<List<Map<String, Object>>> results =
+//            SyncManagerHelper.sync(new CacheCollectionSyncAction(executionContext.getSchemaName()), schemaName);
+//        if (results != null) {
+//            for (List<Map<String, Object>> result : results) {
+//                if (result != null) {
+//                    for (Map<String, Object> row : result) {
+//                        if (row != null) {
+//                            resultCursor.addRow(buildRowForNewEngine(row));
+//                        }
+//                    }
+//                }
+//            }
+//        }
+
+        resultCursor.addRow(new Object[] {
+            ENGINE_TYPE_DAG,
+            LeaseRecord.getLeaseHolder(),
+            "",
+            "",
+            "leader:" + DdlHelper.hasDdlLeadership(),
+            "",
+            "",
+            ""
         });
 
         return resultCursor;

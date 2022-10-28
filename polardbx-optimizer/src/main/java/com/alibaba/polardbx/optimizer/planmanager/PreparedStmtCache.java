@@ -16,21 +16,29 @@
 
 package com.alibaba.polardbx.optimizer.planmanager;
 
-import com.alibaba.polardbx.common.model.SqlType;
-import com.alibaba.polardbx.common.utils.ExecutorMode;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 
 public class PreparedStmtCache {
+    /**
+     * 事务控制语句共享同一个缓存对象
+     */
+    public static final PreparedStmtCache BEGIN_PREPARE_STMT_CACHE = new PreparedStmtCache();
+    public static final PreparedStmtCache COMMIT_PREPARE_STMT_CACHE = new PreparedStmtCache();
+    public static final PreparedStmtCache ROLLBACK_PREPARE_STMT_CACHE = new PreparedStmtCache();
+
     private final Statement stmt;
     private SqlParameterized sqlParameterized;
     private SqlType sqlType;
-    private ExecutorMode executorMode;
 
-    public PreparedStmtCache(Statement stmt, SqlParameterized sqlParameterized,
-                             SqlType sqlType) {
-        this.stmt = stmt;
-        this.sqlParameterized = sqlParameterized;
-        this.sqlType = sqlType;
+    private int charsetIndex;
+    private String javaCharset;
+    private byte[] catalog;
+    private FieldPacket[] fieldPackets;
+
+    private PreparedStmtCache() {
+        this.stmt = null;
     }
 
     public PreparedStmtCache(Statement stmt) {
@@ -49,19 +57,43 @@ public class PreparedStmtCache {
         this.sqlParameterized = sqlParameterized;
     }
 
-    public ExecutorMode getExecutorMode() {
-        return executorMode;
-    }
-
-    public void setExecutorMode(ExecutorMode executorMode) {
-        this.executorMode = executorMode;
-    }
-
     public SqlType getSqlType() {
         return sqlType;
     }
 
     public void setSqlType(SqlType sqlType) {
         this.sqlType = sqlType;
+    }
+
+    public int getCharsetIndex() {
+        return charsetIndex;
+    }
+
+    public void setCharsetIndex(int charsetIndex) {
+        this.charsetIndex = charsetIndex;
+    }
+
+    public String getJavaCharset() {
+        return javaCharset;
+    }
+
+    public void setJavaCharset(String javaCharset) {
+        this.javaCharset = javaCharset;
+    }
+
+    public byte[] getCatalog() {
+        return catalog;
+    }
+
+    public void setCatalog(byte[] catalog) {
+        this.catalog = catalog;
+    }
+
+    public FieldPacket[] getFieldPackets() {
+        return fieldPackets;
+    }
+
+    public void setFieldPackets(FieldPacket[] fieldPackets) {
+        this.fieldPackets = fieldPackets;
     }
 }

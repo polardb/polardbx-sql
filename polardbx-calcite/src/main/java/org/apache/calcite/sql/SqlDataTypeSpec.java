@@ -674,6 +674,7 @@ public class SqlDataTypeSpec extends SqlNode {
     }
 
     public enum DrdsTypeName {
+        BIG_BIT(SqlTypeName.BIG_BIT),
         BIT(SqlTypeName.BIT),
         TINYINT(SqlTypeName.TINYINT, SqlTypeName.TINYINT_UNSIGNED),
         SMALLINT(SqlTypeName.SMALLINT, SqlTypeName.SMALLINT_UNSIGNED),

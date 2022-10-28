@@ -34,8 +34,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Const;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
-
-@ExpressionSignatures(names = {"BETWEEN ASYMMETRIC"}, argumentTypes = {"Date", "Char", "Char"}, argumentKinds = {Variable, Const, Const})
+@ExpressionSignatures(names = {"BETWEEN ASYMMETRIC"}, argumentTypes = {"Date", "Char", "Char"},
+    argumentKinds = {Variable, Const, Const})
 public class BetweenDateColCharConstCharConstVectorizedExpression extends AbstractVectorizedExpression {
     private final boolean operand1IsNull;
     private final MysqlDateTime operand1;
@@ -46,29 +46,31 @@ public class BetweenDateColCharConstCharConstVectorizedExpression extends Abstra
     private final long operand2Pack;
 
     public BetweenDateColCharConstCharConstVectorizedExpression(
-            int outputIndex,
-            VectorizedExpression[] children) {
+        int outputIndex,
+        VectorizedExpression[] children) {
         super(DataTypes.LongType, outputIndex, children);
         Object operand1Value = ((LiteralVectorizedExpression) children[1]).getConvertedValue();
-        if (operand1Value  == null) {
+        if (operand1Value == null) {
             operand1IsNull = true;
             operand1 = null;
             operand1Pack = 0;
         } else {
-            operand1IsNull = false;
-            operand1 = ((OriginalDate) DataTypes.DateType.convertFrom(operand1Value)).getMysqlDateTime();
-            operand1Pack = TimeStorage.writeDate(operand1);
+            OriginalDate date = ((OriginalDate) DataTypes.DateType.convertFrom(operand1Value));
+            operand1IsNull = date == null;
+            operand1 = date == null ? null : date.getMysqlDateTime();
+            operand1Pack = date == null ? 0 : TimeStorage.writeDate(operand1);
         }
 
         Object operand2Value = ((LiteralVectorizedExpression) children[2]).getConvertedValue();
-        if (operand2Value  == null) {
+        if (operand2Value == null) {
             operand2IsNull = true;
             operand2 = null;
             operand2Pack = 0;
         } else {
-            operand2IsNull = false;
-            operand2 = ((OriginalDate) DataTypes.DateType.convertFrom(operand2Value)).getMysqlDateTime();
-            operand2Pack = TimeStorage.writeDate(operand2);
+            OriginalDate date = ((OriginalDate) DataTypes.DateType.convertFrom(operand2Value));
+            operand2IsNull = date == null;
+            operand2 = date == null ? null : date.getMysqlDateTime();
+            operand2Pack = date == null ? 0 : TimeStorage.writeDate(operand2);
         }
     }
 
@@ -82,7 +84,7 @@ public class BetweenDateColCharConstCharConstVectorizedExpression extends Abstra
 
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock leftInputVectorSlot =
-                chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+            chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
         long[] output = ((LongBlock) outputVectorSlot).longArray();
 
@@ -121,8 +123,9 @@ public class BetweenDateColCharConstCharConstVectorizedExpression extends Abstra
                 for (int i = 0; i < batchSize; i++) {
                     int j = sel[i];
 
-                    MysqlDateTime lDate = ((OriginalDate) leftInputVectorSlot.elementAt(j)).getMysqlDateTime();
-                    long lPack = TimeStorage.writeDate(lDate);
+                    OriginalDate date = (OriginalDate) leftInputVectorSlot.elementAt(j);
+                    MysqlDateTime lDate = date == null ? null : date.getMysqlDateTime();
+                    long lPack = date == null ? 0 : TimeStorage.writeDate(lDate);
 
                     boolean b1 = lPack >= operand1Pack;
                     boolean b2 = lPack <= operand2Pack;
@@ -132,8 +135,9 @@ public class BetweenDateColCharConstCharConstVectorizedExpression extends Abstra
             } else {
                 for (int i = 0; i < batchSize; i++) {
 
-                    MysqlDateTime lDate = ((OriginalDate) leftInputVectorSlot.elementAt(i)).getMysqlDateTime();
-                    long lPack = TimeStorage.writeDate(lDate);
+                    OriginalDate date = (OriginalDate) leftInputVectorSlot.elementAt(i);
+                    MysqlDateTime lDate = date == null ? null : date.getMysqlDateTime();
+                    long lPack = date == null ? 0 : TimeStorage.writeDate(lDate);
 
                     boolean b1 = lPack >= operand1Pack;
                     boolean b2 = lPack <= operand2Pack;

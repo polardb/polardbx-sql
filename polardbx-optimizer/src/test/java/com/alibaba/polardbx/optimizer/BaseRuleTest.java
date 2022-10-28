@@ -27,7 +27,8 @@ import java.sql.SQLSyntaxErrorException;
 
 public class BaseRuleTest extends BasePlannerTest {
 
-    protected String XX = "{\"rels\":[{\"id\":\"0\",\"relOp\":\"LogicalView\",\"table\":[\"optest\",\"emp\"],\"tableNames\":[\"emp\"],\"pushDownOpt\":{\"pushrels\":[{\"id\":\"0\",\"relOp\":\"LogicalTableScan\",\"table\":[\"optest\",\"emp\"],\"flashback\":null,\"inputs\":[]}]},\"schemaName\":\"optest\",\"partitions\":[],\"flashback\":null},{\"id\":\"1\",\"relOp\":\"LogicalFilter\",\"condition\":{\"op\":\"SqlBinaryOperator=\",\"operands\":[{\"input\":2,\"name\":\"$2\"},10],\"type\":{\"type\":\"BIGINT\",\"nullable\":true}}},{\"id\":\"2\",\"relOp\":\"HashAgg\",\"group\":[0],\"aggs\":[{\"agg\":\"SqlCountAggFunctionCOUNT\",\"type\":{\"type\":\"BIGINT\",\"nullable\":true},\"distinct\":true,\"operands\":[1],\"filter\":-1},{\"agg\":\"SqlCountAggFunctionCOUNT\",\"type\":{\"type\":\"BIGINT\",\"nullable\":true},\"distinct\":false,\"operands\":[],\"filter\":-1}]}]}";
+    protected String XX =
+        "{\"rels\":[{\"id\":\"0\",\"relOp\":\"LogicalView\",\"table\":[\"optest\",\"emp\"],\"tableNames\":[\"emp\"],\"pushDownOpt\":{\"pushrels\":[{\"id\":\"0\",\"relOp\":\"LogicalTableScan\",\"table\":[\"optest\",\"emp\"],\"flashback\":null,\"inputs\":[]}]},\"schemaName\":\"optest\",\"partitions\":[],\"flashback\":null},{\"id\":\"1\",\"relOp\":\"LogicalFilter\",\"condition\":{\"op\":\"SqlBinaryOperator=\",\"operands\":[{\"input\":2,\"name\":\"$2\",\"type\":{\"type\":\"TINYINT\",\"nullable\":true,\"precision\":1}},10],\"type\":{\"type\":\"BIGINT\",\"nullable\":true}}},{\"id\":\"2\",\"relOp\":\"HashAgg\",\"group\":[0],\"aggs\":[{\"agg\":\"SqlCountAggFunctionCOUNT\",\"type\":{\"type\":\"BIGINT\",\"nullable\":true},\"distinct\":true,\"operands\":[1],\"filter\":-1},{\"agg\":\"SqlCountAggFunctionCOUNT\",\"type\":{\"type\":\"BIGINT\",\"nullable\":true},\"distinct\":false,\"operands\":[],\"filter\":-1}]}]}";
 
     public static String empDDL =
         "CREATE TABLE emp(\n" + "  userId int, \n" + "  name varchar(30), \n" + "  operation tinyint(1), \n"
@@ -47,6 +48,11 @@ public class BaseRuleTest extends BasePlannerTest {
     public void init() {
         relOptCluster = SqlConverter.getInstance(appName, new ExecutionContext()).createRelOptCluster();
         schema = SqlConverter.getInstance(appName, new ExecutionContext()).getCatalog();
+        try {
+            loadStatistic();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         try {
             buildTable(SCHEMA_NAME, empDDL);
         } catch (SQLSyntaxErrorException e) {

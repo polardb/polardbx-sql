@@ -77,6 +77,7 @@ public class NormalShardProcessor extends ShardProcessor {
         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, timeZone);
         calcParams.put(CalcParamsAttribute.SHARD_DATATYPE_MAP, dataType);
         calcParams.put(CalcParamsAttribute.COND_COL_IDX_MAP, condIndex);
+        calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
 
         List<TargetDB> targetDBs = executionContext.getSchemaManager(schemaName)
             .getTddlRuleManager()
@@ -84,12 +85,6 @@ public class NormalShardProcessor extends ShardProcessor {
 
         Preconditions.checkArgument(targetDBs.size() == 1);
         TargetDB tdb = targetDBs.get(0);
-//        // record phy table refer to logical table in mock mode
-//        if (ConfigDataMode.isFastMock()) {
-//            for (String phyTable : tdb.getTableNames()) {
-//                MockDataManager.phyTableToLogicalTableName.put(phyTable, tableName);
-//            }
-//        }
 
         Set<String> tableNames = tdb.getTableNames();
         Preconditions.checkArgument(tableNames.size() == 1);

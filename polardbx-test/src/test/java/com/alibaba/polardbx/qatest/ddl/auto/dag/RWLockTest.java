@@ -18,7 +18,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.dag;
 
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.executor.ddl.newengine.meta.PersistentReadWriteLock;
+import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.google.common.collect.Sets;
 import org.apache.commons.lang3.RandomUtils;
@@ -26,6 +26,7 @@ import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorCompletionService;
@@ -291,6 +292,30 @@ public class RWLockTest {
         Assert.assertTrue(!manager.hasReadLock(owner, lock2));
 
         Assert.assertTrue(manager.unlockRead(owner, lock1) == 1);
+    }
+
+    @Test
+    public void testLargeBatch() {
+
+        Set<String> readLocks = new HashSet<>();
+        Set<String> writeLocks = new HashSet<>();
+
+        for (int i = 0; i < 20000; i++) {
+            readLocks.add(String.valueOf(i));
+        }
+
+        for (int i = 20000; i < 40000; i++) {
+            writeLocks.add(String.valueOf(i));
+        }
+
+        Assert.assertTrue(
+            manager.tryReadWriteLockBatch(
+                "polardbx",
+                "1",
+                readLocks,
+                writeLocks
+            )
+        );
     }
 
     @Test

@@ -29,7 +29,9 @@ import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 public class PartitionBoundVal {
 
     protected static PartitionBoundVal MIN_VAL = createMinValueInner();
-    protected static PartitionBoundVal MAX_VAL = createMaxValueInner();    
+    protected static PartitionBoundVal MAX_VAL = createMaxValueInner();
+
+    protected static PartitionBoundVal DEFAULT_VAL = createDefaultValueInner();
     
     /**
      * The computed actual value of raw expression of create tbl ddl definition
@@ -93,6 +95,10 @@ public class PartitionBoundVal {
         return PartitionBoundVal.MAX_VAL;
     }
 
+    public static PartitionBoundVal createDefaultValue() {
+        return PartitionBoundVal.DEFAULT_VAL;
+    }
+
     private PartitionBoundVal() {
     }
 
@@ -111,6 +117,11 @@ public class PartitionBoundVal {
 
     protected static PartitionBoundVal createMaxValueInner() {
         return new PartitionBoundVal(null, false, PartitionBoundValueKind.DATUM_MAX_VALUE);
+    }
+
+    protected static PartitionBoundVal createDefaultValueInner() {
+
+        return new PartitionBoundVal(null, false, PartitionBoundValueKind.DATUM_DEFAULT_VALUE);
     }
     
     public PartitionField getValue() {
@@ -210,8 +221,10 @@ public class PartitionBoundVal {
             }
         } else if (bndVal.getValueKind() == PartitionBoundValueKind.DATUM_MAX_VALUE) {
             sb.append("MAXVALUE");
-        } else {
+        } else if (bndVal.getValueKind() == PartitionBoundValueKind.DATUM_MIN_VALUE) {
             sb.append("MINVALUE");
+        } else {
+            sb.append("DEFAULT");
         }
         return sb.toString();
     }
@@ -230,6 +243,10 @@ public class PartitionBoundVal {
 
     public boolean isNormalValue() {
         return valueKind.equals(PartitionBoundValueKind.DATUM_NORMAL_VALUE);
+    }
+
+    public boolean isDefaultValue() {
+        return valueKind.equals(PartitionBoundValueKind.DATUM_DEFAULT_VALUE);
     }
 
     public void setValueKind(PartitionBoundValueKind valueKind) {

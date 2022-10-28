@@ -22,7 +22,7 @@ import com.alibaba.polardbx.executor.mdl.context.PreemptiveMdlContextStamped;
 import com.alibaba.polardbx.executor.mdl.manager.MdlManagerStamped;
 import com.google.common.base.Preconditions;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

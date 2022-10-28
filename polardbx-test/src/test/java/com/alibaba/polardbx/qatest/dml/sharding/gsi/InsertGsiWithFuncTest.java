@@ -100,7 +100,6 @@ public class InsertGsiWithFuncTest extends GsiDMLTest {
     }
 
     @Test
-    @Ignore("fix by ???: TODO: support more type. com.alibaba.polardbx.common.datatype.Decimal")
     public void testFunc() {
         String sql = "INSERT INTO "
             + baseOneTableName
@@ -114,7 +113,6 @@ public class InsertGsiWithFuncTest extends GsiDMLTest {
     }
 
     @Test
-    @Ignore("fix by ???: TODO: support more type. com.alibaba.polardbx.common.datatype.Decimal")
     public void testFunc1() {
         for (String func : SqlFunction.DYNAMIC_FUNCTION) {
             if (UNSUPPORTED_FUNCTION.contains(func)) {

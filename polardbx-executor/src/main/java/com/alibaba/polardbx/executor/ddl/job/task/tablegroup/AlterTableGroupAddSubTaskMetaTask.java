@@ -39,15 +39,15 @@ import java.util.Map;
 // so no need to extends from BaseGmsTask
 public class AlterTableGroupAddSubTaskMetaTask extends BaseDdlTask {
 
-    private String tableName;
-    private String sourceSql;
-    private int type;
-    private String tableGroupName;
-    private Long tableGroupId;
-    private int status;
-    private TablePartitionRecord logTableRec;
-    private List<TablePartitionRecord> partRecList;
-    private Map<String, List<TablePartitionRecord>> subPartRecInfos;
+    protected String tableName;
+    protected String sourceSql;
+    protected int type;
+    protected String tableGroupName;
+    protected Long tableGroupId;
+    protected int status;
+    protected TablePartitionRecord logTableRec;
+    protected List<TablePartitionRecord> partRecList;
+    protected Map<String, List<TablePartitionRecord>> subPartRecInfos;
 
     @JSONCreator
     public AlterTableGroupAddSubTaskMetaTask(String schemaName, String tableName, String tableGroupName,

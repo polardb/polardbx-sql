@@ -18,6 +18,8 @@ package com.alibaba.polardbx.executor.mdl.context;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
@@ -27,9 +29,10 @@ import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.google.common.primitives.Longs;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -60,7 +63,9 @@ public class PreemptiveMdlContextStamped extends MdlContextStamped {
     public MdlTicket acquireLock(@NotNull final MdlRequest request){
         ScheduledExecutorService scheduler = null;
         try {
-            if(request.getType()==MdlType.MDL_EXCLUSIVE){
+            ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
+            boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
+            if(enablePreemptiveMdl && request.getType()==MdlType.MDL_EXCLUSIVE){
                 scheduler = ExecutorUtil.createScheduler(1,
                     new NamedThreadFactory("Mdl-Preempt-Threads"),
                     new ThreadPoolExecutor.DiscardPolicy());

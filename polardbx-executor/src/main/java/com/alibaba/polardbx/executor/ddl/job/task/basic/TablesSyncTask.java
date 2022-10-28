@@ -67,10 +67,11 @@ public class TablesSyncTask extends BaseSyncTask {
     public void executeImpl(ExecutionContext executionContext) {
         try {
             if (!preemptive) {
-                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames));
+                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames), true);
             } else {
                 SyncManagerHelper.sync(
-                    new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit));
+                    new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit),
+                    true);
             }
         } catch (Throwable t) {
             LOGGER.error(String.format(

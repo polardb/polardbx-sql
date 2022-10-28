@@ -21,6 +21,7 @@ import com.google.common.cache.CacheBuilder;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -28,36 +29,23 @@ import java.util.concurrent.TimeUnit;
  * @author dylan
  */
 public interface SystemTableBaselineInfo {
-    /**
-     * check system table exists
-     */
-    Cache<String, Boolean> APPNAME_BASELINE_INFO_ENABLED = CacheBuilder.newBuilder()
-        .expireAfterWrite(1, TimeUnit.HOURS)
-        .build();
-
-    static void invalidateAll() {
-        APPNAME_BASELINE_INFO_ENABLED.invalidateAll();
-    }
-
-    void resetDataSource(DataSource dataSource);
-
     void createTableIfNotExist();
 
-    void loadData(PlanManager planManager, long sinceTime);
+    Collection<BaselineInfo> loadData(String schemaName, long sinceTime);
 
-    void loadData(PlanManager planManager, long sinceTime, Integer searchBaselineId);
+    Collection<BaselineInfo> loadData(String schemaName, long sinceTime, Integer searchBaselineId);
 
-    void deletePlan(int baselineInfoId, int planInfoId);
+    void deletePlan(String schemaName, int baselineInfoId, int planInfoId);
 
-    void updatePlan(BaselineInfo baselineInfo, PlanInfo updatePlanInfo, int originPlanId);
+    void updatePlan(String schemaName, BaselineInfo baselineInfo, PlanInfo updatePlanInfo, int originPlanId);
 
-    void delete(int baselineInfoId);
+    void delete(String schemaName, int baselineInfoId);
 
-    boolean deleteAll(Connection conn);
+    boolean deleteAll(String schemaName);
 
-    void deleteBaselineList(List<Integer> baselineInfoIdList);
+    void deleteBaselineList(String schemaName, List<Integer> baselineInfoIdList);
 
-    PersistResult persist(BaselineInfo baselineInfo);
+    PersistResult persist(String schemaName, BaselineInfo baselineInfo);
 
     enum PersistResult {
         INSERT,

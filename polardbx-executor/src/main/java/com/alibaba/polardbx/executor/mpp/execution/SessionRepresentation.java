@@ -16,12 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.utils.SerializeUtils;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.mpp.Session;
@@ -36,8 +33,9 @@ import com.alibaba.polardbx.optimizer.utils.IMppReadOnlyTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -59,8 +57,7 @@ public class SessionRepresentation {
     private Map<String, Object> hintCmds;
     private Map<String, Object> serverVariables;
     private Map<String, Object> userDefVariables;
-    private Parameters params;
-    private byte[] paramsBytes;
+    private Map<Integer, ParameterContext> params;
     private Set<Integer> cacheRelNodesId;
     private Map<Integer, Integer> recordRowCnt;
     private boolean testMode;
@@ -70,6 +67,7 @@ public class SessionRepresentation {
     private Map<String, Long> lsnMap = new HashMap<>();
     private WorkloadType workloadType;
     private boolean omitTso;
+    private boolean lizard1PC;
 
     @JsonCreator
     public SessionRepresentation(
@@ -88,7 +86,7 @@ public class SessionRepresentation {
         @JsonProperty("serverVariables") Map<String, Object> serverVariables,
         @JsonProperty("userDefVariables") Map<String, Object> userDefVariables,
         @JsonProperty("hintCmds") Map<String, Object> hintCmds,
-        @JsonProperty("paramsBytes") byte[] paramsBytes,
+        @JsonProperty("params") Map<Integer, ParameterContext> params,
         @JsonProperty("cacheRelNodesId") Set<Integer> cacheRelNodesId,
         @JsonProperty("recordRowCnt") Map<Integer, Integer> recordRowCnt,
         @JsonProperty("testMode") boolean testMode,
@@ -97,6 +95,7 @@ public class SessionRepresentation {
         @JsonProperty("tsoTimeStamp") long tsoTimeStamp,
         @JsonProperty("lsnMap") Map<String, Long> lsnMap,
         @JsonProperty("omitTso") boolean omitTso,
+        @JsonProperty("lizard1PC") boolean lizard1PC,
         @JsonProperty("workloadType") WorkloadType workloadType) {
         this.traceId = traceId;
         this.catalog = catalog;
@@ -113,7 +112,7 @@ public class SessionRepresentation {
         this.serverVariables = serverVariables;
         this.userDefVariables = userDefVariables;
         this.hintCmds = hintCmds;
-        this.paramsBytes = paramsBytes;
+        this.params = params;
         this.cacheRelNodesId = cacheRelNodesId;
         this.recordRowCnt = recordRowCnt;
         this.testMode = testMode;
@@ -122,6 +121,7 @@ public class SessionRepresentation {
         this.tsoTimeStamp = tsoTimeStamp;
         this.lsnMap = lsnMap;
         this.omitTso = omitTso;
+        this.lizard1PC = lizard1PC;
         this.workloadType = workloadType;
     }
 
@@ -150,6 +150,7 @@ public class SessionRepresentation {
         long tsoTimeStamp,
         Map<String, Long> lsnMap,
         boolean omitTso,
+        boolean lizard1PC,
         WorkloadType workloadType) {
         this.traceId = traceId;
         this.catalog = catalog;
@@ -166,7 +167,7 @@ public class SessionRepresentation {
         this.serverVariables = serverVariables;
         this.userDefVariables = userDefVariables;
         this.hintCmds = hintCmds;
-        this.params = params;
+        this.params = params.getCurrentParameter();
         this.cacheRelNodesId = cacheRelNodesId;
         this.recordRowCnt = recordRowCnt;
         this.testMode = testMode;
@@ -176,6 +177,7 @@ public class SessionRepresentation {
         this.lsnMap = lsnMap;
         this.workloadType = workloadType;
         this.omitTso = omitTso;
+        this.lizard1PC = lizard1PC;
     }
 
     @JsonProperty
@@ -263,17 +265,9 @@ public class SessionRepresentation {
         return hintCmds;
     }
 
-    @JsonIgnore
-    public Parameters getParams() {
-        return params;
-    }
-
     @JsonProperty
-    public byte[] getParamsBytes() {
-        if (paramsBytes == null && params != null) {
-            paramsBytes = SerializeUtils.getBytes((Serializable) params.getCurrentParameter());
-        }
-        return paramsBytes;
+    public Map<Integer, ParameterContext> getParams() {
+        return params;
     }
 
     @JsonProperty
@@ -311,6 +305,11 @@ public class SessionRepresentation {
         return omitTso;
     }
 
+    @JsonProperty
+    public boolean isLizard1PC() {
+        return lizard1PC;
+    }
+
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
@@ -334,7 +333,7 @@ public class SessionRepresentation {
                     ITransactionPolicy.TransactionClass.MPP_READ_ONLY_TRANSACTION, ec);
             transaction.setLsnMap(lsnMap);
             transaction.setTsoTimestamp(tsoTimeStamp);
-            transaction.enableOmitTso(omitTso);
+            transaction.enableOmitTso(omitTso, lizard1PC);
             ec.setTransaction(transaction);
             ec.setAutoCommit(true);
         } else {
@@ -361,20 +360,16 @@ public class SessionRepresentation {
         ec.setServerVariables(serverVariables);
         ec.setUserDefVariables(userDefVariables);
         if (params != null) {
-            ec.setParams(params);
-        } else if (paramsBytes != null) {
-            ec.setParams(new Parameters(SerializeUtils.deFromBytes(paramsBytes, Map.class)));
+            ec.setParams(new Parameters(params));
         }
-
         ec.getCacheRelNodeIds().addAll(cacheRelNodesId);
         ec.getRecordRowCnt().putAll(recordRowCnt);
         ec.setInternalSystemSql(false);
         ec.setUsingPhySqlCache(true);
 
         //mock connection
-        MppMockConnection mppMockConnection = new MppMockConnection(user, catalog, schema);
+        MppMockConnection mppMockConnection = new MppMockConnection(user);
         mppMockConnection.setLastInsertId(lastInsertId);
-        mppMockConnection.setNetworkTimeout(null, socketTimeout);
 
         ec.setConnection(mppMockConnection);
         ec.setTimeZone(logicalTimeZone);

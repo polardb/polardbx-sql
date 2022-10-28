@@ -37,43 +37,32 @@ import java.util.Set;
  */
 public class AlterTableGroupMovePartition extends DDL {
     final String tableGroupName;
-    Map<String, Set<String>> targetPartitions;
 
     protected AlterTableGroupMovePartition(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                            RelDataType rowType,
-                                           String tableGroupName,
-                                           Map<String, Set<String>> targetPartitions) {
+                                           String tableGroupName) {
         super(cluster, traits, ddl, rowType);
         this.tableGroupName = tableGroupName;
         this.sqlNode = ddl;
         this.setTableName(new SqlIdentifier(tableGroupName, SqlParserPos.ZERO));
-        this.targetPartitions = targetPartitions;
     }
 
     public static AlterTableGroupMovePartition create(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                                       RelDataType rowType,
-                                                      String tableGroupName,
-                                                      Map<String, Set<String>> targetPartitions) {
+                                                      String tableGroupName) {
 
-        return new AlterTableGroupMovePartition(cluster, traits, ddl, rowType, tableGroupName, targetPartitions);
+        return new AlterTableGroupMovePartition(cluster, traits, ddl, rowType, tableGroupName);
     }
 
     @Override
     public AlterTableGroupMovePartition copy(
         RelTraitSet traitSet, List<RelNode> inputs) {
         assert traitSet.containsIfApplicable(Convention.NONE);
-        return new AlterTableGroupMovePartition(this.getCluster(), traitSet, this.ddl, rowType, tableGroupName, targetPartitions);
+        return new AlterTableGroupMovePartition(this.getCluster(), traitSet, this.ddl, rowType, tableGroupName);
     }
 
     public String getTableGroupName() {
         return tableGroupName;
     }
 
-    public Map<String, Set<String>> getTargetPartitions() {
-        return targetPartitions;
-    }
-
-    public void setTargetPartitions(Map<String, Set<String>> targetPartitions) {
-        this.targetPartitions = targetPartitions;
-    }
 }

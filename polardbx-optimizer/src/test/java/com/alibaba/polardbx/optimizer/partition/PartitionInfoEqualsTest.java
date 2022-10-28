@@ -117,6 +117,20 @@ public class PartitionInfoEqualsTest extends BasePlannerTest {
             "create table t20(c datetime, b varchar(20)) charset=gbk collate=gbk_bin partition by key(b) partitions 3")),
         new Pair<>(Boolean.TRUE, new Pair<>(
             "create table t21(a datetime, b varchar(20)) charset=gbk partition by key(b) partitions 3",
-            "create table t22(c datetime, b varchar(20)) charset=gbk partition by key(b) partitions 3")));
+            "create table t22(c datetime, b varchar(20)) charset=gbk partition by key(b) partitions 3")),
+        new Pair<>(Boolean.TRUE, new Pair<>(
+            "create table t23(a datetime, b int) charset=gbk partition by list(b) (partition p0 values in(1,2), partition p1 values in(3,4), partition p2 values in(default))",
+            "create table t24(a datetime, b int) charset=gbk partition by list(b) (partition p2 values in(default), partition p0 values in(1,2), partition p1 values in(3,4))"
+        )),
+        new Pair<>(Boolean.FALSE, new Pair<>(
+            "create table t25(a datetime, b int) charset=gbk partition by list(b) (partition p0 values in(1,2), partition p1 values in(3,4), partition p2 values in(default))",
+            "create table t26(a datetime, b int) charset=gbk partition by list(b) (partition p1 values in(3,4), partition p0 values in(1,2))")),
+        new Pair<>(Boolean.TRUE, new Pair<>(
+            "create table t27(a varchar(20), b date) charset=gbk partition by list columns(a,b) (partition p0 values in(('a', '2010-01-01')), partition p1 values in(('b', '2010-01-02'),('c','2010-01-03')), partition p2 values in(default))",
+            "create table t28(a varchar(20), b date) charset=gbk partition by list columns(a,b) (partition p0 values in(('a', '2010-01-01')), partition p2 values in(default), partition p1 values in(('b', '2010-01-02'),('c','2010-01-03')))")),
+        new Pair<>(Boolean.FALSE, new Pair<>(
+            "create table t29(a varchar(20), b date) charset=gbk partition by list columns(a,b) (partition p0 values in(('a', '2010-01-01')), partition p1 values in(('b', '2010-01-02'),('c','2010-01-03')), partition p2 values in(default))",
+            "create table t30(a varchar(20), b date) charset=gbk partition by list columns(a,b) (partition p0 values in(('a', '2010-01-01')), partition p1 values in(('b', '2010-01-02'),('c','2010-01-03')))"))
+    );
 }
 

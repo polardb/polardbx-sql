@@ -16,23 +16,15 @@
 
 package com.alibaba.polardbx.executor.handler;
 
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.ddl.job.factory.localpartition.ExpireLocalPartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
-import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.handler.ddl.LogicalCommonDdlHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
-import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
-import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import com.taobao.tddl.common.privilege.PrivilegePoint;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableExpireLocalPartition;
@@ -44,10 +36,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTableExpireLocalPartitionHandler extends LogicalCommonDdlHandler {
-
-    private static final Logger logger = LoggerFactory.getLogger(LogicalAlterTableExpireLocalPartitionHandler.class);
-
-    private static final String CREATE_TABLE_LIKE_FORMAT = " create table %s like %s engine = 'oss'";
 
     public LogicalAlterTableExpireLocalPartitionHandler(IRepository repo) {
         super(repo);

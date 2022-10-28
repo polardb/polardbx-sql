@@ -21,6 +21,8 @@ import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.SQLException;
@@ -37,7 +39,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author chenhui
  * @since 5.1.18
  */
-
+@RunWith(Parameterized.class)
 public class TinyIntTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 

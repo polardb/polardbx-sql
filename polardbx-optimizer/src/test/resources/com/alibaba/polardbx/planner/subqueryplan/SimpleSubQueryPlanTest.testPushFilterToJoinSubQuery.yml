@@ -17,8 +17,7 @@
 
 
   plan: |
-
-    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb`) AS `a` INNER JOIN (SELECT `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` FROM ? AS `test_hash_tb2`) AS `b` ON ((`b`.`id` = `a`.`id`) AND (`a`.`id` = 1))")
+    phytableoperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb`) as `a` inner join (select `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` from ? as `test_hash_tb2`) as `b` on ((`b`.`id` = `a`.`id`) and (`a`.`id` = 1))")
 
 - sql: |
     select
@@ -35,8 +34,7 @@
 
 
   plan: |
-
-    PhyTableOperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb` LIMIT 4 OFFSET 0) AS `a` INNER JOIN (SELECT `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` FROM ? AS `test_hash_tb2` LIMIT 5 OFFSET 0) AS `b` ON ((`b`.`id` = `a`.`id`) AND (`a`.`id` = 1))")
+    phytableoperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb` limit 4 offset 0) as `a` inner join (select `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` from ? as `test_hash_tb2` limit 5 offset 0) as `b` on ((`b`.`id` = `a`.`id`) and (`a`.`id` = 1))")
 
 - sql: |
     select
@@ -53,8 +51,7 @@
 
 
   plan: |
-
-    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb` WHERE (`test_hash_tb`.`int_col3` = 5)) AS `a` INNER JOIN (SELECT `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` FROM ? AS `test_hash_tb2` WHERE (`test_hash_tb2`.`id` = 2)) AS `b` ON (`b`.`id` = `a`.`id`)")
+    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb` where (`test_hash_tb`.`int_col3` = 5)) as `a` inner join (select `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` from ? as `test_hash_tb2` where (`test_hash_tb2`.`id` = 2)) as `b` on (`b`.`id` = `a`.`id`)")
 
 - sql: |
     select 
@@ -71,12 +68,11 @@
 
 
   plan: |
-
-    Project(id="id", name="name0")
-      BKAJoin(condition="name = name", type="inner")
-        LogicalView(tables="optest_0002.test_hash_tb2", sql="SELECT `name` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`id` = 2) AND (`name` = 'abc'))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((`int_col3` = 5) AND (`name` = 'abc')) AND (`name` IN (...)))")
+    project(id="id", name="name0")
+      bkajoin(condition="name = name", type="inner")
+        logicalview(tables="optest_0002.test_hash_tb2", sql="select `name` from `test_hash_tb2` as `test_hash_tb2` where ((`id` = 2) and (`name` = 'abc'))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where (((`int_col3` = 5) and (`name` = 'abc')) and (`name` in (...)))")
 
 - sql: |
     select a.id, a.name
@@ -96,5 +92,4 @@
 
 
   plan: |
-
-    PhyTableOperation(tables="optest_0002.[test_hash_tb, test_hash_tb4_0]", sql="SELECT `a`.`id`, `a`.`name` FROM (SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` FROM ? AS `test_hash_tb` WHERE (`test_hash_tb`.`int_col3` = 5)) AS `a` INNER JOIN (SELECT `test_hash_tb4`.`id`, `test_hash_tb4`.`name`, `test_hash_tb4`.`create_time`, `test_hash_tb4`.`int_col1`, `test_hash_tb4`.`int_col2`, `test_hash_tb4`.`int_col3`, `test_hash_tb4`.`int_col4`, `test_hash_tb4`.`int_col5`, `test_hash_tb4`.`int_col6` FROM ? AS `test_hash_tb4` WHERE (`test_hash_tb4`.`id` = 2)) AS `b` ON (`b`.`name` = `a`.`name`) WHERE ((((`a`.`id` = `b`.`id`) AND (`b`.`name` = 'xx')) AND (`a`.`int_col1` = `b`.`int_col2`)) AND (`a`.`int_col3` = `a`.`int_col1`))")
+    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb4_0]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb` where (`test_hash_tb`.`int_col3` = 5)) as `a` inner join (select `test_hash_tb4`.`id`, `test_hash_tb4`.`name`, `test_hash_tb4`.`create_time`, `test_hash_tb4`.`int_col1`, `test_hash_tb4`.`int_col2`, `test_hash_tb4`.`int_col3`, `test_hash_tb4`.`int_col4`, `test_hash_tb4`.`int_col5`, `test_hash_tb4`.`int_col6` from ? as `test_hash_tb4` where (`test_hash_tb4`.`id` = 2)) as `b` on (`b`.`name` = `a`.`name`) where ((((`a`.`id` = `b`.`id`) and (`b`.`name` = 'xx')) and (`a`.`int_col1` = `b`.`int_col2`)) and (`a`.`int_col3` = `a`.`int_col1`))")

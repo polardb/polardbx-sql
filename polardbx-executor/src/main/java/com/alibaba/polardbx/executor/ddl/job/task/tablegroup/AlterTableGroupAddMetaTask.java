@@ -32,10 +32,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.sql.Connection;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 @Getter
 @TaskName(name = "AlterTableGroupAddMetaTask")
@@ -43,19 +40,27 @@ import java.util.Set;
 // so no need to extends from BaseGmsTask
 public class AlterTableGroupAddMetaTask extends BaseDdlTask {
 
-    protected String tableGroupName;
+    protected String tableGroupName; //target tablegroup, for alter tablegroup the sourceTg == targetTg
     protected String sourceSql;
     protected int type;
-    protected Long tableGroupId;
+    protected Long tableGroupId; //source tablegroup id
     protected int status;
     protected Set<Long> outDataPartitionGroupIds;
     protected List<String> targetDbList;
     protected List<String> newPartitions;
+    protected List<String> localities;
+
+    public AlterTableGroupAddMetaTask(String schemaName, String tableGroupName, Long tableGroupId, String sourceSql,
+                                      int status, int type, Set<Long> outDataPartitionGroupIds,
+                                      List<String> targetDbList, List<String> newPartitions) {
+        this(schemaName, tableGroupName, tableGroupId, sourceSql, status, type,
+            outDataPartitionGroupIds, targetDbList, newPartitions, Collections.nCopies(newPartitions.size(), ""));
+    }
 
     @JSONCreator
     public AlterTableGroupAddMetaTask(String schemaName, String tableGroupName, Long tableGroupId, String sourceSql,
                                       int status, int type, Set<Long> outDataPartitionGroupIds,
-                                      List<String> targetDbList, List<String> newPartitions) {
+                                      List<String> targetDbList, List<String> newPartitions, List<String> localities) {
         super(schemaName);
         this.tableGroupName = tableGroupName;
         this.sourceSql = sourceSql;
@@ -65,6 +70,7 @@ public class AlterTableGroupAddMetaTask extends BaseDdlTask {
         this.outDataPartitionGroupIds = outDataPartitionGroupIds;
         this.targetDbList = targetDbList;
         this.newPartitions = newPartitions;
+        this.localities = localities;
         assert newPartitions.size() == targetDbList.size();
     }
 
@@ -182,8 +188,8 @@ public class AlterTableGroupAddMetaTask extends BaseDdlTask {
             partitionGroupRecord.tg_id = tableGroupId;
 
             partitionGroupRecord.phy_db = targetDbList.get(i);
+            partitionGroupRecord.locality = localities.get(i);
 
-            partitionGroupRecord.locality = "";
             partitionGroupRecord.pax_group_id = 0L;
             partitionGroupAccessor.addNewPartitionGroup(partitionGroupRecord, true);
         }

@@ -142,7 +142,7 @@ public class PartitionTupleRouteInfoBuilder {
 
         List<PartTupleDispatchInfo> dispatchFuncInfos = new ArrayList<>();
         for (int t = 0; t < astTuples.size(); t++) {
-            PartTupleDispatchInfo dispatchFuncInfo = new PartTupleDispatchInfo(tupleRouteInfo);
+            PartTupleDispatchInfo dispatchFuncInfo = new PartTupleDispatchInfo(tupleRouteInfo, t);
             List<RexNode> tupleRexInfo = rexTuples.get(t);
             List<PartClauseInfo> partClauseInfos =
                 matchInsertValuesToPartKey(partInfo, valueRowType, tupleRexInfo,
@@ -200,7 +200,7 @@ public class PartitionTupleRouteInfoBuilder {
             List<PartClauseInfo> partClauseInfos = partClauseInfoOfAllTuple.get(t);
             PartTupleRouteFunction tupleRouteFunction =
                 buildTupleRouteFunction(partInfo, PartKeyLevel.PARTITION_KEY, partClauseInfos);
-            PartTupleDispatchInfo dispatchFuncInfo = new PartTupleDispatchInfo(tupleRouteInfo);
+            PartTupleDispatchInfo dispatchFuncInfo = new PartTupleDispatchInfo(tupleRouteInfo, 0);
             dispatchFuncInfo.setPartDispatchFunc(tupleRouteFunction);
             dispatchFuncInfos.add(dispatchFuncInfo);
         }
@@ -230,7 +230,7 @@ public class PartitionTupleRouteInfoBuilder {
 
         PartPrunedResult partPrunedResult =
             PartitionPruner.doPruningByTupleRouteInfo(tupleRouteInfo, 0, executionContext);
-        List<PhysicalPartitionInfo> prunedPartInfos = partPrunedResult.getPrunedParttions();
+        List<PhysicalPartitionInfo> prunedPartInfos = partPrunedResult.getPrunedPartitions();
 
         PartitionSpec partitionSpec = null;
         if (prunedPartInfos.size() == 0) {
@@ -430,9 +430,14 @@ public class PartitionTupleRouteInfoBuilder {
             }
 
             RexNode constVal = partClauseInfo.getConstExpr();
+            boolean isAlwaysNull = partClauseInfo.isNull();
             ExprContextProvider exprCxtProvider = new ExprContextProvider();
             IExpression evalFuncExec = RexUtils.getEvalFuncExec(constVal, exprCxtProvider);
-            DataType tupleExprReturnDataType = DataTypeUtil.calciteToDrdsType(constVal.getType());
+            DataType tupleExprReturnDataType = null;
+            if (!isAlwaysNull) {
+                tupleExprReturnDataType = DataTypeUtil.calciteToDrdsType(constVal.getType());
+            }
+
             PartitionIntFunction partIntFunc = null;
             if (sqlOperator != null) {
                 partIntFunc = PartitionPrunerUtils.getPartitionIntFunction(sqlOperator.getName());
@@ -443,12 +448,13 @@ public class PartitionTupleRouteInfoBuilder {
             targetExprExecInfo.setDynamicConstExprOnly(evalFuncExec instanceof DynamicParamExpression);
             targetExprExecInfo.setNeedOpenEvalResultCache(false);
             targetExprExecInfo.setPartIntFunc(partIntFunc);
+            targetExprExecInfo.setClauseInfo(partClauseInfo);
             targetExprExecInfo.setPartColDataType(partColDataType);
             targetExprExecInfo.setPredExprReturnType(tupleExprReturnDataType);
             targetExprExecInfo.setPartFldAccessType(PartFieldAccessType.DML_PRUNING);
+            targetExprExecInfo.setAlwaysNullValue(isAlwaysNull);
             partValIndexInTupleArr[i] = keyIdx;
             partClauseExprExecArr[i] = targetExprExecInfo;
-
         }
 
         PartitionRouter router = partInfo.getPartitionBy().getRouter();
@@ -488,7 +494,7 @@ public class PartitionTupleRouteInfoBuilder {
         PartPrunedResult partPrunedResult = new PartPrunedResult();
         partPrunedResult.partBitSet = partBitSet;
         partPrunedResult.partInfo = partInfo;
-        List<PhysicalPartitionInfo> prunedPartInfos = partPrunedResult.getPrunedParttions();
+        List<PhysicalPartitionInfo> prunedPartInfos = partPrunedResult.getPrunedPartitions();
         PartitionSpec partitionSpec = null;
         if (prunedPartInfos.size() == 0) {
             return partitionSpec;

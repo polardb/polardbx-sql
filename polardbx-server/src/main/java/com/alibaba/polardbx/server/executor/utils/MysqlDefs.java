@@ -16,6 +16,14 @@
 
 package com.alibaba.polardbx.server.executor.utils;
 
+import com.alibaba.polardbx.common.utils.time.core.OriginalTime;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
+import com.alibaba.polardbx.net.util.MySQLMessage;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.server.util.StringUtil;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -27,14 +35,6 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
-
-import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-
-import com.alibaba.polardbx.net.util.MySQLMessage;
-import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 /**
  * MysqlDefs contains many values that are needed for communication with the
@@ -295,7 +295,9 @@ public final class MysqlDefs {
     /**
      * http://dev.mysql.com/doc/internals/en/binary-protocol-value.html
      */
-    public static byte[] resultSetToByte(ResultSet rs, int column, int mysqlType, boolean unsigned, String charset)
+    public static byte[] resultSetToByte(ResultSet rs, int column, int mysqlType, boolean unsigned,
+                                         boolean binary,
+                                         String charset)
         throws SQLException {
         byte[] result = null;
         if (mysqlType == FIELD_TYPE_NEW_DECIMAL || mysqlType == FIELD_TYPE_DECIMAL) {
@@ -468,16 +470,20 @@ public final class MysqlDefs {
             try {
                 String s = rs.getString(column);
                 if (StringUtils.isNotEmpty(s)) {
-                    SimpleDateFormat format = new SimpleDateFormat("yyyy");
-                    java.util.Date parse = format.parse(s);
-                    java.util.Date date = (java.util.Date) parse;
-                    result = convertDate2(new Date(date.getTime()));
+                    if ("0".equals(s)) {
+                        // java Date is not zero-based
+                        result = new byte[] {0, 0};
+                    } else {
+                        SimpleDateFormat format = new SimpleDateFormat("yyyy");
+                        java.util.Date parse = format.parse(s);
+                        java.util.Date date = (java.util.Date) parse;
+                        result = convertDate2(new Date(date.getTime()));
+                    }
                 } else {
                     result = null;
                 }
             } catch (Exception e) {
                 result = new byte[] {0};
-
             }
         } else if (mysqlType == FIELD_TYPE_NEWDATE) {
             try {
@@ -524,6 +530,11 @@ public final class MysqlDefs {
             }
         } else if (mysqlType == FIELD_TYPE_BLOB) {
             // refer to mysql connector ResultSetImpl.getObject
+            byte[] v = rs.getBytes(column);
+            if (v != null) {
+                result = convertVarBytes(v);
+            }
+        } else if (mysqlType == FIELD_TYPE_VAR_STRING && binary) {
             byte[] v = rs.getBytes(column);
             if (v != null) {
                 result = convertVarBytes(v);
@@ -707,6 +718,14 @@ public final class MysqlDefs {
                 timeInMillis = -timeInMillis;
             }
             final int millisecond = (int) (timeInMillis % 1000);
+            int mircoSecond = millisecond * 1000;
+            if (v instanceof OriginalTime) {
+                if (minus) {
+                    mircoSecond -= (((OriginalTime) v).getNano() / 1000) % 1000;
+                } else {
+                    mircoSecond += (((OriginalTime) v).getNano() / 1000) % 1000;
+                }
+            }
             timeInMillis = timeInMillis / 1000;
             final int second = (int) (timeInMillis % 60);
             timeInMillis = timeInMillis / 60;
@@ -717,16 +736,14 @@ public final class MysqlDefs {
 
             if (!minus) {
                 dout.writeByte(0);
-                dout.writeInt(days);
             } else {
                 dout.writeByte(1); // negative
-                dout.writeInt(days);
             }
+            dout.writeInt(days);
             dout.writeByte(hour);
             dout.writeByte(minute);
             dout.writeByte(second);
-
-            dout.writeInt(millisecond);
+            dout.writeInt(mircoSecond);
 
         } catch (IOException e) {
             return null;

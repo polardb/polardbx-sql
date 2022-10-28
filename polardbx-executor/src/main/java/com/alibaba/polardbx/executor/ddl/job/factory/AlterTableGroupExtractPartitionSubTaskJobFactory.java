@@ -18,11 +18,13 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupExtractPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 
@@ -42,11 +44,11 @@ public class AlterTableGroupExtractPartitionSubTaskJobFactory extends AlterTable
                                                             Map<String, Set<String>> targetTableTopology,
                                                             Map<String, Set<String>> sourceTableTopology,
                                                             List<Pair<String, String>> orderedTargetTableLocations,
-                                                            String targetPartition,
-                                                            boolean skipBackfill,
+                                                            String targetPartition, boolean skipBackfill,
                                                             ExecutionContext executionContext) {
         super(ddl, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology, sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill, executionContext);
+            orderedTargetTableLocations, targetPartition, skipBackfill,
+            ComplexTaskMetaManager.ComplexTaskType.EXTRACT_PARTITION, executionContext);
         this.parentPrepareData = parentPrepareData;
     }
 
@@ -63,10 +65,12 @@ public class AlterTableGroupExtractPartitionSubTaskJobFactory extends AlterTable
         PartitionInfo curPartitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
 
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForExtractType(curPartitionInfo, parentPrepareData,
+        PartitionInfo newPartInfo =
+            AlterTableGroupSnapShotUtils.getNewPartitionInfoForExtractType(curPartitionInfo, parentPrepareData,
                 orderedTargetTableLocations, executionContext);
         //checkPartitionCount(newPartInfo);
+        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartInfo);
+        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);
         return newPartInfo;
     }
 

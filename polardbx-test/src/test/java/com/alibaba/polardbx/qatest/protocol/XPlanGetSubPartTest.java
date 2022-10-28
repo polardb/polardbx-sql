@@ -100,13 +100,13 @@ public class XPlanGetSubPartTest extends ReadBaseTestCase {
         }
         initData();
 
-        // No extra filter. table_proj->get
+        // Now default always keep the filter. No extra filter. table_proj->get
         String sql = "select x,y,z from " + quoteSpecialName(TABLE_NAME) + " where x='abc'";
         String exp = JdbcUtil.resultsStr(JdbcUtil.executeQuery(
             "explain /*+TDDL: cmd_extra(EXPLAIN_X_PLAN=true)*/ " + sql, tddlConnection));
         System.out.println(exp);
         Assert.assertTrue(exp.contains(
-            "XPlan=\"{\"plan\": {\"plan_type\": \"TABLE_PROJECT\",\"table_project\": {\"sub_read_plan\": {\"plan_type\": \"GET\""));
+            "XPlan=\"{\"plan\": {\"plan_type\": \"FILTER\",\"filter\": {\"sub_read_plan\": {\"plan_type\": \"TABLE_PROJECT\",\"table_project\": {\"sub_read_plan\": {\"plan_type\": \"GET\""));
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
 
         // y with sub part. flt->table_proj->get

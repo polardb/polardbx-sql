@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.common.privilege;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,18 +30,34 @@ public class UserPasswdChecker {
 
     private static final Pattern USERNAME_CHECK_PATTERN = Pattern.compile("^[A-Za-z_][0-9A-Za-z_]{1,254}$");
 
-    private static final Pattern PASSWORD_CHECK_PATTERN = Pattern.compile("^[0-9A-Za-z@#$%^&+=]{6,20}$");
-
+    /**
+     * <pre>
+     * 用户名限制:
+     *   长度必须大于等于2个字符, 小于等于20个字符.
+     *   必须以字母或者下划线开头
+     *   字符范围是: 大写字母,小写字母,数字,下划线
+     * </pre>
+     */
     public static boolean verifyUsername(String username) {
         Matcher m = USERNAME_CHECK_PATTERN.matcher(username);
         return m.matches();
     }
 
-    public static boolean verifyPassword(String password, PasswdRuleConfig config) {
+    public static void verifyPassword(String password, PasswdRuleConfig config) {
         if (config == null) {
-            Matcher m = PASSWORD_CHECK_PATTERN.matcher(password);
-            return m.matches();
+            Matcher m = DynamicConfig.getInstance().getPasswordCheckPattern().matcher(password);
+            if (!m.matches()) {
+                if (DynamicConfig.getInstance().isDefaultPasswordCheckPattern()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD);
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD_CUSTOMIZED,
+                        DynamicConfig.getInstance().getPasswordCheckPattern().pattern());
+                }
+            }
+            return;
         }
-        return config.verifyPassword(password);
+        if (!config.verifyPassword(password)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD);
+        }
     }
 }

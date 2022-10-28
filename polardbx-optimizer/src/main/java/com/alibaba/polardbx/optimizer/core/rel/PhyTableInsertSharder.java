@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -171,7 +172,7 @@ public class PhyTableInsertSharder {
                 physicalTableName = partitionInfo.getPrefixTableName();
 
                 Map<String, Set<String>> topology = partitionInfo.getTopology();
-                assert(topology.size() == 1);
+                assert (topology.size() == 1);
                 for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
                     groupIndex = entry.getKey();
                 }
@@ -469,11 +470,12 @@ public class PhyTableInsertSharder {
         String groupIndex;
         String tableName;
         TddlRuleManager ruleManager = executionContext.getSchemaManager(parent.getSchemaName()).getTddlRuleManager();
+        Partitioner partitioner = OptimizerContext.getContext(parent.getSchemaName()).getPartitioner();
         PartitionInfoManager partitionInfoManager = ruleManager.getPartitionInfoManager();
         if (!partitionInfoManager.isNewPartDbTable(logicalTableName)) {
 
             Map<String, Comparative> comparatives;
-            comparatives = TddlRuleManager.getInsertComparative(rowValues,
+            comparatives = partitioner.getInsertComparative(rowValues,
                 shardColumns,
                 params,
                 sequenceValues == null ? null : sequenceValues.get(i),
@@ -482,11 +484,12 @@ public class PhyTableInsertSharder {
             Map<String, Object> calcParams = new HashMap<>();
             calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, false);
             final Map<String, Comparative> insertFullComparative =
-                TddlRuleManager.getInsertFullComparative(comparatives);
+                partitioner.getInsertFullComparative(comparatives);
             final Map<String, Map<String, Comparative>> stringMapMap = Maps.newHashMap();
             stringMapMap.put(logicalTableName, insertFullComparative);
             calcParams.put(CalcParamsAttribute.COM_DB_TB, stringMapMap);
             calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
+            calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
             List<TargetDB> dbs = ruleManager.shard(logicalTableName,
                 true,
                 true,
@@ -515,7 +518,7 @@ public class PhyTableInsertSharder {
             }
             PartPrunedResult result =
                 PartitionPruner.doPruningByTupleRouteInfo(tupleRouting, tupleTemplateIdx, executionContext);
-            List<PhysicalPartitionInfo> prunedPartnfos = result.getPrunedParttions();
+            List<PhysicalPartitionInfo> prunedPartnfos = result.getPrunedPartitions();
             if (prunedPartnfos.size() == 0) {
                 throw new NoFoundPartitionsException();
             }

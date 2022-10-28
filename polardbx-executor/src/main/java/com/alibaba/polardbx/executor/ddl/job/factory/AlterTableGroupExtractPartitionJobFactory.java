@@ -44,7 +44,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -81,9 +80,8 @@ public class AlterTableGroupExtractPartitionJobFactory extends AlterTableGroupBa
         Map<String, Long> tablesVersion = getTablesVersion();
 
         DdlTask validateTask =
-            new AlterTableGroupValidateTask(schemaName,
-                alterTableGroupExtractPartitionPreparedData.getTableGroupName(), tablesVersion, true,
-                alterTableGroupExtractPartitionPreparedData.getTargetPhysicalGroups());
+            new AlterTableGroupValidateTask(schemaName, alterTableGroupExtractPartitionPreparedData.getTableGroupName(),
+                tablesVersion, true, alterTableGroupExtractPartitionPreparedData.getTargetPhysicalGroups());
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableGroupExtractPartitionPreparedData.getTableGroupName());
 
@@ -102,26 +100,18 @@ public class AlterTableGroupExtractPartitionJobFactory extends AlterTableGroupBa
         for (int i = 0; i < alterTableGroupExtractPartitionPreparedData.getNewPartitions().size(); i++) {
             targetDbList.add(alterTableGroupExtractPartitionPreparedData.getTargetGroupDetailInfoExRecords()
                 .get(i % targetDbCnt).phyDbName);
-            newPartitions
-                .add(alterTableGroupExtractPartitionPreparedData.getNewPartitions().get(i).getName().toString());
+            newPartitions.add(
+                alterTableGroupExtractPartitionPreparedData.getNewPartitions().get(i).getName().toString());
         }
-        DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
-            tableGroupName,
-            tableGroupConfig.getTableGroupRecord().getId(),
-            alterTableGroupExtractPartitionPreparedData.getSourceSql(),
-            ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG.getValue(),
-            taskType.getValue(),
-            outdatedPartitionGroupId,
-            targetDbList,
-            newPartitions);
+        DdlTask addMetaTask =
+            new AlterTableGroupAddMetaTask(schemaName, tableGroupName, tableGroupConfig.getTableGroupRecord().getId(),
+                alterTableGroupExtractPartitionPreparedData.getSourceSql(),
+                ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG.getValue(), taskType.getValue(),
+                outdatedPartitionGroupId, targetDbList, newPartitions);
 
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(
-            validateTask,
-            addMetaTask
-        ));
+        executableDdlJob.addSequentialTasks(Lists.newArrayList(validateTask, addMetaTask));
         List<DdlTask> bringUpAlterTableGroupTasks =
-            ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null,
-                taskType, executionContext);
+            ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null, taskType, executionContext);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
@@ -146,8 +136,7 @@ public class AlterTableGroupExtractPartitionJobFactory extends AlterTableGroupBa
         return executableDdlJob;
     }
 
-    public static ExecutableDdlJob create(@Deprecated DDL ddl,
-                                          AlterTableGroupExtractPartitionPreparedData preparedData,
+    public static ExecutableDdlJob create(@Deprecated DDL ddl, AlterTableGroupExtractPartitionPreparedData preparedData,
                                           ExecutionContext executionContext) {
         AlterTableGroupExtractPartitionBuilder alterTableGroupExtractPartitionBuilder =
             new AlterTableGroupExtractPartitionBuilder(ddl, preparedData, executionContext);
@@ -177,16 +166,10 @@ public class AlterTableGroupExtractPartitionJobFactory extends AlterTableGroupBa
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
             AlterTableGroupSubTaskJobFactory subTaskJobFactory =
                 new AlterTableGroupExtractPartitionSubTaskJobFactory(ddl,
-                    (AlterTableGroupExtractPartitionPreparedData) preparedData,
-                    tablesPrepareData.get(entry.getKey()),
-                    newPartitionsPhysicalPlansMap.get(entry.getKey()),
-                    tablesTopologyMap.get(entry.getKey()),
-                    targetTablesTopology.get(entry.getKey()),
-                    sourceTablesTopology.get(entry.getKey()),
-                    orderedTargetTablesLocations.get(entry.getKey()),
-                    targetPartitionName,
-                    false,
-                    executionContext);
+                    (AlterTableGroupExtractPartitionPreparedData) preparedData, tablesPrepareData.get(entry.getKey()),
+                    newPartitionsPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
+                    targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
+                    orderedTargetTablesLocations.get(entry.getKey()), targetPartitionName, false, executionContext);
             ExecutableDdlJob subTask = subTaskJobFactory.create();
             executableDdlJob.combineTasks(subTask);
             executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
@@ -202,13 +185,11 @@ public class AlterTableGroupExtractPartitionJobFactory extends AlterTableGroupBa
             } else {
                 executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
             }
-            DdlTask dropUselessTableTask = ComplexTaskFactory
-                .CreateDropUselessPhyTableTask(schemaName, entry.getKey(), sourceTablesTopology.get(entry.getKey()),
-                    executionContext);
+            DdlTask dropUselessTableTask = ComplexTaskFactory.CreateDropUselessPhyTableTask(schemaName, entry.getKey(),
+                sourceTablesTopology.get(entry.getKey()), executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
-            executableDdlJob
-                .addTaskRelationship(bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1),
-                    dropUselessTableTask);
+            executableDdlJob.addTaskRelationship(
+                bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1), dropUselessTableTask);
             executableDdlJob.getExcludeResources().addAll(subTask.getExcludeResources());
         }
     }

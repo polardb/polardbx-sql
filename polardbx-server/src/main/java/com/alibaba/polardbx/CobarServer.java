@@ -59,7 +59,6 @@ import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.util.TimeUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
-import com.alibaba.polardbx.optimizer.core.expression.UserDefinedJavaFunctionManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.sequence.ISequenceManager;
 import com.alibaba.polardbx.rpc.CdcRpcClient;
@@ -168,6 +167,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         }
         this.isOnline = new AtomicBoolean(true);
         this.forceOffline = new AtomicBoolean(false);
+
     }
 
     @Override
@@ -443,13 +443,13 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                 for (SchemaConfig schema : schemas.values()) {
                     // 逻辑sql统计
                     schema.getDataSource().getRecorder().setCount(systemConfig.getSqlRecordCount());
-                    schema.getDataSource().getRecorder().setMaxSizeThresold(systemConfig.getSlowSqlSizeThresold());
+                    schema.getDataSource().getRecorder().setMaxSizeThreshold(systemConfig.getSlowSqlSizeThresold());
                     schema.getDataSource().getRecorder().setSlowSqlTime(systemConfig.getSlowSqlTime());
                     // 物理sql统计
                     schema.getDataSource().getPhysicalRecorder().setCount(systemConfig.getSqlRecordCount());
                     schema.getDataSource()
                         .getPhysicalRecorder()
-                        .setMaxSizeThresold(systemConfig.getSlowSqlSizeThresold());
+                        .setMaxSizeThreshold(systemConfig.getSlowSqlSizeThresold());
                     schema.getDataSource().getPhysicalRecorder().setSlowSqlTime(systemConfig.getSlowSqlTime());
                 }
             }
@@ -471,8 +471,6 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
     private void warmup() {
         // init all functions
         ExtraFunctionManager.getExtraFunction("warmup", null, null);
-        UserDefinedJavaFunctionManager.getUserDefinedJavaFunction("warmup", null, null);
-
 
         // init all collation configurations.
         CharsetFactory.INSTANCE.createCharsetHandler();

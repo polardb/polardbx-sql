@@ -16,9 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
 public class TruncateTablePreparedData extends DdlPreparedData {
-
-    // No additional information needed, just keep this as a placeholder
-    // in case something will be added in the future.
-
+    private PartitionInfo partitionInfo;
 }

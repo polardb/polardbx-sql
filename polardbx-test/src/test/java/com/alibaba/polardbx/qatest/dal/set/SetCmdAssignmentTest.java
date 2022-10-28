@@ -27,8 +27,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
-
 /**
  * Created by wumu.stt on 20-07-13.
  */

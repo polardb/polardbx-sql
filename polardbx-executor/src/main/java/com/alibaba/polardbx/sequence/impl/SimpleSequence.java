@@ -16,49 +16,54 @@
 
 package com.alibaba.polardbx.sequence.impl;
 
-import com.alibaba.druid.util.StringUtils;
-import com.alibaba.polardbx.sequence.SequenceDao;
-import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.sequence.exception.SequenceException;
+
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INCREMENT_BY;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_MAX_VALUE;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_START_WITH;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.NOCYCLE;
 
 /**
  * A simple implementation for global sequence with no cache.
  *
- * @author chensr 2016年4月12日 上午11:14:55
+ * @author chensr 2016/04/12 11:14:55
  * @since 5.0.0
  */
 public class SimpleSequence extends BaseSequence {
 
     private static final Logger logger = LoggerFactory.getLogger(SimpleSequence.class);
 
-    private SimpleSequenceDao sequenceDao;
+    private SimpleSequenceDao simpleSequenceDao;
 
-    private volatile boolean isInited = false;
+    private volatile boolean initialized = false;
+
+    private int incrementBy = DEFAULT_INCREMENT_BY;
+    private long startWith = DEFAULT_START_WITH;
+    private long maxValue = DEFAULT_MAX_VALUE;
+    private int cycle = NOCYCLE;
 
     public void init() throws TddlRuntimeException {
-        if (isInited) {
+        if (initialized) {
             return;
         }
+
         this.type = Type.SIMPLE;
-        if (StringUtils.isEmpty(name)) {
-            throw new SequenceException("Please correctly set the sequence name!");
+
+        if (!simpleSequenceDao.isInited()) {
+            simpleSequenceDao.init();
         }
-        if (sequenceDao == null || !(sequenceDao instanceof SimpleSequenceDao)) {
-            throw new SequenceException("Please correctly set up the sequenceDao!");
-        }
-        if (!sequenceDao.isInited()) {
-            sequenceDao.init();
-        }
+
         TddlRuntimeException ex = null;
-        int retryTimes = sequenceDao.getRetryTimes();
+        int retryTimes = simpleSequenceDao.getRetryTimes();
         for (int i = 1; i <= retryTimes; i++) {
             try {
-                sequenceDao.validate(name);
+                simpleSequenceDao.validate(this);
                 ex = null;
-                isInited = true;
+                initialized = true;
                 break;
             } catch (TddlRuntimeException e) {
                 ex = e;
@@ -82,7 +87,9 @@ public class SimpleSequence extends BaseSequence {
         if (name == null) {
             throw new SequenceException("The sequence name cannot be null!");
         }
-        return sequenceDao.nextValue(name, size);
+        long value = simpleSequenceDao.nextValue(name, size);
+        currentValue = value;
+        return value;
     }
 
     @Override
@@ -91,28 +98,62 @@ public class SimpleSequence extends BaseSequence {
         return true;
     }
 
+    @Override
     public void updateValue(long value) throws SequenceException {
         if (name == null) {
             throw new SequenceException("The sequence name cannot be null!");
         }
         // Update sequence value directly.
-        sequenceDao.updateValue(name, value);
+        simpleSequenceDao.updateValue(name, value, maxValue);
     }
 
-    public SequenceDao getSequenceDao() {
-        return sequenceDao;
+    public SimpleSequenceDao getSimpleSequenceDao() {
+        return simpleSequenceDao;
     }
 
-    public void setSequenceDao(SequenceDao sequenceDao) {
-        this.sequenceDao = (SimpleSequenceDao) sequenceDao;
+    public void setSimpleSequenceDao(SimpleSequenceDao simpleSequenceDao) {
+        this.simpleSequenceDao = simpleSequenceDao;
     }
 
-    public boolean isInited() {
-        return isInited;
+    public int getIncrementBy() {
+        return incrementBy;
     }
 
-    public String toString() {
-        return "Sequence Name: " + name + ", " + sequenceDao.getConfigStr();
+    public void setIncrementBy(int incrementBy) {
+        if (incrementBy <= 0 || incrementBy > Integer.MAX_VALUE) {
+            incrementBy = 1;
+        }
+        this.incrementBy = incrementBy;
+    }
+
+    public long getStartWith() {
+        return startWith;
+    }
+
+    public void setStartWith(long startWith) {
+        if (startWith <= 0 || startWith > Long.MAX_VALUE) {
+            startWith = 1;
+        }
+        this.startWith = startWith;
+    }
+
+    public long getMaxValue() {
+        return maxValue;
+    }
+
+    public void setMaxValue(long maxValue) {
+        if (maxValue <= 0 || maxValue > Long.MAX_VALUE) {
+            maxValue = Long.MAX_VALUE;
+        }
+        this.maxValue = maxValue;
+    }
+
+    public int getCycle() {
+        return cycle;
+    }
+
+    public void setCycle(int cycle) {
+        this.cycle = cycle;
     }
 
 }

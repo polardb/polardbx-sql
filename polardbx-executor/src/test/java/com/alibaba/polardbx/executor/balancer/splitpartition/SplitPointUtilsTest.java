@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.balancer.splitpartition;
 
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -31,7 +33,9 @@ import io.airlift.slice.Slice;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -41,6 +45,55 @@ import java.util.List;
 public class SplitPointUtilsTest {
 
     @Test
+    public void testBuildSplitPoint() {
+        List<Integer> splitPoints = new ArrayList<>();
+        int splitSize = 10;
+        int counts[] = {4, 10, 12, 7, 3, 12, 9, 21, 3, 6, 8, 19, 7, 1, 19};
+        List<Integer> data = new ArrayList<>();
+        for (int i = 0; i < counts.length; i++) {
+            for (int j = 0; j < counts[i]; j++) {
+                data.add(i);
+            }
+        }
+        int lastRow = 0;
+        int row = lastRow + splitSize;
+        while (true) {
+            int comparedValue = data.get(row);
+            int value = data.get(row);
+            int j = row;
+            for (; j > lastRow; j--) {
+                value = data.get(j);
+                if (comparedValue != value) {
+                    j = j + 1;
+                    break;
+                }
+            }
+            if (j == lastRow) {
+                for (j = row; j < data.size(); j++) {
+                    value = data.get(j);
+                    if (comparedValue != value) {
+                        break;
+                    }
+                }
+            }
+            lastRow = j;
+            if (lastRow >= data.size()) {
+                break;
+            }
+            splitPoints.add(data.get(lastRow));
+            if (lastRow + splitSize >= data.size() - 1) {
+                break;
+            }
+            row = lastRow + splitSize;
+        }
+        int rightSplitPoints[] = {1, 2, 3, 5, 6, 7, 8, 10, 11, 12, 14};
+        for (int i = 0; i < rightSplitPoints.length; i++) {
+            assert (rightSplitPoints[i] == splitPoints.get(i));
+        }
+
+    }
+
+    //    @Test
     public void testBuildSplitBound() {
         // single column
         DataType<Slice> stringType = new VarcharType();
@@ -90,6 +143,23 @@ public class SplitPointUtilsTest {
             Assert.assertEquals(String.format("case %d %s", i, t), t.expectedResult, result);
         }
 
+        String schema = "test_split_partition";
+        String tableName = "t1";
+        String partName = "p1";
+        int splitCount = 10;
+        ExecutionContext ec = new ExecutionContext();
+        ec.setParams(new Parameters());
+        ec.setSchemaName(schema);
+        ec.setServerVariables(new HashMap<>());
+        for (int i = 0; i < testCases.size(); i++) {
+            SplitBoundTestCase t = testCases.get(i);
+            partitionBy.setPartIntFunc(t.func);
+            partitionBy.setStrategy(t.strategy);
+
+            List<SearchDatumInfo> result =
+                SplitPointUtils.generateSplitBounds(schema, tableName, partName, splitCount, -1L);
+            Assert.assertEquals(String.format("case %d %s", i, t), t.expectedResult, result.get(0));
+        }
     }
 
     class SplitBoundTestCase {

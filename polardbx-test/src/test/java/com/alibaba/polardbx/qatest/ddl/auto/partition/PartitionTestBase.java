@@ -40,12 +40,28 @@ public class PartitionTestBase extends DDLBaseNewDBTestCase {
         return true;
     }
 
+    protected Long getTableGroupId(String tableName, boolean likeTableName) {
+        if (likeTableName) {
+            tableName = "%" + tableName + "%";
+            String query = String.format(
+                "select group_id from table_partitions where table_schema='%s' and table_name like '%s' and part_level='0'",
+                tddlDatabase1, tableName);
+            return queryTableGroup(query);
+        } else {
+            return getTableGroupId(tableName);
+        }
+
+    }
+
     protected Long getTableGroupId(String tableName) {
-        Long tableGroupId = -1L;
         String query = String.format(
             "select group_id from table_partitions where table_schema='%s' and table_name='%s' and part_level='0'",
             tddlDatabase1, tableName);
+        return queryTableGroup(query);
+    }
 
+    private Long queryTableGroup(String query) {
+        Long tableGroupId = -1L;
         Connection metaConnection = getMetaConnection();
         ResultSet rs = JdbcUtil.executeQuery(query, metaConnection);
         try {

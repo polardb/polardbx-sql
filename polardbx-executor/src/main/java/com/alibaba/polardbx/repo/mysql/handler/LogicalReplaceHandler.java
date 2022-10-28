@@ -20,25 +20,32 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupKey;
+import com.alibaba.polardbx.executor.utils.NewGroupKey;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalReplace;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.DuplicateCheckResult;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.RowClassifier;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.SourceRows;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.RelocateWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplaceRelocateWriter;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.ImmutableList;
@@ -47,19 +54,25 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlSelect.LockMode;
+import org.apache.calcite.util.Pair;
+import org.apache.calcite.util.mapping.Mapping;
+import org.apache.calcite.util.mapping.Mappings;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.buildGroupKeys;
+import static com.alibaba.polardbx.executor.utils.ExecUtils.buildNewGroupKeys;
 import static com.alibaba.polardbx.optimizer.utils.RexUtils.buildRowValue;
 
 /**
@@ -84,13 +97,15 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
         if (input instanceof LogicalDynamicValues) {
             // For batch replace, change params index.
             if (replace.getBatchSize() > 0) {
-                replace.buildParamsForBatch(executionContext.getParams());
+                replace.buildParamsForBatch(executionContext);
             }
         }
 
         final boolean gsiConcurrentWrite =
             executionContext.getParamManager().getBoolean(ConnectionParams.GSI_CONCURRENT_WRITE_OPTIMIZE);
         executionContext.getExtraCmds().put(ConnectionProperties.GSI_CONCURRENT_WRITE, gsiConcurrentWrite);
+
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, executionContext);
 
         // Replace with NODE/SCAN hint specified
         if (replace.hasHint()) {
@@ -116,15 +131,21 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
         try {
             Map<String, List<List<String>>> ukGroupByTable = replace.getUkGroupByTable();
+            Map<String, List<String>> localIndexPhyName = replace.getLocalIndexPhyName();
+            List<List<Object>> convertedValues = new ArrayList<>();
+            boolean usePartFieldChecker = replace.isUsePartFieldChecker() && executionContext.getParamManager()
+                .getBoolean(ConnectionParams.DML_USE_NEW_DUP_CHECKER);
             List<List<Object>> selectedRows =
                 getDuplicatedValues(replace, LockMode.EXCLUSIVE_LOCK, executionContext, ukGroupByTable,
-                    (rowCount) -> memoryAllocator.allocateReservedMemory(
-                        MemoryEstimator.calcSelectValuesMemCost(rowCount, selectRowType)), selectRowType, false, handlerParams);
+                    localIndexPhyName, (rowCount) -> memoryAllocator.allocateReservedMemory(
+                        MemoryEstimator.calcSelectValuesMemCost(rowCount, selectRowType)), selectRowType, false,
+                    handlerParams, convertedValues, usePartFieldChecker);
             // Bind insert rows to operation
             // Duplicate might exists between replace values
             final List<Map<Integer, ParameterContext>> batchParams = replaceEc.getParams().getBatchParameters();
-            final List<DuplicateCheckResult> classifiedRows =
-                new ArrayList<>(bindInsertRows(replace, selectedRows, batchParams, executionContext));
+            final List<DuplicateCheckResult> classifiedRows = new ArrayList<>(
+                bindInsertRows(replace, selectedRows, batchParams, convertedValues, executionContext,
+                    usePartFieldChecker));
 
             try {
                 if (gsiConcurrentWrite) {
@@ -154,7 +175,7 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
         final ExecutionContext deduplicatedEc = executionContext.copy();
 
-        final RowClassifier rowClassifier = buildRowClassifier(replace, executionContext);
+        final RowClassifier rowClassifier = buildRowClassifier(replace, executionContext, schemaName);
 
         final List<RelNode> primaryDeletePlans = new ArrayList<>();
         final List<RelNode> primaryInsertPlans = new ArrayList<>();
@@ -230,7 +251,7 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
         final ExecutionContext deduplicatedEc = executionContext.copy();
 
-        final RowClassifier rowClassifier = buildRowClassifier(replace, executionContext);
+        final RowClassifier rowClassifier = buildRowClassifier(replace, executionContext, schemaName);
 
         final List<RelNode> primaryDeletePlans = new ArrayList<>();
         final List<RelNode> primaryInsertPlans = new ArrayList<>();
@@ -314,9 +335,83 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
         return affectRows;
     }
 
+    protected RowClassifier buildRowClassifier(final LogicalInsert insertOrReplace,
+                                               final ExecutionContext ec, final String schemaName) {
+        return (writer, sourceRows, result) -> {
+            if (null == result) {
+                return result;
+            }
+
+            final LogicalDynamicValues input = RelUtils.getRelInput(insertOrReplace);
+
+            final BiPredicate<Writer, Pair<List<Object>, Map<Integer, ParameterContext>>> identicalPartitionKeyChecker =
+                getIdenticalPartitionKeyChecker(input, ec, schemaName);
+
+            // Classify insert/replace rows for UPDATE/REPLACE/DELETE/INSERT
+            writer.classify(identicalPartitionKeyChecker, sourceRows, ec, result);
+
+            return result;
+        };
+    }
+
+    /**
+     * Return a lambda expression for checking partition keys of two input row are identical
+     */
+    protected BiPredicate<Writer, Pair<List<Object>, Map<Integer, ParameterContext>>> getIdenticalPartitionKeyChecker(
+        LogicalDynamicValues input,
+        ExecutionContext executionContext,
+        String schemaName) {
+        final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
+
+        // Checker for identical partition key
+        return (w, pair) -> {
+            // Use PartitionField to compare in new partition table
+            final RelocateWriter rw = w.unwrap(RelocateWriter.class);
+            final boolean usePartFieldChecker = rw.isUsePartFieldChecker() &&
+                executionContext.getParamManager().getBoolean(ConnectionParams.DML_USE_NEW_SK_CHECKER);
+
+            final List<Object> oldValue = pair.left;
+            final Map<Integer, ParameterContext> newValue = pair.right;
+
+            final Mapping skSourceMapping = rw.getIdentifierKeySourceMapping();
+            final Object[] sourceSkValue = Mappings.permute(oldValue, skSourceMapping).toArray();
+
+            final List<RexNode> targetSkRex = Mappings.permute(rexRow, skSourceMapping);
+            final Object[] targetSkValue =
+                targetSkRex.stream().map(rex -> RexUtils.getValueFromRexNode(rex, executionContext, newValue))
+                    .toArray();
+            final List<ColumnMeta> skMetas = rw.getIdentifierKeyMetas();
+
+            if (usePartFieldChecker) {
+                try {
+                    final NewGroupKey sourceSkGk = new NewGroupKey(Arrays.asList(sourceSkValue),
+                        skMetas.stream().map(ColumnMeta::getDataType).collect(Collectors.toList()), skMetas,
+                        true, executionContext);
+                    final NewGroupKey targetSkGk = new NewGroupKey(Arrays.asList(targetSkValue),
+                        targetSkRex.stream().map(rx -> DataTypeUtil.calciteToDrdsType(rx.getType()))
+                            .collect(Collectors.toList()), skMetas, true, executionContext);
+
+                    return sourceSkGk.equals(targetSkGk);
+                } catch (Throwable e) {
+                    // Maybe value can not be cast, just use DELETE + INSERT to be safe
+                    LoggerFactory.getLogger(LogicalReplaceHandler.class).warn("new sk checker failed, cause by " + e);
+                }
+                return false;
+            } else {
+                final GroupKey sourceSkGk = new GroupKey(sourceSkValue, skMetas);
+                final GroupKey targetSkGk = new GroupKey(targetSkValue, skMetas);
+
+                // GroupKey(NULL).equals(GroupKey(NULL)) returns true
+                return sourceSkGk.equals(targetSkGk);
+            }
+        };
+    }
+
     protected List<DuplicateCheckResult> bindInsertRows(LogicalReplace replace, List<List<Object>> selectedRows,
                                                         List<Map<Integer, ParameterContext>> currentBatchParameters,
-                                                        ExecutionContext executionContext) {
+                                                        List<List<Object>> convertedValues,
+                                                        ExecutionContext executionContext,
+                                                        boolean usePartFieldChecker) {
         final List<List<Integer>> beforeUkMapping = replace.getBeforeUkMapping();
         final List<List<Integer>> afterUkMapping = replace.getAfterUkMapping();
         final List<List<ColumnMeta>> ukColumnMetas = replace.getUkColumnMetas();
@@ -328,8 +423,9 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
         // 1. Init before rows
         final Map<Integer, DuplicateCheckRow> checkerRows = new HashMap<>();
         final Map<Integer, List<DuplicateCheckRow>> insertDeleteMap = new HashMap<>();
-        final List<Map<GroupKey, List<DuplicateCheckRow>>> checkers =
-            buildDuplicateCheckers(selectedRows, beforeUkMapping, ukColumnMetas, checkerRows);
+        final List<Map<GroupKey, List<DuplicateCheckRow>>> checkers = usePartFieldChecker ?
+            buildDuplicateCheckersWithNewGroupKey(selectedRows, beforeUkMapping, ukColumnMetas, checkerRows,
+                executionContext) : buildDuplicateCheckers(selectedRows, beforeUkMapping, ukColumnMetas, checkerRows);
 
         // 2. Check each insert row
         Ord.zip(currentBatchParameters).forEach(o -> {
@@ -337,8 +433,10 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
             final Map<Integer, ParameterContext> newRow = o.getValue();
 
             // Build group key
-            final List<GroupKey> newGroupKeys = buildGroupKeys(afterUkMapping, ukColumnMetas,
-                (i) -> RexUtils.getValueFromRexNode(rexRow.get(i), executionContext, newRow));
+            final List<GroupKey> newGroupKeys = usePartFieldChecker ?
+                buildNewGroupKeys(afterUkMapping, ukColumnMetas, convertedValues.get(rowIndex)::get, executionContext) :
+                buildGroupKeys(afterUkMapping, ukColumnMetas,
+                    (i) -> RexUtils.getValueFromRexNode(rexRow.get(i), executionContext, newRow));
 
             // Collect all duplicated rows
             final Set<Integer> duplicatedIndexSet = new HashSet<>();
@@ -368,7 +466,8 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
                 // Remove duplicated checker rows
                 for (Map<GroupKey, List<DuplicateCheckRow>> checker : checkers) {
-                    final Map<GroupKey, List<DuplicateCheckRow>> newChecker = new TreeMap<>();
+                    final Map<GroupKey, List<DuplicateCheckRow>> newChecker =
+                        usePartFieldChecker ? new HashMap<>() : new TreeMap<>();
 
                     checker.forEach((k, v) -> {
                         final List<DuplicateCheckRow> newValue =
@@ -524,6 +623,47 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
             final DuplicateCheckRow duplicateCheckRow = new DuplicateCheckRow();
 
             duplicateCheckRow.keyList = buildGroupKeys(ukMapping, ukColumnMetas, row::get);
+            duplicateCheckRow.duplicated = true;
+            duplicateCheckRow.rowIndex = rowIndex - selectedRowCount;
+            duplicateCheckRow.before = new ArrayList<>();
+            duplicateCheckRow.after = new ArrayList<>();
+            for (Ord<Object> o : Ord.zip(row)) {
+                duplicateCheckRow.before.add(o.getValue());
+                duplicateCheckRow.after.add(o.getValue());
+            }
+
+            if (null != outDuplicateCheckRow) {
+                outDuplicateCheckRow.put(duplicateCheckRow.rowIndex, duplicateCheckRow);
+            }
+
+            for (Ord<GroupKey> o : Ord.zip(duplicateCheckRow.keyList)) {
+                final Integer ukIndex = o.getKey();
+                final GroupKey groupKey = o.getValue();
+
+                final Map<GroupKey, List<DuplicateCheckRow>> checkers = result.get(ukIndex);
+                checkers.computeIfAbsent(groupKey, (k) -> new ArrayList<>()).add(duplicateCheckRow);
+            }
+        });
+
+        return result;
+    }
+
+    private static List<Map<GroupKey, List<DuplicateCheckRow>>> buildDuplicateCheckersWithNewGroupKey(
+        List<List<Object>> selectedRows,
+        List<List<Integer>> ukMapping,
+        List<List<ColumnMeta>> ukColumnMetas,
+        Map<Integer, DuplicateCheckRow> outDuplicateCheckRow,
+        ExecutionContext ec) {
+        final List<Map<GroupKey, List<DuplicateCheckRow>>> result = new ArrayList<>();
+        IntStream.range(0, ukMapping.size()).forEach(i -> result.add(new HashMap<>()));
+        final int selectedRowCount = selectedRows.size();
+
+        Ord.zip(selectedRows).forEach(ord -> {
+            final Integer rowIndex = ord.getKey();
+            final List<Object> row = ord.getValue();
+            final DuplicateCheckRow duplicateCheckRow = new DuplicateCheckRow();
+
+            duplicateCheckRow.keyList = buildNewGroupKeys(ukMapping, ukColumnMetas, row::get, ec);
             duplicateCheckRow.duplicated = true;
             duplicateCheckRow.rowIndex = rowIndex - selectedRowCount;
             duplicateCheckRow.before = new ArrayList<>();

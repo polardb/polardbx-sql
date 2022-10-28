@@ -62,7 +62,6 @@ import static org.hamcrest.Matchers.is;
  */
 
 @FixMethodOrder(value = MethodSorters.JVM)
-@Ignore("fix by ???")
 public class PartitionTableRepartitionDdlTest extends PartitionTableRepartitionBaseTest {
     @Rule
     public ExpectedException thrown = ExpectedException.none();
@@ -709,7 +708,7 @@ public class PartitionTableRepartitionDdlTest extends PartitionTableRepartitionB
     @Test
     public void testGsiInsertWhileHashToRange() throws SQLException {
 
-        thrown.expectMessage(org.hamcrest.core.StringContains.containsString("IndexOutOfBoundsException"));
+        thrown.expectMessage(org.hamcrest.core.StringContains.containsString("ERR_PARTITION_NO_FOUND"));
         /**
          * given:
          * 1. 创建一张不带GSI的主表
@@ -997,9 +996,8 @@ public class PartitionTableRepartitionDdlTest extends PartitionTableRepartitionB
      * 预期backfill阶段报错，rollback
      */
     @Test
-    @Ignore
     public void testGsiBackFill() throws SQLException {
-        thrown.expectMessage(org.hamcrest.core.StringContains.containsString("IndexOutOfBoundsException"));
+        thrown.expectMessage(org.hamcrest.core.StringContains.containsString("ERR_PARTITION_NO_FOUND"));
 
         //given: 一张不带GSI的主表，并先插入一些数据
         PartitionParam originPartitionRule = partitionOf("HASH", TableConstant.C_ID, 2);

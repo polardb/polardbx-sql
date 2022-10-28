@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -27,6 +28,8 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -128,13 +131,7 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
         Set<String> indexTableNames = new HashSet<>();
         if (tableNameIndexValue != null && !tableNameIndexValue.isEmpty()) {
             for (Object obj : tableNameIndexValue) {
-                if (obj instanceof RexDynamicParam) {
-                    String tableName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                    indexTableNames.add(tableName.toLowerCase());
-                } else if (obj instanceof RexLiteral) {
-                    String tableName = ((RexLiteral) obj).getValueAs(String.class);
-                    indexTableNames.add(tableName.toLowerCase());
-                }
+                ExecUtils.handleTableNameParams(obj, params, indexSchemaNames);
             }
         }
 
@@ -154,9 +151,6 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
         boolean once = true;
 
         for (String schemaName : schemaNames) {
-            StatisticManager statisticManager = (StatisticManager) OptimizerContext.getContext(schemaName)
-                .getStatisticManager();
-
             SchemaManager schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
 
             // groupName -> {(logicalTableName, physicalTableName)}
@@ -222,6 +216,7 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                         String logicalTableName;
                         String tableSchema;
                         long tableRows;
+                        String autoPartition = "NO";
                         if (rs.getString("TABLE_SCHEMA").equalsIgnoreCase("information_schema")) {
                             tableSchema = rs.getString("TABLE_SCHEMA");
                             logicalTableName = rs.getString("TABLE_NAME");
@@ -230,7 +225,8 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             logicalTableName =
                                 physicalTableToLogicalTable.get(rs.getString("TABLE_NAME"));
                             tableSchema = schemaName;
-                            StatisticResult statisticResult = statisticManager.getRowCount(logicalTableName);
+                            StatisticResult statisticResult =
+                                StatisticManager.getInstance().getRowCount(schemaName, logicalTableName);
                             tableRows = statisticResult.getLongValue();
                             if (!CanAccessTable.verifyPrivileges(schemaName, logicalTableName, executionContext)) {
                                 continue;
@@ -240,6 +236,9 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             if (!informationSchemaTables.includeGsi()) {
                                 try {
                                     TableMeta tableMeta = schemaManager.getTable(logicalTableName);
+                                    if (tableMeta.isAutoPartition()) {
+                                        autoPartition = "YES";
+                                    }
                                     if (tableMeta.isGsi()) {
                                         continue;
                                     }
@@ -276,7 +275,8 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             rs.getObject("TABLE_COLLATION"),
                             rs.getObject("CHECKSUM"),
                             rs.getObject("CREATE_OPTIONS"),
-                            rs.getObject("TABLE_COMMENT")
+                            rs.getObject("TABLE_COMMENT"),
+                            autoPartition
                         });
                     }
                 } catch (Throwable t) {

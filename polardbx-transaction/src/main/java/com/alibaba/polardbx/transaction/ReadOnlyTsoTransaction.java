@@ -18,6 +18,7 @@ package com.alibaba.polardbx.transaction;
 
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -177,5 +178,10 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
         });
 
         super.close();
+    }
+
+    @Override
+    public ITransactionPolicy.TransactionClass getTransactionClass() {
+        return ITransactionPolicy.TransactionClass.TSO_READONLY;
     }
 }

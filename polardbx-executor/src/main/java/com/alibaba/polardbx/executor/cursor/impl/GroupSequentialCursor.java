@@ -35,6 +35,7 @@ import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -42,6 +43,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class GroupSequentialCursor extends AbstractCursor {
 
@@ -53,6 +55,7 @@ public class GroupSequentialCursor extends AbstractCursor {
     protected Cursor currentCursor = null;
     protected int currentIndex = 0;
     protected List<Cursor> cursors = new ArrayList<>();
+    protected final ReentrantLock cursorLock = new ReentrantLock();
 
     protected AtomicBoolean started = new AtomicBoolean(false);
     protected AtomicInteger numObjectsDone = new AtomicInteger(0);
@@ -75,7 +78,7 @@ public class GroupSequentialCursor extends AbstractCursor {
         }
         this.completedCursorQueue = new LinkedBlockingQueue<>(this.totalSize);
         this.executionContext = executionContext;
-        this.exceptions = exceptions;
+        this.exceptions = Collections.synchronizedList(exceptions);
 
         RelNode plan0 = this.plansByInstance.values().iterator().next().get(0);
         this.returnColumns = ((BaseTableOperation) plan0).getCursorMeta().getColumns();
@@ -118,15 +121,19 @@ public class GroupSequentialCursor extends AbstractCursor {
 
                     phyObjectRecorder.recordDone();
 
-                    cursors.add(cursor);
-                    completedCursorQueue.put(cursor);
+                    cursorLock.lock();
+                    try {
+                        cursors.add(cursor);
+                        if (returnColumns == null) {
+                            returnColumns = cursors.get(0).getReturnColumns();
+                        }
+                    } finally {
+                        cursorLock.unlock();
+                    }
 
+                    completedCursorQueue.put(cursor);
                     numObjectsDone.incrementAndGet();
                     numObjectsCountedOnInstance++;
-
-                    if (returnColumns == null) {
-                        returnColumns = cursors.get(0).getReturnColumns();
-                    }
                 } else {
                     numObjectsSkipped.incrementAndGet();
                     numObjectsCountedOnInstance++;

@@ -16,11 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -45,6 +40,7 @@ import com.alibaba.polardbx.executor.mpp.operator.factory.FilterExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.HashAggExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.HashGroupJoinExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.HybridHashJoinExecutorFactory;
+import com.alibaba.polardbx.executor.mpp.operator.factory.InsertSelectExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.LimitExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.LocalBufferConsumerFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.LocalBufferExecutorFactory;
@@ -79,6 +75,7 @@ import com.alibaba.polardbx.executor.mpp.split.SplitManager;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -93,6 +90,7 @@ import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LocalBufferNode;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MemSort;
@@ -112,6 +110,7 @@ import com.alibaba.polardbx.optimizer.core.rel.mpp.MppExchange;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
@@ -172,7 +171,7 @@ public class LocalExecutionPlanner {
         TopN.class, LogicalSort.class, LogicalValues.class, RemoteSourceNode.class, Gather.class,
         MergeSort.class, LogicalUnion.class, Exchange.class, HashGroupJoin.class, LogicalExpand.class,
         DynamicValues.class, SortWindow.class, RuntimeFilterBuilder.class, LogicalCorrelate.class,
-        LogicalOutFile.class, PhysicalProject.class, PhysicalFilter.class);
+        LogicalOutFile.class, PhysicalProject.class, PhysicalFilter.class, LogicalInsert.class);
 
     public static final Set<Class<? extends RelNode>> SUPPORT_ONE_SIDE_CACHE_NODES = ImmutableSet.of(
         HashJoin.class, SemiHashJoin.class, NLJoin.class, SemiNLJoin.class, HashGroupJoin.class);
@@ -436,8 +435,8 @@ public class LocalExecutionPlanner {
         } else if (current instanceof SortMergeJoin) {
             SortMergeJoin mergeJoin = (SortMergeJoin) current;
             List<Boolean> columnIsAscending = mergeJoin.getCollation().getFieldCollations().stream().map(t ->
-                (t.getDirection() == RelFieldCollation.Direction.ASCENDING
-                    || t.getDirection() == RelFieldCollation.Direction.STRICTLY_ASCENDING))
+                    (t.getDirection() == RelFieldCollation.Direction.ASCENDING
+                        || t.getDirection() == RelFieldCollation.Direction.STRICTLY_ASCENDING))
                 .collect(Collectors.toList());
 
             return visitSortMergeJoin(mergeJoin, mergeJoin.getLeftColumns(), mergeJoin.getRightColumns(),
@@ -449,8 +448,8 @@ public class LocalExecutionPlanner {
             boolean maxOneRow =
                 mergeJoin.getJoinType() == JoinRelType.LEFT || mergeJoin.getJoinType() == JoinRelType.INNER;
             List<Boolean> columnIsAscending = mergeJoin.getCollation().getFieldCollations().stream().map(t ->
-                (t.getDirection() == RelFieldCollation.Direction.ASCENDING
-                    || t.getDirection() == RelFieldCollation.Direction.STRICTLY_ASCENDING))
+                    (t.getDirection() == RelFieldCollation.Direction.ASCENDING
+                        || t.getDirection() == RelFieldCollation.Direction.STRICTLY_ASCENDING))
                 .collect(Collectors.toList());
             return visitSortMergeJoin(mergeJoin, mergeJoin.getLeftColumns(), mergeJoin.getRightColumns(),
                 columnIsAscending,
@@ -523,6 +522,8 @@ public class LocalExecutionPlanner {
             return visitOverWindow((SortWindow) current, pipelineFragment);
         } else if (current instanceof LogicalCorrelate) {
             return visitLogicalCorrelate((LogicalCorrelate) current, pipelineFragment);
+        } else if (current instanceof LogicalInsert) {
+            return visitLogicalInsertExec((LogicalInsert) current, pipelineFragment);
         } else {
             return visitGeneralExec(current, pipelineFragment);
         }
@@ -557,7 +558,7 @@ public class LocalExecutionPlanner {
             Pair<PipelineFactory, LocalBufferExecutorFactory> pair = createAllBufferPipelineFragment(
                 current, producerFragment, "CacheForCorrelate@");
 
-            pipelineFragment.setParallelism(producerFragment.getParallelism());
+            pipelineFragment.setParallelism(1);
             pipelineFactorys.add(pair.left);
             pipelineFragment.addDependency(pair.left.getPipelineId());
             pipelineFragment.addChild(producerFragment);
@@ -570,6 +571,11 @@ public class LocalExecutionPlanner {
 
     private ExecutorFactory visitOverWindow(SortWindow overWindow, PipelineFragment pipelineFragment) {
         ExecutorFactory overWindowFactory = createOverWindowFactory(overWindow, pipelineFragment);
+        // Note: 原理上这里的overWindow只会包含一个group，但是担心有其他地方未遵守该规定，因此采取了较保守的做法
+        // 只要包含不分组的group，即over中的partition by字段为空，则该windowExec的并行度就应当是1
+        if (overWindow.groups.stream().anyMatch(g -> g.keys.size() == 0)) {
+            pipelineFragment.setParallelism(1);
+        }
         return overWindowFactory;
     }
 
@@ -883,7 +889,7 @@ public class LocalExecutionPlanner {
 
             List<EquiJoinKey> joinKeys = EquiJoinUtils
                 .buildEquiJoinKeys(current, current.getOuter(), current.getInner(), (RexCall) equalCond,
-                    current.getJoinType());
+                    current.getJoinType(), true);
             List<DataType> keyTypes = joinKeys.stream().map(t -> t.getUnifiedType()).collect(Collectors.toList());
             List<Integer> keyInnerIndexes = joinKeys.stream().map(t -> t.getInnerIndex()).collect(Collectors.toList());
             List<Integer> keyOuterIndexes = joinKeys.stream().map(t -> t.getOuterIndex()).collect(Collectors.toList());
@@ -975,8 +981,9 @@ public class LocalExecutionPlanner {
     }
 
     private ExecutorFactory visitBKAJoin(Join current, PipelineFragment pipelineFragment) {
-
-        if (defaultParallelism != 1 && ExecUtils.useExplicitTransaction(context)) {
+        forbidMultipleReadConn = this.forbidMultipleReadConn ||
+            !ExecUtils.allowMultipleReadConns(context, null);
+        if (defaultParallelism != 1 && forbidMultipleReadConn) {
             //FIXME 本来这里应该根据forbidMultipleReadConn来设置并发度的，这里投机取巧下知识使用useTransaction
             //事务下并发度必须为1,并且当前并发度需要被保持
             pipelineFragment.holdSingleTonParallelism();
@@ -1050,6 +1057,11 @@ public class LocalExecutionPlanner {
     private ExecutorFactory visitGeneralExec(RelNode current, PipelineFragment pipelineFragment) {
         pipelineFragment.holdSingleTonParallelism();
         return new NonBlockGeneralExecFactory(current);
+    }
+
+    private ExecutorFactory visitLogicalInsertExec(LogicalInsert current, PipelineFragment pipelineFragment) {
+        ExecutorFactory childExecutorFactory = visit(current, current.getInput(), pipelineFragment);
+        return new InsertSelectExecFactory(current, childExecutorFactory);
     }
 
     private ExecutorFactory visitRemoteNode(RemoteSourceNode current, PipelineFragment pipelineFragment) {
@@ -1283,8 +1295,7 @@ public class LocalExecutionPlanner {
         }
         int prefetch = totalPrefetch;
         if (isCluster) {
-            if (logicalView.isUnderMergeSort() ||
-                (logicalView.pushedRelNodeIsSort() && logicalView.isSingleGroupSingleTable())) {
+            if (logicalView.isUnderMergeSort() || logicalView.pushedRelNodeIsSort()) {
                 holdCollation = true;
                 pipelineFragment.holdSingleTonParallelism();
             }
@@ -1294,6 +1305,9 @@ public class LocalExecutionPlanner {
         } else {
             this.forbidMultipleReadConn =
                 this.forbidMultipleReadConn || !ExecUtils.allowMultipleReadConns(context, logicalView);
+
+            PhyTableOperationUtil.enableIntraGroupParallelism(logicalView.getSchemaName(), context);
+
             SplitInfo splitInfo;
             if (logicalView.fromTableOperation() != null) {
                 splitInfo = new SplitManager().getSingleSplit(logicalView, context);
@@ -1301,9 +1315,7 @@ public class LocalExecutionPlanner {
                 splitInfo = new SplitManager().getSplits(logicalView, context, false);
             }
 
-            if (logicalView.isUnderMergeSort() ||
-                (logicalView.pushedRelNodeIsSort() && logicalView.isSingleGroupSingleTable())
-                || parent instanceof SortWindow) {
+            if (logicalView.isUnderMergeSort() || logicalView.pushedRelNodeIsSort()) {
                 holdCollation = true;
             }
 
@@ -1312,7 +1324,7 @@ public class LocalExecutionPlanner {
                 prefetch = 1;
             } else {
                 if (prefetch < 0) {
-                    prefetch = ExecUtils.getPrefetchNumForLogicalView(splitInfo.getDbCount());
+                    prefetch = ExecUtils.getPrefetchNumForLogicalView(splitInfo.getSplitParallelism());
                 }
                 if (expandView) {
                     //The parallelism of the ExpandView must keep constant.
@@ -1326,7 +1338,10 @@ public class LocalExecutionPlanner {
                                 int shards;
                                 switch (splitInfo.getConcurrencyPolicy()) {
                                 case GROUP_CONCURRENT_BLOCK:
-                                    shards = splitInfo.getDbCount();
+                                    shards = splitInfo.getSplitParallelism();
+                                    break;
+                                case RELAXED_GROUP_CONCURRENT:
+                                    shards = splitInfo.getSplitParallelism();
                                     break;
                                 case CONCURRENT:
                                     shards = splitInfo.getSplitCount();

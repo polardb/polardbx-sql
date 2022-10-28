@@ -92,7 +92,7 @@ public class InformationSchemaDdlPlanHandler extends BaseVirtualViewSubClassHand
                 Object[] row = new Object[] {ddlPlanRecord.getId(), ddlPlanRecord.getPlanId(), ddlPlanRecord.getJobId(),
                     ddlPlanRecord.getTableSchema(), ddlPlanRecord.getDdlStmt(), ddlPlanRecord.getState(),
                 ddlPlanRecord.getDdlType(), progress, ddlPlanRecord.getRetryCount(), ddlPlanRecord.getResult(), ddlPlanRecord.getExtras(),
-                    ddlPlanRecord.getGmtCreate(), ddlPlanRecord.getGmtModified()};
+                    ddlPlanRecord.getGmtCreate(), ddlPlanRecord.getGmtModified(), ddlPlanRecord.getResource()};
 
                 cursor.addRow(row);
             }

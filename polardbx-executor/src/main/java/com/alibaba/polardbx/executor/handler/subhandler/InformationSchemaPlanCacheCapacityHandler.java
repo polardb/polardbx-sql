@@ -48,36 +48,25 @@ public class InformationSchemaPlanCacheCapacityHandler extends BaseVirtualViewSu
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchPlanCacheCapacitySyncAction());
 
-        Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
-        for (String schemaName : schemaNames) {
-
-            if (SystemDbHelper.CDC_DB_NAME.equalsIgnoreCase(schemaName)) {
+        for (List<Map<String, Object>> nodeRows : results) {
+            if (nodeRows == null) {
                 continue;
             }
 
-            List<List<Map<String, Object>>> results =
-                SyncManagerHelper.sync(new FetchPlanCacheCapacitySyncAction(schemaName),
-                    schemaName);
+            for (Map<String, Object> row : nodeRows) {
+                final String host = DataTypes.StringType.convertFrom(row.get("COMPUTE_NODE"));
+                final String schema = DataTypes.StringType.convertFrom(row.get("SCHEMA"));
+                final String cacheKeyCount = DataTypes.StringType.convertFrom(row.get("CACHE_KEY_CNT"));
+                final Long capacity = DataTypes.LongType.convertFrom(row.get("CAPACITY"));
 
-            for (List<Map<String, Object>> nodeRows : results) {
-                if (nodeRows == null) {
-                    continue;
-                }
-
-                for (Map<String, Object> row : nodeRows) {
-
-                    final String host = DataTypes.StringType.convertFrom(row.get("COMPUTE_NODE"));
-                    final String cacheKeyCount = DataTypes.StringType.convertFrom(row.get("CACHE_KEY_CNT"));
-                    final Long capacity = DataTypes.LongType.convertFrom(row.get("CAPACITY"));
-
-                    cursor.addRow(new Object[] {
-                        host,
-                        schemaName,
-                        cacheKeyCount,
-                        capacity
-                    });
-                }
+                cursor.addRow(new Object[] {
+                    host,
+                    schema,
+                    cacheKeyCount,
+                    capacity
+                });
             }
         }
         return cursor;

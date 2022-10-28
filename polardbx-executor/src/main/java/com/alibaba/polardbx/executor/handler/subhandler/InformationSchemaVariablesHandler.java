@@ -16,16 +16,23 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.sync.ISyncAction;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaGlobalVariables;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaSessionVariables;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * handle global and session variables
@@ -37,6 +44,19 @@ public class InformationSchemaVariablesHandler extends BaseVirtualViewSubClassHa
         super(virtualViewHandler);
     }
 
+    private static final Class fetchTimerTaskInfoSyncActionClass;
+
+    static {
+        // Since executor-module can not 'see' transaction-module,
+        // we have to use this way to get transaction information.
+        try {
+            fetchTimerTaskInfoSyncActionClass =
+                Class.forName("com.alibaba.polardbx.transaction.sync.FetchTimerTaskInfoSyncAction");
+        } catch (ClassNotFoundException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
+        }
+    }
+
     @Override
     public boolean isSupport(VirtualView virtualView) {
         return virtualView instanceof InformationSchemaGlobalVariables
@@ -46,7 +66,8 @@ public class InformationSchemaVariablesHandler extends BaseVirtualViewSubClassHa
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         String sql;
-        if (virtualView instanceof InformationSchemaGlobalVariables) {
+        final boolean isGlobal = virtualView instanceof InformationSchemaGlobalVariables;
+        if (isGlobal) {
             sql = "show global variables";
         } else {
             sql = "show session variables";
@@ -55,6 +76,30 @@ public class InformationSchemaVariablesHandler extends BaseVirtualViewSubClassHa
         ExecutionContext newExecutionContext = executionContext.copy();
         newExecutionContext.setTestMode(false);
         ExecutionPlan executionPlan = Planner.getInstance().plan(sql, newExecutionContext);
-        return ExecutorHelper.execute(executionPlan.getPlan(), newExecutionContext);
+        Cursor resultCursor = ExecutorHelper.execute(executionPlan.getPlan(), newExecutionContext);
+
+        if (isGlobal && resultCursor instanceof ArrayResultCursor) {
+            // Add timer task parameters into result.
+            // 1. Get all task variables from leader.
+            final ISyncAction fetchTimerTaskInfoSyncAction;
+            try {
+                fetchTimerTaskInfoSyncAction =
+                    (ISyncAction) fetchTimerTaskInfoSyncActionClass.getConstructor(String.class)
+                        .newInstance(executionContext.getSchemaName());
+            } catch (Exception e) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
+            }
+            final List<List<Map<String, Object>>> allTaskValues = SyncManagerHelper.sync(fetchTimerTaskInfoSyncAction);
+
+            // 2. Add them into result.
+            for (List<Map<String, Object>> maps : allTaskValues) {
+                for (Map<String, Object> allValues : maps) {
+                    ((ArrayResultCursor) resultCursor).addRow(
+                        new Object[] {allValues.get("VARIABLE_NAME").toString(), allValues.get("VALUE").toString()});
+                }
+            }
+        }
+
+        return resultCursor;
     }
 }

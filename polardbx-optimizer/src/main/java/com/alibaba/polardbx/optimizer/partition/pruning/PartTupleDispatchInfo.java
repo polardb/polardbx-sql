@@ -18,15 +18,19 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.util.Rex2ExprStringVisitor;
 
 import java.util.BitSet;
+import java.util.List;
 
 /**
  * @author chenghui.lch
  */
-public class PartTupleDispatchInfo {
+public class PartTupleDispatchInfo implements PartitionPruneBase {
 
     protected PartitionTupleRouteInfo tupleRouteInfo;
+
+    protected int dispatchInfoIndex;
 
     /**
      * The tuple route info for partition
@@ -38,8 +42,9 @@ public class PartTupleDispatchInfo {
      */
     protected PartTupleRouteFunction subPartDispatchFunc;
 
-    public PartTupleDispatchInfo(PartitionTupleRouteInfo tupleRouteInfo) {
+    public PartTupleDispatchInfo(PartitionTupleRouteInfo tupleRouteInfo, int dispatchInfoIndex) {
         this.tupleRouteInfo = tupleRouteInfo;
+        this.dispatchInfoIndex= dispatchInfoIndex;
     }
 
     public PartPrunedResult routeTuple(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
@@ -50,7 +55,12 @@ public class PartTupleDispatchInfo {
         PartPrunedResult rs = new PartPrunedResult();
         rs.partBitSet = finalBitSet;
         rs.partInfo = partInfo;
+        PartitionPrunerUtils.collateTupleRouteExplainInfo(this, ec, rs, pruningCtx);
         return rs;
+    }
+
+    public SearchDatumInfo calcSearchDatum(ExecutionContext ec, PartPruneStepPruningContext pruningCtx) {
+        return partDispatchFunc.calcSearchDatum(ec ,pruningCtx);
     }
 
     public PartTupleRouteFunction getPartDispatchFunc() {
@@ -67,5 +77,51 @@ public class PartTupleDispatchInfo {
 
     public void setSubPartDispatchFunc(PartTupleRouteFunction subPartDispatchFunc) {
         this.subPartDispatchFunc = subPartDispatchFunc;
+    }
+
+    public String buildStepDigest(ExecutionContext ec) {
+        StringBuilder digestBuilder = new StringBuilder("");
+        PartitionInfo partInfo = this.tupleRouteInfo.getPartInfo();
+
+        // ((%s) %s (%s)) or // ((%s1,%s2) %s (%s1,%s2))
+        List<String> partColList = partInfo.getPartitionBy().getPartitionColumnNameList();
+        Integer partColCnt = partColList.size();
+
+        digestBuilder.append("TupleRoute#").append(this.dispatchInfoIndex).append("(");
+        StringBuilder inputExprBuilder = new StringBuilder("(");
+        StringBuilder constExprBuilder = new StringBuilder("(");
+
+        PartTupleRouteFunction partTupleRouteFunc = this.partDispatchFunc;
+        for (int i = 0; i < partColCnt; i++) {
+            PartClauseExprExec clauseInfoExec = partTupleRouteFunc.partClauseExprExecArr[i];
+            if (i > 0) {
+                inputExprBuilder.append(",");
+                constExprBuilder.append(",");
+            }
+            inputExprBuilder.append(partColList.get(i));
+            PartClauseInfo clauseInfo = clauseInfoExec.getClauseInfo();
+            if (clauseInfoExec.isAlwaysNullValue()) {
+                constExprBuilder.append("null");
+            } else {
+                constExprBuilder.append(Rex2ExprStringVisitor.convertRexToExprString(clauseInfo.getConstExpr(), ec));
+            }
+        }
+        inputExprBuilder.append(")");
+        constExprBuilder.append(")");
+
+        ComparisonKind cmpKind = ComparisonKind.EQUAL;
+        digestBuilder.append("(").append(inputExprBuilder).append(cmpKind.getComparisionSymbol())
+            .append(constExprBuilder).append(")");
+        digestBuilder.append(")");
+        return digestBuilder.toString();
+    }
+
+    @Override
+    public String toString() {
+        return buildStepDigest(null);
+    }
+
+    public int getDispatchInfoIndex() {
+        return dispatchInfoIndex;
     }
 }

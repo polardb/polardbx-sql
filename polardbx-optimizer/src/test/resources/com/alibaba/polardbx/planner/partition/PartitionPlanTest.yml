@@ -8,11 +8,8 @@
     select * from lineitem where l_orderkey in (1,2,3);
 
   plan: |
-    MaterializedSemiJoin(condition="l_orderkey = expr$0", type="semi")
-      Gather(concurrent=true)
-        LogicalView(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` IN (...))")
-      DynamicValues(tuples=[{ 1 }, { 2 }, { 3 }])
-
+   gather(concurrent=true)
+     logicalview(tables="lineitem[p1,p4]", shardcount=2, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem` as `lineitem` where (`l_orderkey` in(1, 2, 3))")
 
 - sql: |
     select * from lineitem where l_orderkey between 8 and 11
@@ -63,7 +60,7 @@
     select * from t_a_range where a in (1,2)
 
   plan: |
-    PhyTableOperation(tables="t_a_range[p0]", sql="SELECT `t_a_range`.`a`, `t_a_range`.`b` FROM ? AS `t_a_range` WHERE (`t_a_range`.`a` IN (1, 2))")
+    phytableoperation(tables="t_a_range[p0]", sql="select `t_a_range`.`a`, `t_a_range`.`b` from ? as `t_a_range` where (`t_a_range`.`a` in (1, 2))")
 
 - sql: |
     select * from t_a_range where a < 1 or a > 20
@@ -78,7 +75,7 @@
     select * from t_a_list where a in (10,30)
 
   plan: |
-    PhyTableOperation(tables="t_a_list[p0]", sql="SELECT `t_a_list`.`a`, `t_a_list`.`b` FROM ? AS `t_a_list` WHERE (`t_a_list`.`a` IN (10, 30))")
+    phytableoperation(tables="t_a_list[p0]", sql="select `t_a_list`.`a`, `t_a_list`.`b` from ? as `t_a_list` where (`t_a_list`.`a` in (10, 30))")
 
 
 - sql: |
@@ -158,38 +155,61 @@
     select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1
 
   plan: |
-    Gather(concurrent=true)
-      LogicalView(tables="t_range_bigint[p0,p2]", shardCount=2, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE (((`bigint_test` < 10) OR (`bigint_test` > 10000)) AND (`pk` = 1))")
-
+    gather(concurrent=true)
+      logicalview(tables="t_range_bigint[p0,p2]", shardcount=2, sql="select `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` from `t_range_bigint` as `t_range_bigint` where ((`pk` = 1) and ((`bigint_test` < 10) or (`bigint_test` > 10000)))")
 - sql: |
     select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test < 20)
 
   plan: |
-    PhyTableOperation(tables="t_range_bigint[p0]", sql="SELECT `t_range_bigint`.`pk`, `t_range_bigint`.`integer_test`, `t_range_bigint`.`varchar_test`, `t_range_bigint`.`char_test`, `t_range_bigint`.`blob_test`, `t_range_bigint`.`tinyint_test`, `t_range_bigint`.`tinyint_1bit_test`, `t_range_bigint`.`smallint_test`, `t_range_bigint`.`mediumint_test`, `t_range_bigint`.`bit_test`, `t_range_bigint`.`bigint_test`, `t_range_bigint`.`float_test`, `t_range_bigint`.`double_test`, `t_range_bigint`.`decimal_test`, `t_range_bigint`.`date_test`, `t_range_bigint`.`time_test`, `t_range_bigint`.`datetime_test`, `t_range_bigint`.`timestamp_test`, `t_range_bigint`.`year_test`, `t_range_bigint`.`mediumtext_test` FROM ? AS `t_range_bigint` WHERE ((((`t_range_bigint`.`bigint_test` < 10) OR (`t_range_bigint`.`bigint_test` > 10000)) AND (`t_range_bigint`.`pk` = 1)) AND (`t_range_bigint`.`bigint_test` < 20))")
+    phytableoperation(tables="t_range_bigint[p0]", sql="select `t_range_bigint`.`pk`, `t_range_bigint`.`integer_test`, `t_range_bigint`.`varchar_test`, `t_range_bigint`.`char_test`, `t_range_bigint`.`blob_test`, `t_range_bigint`.`tinyint_test`, `t_range_bigint`.`tinyint_1bit_test`, `t_range_bigint`.`smallint_test`, `t_range_bigint`.`mediumint_test`, `t_range_bigint`.`bit_test`, `t_range_bigint`.`bigint_test`, `t_range_bigint`.`float_test`, `t_range_bigint`.`double_test`, `t_range_bigint`.`decimal_test`, `t_range_bigint`.`date_test`, `t_range_bigint`.`time_test`, `t_range_bigint`.`datetime_test`, `t_range_bigint`.`timestamp_test`, `t_range_bigint`.`year_test`, `t_range_bigint`.`mediumtext_test` from ? as `t_range_bigint` where ((((`t_range_bigint`.`bigint_test` < 10) or (`t_range_bigint`.`bigint_test` > 10000)) and (`t_range_bigint`.`pk` = 1)) and (`t_range_bigint`.`bigint_test` < 20))")
 
 - sql: |
     select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test between 5 and 10005)
 
   plan: |
-    Gather(concurrent=true)
-      LogicalView(tables="t_range_bigint[p0,p2]", shardCount=2, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE ((((`bigint_test` < 10) OR (`bigint_test` > 10000)) AND (`pk` = 1)) AND (`bigint_test` BETWEEN 5 AND 10005))")
+    gather(concurrent=true)
+      logicalview(tables="t_range_bigint[p0,p2]", shardcount=2, sql="select `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` from `t_range_bigint` as `t_range_bigint` where (((`pk` = 1) and (`bigint_test` between 5 and 10005)) and ((`bigint_test` < 10) or (`bigint_test` > 10000)))")
 
 - sql: |
     select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test between 20 and 10005)
 
   plan: |
-    PhyTableOperation(tables="t_range_bigint[p2]", sql="SELECT `t_range_bigint`.`pk`, `t_range_bigint`.`integer_test`, `t_range_bigint`.`varchar_test`, `t_range_bigint`.`char_test`, `t_range_bigint`.`blob_test`, `t_range_bigint`.`tinyint_test`, `t_range_bigint`.`tinyint_1bit_test`, `t_range_bigint`.`smallint_test`, `t_range_bigint`.`mediumint_test`, `t_range_bigint`.`bit_test`, `t_range_bigint`.`bigint_test`, `t_range_bigint`.`float_test`, `t_range_bigint`.`double_test`, `t_range_bigint`.`decimal_test`, `t_range_bigint`.`date_test`, `t_range_bigint`.`time_test`, `t_range_bigint`.`datetime_test`, `t_range_bigint`.`timestamp_test`, `t_range_bigint`.`year_test`, `t_range_bigint`.`mediumtext_test` FROM ? AS `t_range_bigint` WHERE ((((`t_range_bigint`.`bigint_test` < 10) OR (`t_range_bigint`.`bigint_test` > 10000)) AND (`t_range_bigint`.`pk` = 1)) AND (`t_range_bigint`.`bigint_test` BETWEEN 20 AND 10005))")
+    phytableoperation(tables="t_range_bigint[p2]", sql="select `t_range_bigint`.`pk`, `t_range_bigint`.`integer_test`, `t_range_bigint`.`varchar_test`, `t_range_bigint`.`char_test`, `t_range_bigint`.`blob_test`, `t_range_bigint`.`tinyint_test`, `t_range_bigint`.`tinyint_1bit_test`, `t_range_bigint`.`smallint_test`, `t_range_bigint`.`mediumint_test`, `t_range_bigint`.`bit_test`, `t_range_bigint`.`bigint_test`, `t_range_bigint`.`float_test`, `t_range_bigint`.`double_test`, `t_range_bigint`.`decimal_test`, `t_range_bigint`.`date_test`, `t_range_bigint`.`time_test`, `t_range_bigint`.`datetime_test`, `t_range_bigint`.`timestamp_test`, `t_range_bigint`.`year_test`, `t_range_bigint`.`mediumtext_test` from ? as `t_range_bigint` where ((((`t_range_bigint`.`bigint_test` < 10) or (`t_range_bigint`.`bigint_test` > 10000)) and (`t_range_bigint`.`pk` = 1)) and (`t_range_bigint`.`bigint_test` between 20 and 10005))")
 
 - sql: |
     select * from t_range_bigint where (bigint_test < 10 or bigint_test > 10000) and pk = 1 and (bigint_test between 20 and 9999)
 
   plan: |
-    Gather(concurrent=true)
-      LogicalView(tables="t_range_bigint[]", shardCount=0, sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE ((((`bigint_test` < 10) OR (`bigint_test` > 10000)) AND (`pk` = 1)) AND (`bigint_test` BETWEEN 20 AND 9999))")
+    gather(concurrent=true)
+      logicalview(tables="t_range_bigint[]", shardcount=0, sql="select `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` from `t_range_bigint` as `t_range_bigint` where (((`pk` = 1) and (`bigint_test` between 20 and 9999)) and ((`bigint_test` < 10) or (`bigint_test` > 10000)))")
 
 - sql: |
     update nation, customer set n_name = 2, c_name = 2 where n_nationkey = c_nationkey;
   plan: |
-    LogicalModify(TYPE="UPDATE", SET="nation.n_name=2, customer.c_name=2")
-      Gather(concurrent=true)
-        LogicalView(tables="customer[p1,p2,p3,p4],nation", shardCount=4, sql="SELECT `nation`.`n_nationkey`, `nation`.`n_name`, `nation`.`n_regionkey`, `nation`.`n_comment`, `customer`.`c_custkey`, `customer`.`c_name`, `customer`.`c_address`, `customer`.`c_nationkey`, `customer`.`c_phone`, `customer`.`c_acctbal`, `customer`.`c_mktsegment`, `customer`.`c_comment`, 2, 2 FROM `customer` AS `customer` INNER JOIN `nation` AS `nation` ON (`customer`.`c_nationkey` = `nation`.`n_nationkey`) FOR UPDATE")
+    logicalmodify(type="update", set="nation.n_name=2, customer.c_name=2")
+      project(n_nationkey="n_nationkey", n_name="n_name", n_regionkey="n_regionkey", n_comment="n_comment", c_custkey="c_custkey", c_name="c_name", c_address="c_address", c_nationkey="c_nationkey", c_phone="c_phone", c_acctbal="c_acctbal", c_mktsegment="c_mktsegment", c_comment="c_comment", gen$0="2", gen$1="2")
+        hashjoin(condition="n_nationkey = c_nationkey", type="inner")
+          gather(concurrent=true)
+            logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` from `customer` as `customer` for update")
+          gather(concurrent=true)
+            logicalview(tables="nation", shardcount=0, sql="select `n_nationkey`, `n_name`, `n_regionkey`, `n_comment` from `nation` as `nation` for update")
+
+- sql: |
+    select isparent  from ( select t1.id, case when find_in_set(t1.id, @pids) > 0 then @pids := concat(@pids, ',', t1.deptSuperior) else 0 end as isparent  from (select id,deptSuperior from p_departmentinfo t order by t.deptSuperior desc, t.id desc) t1,  (select @pids := 2) t2 ) t3  where isparent != 0  order by id  limit 1;
+  plan: |
+    project(isparent="case(>(find_in_set($0, @pids), 0), :=(@pids, concat(@pids, ',', $1)), cast(0):varchar(2000) character set "utf-8" collate "utf8_general_ci" not null)")
+      topn(sort="id asc", offset=0, fetch=1)
+        nljoin(condition="true", type="inner")
+          filter(condition="case(>(find_in_set($0, @pids), 0), :=(@pids, concat(@pids, ',', $1)), cast(0):varchar(2000) character set "utf-8" collate "utf8_general_ci" not null) <> 0")
+            logicalview(tables="p_departmentinfo[p1]", sql="select `id`, `deptsuperior` from `p_departmentinfo` as `p_departmentinfo`")
+          values(table="dual")
+
+- sql: |
+    select isparent  from ( select t1.id, case when find_in_set(t1.id, @pids) > 0 then @pids := concat(@pids, ',', t1.deptSuperior) else 0 end as isparent  from (select id,deptSuperior from p_departmentinfo t order by t.deptSuperior desc, t.id desc) t1,  (select @pids := 2) t2 ) t3  where isparent != 0  order by id  limit 1;
+  plan: |
+    project(isparent="case(>(find_in_set($0, @pids), 0), :=(@pids, concat(@pids, ',', $1)), cast(0):varchar(2000) character set "utf-8" collate "utf8_general_ci" not null)")
+      topn(sort="id asc", offset=0, fetch=1)
+        nljoin(condition="true", type="inner")
+          filter(condition="case(>(find_in_set($0, @pids), 0), :=(@pids, concat(@pids, ',', $1)), cast(0):varchar(2000) character set "utf-8" collate "utf8_general_ci" not null) <> 0")
+            logicalview(tables="p_departmentinfo[p1]", sql="select `id`, `deptsuperior` from `p_departmentinfo` as `p_departmentinfo`")
+          values(table="dual")

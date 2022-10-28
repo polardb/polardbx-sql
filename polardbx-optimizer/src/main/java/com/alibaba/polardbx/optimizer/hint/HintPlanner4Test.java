@@ -27,6 +27,7 @@ import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.config.CalciteConnectionConfig;
 import org.apache.calcite.config.CalciteConnectionConfigImpl;
 import org.apache.calcite.config.CalciteConnectionProperty;
@@ -80,15 +81,7 @@ public class HintPlanner4Test extends HintPlanner {
             .withExpand(false)
             .build();
 
-        Properties properties = new Properties();
-        properties.setProperty(CalciteConnectionProperty.CASE_SENSITIVE.camelName(),
-            String.valueOf(parserConfig.caseSensitive()));
-        CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
-        CalciteSchema calciteSchema = RootSchemaFactory.createRootSchema(schemaName, new ExecutionContext());
-        catalog = new CalciteCatalogReader(calciteSchema,
-            calciteSchema.path(schemaName),
-            new TddlJavaTypeFactoryImpl(),
-            connectionConfig);
+        catalog = RelUtils.buildCatalogReader(schemaName, new ExecutionContext());
 
         RelOptPlanner planner = new VolcanoPlanner(DrdsRelOptCostImpl.FACTORY, Contexts.EMPTY_CONTEXT);
         planner.clearRelTraitDefs();

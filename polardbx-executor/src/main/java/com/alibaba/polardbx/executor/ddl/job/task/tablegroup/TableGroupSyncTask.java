@@ -43,8 +43,7 @@ public class TableGroupSyncTask extends BaseSyncTask {
 
     private void syncTableGroup() {
         try {
-            SyncManagerHelper
-                .sync(new TableGroupSyncAction(schemaName, tableGroupName));
+            SyncManagerHelper.sync(new TableGroupSyncAction(schemaName, tableGroupName), true);
         } catch (Throwable t) {
             LOGGER.error(String.format(
                 "error occurs while sync table group, schemaName:%s, tableGroupName:%s", schemaName, tableGroupName));

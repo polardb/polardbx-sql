@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.dal;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -57,7 +58,7 @@ public class PhyDal extends BaseDalOperation {
         super(cluster, traitSet, nativeSqlNode, rowType, targetTable, tableNames, schemaName);
     }
 
-    public PhyDal(RelOptCluster cluster, RelTraitSet traitSet, String sqlTemplate, SqlNode nativeSqlNode,
+    public PhyDal(RelOptCluster cluster, RelTraitSet traitSet, BytesSql sqlTemplate, SqlNode nativeSqlNode,
                   DbType dbType, RelDataType rowType, Map<String, List<List<String>>> targetTable,
                   List<String> tableNames, String dbIndex, String phyTable, String schemaName) {
         super(cluster,
@@ -132,7 +133,7 @@ public class PhyDal extends BaseDalOperation {
             } else {
                 PhyDal subDal = new PhyDal(getCluster(),
                     getTraitSet(),
-                    this.sqlTemplate,
+                    this.bytesSql,
                     this.nativeSqlNode,
                     this.dbType,
                     this.rowType,
@@ -158,7 +159,7 @@ public class PhyDal extends BaseDalOperation {
     @Override
     public RelWriter explainTermsForDisplay(RelWriter pw) {
         pw.item(RelDrdsWriter.REL_NAME, getExplainName());
-        String sql = this.sqlTemplate;
+        BytesSql sql = this.bytesSql;
         if (single()) {
             pw.item("node", dbIndex);
         } else {
@@ -174,7 +175,7 @@ public class PhyDal extends BaseDalOperation {
                         this.tableNames,
                         oldOt.isNoWriteToBinlog(),
                         oldOt.isLocal());
-                    sql = RelUtils.toNativeSqlLine(newOt);
+                    sql = RelUtils.toNativeBytesSql(newOt);
                 }
                 pw.item("table", table);
             } else {
@@ -182,7 +183,7 @@ public class PhyDal extends BaseDalOperation {
                 pw.item("node", node);
             }
         }
-        pw.item("sql", sql);
+        pw.item("sql", sql.display());
         return pw;
     }
 

@@ -28,11 +28,10 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.rpc.XConfig;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
+import com.alibaba.polardbx.rpc.XConfig;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.google.common.base.Preconditions;
-import com.alibaba.polardbx.rpc.XConfig;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.sql.DataSource;
@@ -65,17 +64,20 @@ public class StorageInfoManager extends AbstractLifecycle {
     private volatile boolean supportTsoHeartbeat;
     private volatile boolean supportPurgeTso;
     private volatile boolean supportCtsTransaction;
+    private volatile boolean supportLizard1PCTransaction;
     private volatile boolean supportDeadlockDetection;
     private volatile boolean supportMdlDeadlockDetection;
     private volatile boolean supportsBloomFilter;
     private volatile boolean supportOpenSSL;
     private volatile boolean supportSharedReadView;
     private volatile boolean supportsReturning;
+    private volatile boolean supportsAlterType;
     private boolean readOnly;
     private boolean lowerCaseTableNames;
     private volatile boolean supportHyperLogLog;
     private volatile boolean lessMy56Version;
     private boolean supportXxHash;
+    private volatile boolean isMysql80;
 
     /**
      * FastChecker: generate checksum on xdb node
@@ -193,6 +195,18 @@ public class StorageInfoManager extends AbstractLifecycle {
         }
     }
 
+    public static boolean checkSupportLizard1PCTransaction(IDataSource dataSource) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'innodb_current_snapshot_seq'")) {
+            boolean hasNext = rs.next();
+            return hasNext;
+        } catch (SQLException ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS, ex,
+                "Failed to check innodb_cts_transaction support: " + ex.getMessage());
+        }
+    }
+
     public static boolean checkIsXEngine(IDataSource dataSource) {
         try (Connection conn = dataSource.getConnection();
             Statement stmt = conn.createStatement();
@@ -265,6 +279,22 @@ public class StorageInfoManager extends AbstractLifecycle {
 
             throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
                 "Failed to check returning support: " + ex.getMessage());
+        }
+    }
+
+    public static boolean checkSupportAlterType(DataSource dataSource) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("select alter_type(1)")) {
+            return true;
+        } catch (SQLException ex) {
+            final boolean INCORRECT_ARGS =
+                "HY000".equalsIgnoreCase(ex.getSQLState()) && 1210 == ex.getErrorCode() && ex.getMessage()
+                    .contains("Incorrect arguments to alter_type");
+            if (INCORRECT_ARGS) {
+                return true;
+            }
+            return false;
         }
     }
 
@@ -370,10 +400,12 @@ public class StorageInfoManager extends AbstractLifecycle {
         boolean tmpSupportMdlDeadlockDetection = true;
         boolean tmpSupportsBloomFilter = true;
         boolean tmpSupportsReturning = true;
+        boolean tmpSupportsAlterType = true;
         boolean tmpLowerCaseTableNames = true;
         boolean tmpSupportOpenSSL = true;
         boolean tmpSupportSharedReadView = true;
         boolean tmpSupportCtsTransaction = true;
+        boolean tmpSupportLizard1PCTransaction = true;
         boolean tmpSupportHyperLogLog = true;
         boolean tmpSupportXxHash = true;
         boolean lessMysql56 = false;
@@ -394,12 +426,14 @@ public class StorageInfoManager extends AbstractLifecycle {
                 tmpSupportTsoHeartbeat &= storageInfo.supportTsoHeartbeat;
                 tmpSupportPurgeTso &= storageInfo.supportPurgeTso;
                 tmpSupportCtsTransaction &= storageInfo.supportCtsTransaction;
+                tmpSupportLizard1PCTransaction &= storageInfo.supportLizard1PCTransaction;
                 tmpSupportDeadlockDetection &= supportDeadlockDetection(storageInfo);
                 tmpSupportMdlDeadlockDetection &= supportMdlDeadlockDetection(storageInfo);
                 tmpSupportsBloomFilter &= storageInfo.supportsBloomFilter;
                 tmpSupportOpenSSL &= storageInfo.supportOpenSSL;
                 tmpSupportHyperLogLog &= storageInfo.supportHyperLogLog;
                 tmpSupportsReturning &= storageInfo.supportsReturning;
+                tmpSupportsAlterType &= storageInfo.supportsAlterType;
                 tmpLowerCaseTableNames &= enableLowerCaseTableNames(storageInfo);
                 tmpSupportSharedReadView &= storageInfo.supportSharedReadView;
                 tmpSupportFastChecker &= storageInfo.supportFastChecker;
@@ -414,10 +448,12 @@ public class StorageInfoManager extends AbstractLifecycle {
         this.supportXA = tmpSupportXA && !readOnly;
         this.supportsBloomFilter = tmpSupportsBloomFilter;
         this.supportsReturning = tmpSupportsReturning;
+        this.supportsAlterType = tmpSupportsAlterType;
         this.supportTso = tmpSupportTso && (metaDbUsesXProtocol() || tmpRDS80);
         this.supportTsoHeartbeat = tmpSupportTsoHeartbeat && metaDbUsesXProtocol();
         this.supportPurgeTso = tmpSupportPurgeTso && metaDbUsesXProtocol();
         this.supportCtsTransaction = tmpSupportCtsTransaction;
+        this.supportLizard1PCTransaction = tmpSupportLizard1PCTransaction;
         this.supportSharedReadView = tmpSupportSharedReadView;
         this.supportDeadlockDetection = tmpSupportDeadlockDetection;
         this.supportMdlDeadlockDetection = tmpSupportMdlDeadlockDetection;
@@ -427,6 +463,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         this.lessMy56Version = lessMysql56;
         this.supportFastChecker = tmpSupportFastChecker;
         this.supportXxHash = tmpSupportXxHash;
+        this.isMysql80 = tmpRDS80;
     }
 
     private boolean metaDbUsesXProtocol() {
@@ -517,6 +554,14 @@ public class StorageInfoManager extends AbstractLifecycle {
         return lessMy56Version;
     }
 
+    public boolean isMysql80() {
+        if (!isInited()) {
+            init();
+        }
+
+        return isMysql80;
+    }
+
     public boolean supportTsoHeartbeat() {
         if (!isInited()) {
             init();
@@ -531,6 +576,14 @@ public class StorageInfoManager extends AbstractLifecycle {
         }
 
         return supportCtsTransaction;
+    }
+
+    public boolean supportLizard1PCTransaction() {
+        if (!isInited()) {
+            init();
+        }
+
+        return supportLizard1PCTransaction;
     }
 
     public boolean supportDeadlockDetection() {
@@ -596,6 +649,14 @@ public class StorageInfoManager extends AbstractLifecycle {
         return supportsReturning;
     }
 
+    public boolean supportsAlterType() {
+        if (!isInited()) {
+            init();
+        }
+
+        return supportsAlterType;
+    }
+
     public boolean isReadOnly() {
         return readOnly;
     }
@@ -618,8 +679,10 @@ public class StorageInfoManager extends AbstractLifecycle {
         private volatile boolean supportTsoHeartbeat;
         public final boolean supportPurgeTso;
         public final boolean supportCtsTransaction;
+        public final boolean supportLizard1PCTransaction;
         public final boolean supportsBloomFilter;
         public final boolean supportsReturning;
+        public final boolean supportsAlterType;
         public final int lowerCaseTableNames;
         public final boolean supportPerformanceSchema;
         public final boolean isXEngine;
@@ -637,8 +700,10 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportTsoHeartbeat,
             boolean supportPurgeTso,
             boolean supportCtsTransaction,
+            boolean supportLizard1PCTransaction,
             boolean supportsBloomFilter,
             boolean supportsReturning,
+            boolean supportsAlterType,
             int lowerCaseTableNames,
             boolean supportPerformanceSchema,
             boolean isXEngine,
@@ -655,8 +720,10 @@ public class StorageInfoManager extends AbstractLifecycle {
             this.supportTsoHeartbeat = supportTsoHeartbeat;
             this.supportPurgeTso = supportPurgeTso;
             this.supportCtsTransaction = supportCtsTransaction;
+            this.supportLizard1PCTransaction = supportLizard1PCTransaction;
             this.supportsBloomFilter = supportsBloomFilter;
             this.supportsReturning = supportsReturning;
+            this.supportsAlterType = supportsAlterType;
             this.lowerCaseTableNames = lowerCaseTableNames;
             this.supportPerformanceSchema = supportPerformanceSchema;
             this.isXEngine = isXEngine;
@@ -676,7 +743,7 @@ public class StorageInfoManager extends AbstractLifecycle {
                     "5.7",
                     false,
                     false, false,
-                    false, false, false, 1,
+                    false, false, false, false, false, 1,
                     false, false,
                     false,
                     false,
@@ -698,7 +765,9 @@ public class StorageInfoManager extends AbstractLifecycle {
             Optional<PolarxUDFInfo> polarxUDFInfo = PolarxUDFInfo.build(dataSource);
             boolean supportsBloomFilter = polarxUDFInfo.map(PolarxUDFInfo::supportsBloomFilter).orElse(false);
             boolean supportsReturning = checkSupportReturning(dataSource);
+            boolean supportsAlterType = checkSupportAlterType(dataSource);
             boolean supportCtsTransaction = checkSupportCtsTransaction(dataSource);
+            boolean supportLizard1PCTransaction = checkSupportLizard1PCTransaction(dataSource);
             final int lowerCaseTableNames = getLowerCaseTableNames(dataSource);
             final boolean supportSharedReadView = checkSupportSharedReadView(dataSource);
 
@@ -710,10 +779,10 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportXxHash = checkSupportXxHash(dataSource);
 
             return new StorageInfo(version, supportTso, supportPurgeTso, supportTsoHeartbeat, supportCtsTransaction,
-                supportsBloomFilter, supportsReturning, lowerCaseTableNames, supportPerformanceSchema, isXEngine,
-                supportSharedReadView, hasMetaDataLocksSelectPrivilege, isMetaDataLocksEnable, supportHyperLogLog,
-                supportOpenSSL, supportFastChecker,
-                supportXxHash);
+                supportLizard1PCTransaction, supportsBloomFilter, supportsReturning, supportsAlterType,
+                lowerCaseTableNames, supportPerformanceSchema, isXEngine, supportSharedReadView,
+                hasMetaDataLocksSelectPrivilege, isMetaDataLocksEnable, supportHyperLogLog, supportOpenSSL,
+                supportFastChecker, supportXxHash);
         }
     }
 

@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.vectorized;
 
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
-import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.IScalarFunction;
@@ -76,7 +75,6 @@ public class BuiltInFunctionVectorizedExpression extends AbstractVectorizedExpre
         int[] sel = chunk.selection();
 
         RandomAccessBlock outputSlot = chunk.slotIn(outputIndex, outputDataType);
-
         if (chunk.isSelectionInUse()) {
             for (int i = 0; i < len; i++) {
                 for (int j = 0; j < variablesPositionCounts; j++) {

@@ -47,34 +47,26 @@ public class TruncateUtil {
         return tableName + tmpTableSuffix;
     }
 
-    private static String removeNewPartDbIndexNameSuffix(String indexName) {
+    public static String removeNewPartDbIndexNameSuffix(String indexName) {
         // xxxx_$xxxx
         return indexName.substring(0, indexName.length() - 6);
     }
 
-    public static Map<String, String> generateTmpIndexTableMap(List<String> originIndexTableNames,
-                                                               List<String> tmpIndexTableNames,
-                                                               String tmpTableSuffix,
-                                                               boolean isNewPartDb) {
+    public static Map<String, String> generateNewPartTmpIndexTableMap(List<String> originIndexTableNames,
+                                                                      List<String> tmpIndexTableNames) {
         Map<String, String> tmpIndexTableMap = new HashMap<>();
-        if (!isNewPartDb) {
-            for (String originIndexTableName : originIndexTableNames) {
-                tmpIndexTableMap.put(originIndexTableName, generateTmpTableName(originIndexTableName, tmpTableSuffix));
-            }
-        } else {
-            Map<String, String> m1 = new HashMap<>();
-            Map<String, String> m2 = new HashMap<>();
+        Map<String, String> m1 = new HashMap<>();
+        Map<String, String> m2 = new HashMap<>();
 
-            for (String originIndexTableName : originIndexTableNames) {
-                m1.put(removeNewPartDbIndexNameSuffix(originIndexTableName), originIndexTableName);
-            }
-            for (String tmpIndexTableName : tmpIndexTableNames) {
-                m2.put(removeNewPartDbIndexNameSuffix(tmpIndexTableName), tmpIndexTableName);
-            }
+        for (String originIndexTableName : originIndexTableNames) {
+            m1.put(removeNewPartDbIndexNameSuffix(originIndexTableName), originIndexTableName);
+        }
+        for (String tmpIndexTableName : tmpIndexTableNames) {
+            m2.put(removeNewPartDbIndexNameSuffix(tmpIndexTableName), tmpIndexTableName);
+        }
 
-            for (Map.Entry<String, String> entry : m1.entrySet()) {
-                tmpIndexTableMap.put(entry.getValue(), m2.get(entry.getKey()));
-            }
+        for (Map.Entry<String, String> entry : m1.entrySet()) {
+            tmpIndexTableMap.put(entry.getValue(), m2.get(entry.getKey()));
         }
         return tmpIndexTableMap;
     }

@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.PhysicalDdlException;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -41,6 +43,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.base.Splitter;
 import lombok.Getter;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlDropTable;
@@ -163,6 +166,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         }
 
         int objectDoneCount = phyDdlExecutionRecord.getNumPhyObjectsDone();
+        List<String> ignoredErrorCodeList = getIgnoredErrorCodeList(executionContext);
 
         if (inputCount != objectDoneCount && checkIfHandleError(ddl, executionContext)) {
             int countError = 0;
@@ -177,6 +181,9 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
                 int countUnknownTables = 0;
                 for (ExecutionContext.ErrorMessage errMsg : failedMsgs) {
                     if (errMsg != null) {
+                        if(shouldIgnore(errMsg, ignoredErrorCodeList)){
+                            continue;
+                        }
                         causedMsg.append(DdlConstants.SEMICOLON).append(errMsg.getCode());
                         causedMsg.append(DdlConstants.COLON).append(errMsg.getGroupName());
                         causedMsg.append(DdlConstants.COLON).append(errMsg.getMessage());
@@ -197,6 +204,9 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             // Exceptions from executor/cursor.
             if (exceptions != null) {
                 for (Throwable e : exceptions) {
+                    if(shouldIgnore(e, ignoredErrorCodeList)){
+                        continue;
+                    }
                     causedMsg.append(DdlConstants.SEMICOLON).append(e.getMessage());
                     LOGGER.error(e);
                     countError++;
@@ -297,6 +307,40 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         }
 
         return QueryConcurrencyPolicy.INSTANCE_CONCURRENT;
+    }
+
+    private List<String> getIgnoredErrorCodeList(ExecutionContext executionContext){
+        try {
+            String physicalDdlIgnoredErrorCodeList = executionContext.getParamManager().getString(ConnectionParams.PHYSICAL_DDL_IGNORED_ERROR_CODE);
+            if(StringUtils.isEmpty(physicalDdlIgnoredErrorCodeList)){
+                return new ArrayList<>();
+            }
+            return Splitter.on(",").splitToList(physicalDdlIgnoredErrorCodeList);
+        }catch (Exception e){
+            return new ArrayList<>();
+        }
+    }
+
+    private boolean shouldIgnore(Throwable e, List<String> ignoredErrorCodeList){
+        if(e instanceof TddlNestableRuntimeException){
+            String errorCode = String.valueOf(((TddlNestableRuntimeException) e).getErrorCode());
+            if(ignoredErrorCodeList.contains(errorCode)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean shouldIgnore(ExecutionContext.ErrorMessage errMsg, List<String> ignoredErrorCodeList){
+        if(errMsg == null){
+            return false;
+        }
+        String errorCode = String.valueOf(errMsg.getCode());
+        if(ignoredErrorCodeList.contains(errorCode)){
+            return true;
+        }
+
+        return false;
     }
 
     @Override

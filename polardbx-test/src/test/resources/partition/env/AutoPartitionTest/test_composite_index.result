@@ -210,7 +210,7 @@ agsi_1_$,CREATE TABLE `agsi_1_$` (
 	`y` int(11) NOT NULL,
 	`z` int(11) NOT NULL,
 	`d` float NOT NULL,
-	UNIQUE KEY `auto_shard_key_d_y_z` USING BTREE (`y`, `z`, `d`),
+	UNIQUE KEY `auto_shard_key_y_z_d` USING BTREE (`y`, `z`, `d`),
 	KEY `_gsi_pk_idx_` USING BTREE (`x`, `y`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`y`,`z`)
@@ -279,7 +279,7 @@ agsi_3_$,CREATE TABLE `agsi_3_$` (
 	`c` int(11) NOT NULL,
 	`e` int(11) NOT NULL,
 	`f` int(11) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_c_e_f_x_y_z` USING BTREE (`c`, `e`, `f`, `x`, `y`, `z`),
+	UNIQUE LOCAL KEY `auto_shard_key_x_y_z_c_e_f` USING BTREE (`x`, `y`, `z`, `c`, `e`, `f`),
 	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`, `y`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`,`y`,`z`,`c`,`e`)

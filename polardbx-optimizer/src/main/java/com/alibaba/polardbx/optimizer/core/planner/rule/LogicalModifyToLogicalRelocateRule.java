@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.SelectWithLockVisitor;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
@@ -46,16 +48,21 @@ import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.core.TableModify;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mapping;
 import org.apache.calcite.util.mapping.Mappings;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -126,15 +133,31 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
             return;
         }
 
+        final Map<Integer, List<RelocateWriter>> relocateWriterMap = new HashMap<>();
+        final Map<Integer, List<DistinctWriter>> modifyWriterMap = new HashMap<>();
+
         /*
          * Build writer for primary
          */
-        final List<RelocateWriter> primaryRelocateWriters = new ArrayList<>();
-        final List<DistinctWriter> primaryModifyWriters = new ArrayList<>();
         final AtomicBoolean modifyPrimarySk = new AtomicBoolean(false);
         final AtomicBoolean modifyPrimaryWithoutPk = new AtomicBoolean(false);
         final List<String> primaryWithoutPk = new ArrayList<>();
         final PlannerContext plannerContext = PlannerContext.getPlannerContext(call);
+
+        // Expressions in SET are at the end of row
+        final RelDataType srcRowType = modify.getInput().getRowType();
+        final int fieldCount = srcRowType.getFieldCount();
+        final int offset = fieldCount - modify.getUpdateColumnList().size();
+
+        final Map<Integer, Mapping> setColumnTargetMappings = new HashMap<>();
+        final Map<Integer, Mapping> setColumnSourceMappings = new HashMap<>();
+        final Map<Integer, List<ColumnMeta>> setColumnMetas = new HashMap<>();
+
+        // Primary writer
+        final Map<Integer, DistinctWriter> primaryDistinctWriter = new HashMap<>();
+        final Map<Integer, RelocateWriter> primaryRelocateWriter = new HashMap<>();
+
+        final Map<Integer, Set<String>> addedAutoUpdateColumnMap = new HashMap<>();
 
         primaryUpdateColumnMappings.forEach((primaryIndex, mapping) -> {
             final Mapping updateColumnMapping = Mappings.source(mapping, targetColumns.size());
@@ -143,17 +166,65 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
             final RelOptTable primary = srcInfos.get(primaryIndex).getRefTable();
             final String schemaName = RelUtils.getSchemaName(primary);
 
+            final List<Integer> setSrc = mapping.stream().map(i -> offset + i).collect(Collectors.toList());
+            final Map<String, Integer> columnIndexMap = modify.getSourceColumnIndexMap().get(primaryIndex);
+
+            final String primaryLogicalName = RelUtils.getQualifiedTableName(primary).right;
+            TableMeta primaryTableMeta =
+                plannerContext.getExecutionContext().getSchemaManager(schemaName).getTable(primaryLogicalName);
+            final TableColumnMeta tableColumnMeta = primaryTableMeta.getTableColumnMeta();
+            Pair<String, String> columnMultiWriteMapping =
+                TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
+
+            Set<String> autoUpdateColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            autoUpdateColumns.addAll(primaryTableMeta.getAutoUpdateColumns().stream().map(ColumnMeta::getName).collect(
+                Collectors.toList()));
+
+            final AtomicInteger extraIndex = new AtomicInteger(fieldCount);
+            if (GeneralUtil.isNotEmpty((modify.getExtraTargetColumns()))) {
+                extraIndex.addAndGet(-modify.getExtraTargetColumns().size());
+            }
+            Set<String> addedAutoUpdateColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            Ord.zip(updateColumns).forEach(o -> {
+                if (autoUpdateColumns.contains(o.e) && setSrc.get(o.i) >= extraIndex.get()) {
+                    addedAutoUpdateColumns.add(o.e);
+                }
+            });
+            addedAutoUpdateColumnMap.put(primaryIndex, addedAutoUpdateColumns);
+
+            // For primary writer, we build all set column mapping to check if this column has updated or not in handler
+            final Map<String, Integer> setColumnTargetMap = new LinkedHashMap<>();
+            final Map<String, Integer> setColumnSourceMap = new LinkedHashMap<>();
+
+            Ord.zip(updateColumns).forEach(o -> {
+                // If it's an auto update column and added by us, or it's the target column in column multi-write, we
+                // should ignore it when comparing two rows
+                if (!(autoUpdateColumns.contains(o.e) && setSrc.get(o.i) >= extraIndex.get()) && !(
+                    columnMultiWriteMapping != null && o.e.equalsIgnoreCase(columnMultiWriteMapping.right))) {
+                    setColumnTargetMap.put(o.e, columnIndexMap.get(o.e));
+                    setColumnSourceMap.put(o.e, setSrc.get(o.i));
+                }
+            });
+
+            setColumnTargetMappings.put(primaryIndex,
+                Mappings.source(ImmutableList.copyOf(setColumnTargetMap.values()), fieldCount));
+            setColumnSourceMappings.put(primaryIndex,
+                Mappings.source(ImmutableList.copyOf(setColumnSourceMap.values()), fieldCount));
+            setColumnMetas.put(primaryIndex,
+                setColumnSourceMap.keySet().stream().map(primaryTableMeta::getColumn).collect(Collectors.toList()));
+
+            relocateWriterMap.put(primaryIndex, new ArrayList<>());
+            modifyWriterMap.put(primaryIndex, new ArrayList<>());
+
             if (CheckModifyLimitation.checkModifyShardingColumn(
                 updateColumns,
                 updateTables,
                 (x, y) -> modifyPrimarySk.getAndSet(true)) || modifyPk) {
-
-                final String primaryLogicalName = RelUtils.getQualifiedTableName(primary).right;
-                TableMeta primaryTableMeta =
-                    plannerContext.getExecutionContext().getSchemaManager(schemaName).getTable(primaryLogicalName);
-                primaryRelocateWriters.add(WriterFactory
+                RelocateWriter w = WriterFactory
                     .createRelocateWriter(modify, primary, primaryIndex, updateColumns, mapping, primaryTableMeta,
-                        false, plannerContext, ec));
+                        false, primaryLogicalName, addedAutoUpdateColumns, plannerContext, ec);
+                relocateWriterMap.get(primaryIndex).add(w);
+                primaryRelocateWriter.put(primaryIndex, w);
             } else {
                 final Pair<String, String> qn = RelUtils.getQualifiedTableName(primary);
                 final OptimizerContext oc = OptimizerContext.getContext(qn.left);
@@ -164,16 +235,18 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
                     primaryWithoutPk.add(qn.right);
                 } else if (oc.getRuleManager().isBroadCast(qn.right) || oc.getRuleManager()
                     .isTableInSingleDb(qn.right)) {
-                    primaryModifyWriters.add(
-                        WriterFactory
-                            .createBroadcastOrSingleUpdateWriter(modify, primary, primaryIndex, updateColumns, mapping,
-                                oc.getRuleManager().isBroadCast(qn.right),
-                                oc.getRuleManager().isTableInSingleDb(qn.right), ec
-                            ));
+                    DistinctWriter w = WriterFactory
+                        .createBroadcastOrSingleUpdateWriter(modify, primary, primaryIndex, updateColumns, mapping,
+                            oc.getRuleManager().isBroadCast(qn.right),
+                            oc.getRuleManager().isTableInSingleDb(qn.right), ec
+                        );
+                    modifyWriterMap.get(primaryIndex).add(w);
+                    primaryDistinctWriter.put(primaryIndex, w);
                 } else {
-                    primaryModifyWriters
-                        .add(WriterFactory
-                            .createUpdateWriter(modify, primary, primaryIndex, updateColumns, mapping, ec));
+                    DistinctWriter w =
+                        WriterFactory.createUpdateWriter(modify, primary, primaryIndex, updateColumns, mapping, ec);
+                    modifyWriterMap.get(primaryIndex).add(w);
+                    primaryDistinctWriter.put(primaryIndex, w);
                 }
             }
         });
@@ -181,8 +254,6 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
         /*
          * Build writer for GSI
          */
-        final List<RelocateWriter> gsiRelocateWriters = new ArrayList<>();
-        final List<DistinctWriter> gsiModifyWriters = new ArrayList<>();
         final AtomicBoolean modifyGsiSk = new AtomicBoolean(false);
         final AtomicBoolean modifyGsi = new AtomicBoolean(false);
         final AtomicBoolean withGsi = new AtomicBoolean(false);
@@ -232,12 +303,15 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
 
                 // Currently do not allow create gsi on table without primary key
                 if (needRelocate) {
-                    gsiRelocateWriters.add(WriterFactory
-                        .createRelocateWriter(modify, gsiTable, primaryIndex, updateColumns, mapping, gsiMeta, true,
-                            plannerContext, ec));
+                    RelocateWriter w =
+                        WriterFactory.createRelocateWriter(modify, gsiTable, primaryIndex, updateColumns, mapping,
+                            gsiMeta, true, qualifiedTableName.right, addedAutoUpdateColumnMap.get(primaryIndex),
+                            plannerContext, ec);
+                    relocateWriterMap.get(primaryIndex).add(w);
                 } else {
-                    gsiModifyWriters.add(WriterFactory
-                        .createUpdateGsiWriter(modify, gsiTable, primaryIndex, updateColumns, mapping, gsiMeta, ec));
+                    DistinctWriter w = WriterFactory
+                        .createUpdateGsiWriter(modify, gsiTable, primaryIndex, updateColumns, mapping, gsiMeta, ec);
+                    modifyWriterMap.get(primaryIndex).add(w);
                 }
             });
         });
@@ -258,7 +332,7 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
         // Collect AUTO_INCREMENT columns in update list
         final List<Integer> autoIncColumns = new ArrayList<>();
         for (int i = 0; i < targetColumns.size(); i++) {
-            final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTables.get(targetTableIndexes.get(i)));
+            final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTables.get(i));
             final TableMeta tableMeta =
                 plannerContext.getExecutionContext().getSchemaManager(qn.left).getTable(qn.right);
             final String columnName = targetColumns.get(i);
@@ -270,13 +344,15 @@ public class LogicalModifyToLogicalRelocateRule extends RelOptRule {
 
         if (modifyPrimarySk.get() && !modifyGsi.get() && primaryUpdateColumnMappings.size() == 1) {
             // Single target table without gsi
-            call.transformTo(LogicalRelocate.singleTargetWithoutGsi(modify, primaryRelocateWriters, autoIncColumns));
+            call.transformTo(LogicalRelocate.singleTargetWithoutGsi(modify, autoIncColumns,
+                relocateWriterMap, modifyWriterMap, setColumnTargetMappings, setColumnSourceMappings, setColumnMetas,
+                primaryDistinctWriter, primaryRelocateWriter));
             return;
         }
 
         call.transformTo(
-            LogicalRelocate.create(modify, primaryRelocateWriters, primaryModifyWriters, gsiRelocateWriters,
-                gsiModifyWriters, autoIncColumns));
+            LogicalRelocate.create(modify, autoIncColumns, relocateWriterMap, modifyWriterMap, setColumnTargetMappings,
+                setColumnSourceMappings, setColumnMetas, primaryDistinctWriter, primaryRelocateWriter));
     }
 
 }

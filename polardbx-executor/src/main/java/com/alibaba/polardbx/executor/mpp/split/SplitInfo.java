@@ -17,11 +17,13 @@
 package com.alibaba.polardbx.executor.mpp.split;
 
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
+import com.alibaba.polardbx.optimizer.utils.GroupConnId;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  *
@@ -33,6 +35,7 @@ public class SplitInfo {
     private final QueryConcurrencyPolicy concurrencyPolicy;
     private final Collection<List<Split>> splits;
     private final HashMap<String, String> groups;
+    private final Map<GroupConnId, String> grpConnSet;
     private final int insCount;
     private final int splitCount;
     private final boolean underSort;
@@ -40,6 +43,13 @@ public class SplitInfo {
     public SplitInfo(int sourceId, boolean expand, QueryConcurrencyPolicy concurrencyPolicy,
                      Collection<List<Split>> splits, HashMap<String, String> groups, int insCount, int splitCount,
                      boolean underSort) {
+        this(sourceId, expand, concurrencyPolicy, splits, groups, insCount, splitCount, underSort, new HashMap<>());
+    }
+
+    public SplitInfo(int sourceId, boolean expand, QueryConcurrencyPolicy concurrencyPolicy,
+                     Collection<List<Split>> splits, HashMap<String, String> groups, int insCount, int splitCount,
+                     boolean underSort,
+                     Map<GroupConnId, String> grpConnSet) {
         this.sourceId = sourceId;
         this.expand = expand;
         this.concurrencyPolicy = concurrencyPolicy;
@@ -48,6 +58,7 @@ public class SplitInfo {
         this.insCount = insCount;
         this.splitCount = splitCount;
         this.underSort = underSort;
+        this.grpConnSet = grpConnSet;
     }
 
     public QueryConcurrencyPolicy getConcurrencyPolicy() {
@@ -58,8 +69,8 @@ public class SplitInfo {
         return splits;
     }
 
-    public int getDbCount() {
-        return groups.size();
+    public int getSplitParallelism() {
+        return this.grpConnSet.keySet().size();
     }
 
     public int getInsCount() {
@@ -84,5 +95,9 @@ public class SplitInfo {
 
     public HashMap<String, String> getGroups() {
         return groups;
+    }
+
+    public int totalSplitSize() {
+        return splits.stream().map(t -> t.size()).reduce((a,b) -> a + b).get();
     }
 }

@@ -157,4 +157,20 @@ public class PartitionGroupRecord implements SystemTableRecord {
         sb.append(phy_db);
         return sb.toString();
     }
+
+    public PartitionGroupRecord copy() {
+        PartitionGroupRecord copy = new PartitionGroupRecord();
+        copy.id = this.id;
+        copy.partition_name = this.partition_name;
+        copy.tg_id = this.tg_id;
+        copy.gmt_create = this.gmt_create;
+        copy.gmt_modified = this.gmt_modified;
+        copy.phy_db = this.phy_db;
+        copy.locality = this.locality;
+        copy.primary_zone = this.primary_zone;
+        copy.pax_group_id = this.pax_group_id;
+        copy.meta_version = this.meta_version;
+        copy.visible = this.visible;
+        return copy;
+    }
 }

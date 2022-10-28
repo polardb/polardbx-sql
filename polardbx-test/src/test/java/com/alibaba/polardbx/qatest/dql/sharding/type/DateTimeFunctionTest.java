@@ -24,7 +24,6 @@ import org.junit.runners.Parameterized.Parameters;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
 public class DateTimeFunctionTest extends ReadBaseTestCase {

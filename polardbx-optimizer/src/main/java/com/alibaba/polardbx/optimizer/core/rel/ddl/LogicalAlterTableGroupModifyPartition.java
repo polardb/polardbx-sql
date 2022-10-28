@@ -16,10 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupModifyPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupModifyPartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
@@ -30,15 +31,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class LogicalAlterTableGroupModifyPartition extends BaseDdlOperation {
-
-    private AlterTableGroupModifyPartitionPreparedData preparedData;
+public class LogicalAlterTableGroupModifyPartition extends LogicalAlterTableModifyPartition {
 
     public LogicalAlterTableGroupModifyPartition(DDL ddl) {
-        super(ddl);
+        super(ddl, true);
     }
 
-    public void preparedData() {
+    public void preparedData(ExecutionContext ec) {
         AlterTableGroupModifyPartition alterTableGroupModifyPartition = (AlterTableGroupModifyPartition) relDdl;
         String tableGroupName = alterTableGroupModifyPartition.getTableGroupName();
         String tableName = alterTableGroupModifyPartition.getTableName().toString();
@@ -48,32 +47,27 @@ public class LogicalAlterTableGroupModifyPartition extends BaseDdlOperation {
 
         boolean isDropVal = sqlAlterTableModifyPartitionValues.isDrop();
 
-        List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
-            TableGroupLocation.getOrderedGroupList(schemaName);
-
         preparedData = new AlterTableGroupModifyPartitionPreparedData();
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(tableName);
         preparedData.setWithHint(targetTablesHintCache != null);
-        preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
         List<String> oldPartition = new ArrayList<>();
         oldPartition.add(((SqlIdentifier) sqlAlterTableModifyPartitionValues.getPartition().getName()).getLastName());
         preparedData.setOldPartitionNames(oldPartition);
         preparedData.setDropVal(isDropVal);
-
+        List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
+            LocalityInfoUtils.getAllowedGroupInfoOfPartitionGroup(schemaName, tableGroupName, oldPartition.get(0));
+        preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
         preparedData.prepareInvisiblePartitionGroup();
         List<String> newPartitionNames =
             preparedData.getInvisiblePartitionGroups().stream().map(o -> o.getPartition_name())
                 .collect(Collectors.toList());
         preparedData.setNewPartitionNames(newPartitionNames);
+        preparedData.setPartBoundExprInfo(sqlAlterTableGroup.getPartRexInfoCtx());
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MODIFY_PARTITION);
 
-    }
-
-    public AlterTableGroupModifyPartitionPreparedData getPreparedData() {
-        return preparedData;
     }
 
     public static LogicalAlterTableGroupModifyPartition create(DDL ddl) {

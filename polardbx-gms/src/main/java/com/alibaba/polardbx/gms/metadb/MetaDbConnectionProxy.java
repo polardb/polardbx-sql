@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.gms.metadb;
 
-import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
+import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.IConnection;
-import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
@@ -38,7 +38,6 @@ import java.sql.SQLXML;
 import java.sql.Savepoint;
 import java.sql.Statement;
 import java.sql.Struct;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
@@ -371,56 +370,6 @@ public class MetaDbConnectionProxy implements IConnection {
     }
 
     @Override
-    public long getLastInsertId() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setLastInsertId(long id) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public long getReturnedLastInsertId() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setReturnedLastInsertId(long id) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public List<Long> getGeneratedKeys() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setGeneratedKeys(List<Long> ids) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public ITransactionPolicy getTrxPolicy() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setTrxPolicy(ITransactionPolicy trxPolicy) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public BatchInsertPolicy getBatchInsertPolicy(Map<String, Object> extraCmds) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setBatchInsertPolicy(BatchInsertPolicy policy) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public String getEncoding() {
         return this.encoding;
     }
@@ -446,42 +395,22 @@ public class MetaDbConnectionProxy implements IConnection {
     }
 
     @Override
+    public boolean isBytesSqlSupported() throws SQLException {
+        return false;
+    }
+
+    @Override
+    public PreparedStatement prepareStatement(BytesSql sql, byte[] hint) throws SQLException {
+        throw new NotSupportException("bytes sql not supported in MetaDbConnectionProxy");
+    }
+
+    @Override
     public Map<String, Object> getServerVariables() {
         return this.serverVariables;
     }
 
     @Override
     public void setServerVariables(Map<String, Object> serverVariables) throws SQLException {
-    }
-
-    @Override
-    public long getFoundRows() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setFoundRows(long foundRows) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public long getAffectedRows() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setAffectedRows(long affectedRows) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public String getUser() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setUser(String userName) {
-        throw new UnsupportedOperationException();
     }
 
     @Override

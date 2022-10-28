@@ -76,7 +76,7 @@ public class AlterTableRepartitionValidateTask extends BaseValidateTask {
         this.indexName = indexName;
         this.addColumnsIndexes = addColumnsIndexes;
         this.dropIndexes = dropIndexes;
-        this.createTableGroupConfig = createTableGroupConfig;
+        this.createTableGroupConfig = TableGroupConfig.copyWithoutTables(createTableGroupConfig);
         this.checkSingleTgNotExists = checkSingleTgNotExists;
         this.checkBroadcastTgNotExists = checkBroadcastTgNotExists;
         genTableGroupInfoForValidate();
@@ -176,7 +176,7 @@ public class AlterTableRepartitionValidateTask extends BaseValidateTask {
         if (partitionInfo != null) {
             Long groupId = partitionInfo.getTableGroupId();
             TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigById(groupId);
-            tableGroupConfigs.add(tableGroupConfig);
+            tableGroupConfigs.add(TableGroupConfig.copyWithoutTables(tableGroupConfig));
             tableGroupIds.put(tbName, ImmutableList.of(groupId));
         }
     }

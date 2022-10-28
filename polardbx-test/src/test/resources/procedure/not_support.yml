@@ -1,0 +1,2214 @@
+# Check mode settings
+insert into t1 values ("foo", 1), ("bar", 2), ("zip", 3)|
+
+set @@sql_mode = 'ANSI'|
+delimiter $|
+--disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+drop procedure if exists modes$
+create procedure modes(out c1 int, out c2 int)
+begin
+declare done int default 0;
+declare x int;
+declare c cursor for select data from t1;
+declare continue handler for sqlstate '02000' set done = 1;
+
+select 1 || 2 into c1;
+set c2 = 0;
+open c;
+repeat
+fetch c into x;
+if not done then
+set c2 = c2 + 1;
+end if;
+until done end repeat;
+close c;
+end$
+delimiter |$
+  set @@sql_mode = ''|
+
+  set sql_select_limit = 1|
+  call modes(@c1, @c2)|
+  set sql_select_limit = default|
+
+  select @c1, @c2|
+  delete from t1|
+  drop procedure modes|
+
+
+
+  # Test cases for different combinations of condition handlers in nested
+  # begin-end blocks in stored procedures.
+  #
+  # The SQL standard document says:
+  # "8) If there is a general <handler declaration> and a specific
+  # <handler declaration> for the same <condition value> in the same scope, then
+  # only the specific <handler declaration> is associated with that
+  # <condition value>."
+
+  # A general handler declaration has SQLWARNING + SQLEXCEPTION + NOT FOUND.
+  # A specific handler declaration has SQLSTATE, condition name, or (for MySQL)
+  # an errno.
+  #
+  # So when there are multiple handlers in the same scope, they're all
+  # applicable, but the most specific handler should be activated. Notice the
+  # standard's exact words: "in the same scope". A specific handler declaration
+  # in an outer scope must not be activated instead of a general handler
+  # declaration in the inner scope. Previously that was not the case in MySQL.
+  #
+  # Note also that '02000' is more specific than NOT FOUND; there might be
+  # other '02xxx' states, even if we currently do not issue them in any
+  # situation (e.g. '02001').
+  #
+  # Thus, in all combinations below an inner handler should be activated.
+
+  --disable_warnings
+  drop table if exists t3|
+  drop procedure if exists h_ee|
+  drop procedure if exists h_es|
+  drop procedure if exists h_en|
+  drop procedure if exists h_ew|
+  drop procedure if exists h_ex|
+  drop procedure if exists h_se|
+  drop procedure if exists h_ss|
+  drop procedure if exists h_sn|
+  drop procedure if exists h_sw|
+  drop procedure if exists h_sx|
+  drop procedure if exists h_ne|
+  drop procedure if exists h_ns|
+  drop procedure if exists h_nn|
+  drop procedure if exists h_we|
+  drop procedure if exists h_ws|
+  drop procedure if exists h_ww|
+  drop procedure if exists h_xe|
+  drop procedure if exists h_xs|
+  drop procedure if exists h_xx|
+  --enable_warnings
+
+  # smallint    - to get out of range warnings
+  # primary key - to get constraint errors
+  create table t3 (a smallint primary key)|
+
+  insert into t3 (a) values (1)|
+
+  create procedure h_ee()
+  deterministic
+  begin
+  declare continue handler for 1062 -- ER_DUP_ENTRY
+  select 'Outer (bad)' as 'h_ee';
+
+  begin
+  declare continue handler for 1062 -- ER_DUP_ENTRY
+  select 'Inner (good)' as 'h_ee';
+
+  insert into t3 values (1);
+  end;
+  end|
+
+  create procedure h_es()
+  deterministic
+  begin
+  declare continue handler for 1062 -- ER_DUP_ENTRY
+  select 'Outer (bad)' as 'h_es';
+
+  begin
+  -- integrity constraint violation
+  declare continue handler for sqlstate '23000'
+  select 'Inner (good)' as 'h_es';
+
+  insert into t3 values (1);
+  end;
+  end|
+
+  create procedure h_en()
+  deterministic
+  begin
+  declare continue handler for 1329 -- ER_SP_FETCH_NO_DATA
+  select 'Outer (bad)' as 'h_en';
+
+  begin
+  declare x int;
+  declare continue handler for sqlstate '02000' -- no data
+  select 'Inner (good)' as 'h_en';
+
+  select a into x from t3 where a = 42;
+  end;
+  end|
+
+  create procedure h_ew()
+  deterministic
+  begin
+  declare continue handler for 1264 -- ER_WARN_DATA_OUT_OF_RANGE
+  select 'Outer (bad)' as 'h_ew';
+
+  begin
+  declare continue handler for sqlwarning
+  select 'Inner (good)' as 'h_ew';
+
+  insert into t3 values (123456789012);
+  end;
+  delete from t3;
+  insert into t3 values (1);
+  end|
+
+  create procedure h_ex()
+  deterministic
+  begin
+  declare continue handler for 1062 -- ER_DUP_ENTRY
+  select 'Outer (bad)' as 'h_ex';
+
+  begin
+  declare continue handler for sqlexception
+  select 'Inner (good)' as 'h_ex';
+
+  insert into t3 values (1);
+  end;
+  end|
+
+  create procedure h_se()
+  deterministic
+  begin
+  -- integrity constraint violation
+  declare continue handler for sqlstate '23000'
+  select 'Outer (bad)' as 'h_se';
+
+  begin
+  declare continue handler for 1062 -- ER_DUP_ENTRY
+  select 'Inner (good)' as 'h_se';
+
+  insert into t3 values (1);
+  end;
+  end|
+
+  create procedure h_ss()
+  deterministic
+  begin
+  -- integrity constraint violation
+  declare continue handler for sqlstate '23000'
+  select 'Outer (bad)' as 'h_ss';
+
+  begin
+  -- integrity constraint violation
+  declare continue handler for sqlstate '23000'
+  select 'Inner (good)' as 'h_ss';
+
+  insert into t3 values (1);
+  end;
+  end|
+
+  create procedure h_sn()
+  deterministic
+  begin
+-- Note: '02000' is more specific than NOT FOUND ;
+           --       there might be other not found states
+           declare continue handler for sqlstate '02000' -- no data
+           select 'Outer (bad)' as 'h_sn';
+
+           begin
+           declare x int;
+           declare continue handler for not found
+           select 'Inner (good)' as 'h_sn';
+
+           select a into x from t3 where a = 42;
+           end;
+           end|
+
+           create procedure h_sw()
+           deterministic
+           begin
+           -- data exception - numeric value out of range
+           declare continue handler for sqlstate '22003'
+           select 'Outer (bad)' as 'h_sw';
+
+           begin
+           declare continue handler for sqlwarning
+           select 'Inner (good)' as 'h_sw';
+
+           insert into t3 values (123456789012);
+           end;
+           delete from t3;
+           insert into t3 values (1);
+           end|
+
+           create procedure h_sx()
+           deterministic
+           begin
+           -- integrity constraint violation
+           declare continue handler for sqlstate '23000'
+           select 'Outer (bad)' as 'h_sx';
+
+           begin
+           declare continue handler for sqlexception
+           select 'Inner (good)' as 'h_sx';
+
+           insert into t3 values (1);
+           end;
+           end|
+
+           create procedure h_ne()
+           deterministic
+           begin
+           declare continue handler for not found
+           select 'Outer (bad)' as 'h_ne';
+
+           begin
+           declare x int;
+           declare continue handler for 1329 -- ER_SP_FETCH_NO_DATA
+           select 'Inner (good)' as 'h_ne';
+
+           select a into x from t3 where a = 42;
+           end;
+           end|
+
+           create procedure h_ns()
+           deterministic
+           begin
+           declare continue handler for not found
+           select 'Outer (bad)' as 'h_ns';
+
+           begin
+           declare x int;
+           declare continue handler for sqlstate '02000' -- no data
+           select 'Inner (good)' as 'h_ns';
+
+           select a into x from t3 where a = 42;
+           end;
+           end|
+
+           create procedure h_nn()
+           deterministic
+           begin
+           declare continue handler for not found
+           select 'Outer (bad)' as 'h_nn';
+
+           begin
+           declare x int;
+           declare continue handler for not found
+           select 'Inner (good)' as 'h_nn';
+
+           select a into x from t3 where a = 42;
+           end;
+           end|
+
+           create procedure h_we()
+           deterministic
+           begin
+           declare continue handler for sqlwarning
+           select 'Outer (bad)' as 'h_we';
+
+           begin
+           declare continue handler for 1264 -- ER_WARN_DATA_OUT_OF_RANGE
+           select 'Inner (good)' as 'h_we';
+
+           insert into t3 values (123456789012);
+           end;
+           delete from t3;
+           insert into t3 values (1);
+           end|
+
+           create procedure h_ws()
+           deterministic
+           begin
+           declare continue handler for sqlwarning
+           select 'Outer (bad)' as 'h_ws';
+
+           begin
+           -- data exception - numeric value out of range
+           declare continue handler for sqlstate '22003'
+           select 'Inner (good)' as 'h_ws';
+
+           insert into t3 values (123456789012);
+           end;
+           delete from t3;
+           insert into t3 values (1);
+           end|
+
+           create procedure h_ww()
+           deterministic
+           begin
+           declare continue handler for sqlwarning
+           select 'Outer (bad)' as 'h_ww';
+
+           begin
+           declare continue handler for sqlwarning
+           select 'Inner (good)' as 'h_ww';
+
+           insert into t3 values (123456789012);
+           end;
+           delete from t3;
+           insert into t3 values (1);
+           end|
+
+           create procedure h_xe()
+           deterministic
+           begin
+           declare continue handler for sqlexception
+           select 'Outer (bad)' as 'h_xe';
+
+           begin
+           declare continue handler for 1062 -- ER_DUP_ENTRY
+           select 'Inner (good)' as 'h_xe';
+
+           insert into t3 values (1);
+           end;
+           end|
+
+           create procedure h_xs()
+           deterministic
+           begin
+           declare continue handler for sqlexception
+           select 'Outer (bad)' as 'h_xs';
+
+           begin
+           -- integrity constraint violation
+           declare continue handler for sqlstate '23000'
+           select 'Inner (good)' as 'h_xs';
+
+           insert into t3 values (1);
+           end;
+           end|
+
+           create procedure h_xx()
+           deterministic
+           begin
+           declare continue handler for sqlexception
+           select 'Outer (bad)' as 'h_xx';
+
+           begin
+           declare continue handler for sqlexception
+           select 'Inner (good)' as 'h_xx';
+
+           insert into t3 values (1);
+           end;
+           end|
+
+           call h_ee()|
+           call h_es()|
+           call h_en()|
+           call h_ew()|
+           call h_ex()|
+           call h_se()|
+           call h_ss()|
+           call h_sn()|
+           call h_sw()|
+           call h_sx()|
+           call h_ne()|
+           call h_ns()|
+           call h_nn()|
+           call h_we()|
+           call h_ws()|
+           call h_ww()|
+           call h_xe()|
+           call h_xs()|
+           call h_xx()|
+
+           drop table t3|
+           drop procedure h_ee|
+           drop procedure h_es|
+           drop procedure h_en|
+           drop procedure h_ew|
+           drop procedure h_ex|
+           drop procedure h_se|
+           drop procedure h_ss|
+           drop procedure h_sn|
+           drop procedure h_sw|
+           drop procedure h_sx|
+           drop procedure h_ne|
+           drop procedure h_ns|
+           drop procedure h_nn|
+           drop procedure h_we|
+           drop procedure h_ws|
+           drop procedure h_ww|
+           drop procedure h_xe|
+           drop procedure h_xs|
+           drop procedure h_xx|
+
+
+  #
+  # BUG#2780
+  #
+           create table t3 (s1 smallint)|
+
+           insert into t3 values (123456789012)|
+
+           --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+           drop procedure if exists bug2780|
+           create procedure bug2780()
+           begin
+           declare exit handler for sqlwarning set @x = 1;
+
+           set @x = 0;
+           insert into t3 values (123456789012);
+           insert into t3 values (0);
+           end|
+
+           call bug2780()|
+           select @x|
+           select * from t3|
+
+           drop procedure bug2780|
+           drop table t3|
+
+
+  #
+  # BUG#1863
+  #
+           create table t3 (content varchar(10) )|
+           insert into t3 values ("test1")|
+           insert into t3 values ("test2")|
+           create table t4 (f1 int, rc int, t3 int)|
+
+           --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+           drop procedure if exists bug1863|
+           create procedure bug1863(in1 int)
+           begin
+
+           declare ind int default 0;
+           declare t1 int;
+           declare t2 int;
+           declare t3 int;
+
+           declare rc int default 0;
+           declare continue handler for 1065 set rc = 1;
+
+           drop temporary table if exists temp_t1;
+           create temporary table temp_t1 (
+           f1 int auto_increment, f2 varchar(20), primary key (f1)
+           );
+
+           insert into temp_t1 (f2) select content from t3;
+
+           select f2 into t3 from temp_t1 where f1 = 10;
+
+           if (rc) then
+           insert into t4 values (1, rc, t3);
+           end if;
+
+           insert into t4 values (2, rc, t3);
+
+           end|
+
+           call bug1863(10)|
+           call bug1863(10)|
+           select * from t4|
+
+           drop procedure bug1863|
+           drop temporary table temp_t1;
+           drop table t3, t4|
+
+  # Don't know if HANDLER commands can work with SPs, or at all.
+           --disable_testcase BUG#0000
+           create table t3 (s1 int)|
+           insert into t3 values (3), (4)|
+
+           --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+           drop procedure if exists bug4318|
+           create procedure bug4318()
+           handler t3 read next|
+
+           handler t3 open|
+  # Expect no results, as tables are closed, but there shouldn't be any errors
+           call bug4318()|
+           call bug4318()|
+           handler t3 close|
+
+           drop procedure bug4318|
+           drop table t3|
+           --enable_testcase
+
+  #
+  # BUG#4904
+  #
+           --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+           drop procedure if exists bug4904|
+           create procedure bug4904()
+           begin
+           declare continue handler for sqlstate 'HY000' begin end;
+
+           create table t2 as select * from t3;
+           end|
+
+           -- error 1146
+           call bug4904()|
+
+           drop procedure bug4904|
+
+           create table t3 (s1 char character set latin1, s2 char character set latin2)|
+
+           --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+           drop procedure if exists bug4904|
+           create procedure bug4904 ()
+           begin
+           declare continue handler for sqlstate 'HY000' begin end;
+
+           select s1 from t3 union select s2 from t3;
+           end|
+
+           call bug4904()|
+
+           drop procedure bug4904|
+           drop table t3|
+
+  #
+  # BUG#6022: Stored procedure shutdown problem with self-calling function.
+  #
+
+  # Until we implement support for recursive stored functions.
+           --disable_testcase BUG#0000
+           create function bug6022(x int) returns int
+           begin
+           if x < 0 then
+           return 0;
+           else
+           return bug6022(x-1);
+           end if;
+           end|
+
+           select bug6022(5)|
+           drop function bug6022|
+           --enable_testcase
+
+  #
+  # BUG#6029: Stored procedure specific handlers should have priority
+  #
+           --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+           drop procedure if exists bug6029|
+
+           --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+           drop procedure if exists bug6029|
+           create procedure bug6029()
+           begin
+           declare exit handler for 1136  select '1136';
+           declare exit handler for sqlstate '23000'  select 'sqlstate 23000';
+           declare continue handler for sqlexception  select 'sqlexception';
+
+           insert into t3 values (1);
+           insert into t3 values (1,2);
+           end|
+
+           create table t3 (s1 int, primary key (s1))|
+           insert into t3 values (1)|
+           call bug6029()|
+           delete from t3|
+           call bug6029()|
+
+           drop procedure bug6029|
+           drop table t3|
+
+
+
+  #
+  # BUG#6900: Stored procedure inner handler ignored
+  # BUG#9074: STORED PROC: The scope of every handler declared is not
+  #                        properly applied
+  #
+           --disable_warnings
+           drop procedure if exists bug6900|
+           drop procedure if exists bug9074|
+           drop procedure if exists bug6900_9074|
+           --enable_warnings
+
+           create table t3 (w char unique, x char)|
+           insert into t3 values ('a', 'b')|
+
+           create procedure bug6900()
+           begin
+           declare exit handler for sqlexception select '1';
+
+           begin
+           declare exit handler for sqlexception select '2';
+
+           insert into t3 values ('x', 'y', 'z');
+           end;
+           end|
+
+           create procedure bug9074()
+           begin
+           declare x1, x2, x3, x4, x5, x6 int default 0;
+
+           begin
+           declare continue handler for sqlstate '23000' set x5 = 1;
+
+           insert into t3 values ('a', 'b');
+           set x6 = 1;
+           end;
+
+begin1_label:
+  begin
+  declare continue handler for sqlstate '23000' set x1 = 1;
+
+  insert into t3 values ('a', 'b');
+  set x2 = 1;
+
+  begin2_label:
+    begin
+    declare exit handler for sqlstate '23000' set x3 = 1;
+
+    set x4= 1;
+    insert into t3 values ('a','b');
+    set x4= 0;
+    end begin2_label;
+  end begin1_label;
+
+  select x1, x2, x3, x4, x5, x6;
+  end|
+
+  create procedure bug6900_9074(z int)
+  begin
+  declare exit handler for sqlstate '23000' select '23000';
+
+  begin
+  declare exit handler for sqlexception select 'sqlexception';
+
+  if z = 1 then
+  insert into t3 values ('a', 'b');
+  else
+  insert into t3 values ('x', 'y', 'z');
+  end if;
+  end;
+  end|
+
+  call bug6900()|
+  call bug9074()|
+  call bug6900_9074(0)|
+  call bug6900_9074(1)|
+
+  drop procedure bug6900|
+  drop procedure bug9074|
+  drop procedure bug6900_9074|
+  drop table t3|
+
+
+  #
+  # BUG#9856: Stored procedures: crash if handler for sqlexception, not found
+  #
+  --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+  drop procedure if exists bug9856|
+  create procedure bug9856()
+  begin
+  declare v int;
+  declare c cursor for select data from t1;
+  declare exit handler for sqlexception, not found select '16';
+
+  open c;
+  fetch c into v;
+  select v;
+  end|
+
+  delete from t1|
+  call bug9856()|
+  call bug9856()|
+  drop procedure bug9856|
+
+
+
+  #
+  # BUG#10961: Stored procedures: crash if select * from dual
+  #
+  --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+  drop procedure if exists bug10961|
+  # "select * from dual" results in an error, so the cursor will not open
+  create procedure bug10961()
+  begin
+  declare v char;
+  declare x int;
+  declare c cursor for select * from dual;
+  declare continue handler for sqlexception select x;
+
+  set x = 1;
+  open c;
+  set x = 2;
+  fetch c into v;
+  set x = 3;
+  close c;
+  end|
+
+  call bug10961()|
+  call bug10961()|
+
+  drop procedure bug10961|
+
+
+  #
+  # BUG#12379: PROCEDURE with HANDLER calling FUNCTION with error get
+  #            strange result
+  #
+  --disable_warnings
+  drop function if exists bug12379|
+  drop procedure if exists bug12379_1|
+  drop procedure if exists bug12379_2|
+  drop procedure if exists bug12379_3|
+  drop table if exists t3|
+  --enable_warnings
+
+  create table t3 (c1 char(1) primary key not null)|
+
+  create function bug12379()
+  returns integer
+  begin
+  insert into t3 values('X');
+  insert into t3 values('X');
+  return 0;
+  end|
+
+  create procedure bug12379_1()
+  begin
+  declare exit handler for sqlexception select 42;
+
+  select bug12379();
+  END|
+  create procedure bug12379_2()
+  begin
+  declare exit handler for sqlexception begin end;
+
+  select bug12379();
+  end|
+  create procedure bug12379_3()
+  begin
+  select bug12379();
+  end|
+
+  --error ER_DUP_ENTRY
+  select bug12379()|
+  select 1|
+  # statement-based binlogging will show warning which row-based won't;
+  # so we hide it (this warning is already tested in rpl_stm_sp.test)
+  --disable_warnings
+  call bug12379_1()|
+  select 2|
+  call bug12379_2()|
+  --enable_warnings
+  select 3|
+  --error ER_DUP_ENTRY
+  call bug12379_3()|
+  select 4|
+
+  drop function bug12379|
+  drop procedure bug12379_1|
+  drop procedure bug12379_2|
+  drop procedure bug12379_3|
+  drop table t3|
+
+
+  #
+  # BUG#6127: Stored procedure handlers within handlers don't work
+  #
+  --disable_warnings
+  drop table if exists t3|
+  drop procedure if exists bug6127|
+  --enable_warnings
+  create table t3 (s1 int unique)|
+
+  set @sm=@@sql_mode|
+  set sql_mode='traditional'|
+
+  create procedure bug6127()
+  begin
+  declare continue handler for sqlstate '23000'
+  begin
+  declare continue handler for sqlstate '22003'
+  insert into t3 values (0);
+
+  insert into t3 values (1000000000000000);
+  end;
+
+  insert into t3 values (1);
+  insert into t3 values (1);
+  end|
+
+  call bug6127()|
+  --sorted_result
+  select * from t3|
+  --error ER_DUP_ENTRY
+  call bug6127()|
+  --sorted_result
+  select * from t3|
+  set sql_mode=@sm|
+  drop table t3|
+  drop procedure bug6127|
+
+
+  #
+  # BUG#7049: Stored procedure CALL errors are ignored
+  #
+  --disable_warnings
+  drop table if exists t3|
+  drop procedure if exists bug7049_1|
+  drop procedure if exists bug7049_2|
+  drop procedure if exists bug7049_3|
+  drop procedure if exists bug7049_4|
+  drop function if exists bug7049_1|
+  drop function if exists bug7049_2|
+  --enable_warnings
+
+  create table t3 ( x int unique )|
+
+  create procedure bug7049_1()
+  begin
+  insert into t3 values (42);
+  insert into t3 values (42);
+  end|
+
+  create procedure bug7049_2()
+  begin
+  declare exit handler for sqlexception
+  select 'Caught it' as 'Result';
+
+  call bug7049_1();
+  select 'Missed it' as 'Result';
+  end|
+
+  create procedure bug7049_3()
+  call bug7049_1()|
+
+  create procedure bug7049_4()
+  begin
+  declare exit handler for sqlexception
+  select 'Caught it' as 'Result';
+
+  call bug7049_3();
+  select 'Missed it' as 'Result';
+  end|
+
+  create function bug7049_1()
+  returns int
+  begin
+  insert into t3 values (42);
+  insert into t3 values (42);
+  return 42;
+  end|
+
+  create function bug7049_2()
+  returns int
+  begin
+  declare x int default 0;
+  declare continue handler for sqlexception
+  set x = 1;
+
+  set x = bug7049_1();
+  return x;
+  end|
+
+  call bug7049_2()|
+  select * from t3|
+  delete from t3|
+  call bug7049_4()|
+  select * from t3|
+  select bug7049_2()|
+
+  drop table t3|
+  drop procedure bug7049_1|
+  drop procedure bug7049_2|
+  drop procedure bug7049_3|
+  drop procedure bug7049_4|
+  drop function bug7049_1|
+  drop function bug7049_2|
+
+
+  #
+  # BUG#13729: Stored procedures: packet error after exception handled
+  #
+  --disable_warnings
+  drop procedure if exists bug13729|
+  drop table if exists t3|
+  --enable_warnings
+
+  create table t3 (s1 int, primary key (s1))|
+
+  insert into t3 values (1),(2)|
+
+  create procedure bug13729()
+  begin
+  declare continue handler for sqlexception select 55;
+
+  update t3 set s1 = 1;
+  end|
+
+  call bug13729()|
+  # Used to cause Packets out of order
+  select * from t3|
+
+  drop procedure bug13729|
+  drop table t3|
+
+  #
+  # BUG#14643: Stored Procedure: Continuing after failed var. initialization
+  #            crashes server.
+  #
+  --disable_warnings
+  drop procedure if exists bug14643_1|
+  drop procedure if exists bug14643_2|
+  --enable_warnings
+
+  create procedure bug14643_1()
+  begin
+  declare continue handler for sqlexception select 'boo' as 'Handler';
+
+  begin
+  declare v int default undefined_var;
+
+  if v = 1 then
+  select 1;
+  else
+  select v, isnull(v);
+  end if;
+  end;
+  end|
+
+  create procedure bug14643_2()
+  begin
+  declare continue handler for sqlexception select 'boo' as 'Handler';
+
+  case undefined_var
+  when 1 then
+  select 1;
+  else
+  select 2;
+  end case;
+
+  select undefined_var;
+  end|
+
+  call bug14643_1()|
+  call bug14643_2()|
+
+  drop procedure bug14643_1|
+  drop procedure bug14643_2|
+
+
+  #
+  # BUG#14498: Stored procedures: hang if undefined variable and exception
+  #
+  --disable_warnings
+  drop procedure if exists bug14498_1|
+  drop procedure if exists bug14498_2|
+  drop procedure if exists bug14498_3|
+  drop procedure if exists bug14498_4|
+  drop procedure if exists bug14498_5|
+  --enable_warnings
+
+  create procedure bug14498_1()
+  begin
+  declare continue handler for sqlexception select 'error' as 'Handler';
+
+  if v then
+  select 'yes' as 'v';
+  else
+  select 'no' as 'v';
+  end if;
+  select 'done' as 'End';
+  end|
+
+  create procedure bug14498_2()
+  begin
+  declare continue handler for sqlexception select 'error' as 'Handler';
+
+  while v do
+  select 'yes' as 'v';
+  end while;
+  select 'done' as 'End';
+  end|
+
+  create procedure bug14498_3()
+  begin
+  declare continue handler for sqlexception select 'error' as 'Handler';
+
+  repeat
+  select 'maybe' as 'v';
+  until v end repeat;
+  select 'done' as 'End';
+  end|
+
+  create procedure bug14498_4()
+  begin
+  declare continue handler for sqlexception select 'error' as 'Handler';
+
+  case v
+  when 1 then
+  select '1' as 'v';
+  when 2 then
+  select '2' as 'v';
+  else
+  select '?' as 'v';
+  end case;
+  select 'done' as 'End';
+  end|
+
+  create procedure bug14498_5()
+  begin
+  declare continue handler for sqlexception select 'error' as 'Handler';
+
+  case
+  when v = 1 then
+  select '1' as 'v';
+  when v = 2 then
+  select '2' as 'v';
+  else
+  select '?' as 'v';
+  end case;
+  select 'done' as 'End';
+  end|
+
+  call bug14498_1()|
+  call bug14498_2()|
+  call bug14498_3()|
+  call bug14498_4()|
+  call bug14498_5()|
+
+  drop procedure bug14498_1|
+  drop procedure bug14498_2|
+  drop procedure bug14498_3|
+  drop procedure bug14498_4|
+  drop procedure bug14498_5|
+
+  #
+  # BUG#15231: Stored procedure bug with not found condition handler
+  #
+  --disable_warnings
+  drop table if exists t3|
+  drop procedure if exists bug15231_1|
+  drop procedure if exists bug15231_2|
+  drop procedure if exists bug15231_3|
+  drop procedure if exists bug15231_4|
+  drop procedure if exists bug15231_5|
+  drop procedure if exists bug15231_6|
+  --enable_warnings
+
+  create table t3 (id int not null)|
+
+  create procedure bug15231_1()
+  begin
+  declare xid integer;
+  declare xdone integer default 0;
+  declare continue handler for not found set xdone = 1;
+
+  set xid=null;
+  call bug15231_2(xid);
+  select xid, xdone;
+  end|
+
+  create procedure bug15231_2(inout ioid integer)
+  begin
+  select "Before NOT FOUND condition is triggered" as '1';
+  select id into ioid from t3 where id=ioid;
+  select "After NOT FOUND condtition is triggered" as '2';
+
+  if ioid is null then
+  set ioid=1;
+  end if;
+  end|
+
+  create procedure bug15231_3()
+  begin
+  declare exit handler for sqlwarning
+  select 'Caught it (correct)' as 'Result';
+
+  call bug15231_4();
+  end|
+
+  create procedure bug15231_4()
+  begin
+  declare x decimal(2,1);
+
+  set x = 'zap';
+  select 'Missed it (correct)' as 'Result';
+  show warnings;
+  end|
+
+  create procedure bug15231_5()
+  begin
+  declare exit handler for sqlwarning
+  select 'Caught it (wrong)' as 'Result';
+
+  call bug15231_6();
+  end|
+
+  create procedure bug15231_6()
+  begin
+  declare x decimal(2,1);
+
+  set x = 'zap';
+  select 'Missed it (correct)' as 'Result';
+  select id from t3;
+  end|
+
+  call bug15231_1()|
+  call bug15231_3()|
+  call bug15231_5()|
+
+  drop table t3|
+  drop procedure bug15231_1|
+  drop procedure bug15231_2|
+  drop procedure bug15231_3|
+  drop procedure bug15231_4|
+  drop procedure bug15231_5|
+  drop procedure bug15231_6|
+
+
+  #
+  # BUG#15011: error handler in nested block not activated
+  #
+  --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+  drop procedure if exists bug15011|
+
+  create table t3 (c1 int primary key)|
+
+  insert into t3 values (1)|
+
+  create procedure bug15011()
+  deterministic
+  begin
+  declare continue handler for 1062
+  select 'Outer' as 'Handler';
+
+  begin
+  declare continue handler for 1062
+  select 'Inner' as 'Handler';
+
+  insert into t3 values (1);
+  end;
+  end|
+
+  call bug15011()|
+
+  drop procedure bug15011|
+  drop table t3|
+
+
+  #
+  # BUG#18787: Server crashed when calling a stored procedure containing
+  #            a misnamed function
+  #
+  --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+  drop procedure if exists bug18787|
+  create procedure bug18787()
+  begin
+  declare continue handler for sqlexception begin end;
+
+  select no_such_function();
+  end|
+
+  call bug18787()|
+  drop procedure bug18787|
+
+  DROP DATABASE mysqltest1|
+  #
+  # BUG#8153: Stored procedure with subquery and continue handler, wrong result
+  #
+
+  --disable_warnings
+  drop table if exists t3|
+  drop table if exists t4|
+  drop procedure if exists bug8153_subselect|
+  drop procedure if exists bug8153_subselect_a|
+  drop procedure if exists bug8153_subselect_b|
+  drop procedure if exists bug8153_proc_a|
+  drop procedure if exists bug8153_proc_b|
+  --enable_warnings
+
+  create table t3 (a int)|
+  create table t4 (a int)|
+  insert into t3 values (1), (1), (2), (3)|
+  insert into t4 values (1), (1)|
+
+  ## Testing the use case reported in Bug#8153
+
+  create procedure bug8153_subselect()
+  begin
+  declare continue handler for sqlexception
+  begin
+  select 'statement failed';
+  end;
+  update t3 set a=a+1 where (select a from t4 where a=1) is null;
+  select 'statement after update';
+  end|
+
+  call bug8153_subselect()|
+  select * from t3|
+
+  call bug8153_subselect()|
+  select * from t3|
+
+  drop procedure bug8153_subselect|
+
+  ## Testing a subselect with a non local handler
+
+  create procedure bug8153_subselect_a()
+  begin
+  declare continue handler for sqlexception
+  begin
+  select 'in continue handler';
+  end;
+
+  select 'reachable code a1';
+  call bug8153_subselect_b();
+  select 'reachable code a2';
+  end|
+
+  create procedure bug8153_subselect_b()
+  begin
+  select 'reachable code b1';
+  update t3 set a=a+1 where (select a from t4 where a=1) is null;
+  select 'unreachable code b2';
+  end|
+
+  call bug8153_subselect_a()|
+  select * from t3|
+
+  call bug8153_subselect_a()|
+  select * from t3|
+
+  drop procedure bug8153_subselect_a|
+  drop procedure bug8153_subselect_b|
+
+  ## Testing extra use cases, found while investigating
+  ## This is related to BUG#18787, with a non local handler
+
+  create procedure bug8153_proc_a()
+  begin
+  declare continue handler for sqlexception
+  begin
+  select 'in continue handler';
+  end;
+
+  select 'reachable code a1';
+  call bug8153_proc_b();
+  select 'reachable code a2';
+  end|
+
+  create procedure bug8153_proc_b()
+  begin
+  select 'reachable code b1';
+  select no_such_function();
+  select 'unreachable code b2';
+  end|
+
+  call bug8153_proc_a()|
+
+  drop procedure bug8153_proc_a|
+  drop procedure bug8153_proc_b|
+  drop table t3|
+  drop table t4|
+
+
+  #
+  # Bug#8407(Stored functions/triggers ignore exception handler)
+  #
+
+  --disable_warnings
+  drop function if exists func_8407_a|
+  drop function if exists func_8407_b|
+  --enable_warnings
+
+  create function func_8407_a() returns int
+  begin
+  declare x int;
+
+  declare continue handler for sqlexception
+  begin
+  end;
+
+  select 1 from no_such_view limit 1 into x;
+
+  return x;
+  end|
+
+  create function func_8407_b() returns int
+  begin
+  declare x int default 0;
+
+  declare continue handler for sqlstate '42S02'
+  begin
+  set x:= x+1000;
+  end;
+
+  case (select 1 from no_such_view limit 1)
+  when 1 then set x:= x+1;
+  when 2 then set x:= x+2;
+  else set x:= x+100;
+  end case;
+  set x:=x + 500;
+
+  return x;
+  end|
+
+  select func_8407_a()|
+  select func_8407_b()|
+
+  drop function func_8407_a|
+  drop function func_8407_b|
+
+
+  #
+  # Bug#26503 (Illegal SQL exception handler code causes the server to crash)
+  #
+
+  --disable_warnings
+  drop table if exists table_26503|
+  drop procedure if exists proc_26503_ok_1|
+  drop procedure if exists proc_26503_ok_2|
+  drop procedure if exists proc_26503_ok_3|
+  drop procedure if exists proc_26503_ok_4|
+  --enable_warnings
+
+  create table table_26503(a int unique)|
+
+  create procedure proc_26503_ok_1(v int)
+  begin
+  declare i int default 5;
+
+  declare continue handler for sqlexception
+  begin
+  select 'caught something';
+retry:
+  while i > 0 do
+  begin
+  set i = i - 1;
+  select 'looping', i;
+  iterate retry;
+  select 'dead code';
+  end;
+  end while retry;
+  select 'leaving handler';
+  end;
+
+  select 'do something';
+  insert into table_26503 values (v);
+  select 'do something again';
+  insert into table_26503 values (v);
+  end|
+
+  create procedure proc_26503_ok_2(v int)
+  begin
+  declare i int default 5;
+
+  declare continue handler for sqlexception
+  begin
+  select 'caught something';
+retry:
+  while i > 0 do
+  begin
+  set i = i - 1;
+  select 'looping', i;
+  leave retry;
+  select 'dead code';
+  end;
+  end while;
+  select 'leaving handler';
+  end;
+
+  select 'do something';
+  insert into table_26503 values (v);
+  select 'do something again';
+  insert into table_26503 values (v);
+  end|
+
+  ## The outer retry label should not prevent using the inner label.
+
+  create procedure proc_26503_ok_3(v int)
+  begin
+  declare i int default 5;
+
+retry:
+  begin
+  declare continue handler for sqlexception
+  begin
+  select 'caught something';
+  retry:
+  while i > 0 do
+  begin
+  set i = i - 1;
+  select 'looping', i;
+  iterate retry;
+  select 'dead code';
+  end;
+  end while retry;
+  select 'leaving handler';
+  end;
+
+  select 'do something';
+  insert into table_26503 values (v);
+  select 'do something again';
+  insert into table_26503 values (v);
+  end;
+  end|
+
+  ## The outer retry label should not prevent using the inner label.
+
+  create procedure proc_26503_ok_4(v int)
+  begin
+  declare i int default 5;
+
+retry:
+  begin
+  declare continue handler for sqlexception
+  begin
+  select 'caught something';
+  retry:
+  while i > 0 do
+  begin
+  set i = i - 1;
+  select 'looping', i;
+  leave retry;
+  select 'dead code';
+  end;
+  end while;
+  select 'leaving handler';
+  end;
+
+  select 'do something';
+  insert into table_26503 values (v);
+  select 'do something again';
+  insert into table_26503 values (v);
+  end;
+  end|
+
+  call proc_26503_ok_1(1)|
+  call proc_26503_ok_2(2)|
+  call proc_26503_ok_3(3)|
+  call proc_26503_ok_4(4)|
+
+  drop table table_26503|
+  drop procedure proc_26503_ok_1|
+  drop procedure proc_26503_ok_2|
+  drop procedure proc_26503_ok_3|
+  drop procedure proc_26503_ok_4|
+
+  #
+  # Bug#29770 Two handlers are allowed to catch an error in an stored procedure.
+  #
+
+  --disable_warnings
+  DROP TABLE IF EXISTS t1;
+  DROP PROCEDURE IF EXISTS bug29770;
+  --enable_warnings
+
+  CREATE TABLE t1(a int);
+  delimiter |;
+  CREATE PROCEDURE bug29770()
+  BEGIN
+  DECLARE CONTINUE HANDLER FOR SQLSTATE '42S22' SET @state:= 'run';
+  DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET @exception:= 'run';
+  SELECT x FROM t1;
+  END|
+  delimiter ;|
+  CALL bug29770();
+  SELECT @state, @exception;
+  DROP TABLE t1;
+  DROP PROCEDURE bug29770;
+
+  #
+  # Bug#33618 Crash in sp_rcontext
+  #
+
+  use test;
+
+  --disable_warnings
+  drop table if exists t_33618;
+  drop procedure if exists proc_33618;
+  --enable_warnings
+
+  create table t_33618 (`a` int, unique(`a`), `b` varchar(30)) engine=myisam;
+  insert into t_33618 (`a`,`b`) values (1,'1'),(2,'2');
+
+  delimiter //;
+
+  create procedure proc_33618(num int)
+  begin
+  declare count1 int default '0';
+  declare vb varchar(30);
+  declare last_row int;
+
+  while(num>=1) do
+  set num=num-1;
+  begin
+  declare cur1 cursor for select `a` from t_33618;
+  declare continue handler for not found set last_row = 1;
+  set last_row:=0;
+  open cur1;
+rep1:
+  repeat
+  begin
+  declare exit handler for 1062 begin end;
+  fetch cur1 into vb;
+  if (last_row = 1) then
+  leave rep1;
+  end if;
+  end;
+  until last_row=1
+  end repeat;
+  close cur1;
+  end;
+  end while;
+  end//
+
+  delimiter ;//
+
+  call proc_33618(20);
+
+  drop table t_33618;
+  drop procedure proc_33618;
+
+
+  #
+  # BUG#11529: crash server after use stored procedure
+  #
+  --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+  drop procedure if exists bug11529|
+  create procedure bug11529()
+  begin
+  declare c cursor for select id, data from t1 where data in (10,13);
+
+  open c;
+  begin
+  declare vid char(16);
+  declare vdata int;
+  declare exit handler for not found begin end;
+
+  while true do
+  fetch c into vid, vdata;
+  end while;
+  end;
+  close c;
+  end|
+
+  insert into t1 values
+  ('Name1', 10),
+  ('Name2', 11),
+  ('Name3', 12),
+  ('Name4', 13),
+  ('Name5', 14)|
+
+  call bug11529()|
+  call bug11529()|
+  delete from t1|
+  drop procedure bug11529|
+
+  --echo #
+  --echo # Bug#12663165 SP DEAD CODE REMOVAL DOESN'T UNDERSTAND CONTINUE HANDLERS
+  --echo #
+
+  --disable_warnings ER_SP_DOES_NOT_EXIST ONCE
+  DROP FUNCTION IF EXISTS f1;
+
+  delimiter $;
+  CREATE FUNCTION f1() RETURNS INT
+  BEGIN
+  DECLARE CONTINUE HANDLER FOR SQLEXCEPTION BEGIN END;
+  BEGIN
+  DECLARE CONTINUE HANDLER FOR SQLEXCEPTION RETURN f1();
+  BEGIN
+  DECLARE CONTINUE HANDLER FOR SQLEXCEPTION RETURN f1();
+  RETURN f1();
+  END;
+  END;
+  RETURN 1;
+  END $
+  delimiter ;$
+
+  # This used to cause an assertion.
+  SELECT f1();
+
+  DROP FUNCTION f1;
+
+  --echo
+  --echo # WL#4179: Stored programs: validation of stored program statements
+  --echo #
+  --echo # Test handle of metadata changes with events.
+  --echo
+
+  CREATE TABLE t1 (a INT, b INT);
+  CREATE TABLE t2 (a INT, b INT);
+  CREATE TABLE t3 (a INT);
+
+  INSERT INTO t1 VALUES (1, 2);
+
+  # Make Sure Event scheduler is ON (by default)
+  SELECT COUNT(*) = 1 FROM information_schema.processlist
+  WHERE user = 'event_scheduler' AND command = 'Daemon';
+
+  SELECT GET_LOCK('e1_lock', 60);
+
+  delimiter |;
+
+  CREATE EVENT e1 ON SCHEDULE EVERY 1 SECOND STARTS NOW() DO
+  BEGIN
+  DECLARE EXIT HANDLER FOR 1136 BEGIN
+  INSERT INTO t3 VALUES (1);
+  END; -- ER_WRONG_VALUE_COUNT_ON_ROW
+
+  SELECT GET_LOCK('e1_lock', 60);
+  SELECT RELEASE_LOCK('e1_lock');
+
+  INSERT INTO t2 SELECT * FROM t1;
+  END|
+
+  delimiter ;|
+
+  SELECT RELEASE_LOCK('e1_lock');
+
+  let $wait_condition = SELECT COUNT(*) >= 3 FROM t2;
+  --source include/wait_condition.inc
+
+  SELECT GET_LOCK('e1_lock', 60);
+
+  ALTER TABLE t1 ADD COLUMN (c INT);
+
+  SELECT RELEASE_LOCK('e1_lock');
+
+  --echo # Wait for new rows in t3. That means, the even has been executed,
+  --echo # and INSERT INTO t2 failed because now t1 has 3 columns.
+  let $wait_condition = SELECT COUNT(*) > 0 FROM t3;
+  --source include/wait_condition.inc
+
+  DROP EVENT e1;
+  DROP TABLE t1, t2, t3;
+
+  --echo #
+  --echo # BUG#28156802 - MYSQL 8 SERVICE GOES DOWN ON EXECUTING ONE PROCEDURE.
+  --echo #
+
+  CREATE TABLE t1(y INT);
+  INSERT INTO t1 VALUES (5),(7),(9),(11),(15);
+  DELIMITER $$;
+  CREATE PROCEDURE `v1`(_limit_val BIGINT, _offset_val BIGINT)
+  BEGIN
+  CREATE TEMPORARY TABLE n1 AS (SELECT * FROM t1 LIMIT _limit_val OFFSET _offset_val);
+  SELECT * FROM n1;
+  END $$
+  DELIMITER ;$$
+  CALL v1(3,2);
+  DROP PROCEDURE v1;
+  DROP TABLE t1;
+
+  --echo # Cursor over union of two tables
+
+  CREATE TABLE t1(a INTEGER, b INTEGER);
+  INSERT INTO t1 VALUES(1, 10);
+
+  CREATE TABLE t2(c INTEGER, d INTEGER);
+  INSERT INTO t2 VALUES(2, 20);
+
+  DELIMITER //;
+  CREATE PROCEDURE cursor_over_union(OUT sum_a INTEGER, OUT sum_b INTEGER)
+  BEGIN
+  DECLARE a INTEGER;
+  DECLARE b INTEGER;
+  DECLARE done INTEGER DEFAULT 0;
+  DECLARE c1 CURSOR FOR
+  SELECT t1.a, t1.b FROM t1
+  UNION DISTINCT
+  SELECT t2.c, t2.d FROM t2;
+  DECLARE c2 CURSOR FOR
+  SELECT t1.a, t1.b FROM t1
+  UNION ALL
+  SELECT t2.c, t2.d FROM t2;
+  DECLARE CONTINUE HANDLER FOR SQLSTATE '02000' SET done = 1;
+
+  SET sum_a = 0;
+  SET sum_b = 0;
+
+  OPEN c1;
+  REPEAT
+  FETCH c1 INTO a, b;
+  if NOT done THEN
+  SET sum_a = sum_a + a;
+  SET sum_b = sum_b + b;
+  END IF;
+  UNTIL done END REPEAT;
+  CLOSE c1;
+
+  SET done = 0;
+
+  OPEN c2;
+  REPEAT
+  FETCH c2 INTO a, b;
+  if NOT done THEN
+  SET sum_a = sum_a + a;
+  SET sum_b = sum_b + b;
+  END IF;
+  UNTIL done END REPEAT;
+  CLOSE c2;
+
+  end //
+
+  DELIMITER ;//
+
+  SET @sa = 0;
+  SET @sb = 0;
+
+  CALL cursor_over_union(@sa, @sb);
+  SELECT @sa, @sb;
+  DROP PROCEDURE cursor_over_union;
+  DROP TABLE t1, t2;
+
+  --let $backupdir = $MYSQLTEST_VARDIR/tmp/
+  --error 0,1
+  --remove_file $backupdir/t1.MYD
+
+
+  #
+  # Bug#29834: Accessing a view column by name in SP/PS causes a memory leak.
+  #
+  # This is leak test. Run with large number assigned to $execute_cnt,
+  # $p1_cnt, $p2_cnt, @p1_p2_cnt, $f1_normal_cnt or $f1_prep_cnt variables.
+  #
+
+  let $execute_cnt= 2;
+  let $p1_cnt= 2;
+  let $p2_cnt= 2;
+  SET @p1_p2_cnt= 2;
+  let $f1_normal_cnt= 2;
+  let $f1_prep_cnt= 2;
+
+  CREATE TABLE t1 (c1 INT);
+  CREATE VIEW v1 AS SELECT * FROM t1;
+
+  PREPARE s1 FROM 'SELECT c1 FROM v1';
+  while ($execute_cnt)
+  {
+  EXECUTE s1;
+  dec $execute_cnt;
+  }
+
+  DELIMITER |;
+
+  CREATE PROCEDURE p1(IN loops BIGINT(19) UNSIGNED)
+  BEGIN
+  WHILE loops > 0 DO
+  SELECT c1 FROM v1;
+  SET loops = loops - 1;
+  END WHILE;
+  END|
+
+  CREATE PROCEDURE p2(IN loops BIGINT(19) UNSIGNED)
+  BEGIN
+  WHILE loops > 0 DO
+  SELECT c1 FROM v1;
+  CALL p1(@p1_p2_cnt);
+  SET loops = loops - 1;
+  END WHILE;
+  END|
+
+  CREATE FUNCTION f1(loops INT UNSIGNED)
+  RETURNS INT
+  BEGIN
+  DECLARE tmp INT;
+  WHILE loops > 0 DO
+  SELECT c1 INTO tmp FROM v1;
+  SET loops = loops - 1;
+  END WHILE;
+  RETURN loops;
+  END|
+
+  DELIMITER ;|
+
+  CALL p1($p1_cnt);
+  CALL p2($p2_cnt);
+
+  SELECT f1($f1_normal_cnt);
+
+  PREPARE s1 FROM 'SELECT f1($f1_prep_cnt)';
+  EXECUTE s1;
+  EXECUTE s1;
+
+  DROP PROCEDURE p1;
+  DROP PROCEDURE p2;
+  DROP FUNCTION f1;
+  DROP VIEW v1;
+  DROP TABLE t1;
+
+  #
+  # Bug#43962 "Packets out of order" calling a SHOW TABLE STATUS
+  #
+  DELIMITER //;
+  CREATE DEFINER = 'root'@'localhost' PROCEDURE p1()
+  NOT DETERMINISTIC
+  CONTAINS SQL
+  SQL SECURITY DEFINER
+  COMMENT ''
+  BEGIN
+  SHOW TABLE STATUS like 't1';
+  END;//
+  DELIMITER ;//
+
+
+  CREATE TABLE t1 (f1 INT);
+  --disable_result_log
+  let $tab_count= 4;
+  while ($tab_count)
+  {
+  EVAL CALL p1();
+  dec $tab_count ;
+  }
+  --enable_result_log
+  DROP PROCEDURE p1;
+  DROP TABLE t1;
+
+
+  #
+  # Bug#47736 killing a select from a view when the view is processing a function, asserts
+  #
+  CREATE TABLE t1(a int);
+  INSERT INTO t1 VALUES (1);
+  CREATE FUNCTION f1 (inp TEXT) RETURNS INT NO SQL RETURN GET_LOCK('Bug47736', 200);
+  CREATE VIEW v1 AS SELECT f1('a') FROM t1;
+
+  SELECT GET_LOCK('Bug47736', 0);
+
+  --connect (con1, localhost, root,,)
+  --let $ID_1= `SELECT connection_id()`
+  --send SELECT * FROM v1;
+
+  --connection default
+  let $wait_condition=
+  SELECT count(*) = 1 FROM information_schema.processlist
+  WHERE state = "User lock" AND info = "SELECT * FROM v1";
+  --source include/wait_condition.inc
+  --replace_result $ID_1 ID
+  --eval KILL QUERY $ID_1
+
+  --connection con1
+  --error ER_QUERY_INTERRUPTED
+  --reap
+
+  --connection default
+  DROP VIEW v1;
+  DROP TABLE t1;
+  DROP FUNCTION f1;
+  --disconnect con1
+
+  #
+  # Bug#29936 Stored Procedure DML ignores low_priority_updates setting
+  #
+
+  --disable_warnings
+  drop table if exists t1;
+  drop procedure if exists p1;
+  --enable_warnings
+
+  # MyISAM acquires table level lock. The locking functionality is
+  # different in InnoDB. Hence it is a Myisam specific testcase
+
+  create table t1 (value varchar(15)) engine=Myisam;
+  create procedure p1() update t1 set value='updated' where value='old';
+
+  # load the procedure into sp cache and execute once
+  call p1();
+
+  insert into t1 (value) values ("old");
+
+  connect (rl_holder, localhost, root,,);
+  connect (rl_acquirer, localhost, root,,);
+  connect (rl_contender, localhost, root,,);
+  connect (rl_wait, localhost, root,,);
+
+  connection rl_holder;
+  select get_lock('b26162',120);
+
+  connection rl_acquirer;
+  --send select 'rl_acquirer', value from t1 where get_lock('b26162',120);
+
+  # we must wait till this select opens and locks the tables
+  connection rl_wait;
+  let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "User lock" and
+  info = "select 'rl_acquirer', value from t1 where get_lock('b26162',120)";
+  --source include/wait_condition.inc
+
+  connection default;
+  set session low_priority_updates=on;
+  --send call p1();
+
+  connection rl_wait;
+  let $wait_condition=
+  select count(*) = 1 from information_schema.processlist
+  where state = "Waiting for table level lock" and
+  info = "update t1 set value='updated' where value='old'";
+  --source include/wait_condition.inc
+
+  connection rl_contender;
+  select 'rl_contender', value from t1;
+
+  connection rl_holder;
+  select release_lock('b26162');
+
+  connection rl_acquirer;
+  --reap
+  connection default;
+  --reap
+
+  disconnect rl_holder;
+  disconnect rl_acquirer;
+  disconnect rl_wait;
+  disconnect rl_contender;
+  drop procedure p1;
+  drop table t1;
+  set session low_priority_updates=default;
+
+
+  #
+  # Bug#44798 MySQL engine crashes when creating stored procedures with execute_priv=N
+  #
+  INSERT INTO mysql.user (Host, User, Select_priv, Insert_priv, Update_priv,
+  Delete_priv, Create_priv, Drop_priv, Reload_priv, Shutdown_priv, Process_priv, File_priv,
+  Grant_priv, References_priv, Index_priv, Alter_priv, Show_db_priv, Super_priv,
+  Create_tmp_table_priv, Lock_tables_priv, Execute_priv, Repl_slave_priv, Repl_client_priv,
+  Create_view_priv, Show_view_priv, Create_routine_priv, Alter_routine_priv,
+  Create_user_priv, ssl_type, ssl_cipher, x509_issuer, x509_subject, max_questions,
+  max_updates, max_connections, max_user_connections)
+  VALUES('%', 'mysqltest_1', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N',
+  'N', 'N', 'N', 'Y', 'Y', 'N', 'N', 'Y', 'Y', 'N', 'N', 'N', 'N', 'N', 'Y', 'Y', 'N', '',
+  '', '', '', '0', '0', '0', '0');
+  FLUSH PRIVILEGES;
+
+  connect (con1, localhost, mysqltest_1,,);
+  connection con1;
+  CREATE PROCEDURE p1(i INT) BEGIN END;
+  disconnect con1;
+  connection default;
+  DROP PROCEDURE p1;
+
+  DELETE FROM mysql.user WHERE User='mysqltest_1';
+  FLUSH PRIVILEGES;
+
+
+  #
+  # Bug#15298 SHOW GRANTS FOR CURRENT_USER: Incorrect output in DEFINER context
+  #
+  --disable_warnings
+  drop procedure if exists bug15298_1;
+  drop procedure if exists bug15298_2;
+  --enable_warnings
+  create user 'mysqltest_1'@'localhost';
+  grant all privileges on test.* to 'mysqltest_1'@'localhost';
+  create procedure 15298_1 () sql security definer show grants for current_user;
+  create procedure 15298_2 () sql security definer show grants;
+
+  connect (con1,localhost,mysqltest_1,,test);
+  call 15298_1();
+  call 15298_2();
+
+  connection default;
+  disconnect con1;
+  drop user mysqltest_1@localhost;
+  drop procedure 15298_1;
+  drop procedure 15298_2;
+
+
+  --echo #
+  --echo # Bug#44521 Prepared Statement: CALL p() - crashes: `! thd->main_da.is_sent' failed et.al.
+  --echo #
+  SELECT GET_LOCK('Bug44521', 0);
+  --connect (con1,localhost,root,,)
+  --echo ** Connection con1
+  delimiter $;
+  CREATE PROCEDURE p()
+  BEGIN
+  SELECT 1;
+  SELECT GET_LOCK('Bug44521', 100);
+  SELECT 2;
+  END$
+  delimiter ;$
+  --send CALL p();
+  --connection default
+  --echo ** Default connection
+  let $wait_condition=
+  SELECT count(*) = 1 FROM information_schema.processlist
+  WHERE state = "User lock" AND info = "SELECT GET_LOCK('Bug44521', 100)";
+  --source include/wait_condition.inc
+  let $conid =
+  `SELECT id FROM information_schema.processlist
+  WHERE state = "User lock" AND info = "SELECT GET_LOCK('Bug44521', 100)"`;
+  dirty_close con1;
+  SELECT RELEASE_LOCK('Bug44521');
+  let $wait_condition=
+  SELECT count(*) = 0 FROM information_schema.processlist
+  WHERE id = $conid;
+  --source include/wait_condition.inc
+  DROP PROCEDURE p;
+
+
+  #
+  # Bug#29408 Cannot find view in columns table if the selection contains a function
+  #
+  delimiter |;
+
+  create function f1()
+  returns int(11)
+  not deterministic
+  contains sql
+  sql security definer
+  comment ''
+  begin
+  declare x int(11);
+  set x=-1;
+  return x;
+  end|
+
+  delimiter ;|
+
+  create view v1 as select 1 as one, f1() as days;
+
+  connect (bug29408, localhost, root,,*NO-ONE*);
+  connection bug29408;
+
+  show create view test.v1;
+  select column_name from information_schema.columns
+  where table_name='v1' and table_schema='test' order by column_name;
+
+  disconnect bug29408;
+  --source include/wait_until_disconnected.inc
+  connection default;
+
+  drop view v1;
+  drop function f1;
+
+  --echo #
+  --echo # Test for bug#11763757 "56510: ERROR 42000: FUNCTION DOES NOT EXIST
+  --echo # IF NOT-PRIV USER RECONNECTS ".
+  --echo #
+  --echo # The real problem was that server was unable handle properly stored
+  --echo # functions in databases which names contained dot.
+  --echo #
+
+  connection default;
+
+  --disable_warnings
+  DROP DATABASE IF EXISTS `my.db`;
+  --enable_warnings
+
+  create database `my.db`;
+  use `my.db`;
+
+  CREATE FUNCTION f1(a int) RETURNS INT RETURN a;
+
+  --echo # Create new connection.
+  connect (addcon, localhost, root,,);
+  connection addcon;
+  USE `my.db`;
+  SELECT f1(1);
+  SELECT `my.db`.f1(2);
+
+  --echo # Switching to default connection.
+  connection default;
+  disconnect addcon;
+  DROP DATABASE `my.db`;
+  USE test;
+
+
+  # Wait till all disconnects are completed
+  --source include/wait_until_count_sessions.inc
+
+  --echo #
+  --echo # WL#2284: Increase the length of a user name
+  --echo #
+
+  CREATE DATABASE test1;
+  CREATE TABLE test1.t1 (
+  int_field INTEGER UNSIGNED NOT NULL,
+  char_field CHAR(10),
+  INDEX(`int_field`)
+  );
+
+  CREATE USER user_name_len_16@localhost;
+  CREATE USER user_name_len_22_01234@localhost;
+  CREATE USER user_name_len_32_012345678901234@localhost;
+
+  REVOKE ALL PRIVILEGES, GRANT OPTION FROM user_name_len_16@localhost;
+  REVOKE ALL PRIVILEGES, GRANT OPTION FROM user_name_len_22_01234@localhost;
+
+  --echo # Check that user_name_len16 has no SELECT permission ON t1
+  connect (con_user_16,localhost,user_name_len_16,,test);
+  --error ER_TABLEACCESS_DENIED_ERROR
+  SELECT * FROM test1.t1;
+
+  --echo # Check that user_name_len_22_01234 has no SELECT permission ON t1
+  connect (con_user_22,localhost,user_name_len_22_01234,,test);
+  --error ER_TABLEACCESS_DENIED_ERROR
+  SELECT * FROM test1.t1;
+
+  connection default;
+  GRANT SELECT ON test1.t1 TO user_name_len_22_01234@localhost;
+
+  --echo # Check that user_name_len_22_01234 has *now* SELECT permission ON t1
+  connection con_user_22;
+  SELECT * FROM test1.t1;
+
+  connection default;
+
+  CREATE DEFINER=user_name_len_22_01234@localhost PROCEDURE test1.p1_len22()
+  SELECT * FROM test1.t1;
+
+  GRANT EXECUTE ON PROCEDURE test1.p1_len22 TO user_name_len_22_01234@localhost;
+  GRANT EXECUTE ON PROCEDURE test1.p1_len22 TO user_name_len_16@localhost;
+
+  --echo # Now user_name_len_16 should be able to SELECT FROM t1 by calling
+  --echo # p1_len22 procedure
+
+  connection con_user_16;
+  CALL test1.p1_len22();
+
+  --error ER_WRONG_STRING_LENGTH
+  CREATE DEFINER=user_name_len_33_0123456789012345@localhost PROCEDURE test1.p1_len33()
+  SELECT * FROM test1.t1;
+
+  connection default;
+
+  --echo # REVOKE the SELECT permission from user_name_len_22_01234
+  REVOKE SELECT ON test1.t1 FROM user_name_len_22_01234@localhost;
+
+  --echo # and GRANT it to user_name_len_32_012345678901234
+  GRANT SELECT ON test1.t1 TO user_name_len_32_012345678901234@localhost;
+
+  CREATE DEFINER = user_name_len_32_012345678901234@localhost FUNCTION test1.f1_len32() RETURNS INT
+  RETURN (SELECT COUNT(*) FROM test1.t1);
+
+  GRANT EXECUTE ON FUNCTION test1.f1_len32 TO user_name_len_32_012345678901234@localhost;
+  GRANT EXECUTE ON FUNCTION test1.f1_len32 TO user_name_len_22_01234@localhost;
+
+  GRANT SELECT ON test1.t1 TO user_name_len_22_01234@localhost;
+  --echo # Now user_name_len_22_01234 should be able to SELECT COUNT(*) FROM t1
+  --echo # by calling f1_len32 function
+  connection con_user_22;
+  SELECT test1.f1_len32();
+
+  connection default;
+
+  --echo # Recreate test1.p1_len22, this time with Security Context set to INVOKER
+  DROP PROCEDURE test1.p1_len22;
+  --echo # Make sure user_name_len_22_01234 has SELECT privileges on test.t1
+  connection con_user_22;
+  SELECT * FROM test1.t1;
+  connection default;
+
+  CREATE DEFINER=user_name_len_22_01234@localhost PROCEDURE test1.p1_len22()
+  SQL SECURITY INVOKER
+  SELECT * FROM test1.t1;
+
+  GRANT EXECUTE ON PROCEDURE test1.p1_len22 TO user_name_len_22_01234@localhost;
+  GRANT EXECUTE ON PROCEDURE test1.p1_len22 TO user_name_len_16@localhost;
+
+  --echo # Now user_name_len_16 should *NOT* be able to SELECT COUNT(*) FROM t1
+  --echo # by calling f1_len22 function as this function is using the INVOKER
+  --echo # security context
+
+  connection con_user_16;
+  --error ER_TABLEACCESS_DENIED_ERROR
+  CALL test1.p1_len22();
+
+  connection default;
+  --error ER_WRONG_STRING_LENGTH
+  CREATE DEFINER=user_name_len_33_0123456789012345@localhost FUNCTION test1.f1_len33() RETURNS INT
+  RETURN (SELECT COUNT(*) FROM test1.t1);
+
+  # Cleanup
+  disconnect con_user_16;
+  disconnect con_user_22;
+
+  DROP DATABASE test1;
+
+  DROP USER user_name_len_16@localhost;
+  DROP USER user_name_len_22_01234@localhost;
+  DROP USER user_name_len_32_012345678901234@localhost;
+

@@ -16,9 +16,10 @@
 
 package com.alibaba.polardbx.server.parser;
 
-import com.alibaba.polardbx.server.util.ParseUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.optimizer.parse.util.CharTypes;
+import com.alibaba.polardbx.server.util.ParseUtil;
 import org.apache.commons.lang.StringUtils;
 
 /**
@@ -39,6 +40,8 @@ public final class ServerParseSelect {
     public static final int LITERAL_NUMBER = 11;
     public static final int TSO_TIMESTAMP = 12;
     public static final int EXTRACT_TRACE_ID = 13;
+    public static final int SEQ_NEXTVAL_BENCHMARK = 14;
+    public static final int SEQ_SKIP_BENCHMARK = 15;
 
     private static final char[] _VERSION_COMMENT = "VERSION_COMMENT".toCharArray();
     private static final char[] _IDENTITY = "IDENTITY".toCharArray();
@@ -48,6 +51,8 @@ public final class ServerParseSelect {
     private static final char[] _CURRENT_TRANS_ID = "CURRENT_TRANS_ID".toCharArray();
     private static final char[] _CURRENT_TRANS_POLICY = "CURRENT_TRANS_POLICY".toCharArray();
     private static final char[] _EXTRACT_TRACE_ID = "EXTRACT_TRACE_ID".toCharArray();
+    private static final char[] _SEQ_NEXTVAL_BENCHMARK = "SEQ_NEXTVAL_BENCHMARK".toCharArray();
+    private static final char[] _SEQ_SKIP_BENCHMARK = "SEQ_SKIP_BENCHMARK".toCharArray();
 
     public static int parse(String stmt, int offset, Object[] exData) {
         return parse(ByteString.from(stmt), offset, exData);
@@ -97,6 +102,9 @@ public final class ServerParseSelect {
             case 'e':
             case 'E':
                 return extractTraceIdCheck(stmt, i, exData);
+            case 's':
+            case 'S':
+                return parseSeqBenchmark(stmt, i, exData);
             default:
                 return OTHER;
             }
@@ -637,5 +645,39 @@ public final class ServerParseSelect {
             return EXTRACT_TRACE_ID;
         }
         return OTHER;
+    }
+
+    private static int parseSeqBenchmark(ByteString stmt, int offset, Object[] exData) {
+        boolean isNextval;
+        int length;
+
+        if (ParseUtil.compare(stmt, offset, _SEQ_NEXTVAL_BENCHMARK)) {
+            length = offset + _SEQ_NEXTVAL_BENCHMARK.length;
+            isNextval = true;
+        } else if (ParseUtil.compare(stmt, offset, _SEQ_SKIP_BENCHMARK)) {
+            length = offset + _SEQ_SKIP_BENCHMARK.length;
+            isNextval = false;
+        } else {
+            return OTHER;
+        }
+
+        if (length == stmt.length() || stmt.charAt(length) != '(' || stmt.charAt(stmt.length() - 1) != ')') {
+            return OTHER;
+        }
+
+        String paramList = stmt.substring(length + 1, stmt.length() - 1);
+        if (TStringUtil.isBlank(paramList)) {
+            return OTHER;
+        }
+
+        String[] params = paramList.split(",");
+        if (params.length < 2) {
+            return OTHER;
+        }
+
+        exData[0] = TStringUtil.trim(params[0]);
+        exData[1] = Integer.parseInt(TStringUtil.trim(params[1]));
+
+        return isNextval ? SEQ_NEXTVAL_BENCHMARK : SEQ_SKIP_BENCHMARK;
     }
 }

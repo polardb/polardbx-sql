@@ -31,17 +31,27 @@ import com.alibaba.polardbx.rpc.pool.XConnection;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 public class MetaDbUtil {
 
     public static Connection getConnection() {
-        return MetaDbDataSource.getInstance().getConnection();
+        if (MetaDbDataSource.getInstance() == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "acquire meta db error");
+        }
+        Connection c = MetaDbDataSource.getInstance().getConnection();
+        if (c == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "acquire meta db conn error");
+        }
+        return c;
     }
 
     public static void closeConnection(Connection conn) {
@@ -53,9 +63,16 @@ public class MetaDbUtil {
         }
     }
 
-    public static void executeDDL(String ddl, Connection connection) throws SQLException {
+    public static int executeDDL(String ddl, Connection connection) throws SQLException {
         validate(ddl);
-        execute(ddl, null, connection);
+        try (Statement statement = connection.createStatement()) {
+            return statement.executeUpdate(ddl);
+        }
+    }
+
+    public static List<Map<String, Object>> queryCount(String sql, Connection connection) throws SQLException {
+        validate(sql);
+        return executeCount(sql, null, connection);
     }
 
     public static <T extends SystemTableRecord>
@@ -141,6 +158,29 @@ public class MetaDbUtil {
             }
             return ps.executeUpdate();
         }
+    }
+
+    public static List<Map<String, Object>> executeCount(String sql, Map<Integer, ParameterContext> params,
+                                                         Connection connection)
+        throws SQLException {
+        List<Map<String, Object>> results = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            if (params != null && params.size() > 0) {
+                for (ParameterContext param : params.values()) {
+                    param.getParameterMethod().setParameter(ps, param.getArgs());
+                }
+            }
+            ResultSet rs = ps.executeQuery();
+            ResultSetMetaData meta = rs.getMetaData();
+            while (rs.next()) {
+                Map<String, Object> row = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+                for (int i = 1; i <= meta.getColumnCount(); i++) {
+                    row.put(meta.getColumnName(i), rs.getObject(i));
+                }
+                results.add(row);
+            }
+        }
+        return results;
     }
 
     public static int[] executeBatch(String sql, List<Map<Integer, ParameterContext>> paramsBatch,
@@ -256,7 +296,7 @@ public class MetaDbUtil {
             } else {
                 MetaDbLogUtil.META_DB_LOG.error(errMsg, ex);
             }
-            if(conn instanceof XConnection){
+            if (conn instanceof XConnection) {
                 try {
                     ((XConnection) conn).setLastException(ex);
                 } catch (SQLException throwables) {

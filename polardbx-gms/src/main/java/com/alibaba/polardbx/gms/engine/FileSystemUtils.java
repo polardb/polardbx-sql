@@ -52,6 +52,17 @@ public class FileSystemUtils {
         }
     }
 
+    public static void writeFile(File localFile, String ossKey, ProgressListener progressListener, Engine engine)
+        throws IOException {
+        long stamp = FileSystemManager.readLockWithTimeOut(engine);
+        try {
+            FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
+            fileSystemGroup.writeFile(localFile, ossKey);
+        } finally {
+            FileSystemManager.unlockRead(engine, stamp);
+        }
+    }
+
     public static boolean deleteIfExistsFile(String ossKey, Engine engine) {
         long stamp = FileSystemManager.readLockWithTimeOut(engine);
         try {

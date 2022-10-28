@@ -27,7 +27,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  */
 public class ReplaceTableNameWithQuestionMarkVisitor extends ReplaceTableNameWithSomethingVisitor {
     public ReplaceTableNameWithQuestionMarkVisitor(String defaultSchemaName, ExecutionContext ec) {
-        super(defaultSchemaName, ec);
+        super(ec.getCorrelateFieldInViewMap(), defaultSchemaName, ec);
     }
 
     public ReplaceTableNameWithQuestionMarkVisitor(String defaultSchemaName, boolean handleIndexHint,

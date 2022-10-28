@@ -108,8 +108,13 @@ public class MysqlDateTime implements Serializable {
     public long toEpochMillsForTime() {
         Calendar calendar = MySQLTimeTypeUtil.getCalendar();
         calendar.setTimeZone(InternalTimeZone.DEFAULT_TIME_ZONE);
-        calendar.set(1970, 0, 1, (int) hour, (int) minute, (int) second);
-        calendar.set(Calendar.MILLISECOND, (int) (secondPart / 1000_000L));
+        if (!isNeg) {
+            calendar.set(1970, Calendar.JANUARY, 1, (int) hour, (int) minute, (int) second);
+            calendar.set(Calendar.MILLISECOND, (int) (secondPart / 1000_000L));
+        } else {
+            calendar.set(1970, Calendar.JANUARY, 1, -((int) hour), -((int) minute), -((int) second));
+            calendar.set(Calendar.MILLISECOND, -(int) (secondPart / 1000_000L));
+        }
         long millis = calendar.getTimeInMillis();
         return millis;
     }

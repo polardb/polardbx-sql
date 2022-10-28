@@ -1,4 +1,20 @@
 /*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,6 +30,7 @@
 
 package com.alibaba.polardbx.common.oss.filesystem.cache;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -26,6 +43,7 @@ import com.google.common.collect.Range;
 import com.google.common.collect.RangeMap;
 import com.google.common.collect.TreeRangeMap;
 import io.airlift.slice.DataSize;
+import io.airlift.slice.Duration;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.fs.Path;
 import org.eclipse.jetty.util.ConcurrentHashSet;
@@ -43,6 +61,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -62,6 +81,7 @@ import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
+import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 public class FileMergeCacheManager implements CacheManager {
@@ -81,7 +101,7 @@ public class FileMergeCacheManager implements CacheManager {
     private final Map<Path, CacheRange> persistedRanges = new ConcurrentHashMap<>();
     // a local cache only to control the lifecycle of persisted
     // Path and its corresponding cacheScope identifier
-    private final Cache<Path, Long> cache;
+    private Cache<Path, Long> cache;
 
     private final Cache<FileReadRequest, byte[]> hotCache;
 
@@ -128,7 +148,7 @@ public class FileMergeCacheManager implements CacheManager {
 
         this.stats = requireNonNull(stats, "stats is null");
         this.baseDirectory = new Path(cacheConfig.getBaseDirectory());
-        checkArgument(fileMergeCacheConfig.getMaxInMemoryCacheSize().toBytes() >= 0, "maxInflightBytes is negative");
+        checkArgument(fileMergeCacheConfig.getMaxInMemoryCacheSize().toBytes() >= 0, "max In-flight Bytes is negative");
         this.maxInflightBytes = fileMergeCacheConfig.getMaxInMemoryCacheSize().toBytes();
 
         File target = new File(baseDirectory.toUri());
@@ -281,6 +301,29 @@ public class FileMergeCacheManager implements CacheManager {
     public void clear() {
         this.cache.invalidateAll();
         this.hotCache.invalidateAll();
+    }
+
+
+    public void rebuildCache(Map<String, Long> configs) {
+        // clear old cache.
+        clear();
+
+        Duration cacheTTL = Optional.ofNullable(configs.get(ConnectionProperties.OSS_FS_CACHE_TTL))
+            .map(d -> new Duration(d, DAYS))
+            .orElse(fileMergeCacheConfig.getCacheTtl());
+
+        Long maxEntries = Optional.ofNullable(configs.get(ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES))
+            .orElse((long) fileMergeCacheConfig.getMaxCachedEntries());
+
+        this.fileMergeCacheConfig.setCacheTtl(cacheTTL);
+        this.fileMergeCacheConfig.setMaxCachedEntries(maxEntries.intValue());
+
+        this.cache = CacheBuilder.newBuilder()
+            .maximumSize(maxEntries)
+            .expireAfterAccess(cacheTTL.toMillis(), MILLISECONDS)
+            .removalListener(new CacheRemovalListener())
+            .recordStats()
+            .build();
     }
 
     private boolean read(FileReadRequest request, byte[] buffer, int offset) {

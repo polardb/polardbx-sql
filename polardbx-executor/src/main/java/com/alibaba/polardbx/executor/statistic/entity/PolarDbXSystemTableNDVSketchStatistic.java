@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -30,8 +31,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.HLL_REGBYTES;
+import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.bitToInt;
 
 /**
  * @author fangwu
@@ -69,11 +75,11 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
         + "TABLE_NAME = ? ";
 
     private static final String LOAD_ALL_SQL =
-        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_BYTES`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM `"
-            + TABLE_NAME + "` WHERE SCHEMA_NAME = ? ";
+        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM "
+            + TABLE_NAME;
 
     private static final String LOAD_BY_TABLE_NAME_SQL =
-        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_BYTES`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM `"
+        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM `"
             + TABLE_NAME + "` WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?";
 
     private static final String LOAD_BY_TABLE_NAME_AND_COLUMN_NAME_SQL =
@@ -185,15 +191,14 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
     }
 
     @Override
-    public SketchRow[] loadAll(String schemaName) {
+    public SketchRow[] loadAll() {
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
         List<SketchRow> rows = Lists.newLinkedList();
         try {
-            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
+            conn = MetaDbUtil.getConnection();
             ps = conn.prepareStatement(LOAD_ALL_SQL);
-            ps.setString(1, schemaName);
             rs = ps.executeQuery();
 
             while (rs.next()) {
@@ -326,11 +331,11 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
     }
 
     @Override
-    public Map<String, byte[]> loadByTableNameAndColumnName(String schemaName, String tableName, String columnName) {
+    public void loadByTableNameAndColumnName(String schemaName, String tableName, String columnName,
+                                             Map<String, byte[]> shardParts, int[] registers) {
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
-        Map<String, byte[]> rowMap = Maps.newHashMap();
         try {
             conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             ps = conn.prepareStatement(LOAD_BY_TABLE_NAME_AND_COLUMN_NAME_SQL);
@@ -341,9 +346,27 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
 
             while (rs.next()) {
                 try {
-                    byte[] oneRow = rs.getBytes("SKETCH_BYTES");
+                    byte[] oneRow = null;
                     String shardPart = rs.getString("SHARD_PART");
-                    rowMap.put(shardPart, oneRow);
+                    if (shardParts.containsKey(shardPart)) {
+                        oneRow = shardParts.get(shardPart);
+                    } else {
+                        oneRow = rs.getBytes("SKETCH_BYTES");
+                    }
+                    if (oneRow == null || oneRow.length == 0) {
+                        throw new IllegalArgumentException("sketch bytes not ready yet");
+                    }
+
+                    BitSet bitSet = BitSet.valueOf(oneRow);
+                    for (int j = 0; j * 6 < HLL_REGBYTES * 8; j++) {// cal the reciprocal
+                        int v = bitToInt(bitSet, j * 6);
+                        if (registers[j] < v) {
+                            registers[j] = v;
+                        }
+                    }
+
+                } catch (IllegalArgumentException e) {
+                    throw e;
                 } catch (Exception e) {
                     logger.error("parse row of " + TABLE_NAME + " error", e);
                 }
@@ -355,7 +378,6 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
         }
-        return rowMap;
     }
 }
 

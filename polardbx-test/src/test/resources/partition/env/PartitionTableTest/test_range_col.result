@@ -12,7 +12,7 @@ Table,Create Table
 tbl,CREATE TABLE `tbl` (
 	`a` int(11) NOT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`a`)
 (PARTITION p0 VALUES LESS THAN (100) ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (200) ENGINE = InnoDB,
@@ -68,7 +68,7 @@ tbl,CREATE TABLE `tbl` (
 	`b` datetime NOT NULL,
 	`c` varchar(128) NOT NULL,
 	KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
 (PARTITION p0 VALUES LESS THAN (100,'2012-12-12 11:11:11','abc') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (200,'2012-12-11 11:11:11','abc') ENGINE = InnoDB,
@@ -87,7 +87,7 @@ FROM tbl
 WHERE a = 99
 ORDER BY a;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a`, `tbl`.`b`, `tbl`.`c` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a`, `tbl`.`b`, `tbl`.`c` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="99")
 EXPLAIN SELECT *
 FROM tbl
 WHERE a = 200

@@ -25,7 +25,9 @@ import org.apache.calcite.plan.hep.HepPlanner;
 import org.apache.calcite.plan.hep.HepProgramBuilder;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.rules.FilterAggregateTransposeRule;
 import org.apache.calcite.rel.rules.FilterProjectTransposeRule;
 import org.apache.calcite.rel.rules.FilterWindowTransposeRule;
@@ -33,6 +35,8 @@ import org.apache.calcite.rel.rules.ProjectFilterTransposeRule;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.rules.ProjectSortTransposeRule;
 import org.apache.calcite.rel.rules.ProjectWindowTransposeRule;
+import org.apache.calcite.util.Util;
+import org.apache.commons.lang.StringUtils;
 
 /**
  * @version 1.0
@@ -86,4 +90,57 @@ public class RelXPlanOptimizer {
         }
     }
 
+    public static class IndexFinder extends RelVisitor {
+        String index;
+        String tableName;
+        double rowCount;
+
+        boolean usingWhere;
+
+        public IndexFinder() {
+            this.index = null;
+            this.tableName = null;
+            this.rowCount = -1D;
+            this.usingWhere = false;
+        }
+
+        public String getIndex() {
+            return index;
+        }
+
+        public String getTableName() {
+            return tableName;
+        }
+
+        public boolean found() {
+            return !StringUtils.isEmpty(index);
+        }
+
+        public double getRowCount() {
+            return (rowCount < 1) ? 1D : rowCount;
+        }
+
+        public boolean isUsingWhere() {
+            return usingWhere;
+        }
+
+        @Override
+        public void visit(RelNode node, int ordinal, RelNode parent) {
+            if (node instanceof XPlanTableScan) {
+                XPlanTableScan scan = (XPlanTableScan) node;
+                index = scan.getGetIndex();
+                if (StringUtils.isEmpty(index)) {
+                    index = "PRIMARY";
+                }
+                tableName = Util.last(scan.getTable().getQualifiedName());
+                rowCount =
+                    node.getCluster().getMetadataQuery().getRowCount(((XPlanTableScan) node).getNodeForMetaQuery());
+                return;
+            }
+            if (node instanceof LogicalFilter) {
+                usingWhere = true;
+            }
+            node.childrenAccept(this);
+        }
+    }
 }

@@ -62,26 +62,27 @@ public class RelDrdsWriter implements RelWriter {
     private List<Object>                         extraInfos    = null;
     private Object                            executionContext = null;
 
-
+    private CalcitePlanOptimizerTrace calcitePlanOptimizerTrace = null;
     // ~ Constructors
     // -----------------------------------------------------------
 
-    public RelDrdsWriter(PrintWriter pw, Map<Integer, ParameterContext> params){
-        this(pw, CalcitePlanOptimizerTrace.getSqlExplainLevel(), false, params, null, null);
-    }
-
-    public RelDrdsWriter(PrintWriter pw, Map<Integer, ParameterContext> params, Function<RexNode, Object> funcEvaluator, Object executionContext){
-        this(pw, CalcitePlanOptimizerTrace.getSqlExplainLevel(), false, params, funcEvaluator, executionContext);
+    public RelDrdsWriter(PrintWriter pw, SqlExplainLevel detailLevel, Map<Integer, ParameterContext> params, Function<RexNode, Object> funcEvaluator, Object executionContext){
+        this(pw, detailLevel, false, params, funcEvaluator, executionContext);
     }
 
     public RelDrdsWriter(PrintWriter pw, SqlExplainLevel detailLevel, boolean withIdPrefix,
-                         Map<Integer, ParameterContext> params, Function<RexNode, Object> funcEvaluator, Object executionContext ){
+                         Map<Integer, ParameterContext> params, Function<RexNode, Object> funcEvaluator, Object executionContext){
         this(pw, detailLevel, withIdPrefix, params, funcEvaluator, null, executionContext);
     }
 
     public RelDrdsWriter(PrintWriter pw, SqlExplainLevel detailLevel, boolean withIdPrefix,
                          Map<Integer, ParameterContext> params, Function<RexNode, Object> funcEvaluator, Function<RelNode, String> extraInfoBuilder,
-                         Object executionContext ){
+                         Object executionContext){
+        this(pw, detailLevel, withIdPrefix, params, funcEvaluator, extraInfoBuilder, executionContext, null);
+    }
+    public RelDrdsWriter(PrintWriter pw, SqlExplainLevel detailLevel, boolean withIdPrefix,
+                         Map<Integer, ParameterContext> params, Function<RexNode, Object> funcEvaluator, Function<RelNode, String> extraInfoBuilder,
+                         Object executionContext, CalcitePlanOptimizerTrace calcitePlanOptimizerTrace){
         this.pw = pw == null ? this.pw : pw;
         this.detailLevel = detailLevel;
         this.withIdPrefix = withIdPrefix;
@@ -92,14 +93,22 @@ public class RelDrdsWriter implements RelWriter {
             extraInfos = new ArrayList<>();
         }
         this.executionContext = executionContext;
+        this.calcitePlanOptimizerTrace = calcitePlanOptimizerTrace;
     }
 
-    public RelDrdsWriter(Map<Integer, ParameterContext> params){
-        this(null, params);
+    public RelDrdsWriter(SqlExplainLevel detailLevel){
+        this(null, detailLevel, false, null, null, null);
     }
 
+    public RelDrdsWriter(SqlExplainLevel detailLevel, Map<Integer, ParameterContext> params){
+        this(null, detailLevel, false, params, null, null);
+    }
     public RelDrdsWriter(){
-        this(null, null);
+        this(null, SqlExplainLevel.EXPPLAN_ATTRIBUTES, false, null, null, null);
+    }
+
+    public void setCalcitePlanOptimizerTrace(CalcitePlanOptimizerTrace calcitePlanOptimizerTrace) {
+        this.calcitePlanOptimizerTrace = calcitePlanOptimizerTrace;
     }
 
     // ~ Methods
@@ -173,7 +182,8 @@ public class RelDrdsWriter implements RelWriter {
         }
 
         // Runtime statistics displayed in EXPLAIN ANALYZE
-        Map<RelNode, RuntimeStatisticsSketch> statistics = CalcitePlanOptimizerTrace.getOptimizerTracer().get().getRuntimeStatistics();
+        Map<RelNode, RuntimeStatisticsSketch> statistics = calcitePlanOptimizerTrace == null ? null :
+            calcitePlanOptimizerTrace.getOptimizerTracer().getRuntimeStatistics();
         if (statistics != null) {
             RuntimeStatisticsSketch sketch = statistics.get(rel);
             if (sketch != null) {

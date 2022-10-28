@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.dql.sharding.bloomfilter;
 
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
+import com.alibaba.polardbx.qatest.BaseTestCase;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -30,6 +31,9 @@ public class PolarxUDFInfoTest {
 
     @Test
     public void testPolarxUDFInfo() {
+        if (BaseTestCase.isGalaxy()) {
+            return;
+        }
         Optional<StorageInfoManager.PolarxUDFInfo> info = StorageInfoManager.PolarxUDFInfo.build(
             ConnectionManager.getInstance().getMysqlDataSource());
         assertTrue(info.get().supportsBloomFilter());

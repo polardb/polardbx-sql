@@ -23,6 +23,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -56,6 +57,15 @@ public class MemorySequenceManager extends AbstractLifecycle implements ISequenc
     public Long nextValue(String schemaName, String seqName, int batchSize) {
         try {
             return sequence.get(seqName).getAndAdd(batchSize) + batchSize - 1;
+        } catch (ExecutionException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    @Override
+    public Long currValue(String schemaName, String seqName) {
+        try {
+            return sequence.get(seqName).get();
         } catch (ExecutionException e) {
             throw GeneralUtil.nestedException(e);
         }
@@ -98,11 +108,6 @@ public class MemorySequenceManager extends AbstractLifecycle implements ISequenc
     }
 
     @Override
-    public void validateDependence(String schemaName) {
-        return;
-    }
-
-    @Override
     public Type checkIfExists(String schemaName, String seqName) {
         return Type.NA;
     }
@@ -128,11 +133,6 @@ public class MemorySequenceManager extends AbstractLifecycle implements ISequenc
     }
 
     @Override
-    public boolean isCustomUnitGroupSeqSupported(String schemaName) {
-        return false;
-    }
-
-    @Override
     public int[] getCustomUnitArgsForGroupSeq(String schemaName) {
         return null;
     }
@@ -140,5 +140,13 @@ public class MemorySequenceManager extends AbstractLifecycle implements ISequenc
     @Override
     public boolean areAllSequencesSameType(String schemaName, Type seqType) {
         return false;
+    }
+
+    @Override
+    public void reloadConnProps(String schemaName, Map<String, Object> connProps) {
+    }
+
+    @Override
+    public void resetNewSeqResources(String schemaName) {
     }
 }

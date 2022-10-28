@@ -21,7 +21,10 @@ import com.google.common.collect.ImmutableList;
 import org.junit.runner.Description;
 import org.junit.runner.Runner;
 import org.junit.runner.manipulation.Filter;
+import org.junit.runner.manipulation.Filterable;
 import org.junit.runner.manipulation.NoTestsRemainException;
+import org.junit.runner.manipulation.Sortable;
+import org.junit.runner.manipulation.Sorter;
 import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.Parameterized;
@@ -41,11 +44,14 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * A common test case runner in polardbx-test module.
+ * A common test case runner in qa-test module.
+ * 1. Unify the parameterized and no-parameterized test case runner.
+ * 2. Enable customizing test annotations.
+ * 3. Enable qa-test properties to interfere the behavior of test case runner.
  */
-public class CommonCaseRunner extends Runner {
+public class CommonCaseRunner extends Parameterized implements Filterable, Sortable {
     /**
-     * Test case filter on file-storage.
+     * Test case ignored on file-storage.
      */
     public static class AnnotationBasedFilter<T extends Annotation> extends Filter {
         /**
@@ -62,6 +68,11 @@ public class CommonCaseRunner extends Runner {
 
         @Override
         public boolean shouldRun(Description description) {
+            // run anyway if not in file-storage mode.
+            if (!PropertiesUtil.useFileStorage()) {
+                return true;
+            }
+
             // check annotation in test class
             if (typeAnnotation != null && PropertiesUtil.useFileStorage()) {
                 return false;
@@ -90,6 +101,31 @@ public class CommonCaseRunner extends Runner {
         }
     }
 
+    /**
+     * In file-storage mode, run test case only if matching the specific case list.
+     */
+    public static class FileStorageCaseFilter extends Filter {
+        private Class<?> klass;
+
+        public FileStorageCaseFilter(Class<?> klass) {
+            this.klass = klass;
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            if (PropertiesUtil.useFileStorage()
+                && !ClassHelper.getFileStorageTestCases().contains(this.klass)) {
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        public String describe() {
+            return "In file-storage mode, run test case only if matching the specific case list.";
+        }
+    }
+
     private final TestClass testClass;
     private final Runner internalRunner;
 
@@ -97,24 +133,53 @@ public class CommonCaseRunner extends Runner {
      * Only called reflectively. Do not use programmatically.
      */
     public CommonCaseRunner(Class<?> klass) throws Throwable {
+        super(MockParameterizedTest.class);
         this.testClass = new TestClass(klass);
 
-        if (hasParametersMethod()) {
-            this.internalRunner = new ParameterizedRunner(klass);
-        } else {
-            this.internalRunner = new BlockJUnit4ClassRunner(klass);
-        }
-
-        if (PropertiesUtil.useFileStorage()) {
-            // use file-storage case filter if configured.
-            FileStoreIgnore typeAnnotation = this.testClass.getAnnotation(FileStoreIgnore.class);
-            Filter f = new AnnotationBasedFilter(typeAnnotation, FileStoreIgnore.class);
-            try {
-                f.apply(this.internalRunner);
-            } catch (NoTestsRemainException ex) {
-                // ignore the case.
+        // Automatically choose the proper runner according to parameterized method existence.
+        Runner runner;
+        try {
+            if (hasParametersMethod()) {
+                runner = new ParameterizedRunnerV2(klass);
+            } else {
+                runner = new BlockJUnit4ClassRunner(klass);
+            }
+        } catch (InitializationError e) {
+            if (e.getCauses().stream().anyMatch(t -> "No runnable methods".equals(t.getMessage()))) {
+                // for test base class that should not run test.
+                runner = new IgnoredClassRunner(klass);
+            } else {
+                throw e;
             }
         }
+        this.internalRunner = runner;
+
+        if (PropertiesUtil.useFileStorage()) {
+            // check if designated.
+            Filter fileStorageCaseFilter = new FileStorageCaseFilter(klass);
+
+            // check if ignored.
+            // use file-storage case filter if configured.
+            FileStoreIgnore typeAnnotation = this.testClass.getAnnotation(FileStoreIgnore.class);
+            Filter annotationBasedFilter = new AnnotationBasedFilter(typeAnnotation, FileStoreIgnore.class);
+
+            try {
+                fileStorageCaseFilter.apply(this.internalRunner);
+                annotationBasedFilter.apply(this.internalRunner);
+            } catch (NoTestsRemainException ex) {
+                // ignore the whole case.
+            }
+        }
+    }
+
+    @Override
+    public void filter(Filter filter) throws NoTestsRemainException {
+        ((Filterable) this.internalRunner).filter(filter);
+    }
+
+    @Override
+    public void sort(Sorter sorter) {
+        ((Sortable) this.internalRunner).sort(sorter);
     }
 
     @Override
@@ -147,15 +212,15 @@ public class CommonCaseRunner extends Runner {
     /**
      * Copy the parameterized logic code from org.junit.runners.Parameterized
      */
-    private static class ParameterizedRunner extends Suite {
+    private static class ParameterizedRunnerV2 extends Suite {
         private static final ParametersRunnerFactory DEFAULT_FACTORY =
             new BlockJUnit4ClassRunnerWithParametersFactory();
 
         private static final List<Runner> NO_RUNNERS = Collections.<Runner>emptyList();
 
-        private final List<Runner> runners;
+        private List<Runner> runners;
 
-        public ParameterizedRunner(Class<?> klass) throws Throwable {
+        public ParameterizedRunnerV2(Class<?> klass) throws Throwable {
             super(klass, NO_RUNNERS);
             ParametersRunnerFactory runnerFactory = getParametersRunnerFactory(
                 klass);
@@ -195,9 +260,11 @@ public class CommonCaseRunner extends Runner {
         @SuppressWarnings("unchecked")
         private Iterable<Object> allParameters() throws Throwable {
             if (PropertiesUtil.useFileStorage()
-                && getTestClass().getAnnotation(FileStoreIgnore.class) != null) {
+                && (getTestClass().getAnnotation(FileStoreIgnore.class) != null
+                || !ClassHelper.getFileStorageTestCases().contains(getTestClass().getJavaClass()))) {
                 return ImmutableList.of();
             }
+
             Object parameters = getParametersMethod().invokeExplosively(null);
             if (parameters instanceof Iterable) {
                 return (Iterable<Object>) parameters;
@@ -268,6 +335,45 @@ public class CommonCaseRunner extends Runner {
             String name = MessageFormat.format(finalPattern, parameters);
             return new TestWithParameters("[" + name + "]", testClass,
                 Arrays.asList(parameters));
+        }
+    }
+
+    /**
+     * Ignore cases.
+     */
+    public class IgnoredClassRunner extends Runner implements Filterable, Sortable {
+        private final Class<?> fTestClass;
+
+        public IgnoredClassRunner(Class<?> testClass) {
+            this.fTestClass = testClass;
+        }
+
+        public void run(RunNotifier notifier) {
+            notifier.fireTestIgnored(this.getDescription());
+        }
+
+        public Description getDescription() {
+            return Description.createSuiteDescription(this.fTestClass);
+        }
+
+        @Override
+        public void filter(Filter filter) throws NoTestsRemainException {
+            // ignore
+        }
+
+        @Override
+        public void sort(Sorter sorter) {
+            // ignore
+        }
+    }
+
+    /**
+     * For Parameterized (super class) constructor
+     */
+    public static class MockParameterizedTest {
+        @Parameterized.Parameters
+        public static List mockPrepare() {
+            return ImmutableList.of();
         }
     }
 }

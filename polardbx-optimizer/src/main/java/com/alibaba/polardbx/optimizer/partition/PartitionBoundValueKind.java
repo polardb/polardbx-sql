@@ -26,7 +26,10 @@ public enum PartitionBoundValueKind {
     /* a specific (bounded) value */
     DATUM_NORMAL_VALUE(0),
     /* greater than any other value */
-    DATUM_MAX_VALUE(1);
+    DATUM_MAX_VALUE(1),
+
+    /* default value for catch-all partition, not participate in comparison*/
+    DATUM_DEFAULT_VALUE(2);
 
     protected int kind = 0;
 

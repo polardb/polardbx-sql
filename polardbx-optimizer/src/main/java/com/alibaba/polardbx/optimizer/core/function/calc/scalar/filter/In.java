@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -61,6 +62,19 @@ public class In extends AbstractCollationScalarFunction {
             for (Object eachRight : (List) right) {
                 // 是否出现(id,name) in ((1,'a'),(2,'b'))
                 if (left instanceof Row.RowValue) {
+                    List<Object> rightArgs = null;
+                    if (eachRight instanceof Row.RowValue) {
+                        rightArgs = ((Row.RowValue) eachRight).getValues();
+                    } else {
+                        rightArgs = (List<Object>) eachRight;
+                    }
+
+                    List<Object> leftArgs = ((Row.RowValue) left).getValues();
+
+                    if (leftArgs.size() != rightArgs.size()) {
+                        throw new NotSupportException("impossible");
+                    }
+
                     boolean notMatch = false;
                     if (operandTypes.get(0).compare(left, eachRight) != 0) {
                         // 不匹配

@@ -110,10 +110,6 @@ public class SelectLastTxcId {
         if (conn.getAutoCommit()) {
             throw new SQLException("Set auto-commit mode to off");
         }
-        boolean supportXA = conn.getDs().getConfigHolder().getExecutorContext().getStorageInfoManager().supportXA();
-        if (!supportXA) {
-            throw new SQLException("No suitable transaction policy found");
-        }
         // Return transaction trace-id.
         Long txid = c.getTxId();
         return Long.toHexString(txid);

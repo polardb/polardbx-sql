@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import org.apache.calcite.rel.ddl.AlterTableGroupSetPartitionsLocality;
 
 import java.util.List;
 import java.util.Set;
@@ -54,21 +56,20 @@ public abstract class StatisticCollector implements Runnable {
     /**
      * analyze a table's columns
      */
-    public abstract boolean analyzeColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
-                                           ParamManager userParamManager);
+    public abstract boolean analyzeColumns(String logicalTableName, List<ColumnMeta> columnMetaList);
 
     /**
      * just sample
-     * @param logicalTableName
-     * @param columnMetaList
-     * @param userParamManager
-     * @return
      */
-    public abstract boolean sampleColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
-                                           ParamManager userParamManager);
+    public abstract boolean sampleColumns(String logicalTableName, List<ColumnMeta> columnMetaList);
 
-    public abstract boolean forceAnalyzeColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
-                                                ParamManager userParamManager);
+    public abstract List<List<Object>> mockSampleColumns(String logicalTableName, List<ColumnMeta> columnMetaList,
+                                              ParamManager userParamManager);
+
+    public abstract List<List<Object>> samplePartitionColumns(String logicalTableName, String partitionName, List<ColumnMeta> columnMetaList, PartitionLocation partitionLocation,
+                                              ParamManager userParamManager);
+
+    public abstract boolean forceAnalyzeColumns(String logicalTableName, List<ColumnMeta> columnMetaList);
 
     /**
      * get all the tables needed to be collected

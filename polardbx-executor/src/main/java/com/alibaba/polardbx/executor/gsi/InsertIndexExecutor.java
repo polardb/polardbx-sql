@@ -19,9 +19,11 @@ package com.alibaba.polardbx.executor.gsi;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -34,7 +36,9 @@ import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.BuildInsertValuesVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableInsertSharder;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -42,7 +46,6 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
-import org.apache.calcite.util.Pair;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
@@ -59,8 +62,10 @@ import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
+import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -191,7 +196,7 @@ public class InsertIndexExecutor extends IndexExecutor {
                                       ExecutionContext executionContext,
                                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                       boolean mayInsertDuplicate) {
-        return insertIntoTable(logicalInsert, sqlInsert, tableMeta, "", schemaName, executionContext, executeFunc,
+        return insertIntoTable(logicalInsert, sqlInsert, tableMeta, "", "", schemaName, executionContext, executeFunc,
             mayInsertDuplicate, true);
     }
 
@@ -201,8 +206,13 @@ public class InsertIndexExecutor extends IndexExecutor {
                                                    ExecutionContext executionContext,
                                                    BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                                    boolean mayInsertDuplicate,
-                                                   PartitionInfo newPartition) {
+                                                   PartitionInfo newPartition,
+                                                   String targetGroup,
+                                                   String phyTableName,
+                                                   boolean mirrorCopy) {
         Map<String, Map<String, List<Integer>>> shardResults;
+        boolean forceReshard = executionContext.getParamManager().getBoolean(ConnectionParams.FORCE_RESHARD);
+        boolean skipShard = mirrorCopy && StringUtils.isNotEmpty(targetGroup) && !forceReshard;
         if (tableMeta.getPartitionInfo().isBroadcastTable()) {
             // { targetDb : { targetTb : [valueIndex1, valueIndex2] } }
             shardResults = new HashMap<>();
@@ -221,35 +231,67 @@ public class InsertIndexExecutor extends IndexExecutor {
                 IntStream stream = IntStream.range(0, rowCount);
                 shardResults.computeIfAbsent(dbAndTbPair.getKey(), o -> new HashMap<>())
                     .computeIfAbsent(dbAndTbPair.getValue(), o -> new ArrayList<>()).addAll(stream.boxed().collect(
-                    Collectors.toList()));
+                        Collectors.toList()));
             }
-        } else {
+        } else if (!skipShard){
             // shard to get value indices
             shardResults = BuildPlanUtils.shardValues(sqlInsert,
                 tableMeta,
                 executionContext,
                 schemaName, newPartition);
+        } else {
+            shardResults = new HashMap<>();
+            Parameters parameters = executionContext.getParams();
+            int rowCount;
+            if (parameters.isBatch()) {
+                rowCount = parameters.getBatchParameters().size();
+            } else {
+                rowCount = ((SqlCall) sqlInsert.getSource()).getOperandList().size();
+            }
+            for (int i = 0; i < rowCount; i++) {
+                shardResults.computeIfAbsent(targetGroup, b -> new HashMap<>())
+                    .computeIfAbsent(phyTableName, b -> new ArrayList<>())
+                    .add(i);
+            }
         }
         return insertIntoTable(logicalInsert, sqlInsert, tableMeta, "", schemaName, executionContext, executeFunc,
             mayInsertDuplicate, shardResults);
     }
 
     public static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
-                                      String targetGroup, String schemaName,
+                                      String targetGroup, String phyTableName, String schemaName,
                                       ExecutionContext executionContext,
                                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                       boolean mayInsertDuplicate,
                                       boolean mayForGsi, String partName) {
-        // shard to get value indices
-        Map<String, Map<String, List<Integer>>> shardResults = StringUtils.isEmpty(partName)
+        Map<String, Map<String, List<Integer>>> shardResults;
+        boolean forceReshard = executionContext.getParamManager().getBoolean(ConnectionParams.FORCE_RESHARD);
+        if (StringUtils.isBlank(targetGroup) || StringUtils.isBlank(phyTableName) || forceReshard) {
+            shardResults = StringUtils.isEmpty(partName)
             ? BuildPlanUtils.shardValues(sqlInsert,
-            tableMeta,
-            executionContext,
-            schemaName, null)
+                tableMeta,
+                executionContext,
+                schemaName, null)
             : BuildPlanUtils.shardValuesByPartName(sqlInsert,
             tableMeta,
             executionContext,
             schemaName, null, partName);
+        } else {
+            shardResults = new HashMap<>();
+            Parameters parameters = executionContext.getParams();
+            int rowCount;
+            if (parameters.isBatch()) {
+                rowCount = parameters.getBatchParameters().size();
+            } else {
+                rowCount = ((SqlCall) sqlInsert.getSource()).getOperandList().size();
+            }
+
+            for (int i = 0; i < rowCount; i++) {
+                shardResults.computeIfAbsent(targetGroup, b -> new HashMap<>())
+                    .computeIfAbsent(phyTableName, b -> new ArrayList<>())
+                    .add(i);
+            }
+        }
 
         final OptimizerContext oc = OptimizerContext.getContext(schemaName);
         assert null != oc;
@@ -258,10 +300,9 @@ public class InsertIndexExecutor extends IndexExecutor {
             // build shardResults for alter table repartition when gsi is broadcast table
             Map<String, List<Integer>> values = new HashMap<>();
             for (Map<String, List<Integer>> entry : shardResults.values()) {
-                assert entry.size() == 1;
-                String phyTableName = entry.keySet().stream().findFirst().get();
-                if (values.containsKey(phyTableName)) {
-                    values.get(phyTableName).addAll(entry.get(phyTableName));
+                String targetPhyTableName = entry.keySet().stream().findFirst().get();
+                if (values.containsKey(targetPhyTableName)) {
+                    values.get(targetPhyTableName).addAll(entry.get(targetPhyTableName));
                 } else {
                     values.putAll(entry);
                 }
@@ -279,12 +320,12 @@ public class InsertIndexExecutor extends IndexExecutor {
     }
 
     public static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
-                                      String targetGroup, String schemaName,
+                                      String targetGroup, String phyTableName, String schemaName,
                                       ExecutionContext executionContext,
                                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                       boolean mayInsertDuplicate,
                                       boolean mayForGsi) {
-        return insertIntoTable(logicalInsert, sqlInsert, tableMeta, targetGroup, schemaName, executionContext,
+        return insertIntoTable(logicalInsert, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName, executionContext,
             executeFunc,
             mayInsertDuplicate, mayForGsi, "");
     }
@@ -315,19 +356,40 @@ public class InsertIndexExecutor extends IndexExecutor {
                     executionContext.getParams(),
                     outputParams);
                 SqlInsert newSqlInsert = visitor.visit(sqlInsert);
+                BytesSql sql = RelUtils.toNativeBytesSql(newSqlInsert, DbType.MYSQL);
 
-                PhyTableOperation phyTableModify =
-                    new PhyTableOperation(cluster, traitSet, rowType, null, logicalInsert);
-                phyTableModify.setKind(newSqlInsert.getKind());
-                phyTableModify.setDbIndex(targetDb);
-                phyTableModify.setTableNames(ImmutableList.of(ImmutableList.of(targetTb)));
+//                PhyTableOperation phyTableModify =
+//                    new PhyTableOperation(cluster, traitSet, rowType, null, logicalInsert);
+//                phyTableModify.setKind(newSqlInsert.getKind());
+//                phyTableModify.setDbIndex(targetDb);
+//                phyTableModify.setTableNames(ImmutableList.of(ImmutableList.of(targetTb)));
+//                phyTableModify.setBytesSql(sql);
+//                phyTableModify.setNativeSqlNode(newSqlInsert);
+//                phyTableModify.setParam(outputParams);
+//                phyTableModify.setBatchParameters(null);
 
-                String sql = RelUtils.toNativeSql(newSqlInsert, DbType.MYSQL);
-                phyTableModify.setSqlTemplate(sql);
-                phyTableModify.setNativeSqlNode(newSqlInsert);
-                phyTableModify.setParam(outputParams);
-                phyTableModify.setBatchParameters(null);
 
+                PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+                buildParams.setSchemaName(schemaName);
+                buildParams.setLogTables(ImmutableList.of(tableMeta.getTableName()));
+                buildParams.setGroupName(targetDb);
+                buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(targetTb)));
+                buildParams.setSqlKind(newSqlInsert.getKind());
+                buildParams.setLockMode(SqlSelect.LockMode.UNDEF);
+
+                buildParams.setLogicalPlan(logicalInsert);
+                buildParams.setCluster(cluster);
+                buildParams.setTraitSet(traitSet);
+                buildParams.setRowType(rowType);
+                buildParams.setCursorMeta(null);
+                buildParams.setNativeSqlNode(newSqlInsert);
+
+                buildParams.setBytesSql(sql);
+                buildParams.setDbType(DbType.MYSQL);
+                buildParams.setDynamicParams(outputParams);
+                buildParams.setBatchParameters(null);
+
+                PhyTableOperation phyTableModify = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
                 newPhysicalPlans.add(phyTableModify);
             }
         }

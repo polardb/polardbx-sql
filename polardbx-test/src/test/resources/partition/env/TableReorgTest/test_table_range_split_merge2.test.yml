@@ -1,0 +1,312 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `rng_t2` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue)
+);
+show full create table rng_t2;
+
+CREATE TABLE `rng_t3` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue)
+);
+show full create table rng_t3;
+
+CREATE TABLE `rng_t4` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL,
+`d` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue)
+);
+show full create table rng_t4;
+
+CREATE TABLE `rng_t5` (
+`a` varchar(32) DEFAULT NULL,
+`b` int(11) DEFAULT NULL,
+`c` int(11) DEFAULT NULL,
+`d` int(11) DEFAULT NULL,
+`e` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`,`d`,`e`) (
+PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue,maxvalue),
+PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue,maxvalue),
+PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue,maxvalue)
+);
+show full create table rng_t5;
+
+
+alter table rng_t2 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc'),
+PARTITION p2_2 VALUES LESS THAN ('efg')
+);
+alter table rng_t3 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc'),
+PARTITION p2_2 VALUES LESS THAN ('efg')
+);
+alter table rng_t4 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc'),
+PARTITION p2_2 VALUES LESS THAN ('efg')
+);
+alter table rng_t5 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc'),
+PARTITION p2_2 VALUES LESS THAN ('efg')
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t2;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+alter table rng_t2 merge partitions p2_1,p2_2 to p2;
+alter table rng_t3 merge partitions p2_1,p2_2 to p2;
+alter table rng_t4 merge partitions p2_1,p2_2 to p2;
+alter table rng_t5 merge partitions p2_1,p2_2 to p2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t2;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+
+alter table rng_t2 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
+);
+alter table rng_t3 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
+);
+alter table rng_t4 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
+);
+alter table rng_t5 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t2;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+
+alter table rng_t2 merge partitions p2_1,p2_2 to p2;
+alter table rng_t3 merge partitions p2_1,p2_2 to p2;
+alter table rng_t4 merge partitions p2_1,p2_2 to p2;
+alter table rng_t5 merge partitions p2_1,p2_2 to p2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t2;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+
+## error_msg: $# is more than the full partition columns #$
+alter table rng_t2 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
+);
+
+alter table rng_t2 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh'),
+PARTITION p3_2 VALUES LESS THAN ('hij')
+);
+alter table rng_t3 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh'),
+PARTITION p3_2 VALUES LESS THAN ('hij')
+);
+alter table rng_t4 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh'),
+PARTITION p3_2 VALUES LESS THAN ('hij')
+);
+alter table rng_t5 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh'),
+PARTITION p3_2 VALUES LESS THAN ('hij')
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t2;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+
+alter table rng_t2 merge partitions p3_1,p3_2 to p3;
+alter table rng_t3 merge partitions p3_1,p3_2 to p3;
+alter table rng_t4 merge partitions p3_1,p3_2 to p3;
+alter table rng_t5 merge partitions p3_1,p3_2 to p3;
+
+alter table rng_t2 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh',100),
+PARTITION p3_2 VALUES LESS THAN ('hij',maxvalue)
+);
+alter table rng_t3 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh',100),
+PARTITION p3_2 VALUES LESS THAN ('hij',maxvalue)
+);
+alter table rng_t4 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh',100),
+PARTITION p3_2 VALUES LESS THAN ('hij',maxvalue)
+);
+alter table rng_t5 split partition p3 into
+(
+PARTITION p3_1 VALUES LESS THAN ('hhh',100),
+PARTITION p3_2 VALUES LESS THAN ('hij',maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t2;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+alter table rng_t2 merge partitions p3_1,p3_2 to p3;
+alter table rng_t3 merge partitions p3_1,p3_2 to p3;
+alter table rng_t4 merge partitions p3_1,p3_2 to p3;
+alter table rng_t5 merge partitions p3_1,p3_2 to p3;
+
+drop table rng_t2;
+alter table rng_t3 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
+);
+alter table rng_t4 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
+);
+alter table rng_t5 split partition p2 into
+(
+PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
+PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+
+alter table rng_t3 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn'),
+PARTITION p5 VALUES LESS THAN ('oqp')
+);
+alter table rng_t4 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn'),
+PARTITION p5 VALUES LESS THAN ('oqp')
+);
+alter table rng_t5 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn'),
+PARTITION p5 VALUES LESS THAN ('oqp')
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+alter table rng_t3 drop partition p4;
+alter table rng_t4 drop partition p4;
+alter table rng_t5 drop partition p4;
+alter table rng_t3 drop partition p5;
+alter table rng_t4 drop partition p5;
+alter table rng_t5 drop partition p5;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+
+alter table rng_t3 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue)
+);
+alter table rng_t4 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue)
+);
+alter table rng_t5 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+alter table rng_t3 drop partition p4;
+alter table rng_t4 drop partition p4;
+alter table rng_t5 drop partition p4;
+alter table rng_t3 drop partition p5;
+alter table rng_t4 drop partition p5;
+alter table rng_t5 drop partition p5;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;
+
+alter table rng_t3 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100,100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue,maxvalue)
+);
+alter table rng_t4 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100,100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue,maxvalue)
+);
+alter table rng_t5 add partition (
+PARTITION p4 VALUES LESS THAN ('lmn',100,100),
+PARTITION p5 VALUES LESS THAN ('oqp',maxvalue,maxvalue)
+);
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t4;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
+select * from rng_t3;
+select * from rng_t4;
+select * from rng_t5;

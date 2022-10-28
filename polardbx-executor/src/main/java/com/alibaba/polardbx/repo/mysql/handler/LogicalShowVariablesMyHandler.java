@@ -18,7 +18,10 @@ package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ExecutorCursor;
@@ -56,10 +59,14 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 
+import static com.alibaba.polardbx.common.constants.ServerVariables.SUPPORT_SET_GLOBAL_VARIABLES;
+
 /**
  * @author chenmo.cm
  */
 public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(LogicalShowVariablesMyHandler.class);
 
     public LogicalShowVariablesMyHandler(IRepository repo) {
         super(repo);
@@ -175,7 +182,7 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
         }
 
         Properties cnVariableConfigMap = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
-        Properties dnVariableConfigMap = MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
+        Map<String, Object> dnVariableConfigMap = MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
         if (isGlobal) {
             if (showAllParams) {
                 Set<String> connectionProperties = SystemPropertiesHelper.getConnectionProperties();
@@ -183,13 +190,37 @@ public class LogicalShowVariablesMyHandler extends LogicalShowVariablesHandler {
                     if (cnVariableConfigMap.containsKey(variableName)) {
                         variables.put(MetaDbInstConfigManager.getOriginalName(variableName),
                             cnVariableConfigMap.getProperty(variableName));
+
                     }
                 }
             }
+            // Add all supported "set-global" variables into result if they are absent.
+            final ParamManager paramManager = new ParamManager(cnVariableConfigMap);
+            SUPPORT_SET_GLOBAL_VARIABLES.forEach((paramName) -> {
+                final String cnParamName = paramName.toUpperCase();
+                if (null != variables.get(cnParamName)) {
+                    // Already exists in result set, return.
+                    return;
+                }
+                String val = cnVariableConfigMap.getProperty(cnParamName);
+                if (null == val) {
+                    // Try to get the default value.
+                    try {
+                        val = paramManager.get(cnParamName);
+                    } catch (Throwable t) {
+                        // Ignore.
+                        logger.error("Error getting " + cnParamName + ", cause: ", t);
+                    }
+                }
+                if (null != val) {
+                    variables.put(cnParamName, val);
+                }
+            });
 
-            for (String variableName : dnVariableConfigMap.stringPropertyNames()) {
-                variables.put(variableName, dnVariableConfigMap.getProperty(variableName));
+            for (String variableName : dnVariableConfigMap.keySet()) {
+                variables.put(variableName, dnVariableConfigMap.get(variableName));
             }
+
         }
     }
 }

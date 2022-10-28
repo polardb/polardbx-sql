@@ -25,7 +25,6 @@ import org.apache.calcite.runtime.CalciteException;
 import org.apache.calcite.runtime.Resources;
 import org.apache.calcite.sql.*;
 import org.apache.calcite.sql.validate.implicit.TypeCoercion;
-import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 
 import java.util.List;
@@ -414,6 +413,17 @@ public interface SqlValidator {
       SqlNodeList selectList,
       SqlSelect query,
       boolean includeSystemVars);
+
+  /**
+   * expand the star of check_sum(*) in select
+   *
+   * @param selectItem        should be a star
+   * @param query             Query
+   * @return expanded select check_sum(*) clause
+   */
+  SqlNode[] expandStarForCheckSum(
+      SqlNode selectItem,
+      SqlSelect query);
 
   /**
    * Returns the scope that expressions in the WHERE and GROUP BY clause of

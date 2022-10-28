@@ -104,31 +104,7 @@ public final class ResizePlanCache {
         byte packetId = EOF_PACKET.packetId;
         String charset = c.getCharset();
 
-        // 取得SCHEMA
-        String db = c.getSchema();
-        if (db == null) {
-            c.writeErrMessage(ErrorCode.ER_NO_DB_ERROR, "No database selected");
-            return;
-        }
-
-        SchemaConfig schema = CobarServer.getInstance().getConfig().getSchemas().get(db);
-        if (schema == null) {
-            c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + db + "'");
-            return;
-        }
-
-        TDataSource ds = schema.getDataSource();
-        if (!ds.isInited()) {
-            try {
-                ds.init();
-            } catch (Throwable e) {
-                c.handleError(ErrorCode.ERR_HANDLE_DATA, e);
-                return;
-            }
-        }
-
-        OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new ResizePlanCacheSyncAction(db, newSize));
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new ResizePlanCacheSyncAction(newSize));
         for (List<Map<String, Object>> rs : results) {
             if (rs == null) {
                 continue;

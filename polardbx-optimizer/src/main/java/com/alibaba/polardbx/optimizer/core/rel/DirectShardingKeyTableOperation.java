@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -36,21 +38,22 @@ import java.util.Map;
 public class DirectShardingKeyTableOperation extends BaseTableOperation {
 
     protected List<String> logicalTableNames;
-    protected List<String> tableNames;
-
     private ShardProcessor shardProcessor;
 
     public DirectShardingKeyTableOperation(LogicalView logicalPlan, RelDataType rowType,
-                                           String tableName, String sqlTemplate,
+                                           String logTableName, BytesSql bytesSql,
                                            List<Integer> paramIndex, ExecutionContext ec) {
         super(logicalPlan.getCluster(), logicalPlan.getTraitSet(), rowType, null, logicalPlan);
-
-        this.tableNames = Collections.singletonList(tableName);
         this.dbIndex = null;
-        this.sqlTemplate = sqlTemplate;
+        this.bytesSql = bytesSql;
         this.paramIndex = paramIndex;
-        this.logicalTableNames = this.tableNames;
-        initShardProcessor(logicalPlan, tableName, ec);
+        this.logicalTableNames = ImmutableList.of(logTableName);
+        initShardProcessor(logicalPlan, logTableName, ec);
+    }
+
+    @Override
+    public void setDbIndex(String dbIndex) {
+        this.dbIndex = dbIndex;
     }
 
     private void initShardProcessor(LogicalView logicalView, String tableName, ExecutionContext ec) {
@@ -64,20 +67,31 @@ public class DirectShardingKeyTableOperation extends BaseTableOperation {
         return shardProcessor.shard(ec.getParams().getCurrentParameter(), ec);
     }
 
+
     @Override
     public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
-                                                                           ExecutionContext ec) {
+                                                                           List<List<String>> phyTableNamesOutput,
+                                                                           ExecutionContext executionContext) {
         if (MapUtils.isEmpty(param) && CollectionUtils.isNotEmpty(paramIndex)) {
             throw new OptimizerException("Param list is empty.");
         }
-        Pair<String, String> dbIndexAndTableName = ec.getDbIndexAndTableName();
-        return new Pair<>(dbIndexAndTableName.getKey(),
+        Pair<String, String> dbIndexAndTableName = executionContext.getDbIndexAndTableName();
+        Pair<String, Map<Integer, ParameterContext>> result = new Pair<>(dbIndexAndTableName.getKey(),
             buildParam(dbIndexAndTableName.getValue(), param));
+        if (phyTableNamesOutput != null) {
+            phyTableNamesOutput.add(ImmutableList.of(dbIndexAndTableName.getValue()));
+        }
+        return result;
+    }
+
+    @Override
+    public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                           ExecutionContext ec) {
+        return getDbIndexAndParam(param, null, ec);
     }
 
     public DirectShardingKeyTableOperation(DirectShardingKeyTableOperation src) {
         super(src);
-        tableNames = src.tableNames;
         logicalTableNames = src.logicalTableNames;
         shardProcessor = src.shardProcessor;
     }
@@ -88,9 +102,14 @@ public class DirectShardingKeyTableOperation extends BaseTableOperation {
     }
 
     @Override
+    public List<String> getLogicalTableNames() {
+        return logicalTableNames;
+    }
+
+    @Override
     protected ExplainInfo buildExplainInfo(Map<Integer, ParameterContext> params, ExecutionContext executionContext) {
         if (MapUtils.isEmpty(params)) {
-            return new ExplainInfo(tableNames, dbIndex, null);
+            return new ExplainInfo(logicalTableNames, dbIndex, null);
         }
         Pair<String, String> dbIndexAndTableName = executionContext.getDbIndexAndTableName();
         String tableName = dbIndexAndTableName.getValue();

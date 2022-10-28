@@ -16,11 +16,16 @@
 
 package com.alibaba.polardbx.executor.archive.writer;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.OrderInvariantHasher;
+import com.alibaba.polardbx.common.OrderInvariantHasher;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.oss.OSSMetaLifeCycle;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.executor.ddl.job.meta.FileStorageBackFillAccessor;
+import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.common.oss.access.OSSKey;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -34,10 +39,13 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
+import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.executor.workqueue.PriorityFIFOTask;
 import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.gms.metadb.table.ColumnMetaAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
+import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -47,8 +55,8 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
@@ -66,10 +74,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -78,12 +89,9 @@ import java.util.concurrent.FutureTask;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.gsi.utils.Transformer.buildColumnParam;
-import static com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils.ORC_BLOOM_FILTER_FPP;
-import static com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils.ORC_ROW_INDEX_STRIDE;
 
 public class OSSBackFillWriterTask {
     private static final Logger LOGGER = LoggerFactory.getLogger("oss");
-    private static final long MAX_FILE_SIZE = 512 * 1024 * 1024;
 
     private String taskName;
     private VectorizedRowBatch batch;
@@ -125,23 +133,41 @@ public class OSSBackFillWriterTask {
     private List<ColumnProvider> bfColumnProviders;
 
     private long totalRows;
-    private long currentBytes;
     final private long maxRowsPerFile;
     final private boolean removeTmpFiles;
 
     private volatile int currentFileIndex;
     private List<OSSKey> ossKeys;
     private List<String> localFilePaths;
-    private List<Long> tableRowsList;
+    private List<Long> tableRows;
 
+    private List<Long> fileChecksum;
+    private OrderInvariantHasher orderInvariantHasher;
+
+    /**
+     * blocking queue controls the of flushing data to oss.
+     * To support pause and continue ddl, the queue must be FIFO,
+     * and the flush process must be single-thread
+     */
     private BlockingQueue<FutureTask> flushTaskBlockingQueue;
     private List<Future> flushTaskList;
 
-    private List<Row> lowerRow;
-    private List<Row> upperRow;
+    private List<Row> lowerRows;
+    private List<Row> upperRows;
+
+    /**
+     * TODO(shengyu): use this to support checker when restart
+     */
+    private boolean restart;
+    private List<ParameterContext> lastPK;
 
     private Long taskId;
+    /**
+     * the primary key of file in system table FILES
+     */
     private List<Long> filePrimaryKeys;
+
+    Optional<OSSBackFillTimer> timeoutCheck;
 
     public OSSBackFillWriterTask(String logicalSchema,
                                  String logicalTable,
@@ -190,26 +216,68 @@ public class OSSBackFillWriterTask {
         this.currentFileIndex = 0;
         this.localFilePaths = new ArrayList<>();
         this.ossKeys = new ArrayList<>();
-        this.tableRowsList = new ArrayList<>();
+        this.tableRows = new ArrayList<>();
 
         this.flushTaskBlockingQueue = new ArrayBlockingQueue<>(1);
         this.flushTaskList = new ArrayList<>();
 
-        int indexStride = (int) conf.getLong(ORC_ROW_INDEX_STRIDE, 1000);
+        int indexStride = (int) conf.getLong("orc.row.index.stride", 1000);
         this.batch = schema.createRowBatch(indexStride);
 
-        this.fpp = conf.getDouble(ORC_BLOOM_FILTER_FPP, 0.01D);
+        this.fpp = conf.getDouble("orc.bloom.filter.fpp", 0.01D);
 
         this.totalRows = 0L;
-        this.currentBytes = 0L;
         this.maxRowsPerFile = maxRowsPerFile;
         this.removeTmpFiles = removeTmpFiles;
-        this.lowerRow = new ArrayList<>();
-        this.upperRow = new ArrayList<>();
+
+        this.lowerRows = new ArrayList<>();
+        this.upperRows = new ArrayList<>();
+
         this.filePrimaryKeys = new ArrayList<>();
+        fileChecksum = new ArrayList<>();
+        this.restart = false;
+        this.lastPK = null;
+        this.timeoutCheck = Optional.empty();
+        this.fileChecksum = new ArrayList<>();
+    }
+
+    public OSSBackFillWriterTask(String logicalSchema,
+                                 String logicalTable,
+                                 String physicalSchema,
+                                 String physicalTable,
+                                 String sourcePhySchema,
+                                 String sourcePhyTable,
+                                 TableMeta tableMeta,
+                                 Engine engine,
+                                 Long taskId,
+                                 Configuration conf,
+                                 String physicalPartitionName,
+                                 PolarDBXOrcSchema orcSchema,
+                                 long maxRowsPerFile,
+                                 boolean removeTmpFiles,
+                                 ExecutionContext ec,
+                                 boolean enablePause) {
+        this(logicalSchema, logicalTable, physicalSchema, physicalTable, sourcePhySchema, sourcePhyTable, tableMeta,
+            engine, taskId, conf, physicalPartitionName, orcSchema, maxRowsPerFile, removeTmpFiles);
+        if (enablePause) {
+            this.timeoutCheck = Optional.of(new OSSBackFillTimer(sourcePhySchema, sourcePhyTable, ec));
+        }
+    }
+
+    /**
+     * check whether enabling broken-point continuing
+     * @return true if enabling pause and continue ddl
+     */
+    private boolean enablePause() {
+        return timeoutCheck.isPresent();
     }
 
     public void consume(Cursor cursor, List<Map<Integer, ParameterContext>> mockResult, ExecutionContext ec) {
+        timeoutCheck.ifPresent(a -> a.checkTime(ec));
+
+        if (ec.getDdlContext().isInterrupted()) {
+            return;
+        }
         Row row = cursor.next();
         if (row == null) {
             return;
@@ -222,6 +290,8 @@ public class OSSBackFillWriterTask {
 
         Row latestRow = null;
 
+        // for checksum
+        CrcAccumulator accumulator = new CrcAccumulator();
         while (row != null) {
             // main loop.
             totalRows++;
@@ -235,22 +305,26 @@ public class OSSBackFillWriterTask {
                 if (redundantColumnId == -1) {
                     // data convert
                     columnProvider
-                        .putRow(columnVector, rowNumber, row, columnId - 1, dataType, sessionProperties.getTimezone());
+                        .putRow(columnVector, rowNumber, row, columnId - 1, dataType,
+                            sessionProperties.getTimezone(), Optional.ofNullable(accumulator));
                 } else {
                     // data convert with redundant sort key
                     ColumnVector redundantColumnVector = batch.cols[redundantColumnId - 1];
                     columnProvider.putRow(columnVector, redundantColumnVector, rowNumber, row, columnId - 1, dataType,
-                        sessionProperties.getTimezone());
+                        sessionProperties.getTimezone(), Optional.ofNullable(accumulator));
                 }
             }
+
+            // Merge the crc result of the last row.
+            long crcResult = accumulator.getResult();
+            orderInvariantHasher.add(crcResult);
+            accumulator.reset();
 
             // flush the batch to disk
             if (batch.size == batch.getMaxSize()) {
                 try {
                     writer.addRowBatch(batch);
                     batch.reset();
-
-                    updateCurrentBytes();
                 } catch (IOException e) {
                     throw GeneralUtil.nestedException(e);
                 }
@@ -262,41 +336,26 @@ public class OSSBackFillWriterTask {
             mockResult.add(ImmutableMap.of());
         }
         // record the upper bound
-        upperRow.set(upperRow.size() - 1, latestRow);
+        upperRows.set(upperRows.size() - 1, latestRow);
 
         // trans the last row to params
         if (latestRow != null) {
-            final List<ColumnMeta> columns = latestRow.getParentCursorMeta().getColumns();
-
-            final Map<Integer, ParameterContext> params = new HashMap<>(columns.size());
-            for (int i = 0; i < columns.size(); i++) {
-
-                final ParameterContext parameterContext = buildColumnParam(latestRow, i);
-
-                params.put(i + 1, parameterContext);
-            }
-            mockResult.set(mockResult.size() - 1, params);
+            mockResult.set(mockResult.size() - 1, buildParams(latestRow));
         }
 
         LOGGER.info(
             "task = " + this.getTaskName() + ", current file name = " + this.localFilePaths.get(this.currentFileIndex)
                 + ", current row = " + this.getTotalRows());
 
-        if (totalRows >= maxRowsPerFile
-            || currentBytes >= MAX_FILE_SIZE) {
+        if (totalRows >= maxRowsPerFile) {
             flush(ec);
         }
     }
 
-    private void updateCurrentBytes() {
-        String localFilePath = this.localFilePaths.get(currentFileIndex);
-        File file = new File(localFilePath);
-        if (file.exists()) {
-            this.currentBytes = file.length();
-        }
-    }
-
     public synchronized void flush(ExecutionContext ec) {
+        if (ec.getDdlContext().isInterrupted()) {
+            return;
+        }
         if (this.currentFileIndex == this.localFilePaths.size()) {
             // nothing to flush
             return;
@@ -305,7 +364,9 @@ public class OSSBackFillWriterTask {
         // push up the current file index
         final int fileIndex = this.currentFileIndex++;
 
-        // finish local write, written to tmp, thus there is no need to
+        fileChecksum.add(orderInvariantHasher.getResult());
+
+        // finish local write, written to tmp
         finishLocalWrite();
 
         FailPoint.injectRandomException();
@@ -313,7 +374,7 @@ public class OSSBackFillWriterTask {
         // build flush task
         FutureTask flushTask = new FutureTask<>(() -> {
             try {
-                return doFlush(ec, fileIndex);
+                return doFlush(ec, new MetaForCommit(fileIndex));
             } finally {
                 // Poll in finally to prevent dead lock on putting blockingQueue.
                 flushTaskBlockingQueue.poll();
@@ -326,7 +387,8 @@ public class OSSBackFillWriterTask {
             flushTaskBlockingQueue.put(flushTask);
         } catch (InterruptedException e) {
             // clear all tasks
-            AsyncUtils.waitAll(flushTaskList);
+            cancelAsync();
+            flushTaskList.clear();
             throw GeneralUtil.nestedException(e);
         }
 
@@ -337,20 +399,27 @@ public class OSSBackFillWriterTask {
         totalRows = 0L;
     }
 
+    private Map<Integer, ParameterContext> buildParams(Row latestRow){
+        final List<ColumnMeta> columns = latestRow.getParentCursorMeta().getColumns();
+        final Map<Integer, ParameterContext> params = new HashMap<>(columns.size());
+        for (int i = 0; i < columns.size(); i++) {
+            final ParameterContext parameterContext = buildColumnParam(latestRow, i);
+            params.put(i + 1, parameterContext);
+        }
+        return params;
+    }
     /**
      * check whether the orc file is right or not
      */
-    private boolean checkTable(int fileIndex, ExecutionContext ec) {
-        Row lowRow = this.lowerRow.get(fileIndex);
-        Row upperRow = this.upperRow.get(fileIndex);
+    private boolean checkTable(MetaForCommit metaForCommit, ExecutionContext ec) {
         OSSBackFillChecker checker = new OSSBackFillChecker(
             tableMeta.getSchemaName(), tableMeta.getTableName(),
             loadTablePhysicalSchemaName, loadTablePhysicalTableName,
-            localFilePaths.get(fileIndex),
+            metaForCommit.getLocalFilePath(),
             conf, noRedundantSchema, redundantId, dataTypes, columnProviders, physicalPartitionName,
-            lowRow, upperRow
+            metaForCommit.getLowerRow(), metaForCommit.getUpperRow()
         );
-        return checker.checkTable(fileIndex, ec);
+        return checker.checkTable(ec);
     }
 
     public synchronized void waitAsync() {
@@ -366,36 +435,38 @@ public class OSSBackFillWriterTask {
         });
     }
 
-    public long doFlush(ExecutionContext ec, int fileIndex) {
+    public long doFlush(ExecutionContext ec, MetaForCommit metaForCommit) {
+        if (ec.getDdlContext().isInterrupted()) {
+            return 0L;
+        }
         // check oss file
         if (!Engine.isFileStore(tableMeta.getEngine()) && ec.getParamManager()
-            .getBoolean(ConnectionParams.ENABLE_FILE_STORE_CHECK_TABLE)) {
+            .getBoolean(ConnectionParams.ENABLE_FILE_STORE_CHECK_TABLE)
+            && !ec.getParamManager().getBoolean(ConnectionParams.ENABLE_EXPIRE_FILE_STORAGE_PAUSE)) {
             // only check non-file-store source table.
             GsiUtils.wrapWithSingleDbTrx(ExecutorContext.getContext(ec.getSchemaName()).getTransactionManager(),
-                ec, (selectEc) -> checkTable(fileIndex, selectEc));
+                ec, (selectEc) -> checkTable(metaForCommit, selectEc));
         }
 
         long start = System.currentTimeMillis();
 
         // do upload task
-        String localFilePath = this.localFilePaths.get(fileIndex);
 
         FailPoint.injectRandomException();
-
         // upload local file to OSS instance.
-        upload(fileIndex);
-
-        // update file meta blob / file size / row count.
-        updateFileMeta(fileIndex);
+        upload(metaForCommit);
 
         // make local index for oss table
-        if (this.bfSchema != null && !this.bfSchema.getChildren().isEmpty()) {
-            putBloomFilter(fileIndex);
+        if (shouldPutBloomFilter()) {
+            putBloomFilter(metaForCommit);
         }
+
+        // commit the file logically
+        commitFile(metaForCommit);
 
         // delete file from local.
         if (removeTmpFiles) {
-            File tmpFile = new File(localFilePath);
+            File tmpFile = new File(metaForCommit.getLocalFilePath());
             if (tmpFile.exists()) {
                 tmpFile.delete();
             }
@@ -404,14 +475,70 @@ public class OSSBackFillWriterTask {
         return System.currentTimeMillis() - start;
     }
 
-    private void updateFileMeta(int fileIndex) {
-        ByteBuffer tailBuffer = this.getSerializedTail(fileIndex);
+    /**
+     * 'commit' the file to oss.
+     * Once the method if called, the file is ready and shouldn't be rollback when restarting the ddl
+     * @param metaForCommit all meta need for committing
+     */
+    private void commitFile(MetaForCommit metaForCommit) {
+        ByteBuffer tailBuffer = this.getSerializedTail(metaForCommit.getLocalFilePath());
         byte[] fileMeta = new byte[tailBuffer.remaining()];
         tailBuffer.get(fileMeta);
 
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            TableMetaChanger.changeOssFile(metaDbConn, filePrimaryKeys.get(fileIndex), fileMeta, this.getFileSize(),
-                fileIndex >= this.tableRowsList.size() ? 0L : this.tableRowsList.get(fileIndex));
+            try {
+                MetaDbUtil.beginTransaction(metaDbConn);
+                // first validate all the meta of oss
+                FilesAccessor filesAccessor = new FilesAccessor();
+                filesAccessor.setConnection(metaDbConn);
+
+                if (shouldPutBloomFilter()) {
+                    ColumnMetaAccessor columnMetaAccessor = new ColumnMetaAccessor();
+                    columnMetaAccessor.setConnection(metaDbConn);
+
+                    // validate files of bloom filter
+                    filesAccessor.validByFileName(
+                        columnMetaAccessor.queryByTableFileName(metaForCommit.getOssKey().toString())
+                            .stream().map(x -> x.bloomFilterPath).collect(Collectors.toList()));
+                    // validate column metas of the file
+                    columnMetaAccessor.validByTableFileName(metaForCommit.getOssKey().toString());
+                }
+
+                long rowCount = metaForCommit.getTableRow();
+                // validate the file
+                filesAccessor.validFile(metaForCommit.getFilePrimaryKey(), fileMeta, this.getFileSize(), rowCount, metaForCommit.getOrcHash());
+
+                // support breakpoint continue
+                if (enablePause()) {
+                    FileStorageBackFillAccessor fileStorageBackFillAccessor =
+                        new FileStorageBackFillAccessor(this.taskId,
+                            this.loadTablePhysicalSchemaName, this.loadTablePhysicalTableName);
+                    fileStorageBackFillAccessor.setConnection(metaDbConn);
+                    Map<Integer, ParameterContext> lastRow = buildParams(metaForCommit.getUpperRow());
+                    // record position mark uploaded to oss
+                    Preconditions.checkArgument(fileStorageBackFillAccessor.selectCountBackfillObjectFromFileStorage() > 0);
+                    // update existing record
+                    List<GsiBackfillManager.BackfillObjectRecord> records =
+                        fileStorageBackFillAccessor.selectBackfillObjectFromFileStorage();
+                    for (GsiBackfillManager.BackfillObjectRecord record : records) {
+                        record.setLastValue(Transformer.serializeParam(lastRow.get((int)record.getColumnIndex() + 1)));
+                        record.setSuccessRowCount(record.getSuccessRowCount() + rowCount);
+                        record.setEndTime(
+                            new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()));
+                    }
+                    fileStorageBackFillAccessor.updateBackfillObjectToFileStorage(records);
+                }
+                MetaDbUtil.commit(metaDbConn);
+                // used for debug
+                timeoutCheck.ifPresent(OSSBackFillTimer::setFlushed);
+
+            } catch (Exception e) {
+                MetaDbUtil.rollback(metaDbConn, e, null, null);
+                LOGGER.error(e.getMessage());
+                throw GeneralUtil.nestedException(e);
+            } finally {
+                MetaDbUtil.endTransaction(metaDbConn, LOGGER);
+            }
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
@@ -424,15 +551,14 @@ public class OSSBackFillWriterTask {
                 batch.reset();
             }
             writer.close();
-            this.tableRowsList.add(totalRows);
+            this.tableRows.add(totalRows);
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
         }
     }
 
-    public ByteBuffer getSerializedTail(int fileIndex) {
+    public ByteBuffer getSerializedTail(String localFilePath) {
         try {
-            String localFilePath = this.localFilePaths.get(fileIndex);
             Configuration conf = new Configuration();
             Reader reader = OrcFile.createReader(new Path(localFilePath),
                 OrcFile.readerOptions(conf));
@@ -459,6 +585,7 @@ public class OSSBackFillWriterTask {
         filesRecord.localPath = this.localFilePaths.get(fileIndex);
         filesRecord.logicalSchemaName = logicalSchema;
         filesRecord.logicalTableName = logicalTable;
+        filesRecord.localPartitionName = physicalPartitionName;
 
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             return TableMetaChanger
@@ -468,7 +595,11 @@ public class OSSBackFillWriterTask {
         }
     }
 
-    public void putBloomFilter(int fileIndex) {
+    private boolean shouldPutBloomFilter() {
+        return this.bfSchema != null && !this.bfSchema.getChildren().isEmpty();
+    }
+
+    public void putBloomFilter(MetaForCommit metaForCommit) {
         try {
             // prepare for index file
             final String uniqueId = UUID.randomUUID().toString();
@@ -486,7 +617,8 @@ public class OSSBackFillWriterTask {
 
             // construct for all index key.
             // for each orc file
-            String localFilePath = this.getLocalFilePath(fileIndex);
+            String localFilePath = metaForCommit.getLocalFilePath();
+
             try (FileOutputStream outputStream = new FileOutputStream(localIndexFile);
                 Reader reader = OrcFile.createReader(new Path(localFilePath), OrcFile.readerOptions(conf))) {
 
@@ -535,8 +667,8 @@ public class OSSBackFillWriterTask {
                         lastOffset = currentOffset;
                         currentOffset += writtenBytes;
 
-                        storeColumnMeta(fileIndex, metaKey, lastOffset, stripeIndex, stripe, colId, colName,
-                            writtenBytes);
+                        storeColumnMeta(metaForCommit.getOssKey(), metaKey,
+                            lastOffset, stripeIndex, stripe, colId, colName, writtenBytes);
                     }
                 }
 
@@ -571,6 +703,7 @@ public class OSSBackFillWriterTask {
             filesRecord.status = "";
             filesRecord.logicalSchemaName = logicalSchema;
             filesRecord.logicalTableName = logicalTable;
+            filesRecord.localPartitionName = physicalPartitionName;
 
             primaryKey = TableMetaChanger
                 .addOssFileAndReturnLastInsertId(metaDbConn, logicalSchema, logicalTable, filesRecord);
@@ -589,11 +722,11 @@ public class OSSBackFillWriterTask {
         }
     }
 
-    private void storeColumnMeta(int fileIndex, OSSKey metaKey, int lastOffset, int stripeIndex,
+    private void storeColumnMeta(OSSKey fileKey, OSSKey metaKey, int lastOffset, int stripeIndex,
                                  StripeInformation stripe, int colId, String colName, int writtenBytes) {
         // store the column meta for <file, stripe, column>
         ColumnMetasRecord columnMetasRecord = new ColumnMetasRecord();
-        columnMetasRecord.tableFileName = this.getOssKey(fileIndex).toString();
+        columnMetasRecord.tableFileName = fileKey.toString();
         columnMetasRecord.tableName = this.getPhysicalTable();
         columnMetasRecord.tableSchema = this.getPhysicalSchema();
         columnMetasRecord.stripeIndex = stripeIndex;
@@ -620,10 +753,10 @@ public class OSSBackFillWriterTask {
         }
     }
 
-    public void upload(int fileIndex) {
+    public void upload(MetaForCommit metaForCommit) {
         try {
-            String localFilePath = this.localFilePaths.get(fileIndex);
-            OSSKey ossKey = this.ossKeys.get(fileIndex);
+            String localFilePath = metaForCommit.getLocalFilePath();
+            OSSKey ossKey = metaForCommit.getOssKey();
 
             File localFile = new File(localFilePath);
             this.fileSize = localFile.length();
@@ -708,12 +841,17 @@ public class OSSBackFillWriterTask {
             this.filePrimaryKeys.add(putFileMeta(localFilePaths.size() - 1));
 
             if (this.localFilePaths.size() == 1) {
-                lowerRow.add(null);
+                lowerRows.add(null);
             } else {
-                lowerRow.add(upperRow.get(upperRow.size() - 1));
+                lowerRows.add(upperRows.get(upperRows.size() - 1));
             }
-            upperRow.add(null);
+            upperRows.add(null);
 
+            int[] mapList = new int[columnProviders.size()];
+            for (int i = 0; i < mapList.length; i++) {
+                mapList[i] = i;
+            }
+            orderInvariantHasher = new OrderInvariantHasher();
             Path path = new Path(currentLocalFilePath);
             OrcFile.WriterOptions opts = OrcFile.writerOptions(conf).setSchema(schema);
             try {
@@ -723,6 +861,73 @@ public class OSSBackFillWriterTask {
             }
 
             this.totalRows = 0L;
+        }
+
+    }
+
+    public void setRestart() {
+        restart = true;
+        // todo(sheng) : prepare primary key for lower bound
+
+    }
+
+    /**
+     * meta needed when flushing the file to oss
+     */
+    class MetaForCommit {
+        OSSKey ossKey;
+        String localFilePath;
+        Long tableRow;
+        Long orcHash;
+        Row lowerRow;
+        Row upperRow;
+        // TODO(shengyu): make checker support restarting ddl
+        List<ParameterContext> lastPk;
+        Long filePrimaryKey;
+
+        public MetaForCommit(int index) {
+            this.ossKey = ossKeys.get(index);
+            this.localFilePath = localFilePaths.get(index);
+            this.tableRow = tableRows.get(index);
+            this.orcHash = fileChecksum.get(index);
+            this.lowerRow = lowerRows.get(index);
+            this.upperRow = upperRows.get(index);
+            if (restart && index == 0) {
+                this.lastPk = lastPK;
+            }
+            this.filePrimaryKey = filePrimaryKeys.get(index);
+        }
+
+        public OSSKey getOssKey() {
+            return ossKey;
+        }
+
+        public String getLocalFilePath() {
+            return localFilePath;
+        }
+
+        public Long getTableRow() {
+            return tableRow;
+        }
+
+        public Long getOrcHash() {
+            return orcHash;
+        }
+
+        public Row getLowerRow() {
+            return lowerRow;
+        }
+
+        public Row getUpperRow() {
+            return upperRow;
+        }
+
+        public Long getFilePrimaryKey() {
+            return filePrimaryKey;
+        }
+
+        public List<ParameterContext> getLastPk() {
+            return lastPk;
         }
     }
 }

@@ -27,6 +27,8 @@ import com.google.common.collect.ImmutableMap.Builder;
 import org.apache.calcite.util.Pair;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.ResultSet;
@@ -44,7 +46,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * @author chenmo.cm
  */
-
+@RunWith(Parameterized.class)
 public class SelectShardingTest extends ReadBaseTestCase {
 
     String hint = "/*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=100)*/";
@@ -68,7 +70,7 @@ public class SelectShardingTest extends ReadBaseTestCase {
             if (TStringUtil.endsWith(tableName, ExecuteTableName.ONE_DB_ONE_TB_SUFFIX)) {
                 return 1;
             } else if (TStringUtil.endsWith(tableName, ExecuteTableName.ONE_DB_MUTIL_TB_SUFFIX)) {
-                return 4;
+                return 1 * 4;
             } else if (TStringUtil.endsWith(tableName, ExecuteTableName.MULTI_DB_ONE_TB_SUFFIX)) {
                 return dnCount * shardDbCountEachDn;
             } else if (TStringUtil.endsWith(tableName, ExecuteTableName.MUlTI_DB_MUTIL_TB_SUFFIX)) {
@@ -86,6 +88,7 @@ public class SelectShardingTest extends ReadBaseTestCase {
         }
 
     }
+
 
     @Test
     public void conditionEqual() {
@@ -1026,13 +1029,14 @@ public class SelectShardingTest extends ReadBaseTestCase {
             ResultSet rs = statement.executeQuery(sql);
             rs.next();
             if (!usingNewPartDb()) {
-                Assert.assertTrue(4 * dnCount * shardDbCountEachDn == rs.getInt("SHARD_COUNT"));
+                Assert.assertTrue( 4 * dnCount * shardDbCountEachDn == rs.getInt("SHARD_COUNT"));
             } else {
                 Assert.assertTrue(3 == rs.getInt("SHARD_COUNT"));
             }
 
             rs.close();
         } catch (Exception e) {
+
             throw new RuntimeException(e);
         }
     }

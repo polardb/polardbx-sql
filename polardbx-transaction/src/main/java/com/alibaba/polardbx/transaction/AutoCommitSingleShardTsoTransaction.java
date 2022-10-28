@@ -18,8 +18,10 @@ package com.alibaba.polardbx.transaction;
 
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -40,13 +42,16 @@ import static com.alibaba.polardbx.transaction.TransactionConnectionHolder.needR
 public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction implements ITsoTransaction {
 
     final private boolean omitTso;
+    final private boolean lizard1PC;
     final private ITimestampOracle tso;
     private long snapshotSeq = -1;
     final private boolean consistentReplicaRead;
 
-    public AutoCommitSingleShardTsoTransaction(ExecutionContext ec, TransactionManager tm, boolean omitTso) {
+    public AutoCommitSingleShardTsoTransaction(ExecutionContext ec, TransactionManager tm, boolean omitTso,
+                                               boolean lizard1PC) {
         super(ec, tm);
         this.omitTso = omitTso;
+        this.lizard1PC = lizard1PC;
         this.tso = tm.getTimestampOracle();
         this.consistentReplicaRead = executionContext.getParamManager().getBoolean(
             ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ);
@@ -93,7 +98,7 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
         }
 
         if (omitTso) {
-            useCtsTransaction(conn);
+            useCtsTransaction(conn, lizard1PC);
         } else if (tso != null) {
             sendSnapshotSeq(conn);
         }
@@ -109,12 +114,14 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
 
         lock.lock();
         try {
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("ROLLBACK");
-            } catch (Throwable e) {
-                logger.error("Cleanup readonly transaction branch failed on " + groupName, e);
-                discard(groupName, conn, e);
-                return;
+            if (!DynamicConfig.getInstance().enableExtremePerformance()) {
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute("ROLLBACK");
+                } catch (Throwable e) {
+                    logger.error("Cleanup readonly transaction branch failed on " + groupName, e);
+                    discard(groupName, conn, e);
+                    return;
+                }
             }
 
             this.getConnectionHolder().tryClose(conn, groupName);
@@ -125,6 +132,9 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
 
     @Override
     public void close() {
+        if (DynamicConfig.getInstance().enableExtremePerformance()) {
+            return;
+        }
         AsyncTaskQueue asyncQueue = getManager().getTransactionExecutor().getAsyncQueue();
         ch.forEachConnection(asyncQueue, (conn) -> {
 
@@ -145,5 +155,10 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
         });
 
         super.close();
+    }
+
+    @Override
+    public ITransactionPolicy.TransactionClass getTransactionClass() {
+        return ITransactionPolicy.TransactionClass.AUTO_COMMIT_SINGLE_SHARD;
     }
 }

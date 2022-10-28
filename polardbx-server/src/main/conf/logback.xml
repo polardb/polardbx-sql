@@ -703,6 +703,26 @@
         </encoder>
     </appender>
 
+    <appender name="PRUNER_LOG"
+              class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <File>${loggerRoot:-..}/logs/tddl/pruner.log</File>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- rollover daily -->
+            <fileNamePattern>${loggerRoot:-..}/logs/tddl/%d{yyyy-MM-dd}/tddl-pruner-%d{yyyy-MM-dd}-%i.log.gz
+            </fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy
+                    class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <!-- or whenever the file size reaches 100MB -->
+                <maxFileSize>128MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>180</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %p %m%n</pattern>
+        </encoder>
+    </appender>
+
     <appender name="TXC" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
             <Key>app</Key>
@@ -948,8 +968,12 @@
         <appender-ref ref="START_UP_LOG"/>
     </logger>
     <logger name="CHECK_HA_LOG" additivity="false">
-        <level value="warn"/>
+        <level value="info"/>
         <appender-ref ref="CHECK_HA_LOG"/>
+    </logger>
+    <logger name="PRUNER_LOG" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="PRUNER_LOG"/>
     </logger>
     <logger name="TDDL_STATUS" additivity="true">
         <level value="info"/>

@@ -59,7 +59,8 @@ public class Rex2ArgumentInfo extends RexVisitorImpl<ArgumentInfo> {
             .collect(Collectors.toSet());
 
         if (dataTypes.size() > 1) {
-            throw new IllegalArgumentException("Converting " + relDataType + " to argument info is not supported yet!");
+            // struct type
+            return null;
         }
 
         return dataTypes.iterator().next();
@@ -81,6 +82,10 @@ public class Rex2ArgumentInfo extends RexVisitorImpl<ArgumentInfo> {
             DataType<?> dataTypes;
             try {
                 dataTypes = convertStructDataType(call.getType());
+                if (dataTypes == null) {
+                    // fail to convert struct value.
+                    return null;
+                }
             } catch (Exception e) {
                 LOG.error("Failed to convert return type " + call.getType() + " of " + call + " to argument info.", e);
                 return null;

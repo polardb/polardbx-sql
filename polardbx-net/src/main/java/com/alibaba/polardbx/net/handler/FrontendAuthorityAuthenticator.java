@@ -25,6 +25,7 @@ import com.alibaba.polardbx.net.packet.AuthPacket;
 import com.alibaba.polardbx.net.packet.AuthSwitchResponsePacket;
 import com.alibaba.polardbx.net.packet.QuitPacket;
 import com.alibaba.polardbx.common.audit.AuditAction;
+import com.alibaba.polardbx.net.util.AuditUtil;
 import com.taobao.tddl.common.privilege.EncrptPassword;
 import com.alibaba.polardbx.common.utils.encrypt.SecurityUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -80,7 +81,15 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
             if (!checkUserLoginMaxCount) {
                 failure(ErrorCode.ER_PASSWORD_NOT_ALLOWED,
                     "The maximum number of login is exceeded, and the login is refused,the allowed maximum number is "
-                        + PolarPrivManager.getInstance().getPolarLoginErrConfig().getPasswordMaxErrorCount(), null);
+                        + PolarPrivManager.getInstance().getPolarLoginErrConfig().getPasswordMaxErrorCount(user), null);
+                return;
+            }
+            final boolean checkPasswordExpire = checkUserPasswordExpire(user, host);
+            if (!checkPasswordExpire) {
+                failure(ErrorCode.ER_PASSWORD_NOT_ALLOWED,
+                    "The password has been expired since "
+                        + PolarPrivManager.getInstance().getPolarLoginErrConfig().getPasswordExpireDateString(user),
+                    null);
                 return;
             }
             if (!isAllowAuthentication(auth)) {
@@ -120,7 +129,7 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
             return ErrorCode.ER_BAD_DB_ERROR;
         }
 
-        if (trustLogin) {
+        if (trustLogin || ConfigDataMode.isFastMock()) {
             return 0;
         }
 
@@ -184,6 +193,9 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
     }
 
     protected boolean checkUserMatches(String user, String host) {
+        if (ConfigDataMode.isFastMock()) {
+            return true;
+        }
         return source.getPrivileges().userMatches(user, host);
     }
 
@@ -279,7 +291,8 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
             }
             logger.info(s.toString());
         }
-        logAuditInfo(auth.database, auth.user, source.getHost(), source.getPort(), AuditAction.LOGIN);
+        AuditUtil.logAuditInfo(source.getInstanceId(), auth.database, auth.user, source.getHost(), source.getPort(),
+            AuditAction.LOGIN);
         /**
          * 表示server接受此链接，如果不接受压缩就报错，通过抓包看 不论压缩还是非压缩都是 Login
          * Request(带clientFlags) + OK Packet Handshake

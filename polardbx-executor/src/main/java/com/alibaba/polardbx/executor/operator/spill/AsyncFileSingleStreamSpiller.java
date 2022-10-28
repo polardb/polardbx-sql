@@ -72,12 +72,22 @@ public class AsyncFileSingleStreamSpiller
         this.spillMonitor = spillMonitor;
     }
 
-    private void ensureReader() {
+    private void closeWriteThenCreateReader() {
         // GenericSpiller only use spill(Iterator<Page> page) method without invoke flush
         if (writer != null) {
-            flush();
+            closeWriter(false);
         }
         checkState(writer == null, "writer is not null");
+        if (reader == null) {
+            try {
+                reader = factory.createAsyncPageFileChannelReader(id, serde, spillMonitor);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private void ensureReader() {
         if (reader == null) {
             try {
                 reader = factory.createAsyncPageFileChannelReader(id, serde, spillMonitor);
@@ -119,7 +129,8 @@ public class AsyncFileSingleStreamSpiller
 
     @Override
     public Iterator<Chunk> getSpilledChunks() {
-        ensureReader();
+        //有些用法只能先关闭写，才能读
+        closeWriteThenCreateReader();
         try {
             return reader.readPagesIterator();
         } catch (IOException e) {
@@ -128,8 +139,19 @@ public class AsyncFileSingleStreamSpiller
     }
 
     @Override
-    public ListenableFuture<List<Chunk>> getAllSpilledChunks() {
+    public Iterator<Chunk> getSpilledChunks(long maxChunkNum) {
         ensureReader();
+        try {
+            return reader.readPagesIterator(maxChunkNum);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    @Override
+    public ListenableFuture<List<Chunk>> getAllSpilledChunks() {
+        closeWriteThenCreateReader();
         try {
             return reader.readPagesList();
         } catch (IOException e) {
@@ -139,7 +161,13 @@ public class AsyncFileSingleStreamSpiller
 
     @Override
     public void flush() {
-        closeWriter(false);
+        if (writer != null) {
+            try {
+                writer.flush();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     @Override

@@ -37,6 +37,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * 2PC事务测试
  */
 
+@Ignore
 public class BestEffortTransactionBasicTest extends CrudBasedLockTestCase {
 
     private static final int MAX_DATA_SIZE = 20;

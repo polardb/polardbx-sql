@@ -64,7 +64,7 @@
     project(name="name")
       hashjoin(condition="id = id and id0 = id and origin_place0 <> birth_place and size < height", type="inner")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`id`, `apple`.`name`, `apple`.`size`, `car`.`id` as `id0`, `car`.`origin_place` as `origin_place0` from `apple` as `apple` inner join `car` as `car` on (`apple`.`id` = `car`.`id`) where (((`car`.`produce_date` < 10) and (`apple`.`pick_date` < 10)) and (`car`.`id` = `apple`.`id`))")
+          logicalview(tables="[0000-0003].apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`id`, `apple`.`name`, `apple`.`size`, `car`.`id` as `id0`, `car`.`origin_place` as `origin_place0` from `apple` as `apple` inner join `car` as `car` on (`apple`.`id` = `car`.`id`) where (((`car`.`id` = `apple`.`id`) and (`car`.`produce_date` < 10)) and (`apple`.`pick_date` < 10))")
         filter(condition="money > 8")
           hashagg(group="name", id="__first_value(id)", birth_date="__first_value(birth_date)", birth_place="__first_value(birth_place)", money="__first_value(money)", height="__first_value(height)")
             gather(concurrent=true)
@@ -122,7 +122,7 @@
     from boy b where money = (select id from apple a where a.id = b.id and price = 12);
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7]", shardcount=8, sql="select `name` from (select `id`, `name`, `birth_date`, `birth_place`, `money`, `height`, (((select `id` from `apple` as `apple` where ((`id` = `boy`.`id`) and (`price` = 12))))) as `id0` from `boy` as `boy`) as `t1` where (`money` = `id0`)")
+      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7]", shardcount=8, sql="select `name` from (select `id`, `name`, `birth_date`, `birth_place`, `money`, `height`, (((select `id` from `apple` as `apple` where ((`price` = 12) and (`id` = `boy`.`id`))))) as `id0` from `boy` as `boy`) as `t1` where (`money` = `id0`)")
 
 - sql: |
     select b.name, (select id from apple a where (id = b.id and exists (select * from car c where c.id = a.id and c.price < a.price)))
@@ -177,7 +177,7 @@
             logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`price`, (`boy`.`name`) as `name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`boy`.`money` > 100)) where (not exists (select `id` from `car` as `car` where ((`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`)))) group by `apple`.`price`")
       project(id="id")
         mergesort(sort="x asc", offset=0, fetch=20)
-          logicalview(tables="optest_0001.apple_2,boy_2,car_2", sql="select `apple`.`id`, ((`boy`.`birth_date` + `apple`.`pick_date`)) as `x` from `apple` as `apple` inner join `boy` as `boy` on (`apple`.`id` = `boy`.`id`) where ((exists (select `id` from `car` as `car` where (((`id` = `apple`.`id`) and (`produce_date` = ((`boy`.`birth_date` + `apple`.`pick_date`)))) and (`id` = 10)))) and (`apple`.`id` = 10)) order by ((`boy`.`birth_date` + `apple`.`pick_date`)) limit 20")
+          logicalview(tables="optest_0001.apple_2,boy_2,car_2", sql="select `apple`.`id`, ((`boy`.`birth_date` + `apple`.`pick_date`)) as `x` from `apple` as `apple` inner join `boy` as `boy` on (`apple`.`id` = `boy`.`id`) where ((`apple`.`id` = 10) and (exists (select `id` from `car` as `car` where (((`id` = `apple`.`id`) and (`produce_date` = ((`boy`.`birth_date` + `apple`.`pick_date`)))) and (`id` = 10))))) order by ((`boy`.`birth_date` + `apple`.`pick_date`)) limit 20")
 
 - sql: |
     select distinct b.name
@@ -200,6 +200,7 @@
       hashagg(group="pick_date", name="__first_value(name)")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`pick_date`, `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`apple`.`price` in(12, 3, 4, 6))) where ((`boy`.`height` < some (select `size` from `car` as `car` where (((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`)) and (`id` = `boy`.`id`)))) and (`boy`.`money` > all (select `price` from `apple` as `apple0` where (`id` = `boy`.`id`))))")
+
 - sql: |
     /*+TDDL:cmd_extra(enable_lv_subquery_unwrap=true)*/
     select b.height , a.size

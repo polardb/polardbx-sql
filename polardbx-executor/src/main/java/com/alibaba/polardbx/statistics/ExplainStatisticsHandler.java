@@ -54,6 +54,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -121,6 +122,7 @@ public class ExplainStatisticsHandler {
         plan.append("\n").append(indent[2]).append("plan: |").append("\n");
         statisticsContext.setSql(plan.toString());
     }
+
     private void getCreateTable(Map<String, Set<String>> tablesUsed) {
         RelNode unOptimizedPlan = executionContext.getUnOptimizedPlan();
         TableScanFinder tsf = new TableScanFinder();
@@ -159,39 +161,45 @@ public class ExplainStatisticsHandler {
             ExecutionContext newExecutionContext = executionContext.copy();
             newExecutionContext.setTestMode(false);
             ExecutionPlan plan = Planner.getInstance().plan(sql, newExecutionContext);
-            Cursor cursor = ExecutorHelper.execute(plan.getPlan(), newExecutionContext);
 
-            Row row;
-            while ((row = cursor.next()) != null) {
-                //ignore comment
-                List<SQLStatement> statements = FastsqlUtils.parseSql(row.getString(1));
-                StringBuilder sb = new StringBuilder();
-                for (SQLStatement statement : statements) {
-                    if (statement instanceof MySqlCreateTableStatement) {
-                        MySqlCreateTableStatement create = (MySqlCreateTableStatement)statement;
-                        //ignore table comment
-                        create.setComment(null);
-                        for (SQLTableElement element : create.getTableElementList()) {
-                            // ignore column comment
-                            if (element instanceof SQLColumnDefinition) {
-                                ((SQLColumnDefinition)element).setComment((String)null);
+            Cursor cursor = null;
+            try {
+                cursor = ExecutorHelper.execute(plan.getPlan(), newExecutionContext);
+
+                Row row;
+                while ((row = cursor.next()) != null) {
+                    //ignore comment
+                    List<SQLStatement> statements = FastsqlUtils.parseSql(row.getString(1));
+                    StringBuilder sb = new StringBuilder();
+                    for (SQLStatement statement : statements) {
+                        if (statement instanceof MySqlCreateTableStatement) {
+                            MySqlCreateTableStatement create = (MySqlCreateTableStatement) statement;
+                            //ignore table comment
+                            create.setComment(null);
+                            for (SQLTableElement element : create.getTableElementList()) {
+                                // ignore column comment
+                                if (element instanceof SQLColumnDefinition) {
+                                    ((SQLColumnDefinition) element).setComment((String) null);
+                                }
+                                // ignore index comment
+                                if (element instanceof MySqlKey) {
+                                    ((MySqlKey) element).setComment(null);
+                                }
                             }
-                            // ignore index comment
-                            if (element instanceof MySqlKey) {
-                                ((MySqlKey)element).setComment(null);
-                            }
-                        }
                         Engine engine;
                         if (Engine.isFileStore(engine = CBOUtil.getTableMeta(tableScan.getTable()).getEngine())) {
                             create.setEngine(engine.name());
-                        }
+                        }}
+                        sb.append(statement.toString().replace("\n", " ")).append(";");
                     }
-                    sb.append(statement.toString().replace("\n"," ")).append(";");
+                    tableSchemas.append("\n").append(indent[1]).append(fullTableName).append(":\n")
+                        .append(indent[2]).append(sb);
                 }
-                tableSchemas.append("\n").append(indent[1]).append(fullTableName).append(":\n")
-                    .append(indent[2]).append(sb);
+            } finally {
+                if (cursor != null) {
+                    cursor.close(null);
+                }
             }
-            cursor.close(null);
         }
         statisticsContext.setTableSchemas(tableSchemas.toString());
     }
@@ -370,15 +378,23 @@ public class ExplainStatisticsHandler {
                 ExecutionContext newExecutionContext = executionContext.copy();
                 newExecutionContext.setTestMode(false);
                 ExecutionPlan plan = Planner.getInstance().plan(sql, newExecutionContext);
-                Cursor cursor = ExecutorHelper.execute(plan.getPlan(), newExecutionContext);
-                Row row;
-                Set<String> groupName = new HashSet<>();
-                while ((row = cursor.next()) != null) {
-                    String group = row.getString(1);
-                    groupName.add(group);
+                Cursor cursor = null;
+                try {
+                    cursor = ExecutorHelper.execute(plan.getPlan(), newExecutionContext);
+                    Row row;
+                    Set<String> groupName = new HashSet<>();
+                    while ((row = cursor.next()) != null) {
+                        String group = row.getString(1);
+                        groupName.add(group);
+                    }
+                    countDB = groupName.size();
+                    break;
+                } finally {
+                    if (cursor != null) {
+                        cursor.close(new ArrayList<>());
+                    }
                 }
-                countDB = groupName.size();
-                break;
+
             }
             if (countDB > 0) {
                 config.append(indent[1]).append(sameSchema(schemaName)? DEFAULT_SCHEMA: schemaName).append(".dbNumber:\n")

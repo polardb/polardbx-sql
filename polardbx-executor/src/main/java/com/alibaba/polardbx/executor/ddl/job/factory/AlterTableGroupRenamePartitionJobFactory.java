@@ -64,6 +64,8 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
+        boolean enablePreemptiveMdl =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
         Long interval = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
 
@@ -92,8 +94,9 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
 
         DdlTask changeMetaTask = new AlterTableGroupRenamePartitionChangeMetaTask(preparedData.getSchemaName(),
             preparedData.getTableGroupName(), preparedData.getChangePartitionsPair());
-        DdlTask syncTask = new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, true, initWait, interval,
-            TimeUnit.MILLISECONDS);
+        DdlTask syncTask =
+            new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                TimeUnit.MILLISECONDS);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
 

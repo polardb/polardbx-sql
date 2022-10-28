@@ -24,10 +24,12 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.sql.Connection;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -64,6 +66,10 @@ public class InitNewStorageInstTask extends BaseGmsTask {
         long socketTimeoutVal = socketTimeout != null ? socketTimeout : -1;
         for (Map.Entry<String, List<Pair<String, String>>> entry : instGroupDbInfos.entrySet()) {
             for (Pair<String, String> pair : entry.getValue()) {
+                //update the type to removable
+                ScaleOutUtils.updateGroupType(schemaName, Arrays.asList(pair.getKey()),
+                    DbGroupInfoRecord.GROUP_TYPE_ADDED, DbGroupInfoRecord.GROUP_TYPE_REMOVING,
+                    metaDbConnection);
                 ScaleOutUtils.doRemoveNewGroupFromDb(schemaName, pair.getKey(), pair.getValue(),
                     entry.getKey(), socketTimeoutVal, LOGGER, metaDbConnection);
                 FailPoint.injectRandomExceptionFromHint(executionContext);

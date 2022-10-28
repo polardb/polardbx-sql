@@ -81,6 +81,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.VirtualTableRuleMatcher;
@@ -116,7 +117,10 @@ import java.util.stream.Collectors;
 import static com.alibaba.polardbx.cdc.CdcDbLock.acquireCdcDbLockByForUpdate;
 import static com.alibaba.polardbx.cdc.CdcDbLock.releaseCdcDbLockByCommit;
 import static com.alibaba.polardbx.cdc.CdcStorageUtil.isStorageContainsGroup;
+import static com.alibaba.polardbx.cdc.MetaBuilder.checkLogicDbMeta;
+import static com.alibaba.polardbx.cdc.MetaBuilder.checkLogicTableMeta;
 import static com.alibaba.polardbx.cdc.SQLHelper.FEATURES;
+import static com.alibaba.polardbx.cdc.SQLHelper.filterColumns;
 import static com.alibaba.polardbx.common.cdc.ICdcManager.InstructionType.StorageInstChange;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_FAILURE_TO_CDC_AFTER_ADD_NEW_GROUP;
 import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_INITIAL;
@@ -316,7 +320,7 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
     private boolean checkDdl(String schemaName, String ddlSql, CdcDDLContext cdcDDLContext,
                              Map<String, Object> extendParams) {
         if (isCdcDisabled()) {
-            logger.info("cdc is disabled, ddl mark is ignored.");
+            logger.warn("cdc is disabled, ddl mark is ignored.");
             return false;
         }
 
@@ -434,6 +438,9 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
         DDLExtInfo extInfo = new DDLExtInfo();
         extInfo.setTaskId(cdcDDLContext.getTaskId());
         extInfo.setCreateSql4PhyTable(tryBuildCreateSql4PhyTable(schema, tableName, extendParams));
+        if (extendParams.containsKey("polardbx_server_id")) {
+            extInfo.setServerId(extendParams.get("polardbx_server_id").toString());
+        }
         SysTableUtil.getInstance()
             .insertDdlRecord(connection, getJobId(cdcDDLContext), sqlKind, schema, tableName, ddlSql,
                 buildMetaInfo(cdcDDLContext.isRefreshTableMetaInfo(), schema, tableName, sqlKind, extendParams,
@@ -453,6 +460,7 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
                 SQLParserUtils.createSQLStatementParser(phyCreateSql, DbType.mysql, FEATURES).parseStatementList();
             MySqlCreateTableStatement phyCreateStmt = (MySqlCreateTableStatement) phyStatementList.get(0);
             phyCreateStmt.setTableName("`" + MetaBuilder.escape(tableName) + "`");
+            filterColumns(phyCreateStmt, schema, tableName);
             return phyCreateStmt.toUnformattedString();
         }
         return "";
@@ -467,7 +475,7 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
 
             SysTableUtil.getInstance()
                 .insertInstruction(connection, instructionType, instructionId, instructionContent);
-            
+
             logger.warn("successfully send instruction, instructionType is " + instructionType + ", "
                 + "instructionId is " + instructionId + ", size of instructionContent is " +
                 instructionContent.getBytes().length + ".");
@@ -524,6 +532,7 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
     private MetaInfo buildMetaForDb(String schemaName) throws SQLException {
         MetaInfo metaInfo = new MetaInfo();
         metaInfo.logicDbMeta = MetaBuilder.buildLogicDbMeta(schemaName, null);
+        checkLogicDbMeta(schemaName, metaInfo.logicDbMeta);
         return metaInfo;
     }
 
@@ -548,6 +557,8 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
         if (extendParams.containsKey(ICdcManager.TABLE_NEW_NAME)) {
             metaInfo.logicTableMeta.setTableName(extendParams.get(ICdcManager.TABLE_NEW_NAME).toString());
         }
+
+        checkLogicTableMeta(schemaName, metaInfo.logicTableMeta);
         return metaInfo;
     }
 
@@ -569,7 +580,7 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
         final Map<String, Object> calcParams = new HashMap<>();
         calcParams.put(CalcParamsAttribute.SHARD_FOR_EXTRA_DB, false);
 
-        TddlRuleManager tddlRuleManager = context.getRuleManager();
+        Partitioner partitioner = context.getPartitioner();
         VirtualTableRuleMatcher matcher = new VirtualTableRuleMatcher();
         TableRule tbRule = buildTableRule(schemaName, tableName, extendParams);
 
@@ -580,14 +591,17 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
                 public Map<String, Comparative> getColumnsMap(List<Object> arguments, Set<String> colNameSet) {
                     Map<String, Comparative> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
                     for (String str : colNameSet) {
-                        map.put(str, getColumnComparative(arguments, str));
+                        Comparative c = getColumnComparative(arguments, str);
+                        if (c != null) {
+                            map.put(str, c);
+                        }
                     }
                     return map;
                 }
 
                 @Override
                 public Comparative getColumnComparative(List<Object> arguments, String colName) {
-                    return tddlRuleManager.getComparative(tbRule, null, colName, null, dataTypeMap, calcParams);
+                    return partitioner.getComparativeByFetcher(tbRule, null, colName, null, dataTypeMap, calcParams);
                 }
             },
             Lists.newArrayList(),

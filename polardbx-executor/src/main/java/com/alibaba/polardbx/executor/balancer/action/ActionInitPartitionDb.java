@@ -57,6 +57,6 @@ public class ActionInitPartitionDb implements BalanceAction {
     @Override
     public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
         final String sqlRefreshTopology = "refresh topology";
-        return ActionUtils.convertToDelegatorJob(ec, schema, sqlRefreshTopology);
+        return ActionUtils.convertToDelegatorJob(schema, sqlRefreshTopology);
     }
 }

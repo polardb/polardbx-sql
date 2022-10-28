@@ -75,10 +75,24 @@
                 `alter_priv` tinyint(1) NOT NULL DEFAULT '0',
                 `show_view_priv` int(11) NOT NULL DEFAULT '0',
                 `create_view_priv` int(11) NOT NULL DEFAULT '0',
+                `replication_client_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `replication_slave_priv` tinyint(1) NOT NULL DEFAULT '0',
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uk` (`user_name`, `host`, `db_name`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Database privileges'
         ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `db_priv` ADD COLUMN `replication_client_priv` tinyint(1) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `db_priv` ADD COLUMN `replication_slave_priv` tinyint(1) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `db_priv` SET `replication_client_priv` = 1, `replication_slave_priv` = 1 WHERE `user_name` = 'polardbx_root'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `db_priv` SET `replication_client_priv` = 1, `replication_slave_priv` = 1 WHERE `select_priv` = 1
+        ]]></Change>
     </SystemTable>
     <SystemTable name="table_priv">
         <Create><![CDATA[
@@ -101,10 +115,24 @@
                 `alter_priv` tinyint(1) NOT NULL DEFAULT '0',
                 `show_view_priv` int(11) NOT NULL DEFAULT '0',
                 `create_view_priv` int(11) NOT NULL DEFAULT '0',
+                `replication_client_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `replication_slave_priv` tinyint(1) NOT NULL DEFAULT '0',
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uk` (`user_name`, `host`, `db_name`,`table_name`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='Table privileges'
         ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `table_priv` ADD COLUMN `replication_client_priv` tinyint(1) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `table_priv` ADD COLUMN `replication_slave_priv` tinyint(1) NOT NULL DEFAULT '0'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `table_priv` SET `replication_client_priv` = 1, `replication_slave_priv` = 1 WHERE `user_name` = 'polardbx_root'
+        ]]></Change>
+        <Change><![CDATA[
+            UPDATE `table_priv` SET `replication_client_priv` = 1, `replication_slave_priv` = 1 WHERE `select_priv` = 1
+        ]]></Change>
     </SystemTable>
     <SystemTable name="quarantine_config">
         <Create><![CDATA[

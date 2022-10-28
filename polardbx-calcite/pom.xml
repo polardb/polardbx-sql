@@ -6,7 +6,6 @@ this work for additional information regarding copyright ownership.
 The ASF licenses this file to you under the Apache License, Version 2.0
 (the "License"); you may not use this file except in compliance with
 the License.  You may obtain a copy of the License at
-
 http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
@@ -21,12 +20,11 @@ limitations under the License.
     <parent>
         <artifactId>polardbx</artifactId>
         <groupId>com.alibaba.polardbx</groupId>
-        <version>5.4.13-SNAPSHOT</version>
+        <version>5.4.15-SNAPSHOT</version>
     </parent>
-    <groupId>com.alibaba.polardbx</groupId>
     <artifactId>polardbx-calcite</artifactId>
-    <version>5.4.13-SNAPSHOT</version>
     <packaging>jar</packaging>
+    <version>5.4.15-SNAPSHOT</version>
     <description>Core Calcite APIs and engine.</description>
     <name>${project.artifactId} module for polardbx ${project.version}</name>
     <properties>
@@ -35,24 +33,24 @@ limitations under the License.
     </properties>
 
   <dependencies>
-    <!-- Sorted by groupId, artifactId; calcite dependencies first. Put versions
-         in dependencyManagement in the root POM, not here. -->
-    <dependency>
-      <groupId>org.apache.calcite.avatica</groupId>
-      <artifactId>avatica-core</artifactId>
-      <version>${avatica.core.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.calcite</groupId>
-      <artifactId>calcite-linq4j</artifactId>
-      <version>${calcite-linq4j.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.calcite.avatica</groupId>
-      <artifactId>avatica-server</artifactId>
-      <version>${avatica-serve.version}</version>
-      <scope>test</scope>
-    </dependency>
+      <!-- Sorted by groupId, artifactId; calcite dependencies first. Put versions
+           in dependencyManagement in the root POM, not here. -->
+      <dependency>
+          <groupId>org.apache.calcite.avatica</groupId>
+          <artifactId>avatica-core</artifactId>
+          <version>${avatica.core.version}</version>
+      </dependency>
+      <dependency>
+          <groupId>org.apache.calcite</groupId>
+          <artifactId>calcite-linq4j</artifactId>
+          <version>${calcite-linq4j.version}</version>
+      </dependency>
+      <dependency>
+          <groupId>org.apache.calcite.avatica</groupId>
+          <artifactId>avatica-server</artifactId>
+          <version>${avatica-serve.version}</version>
+          <scope>test</scope>
+      </dependency>
     <dependency>
       <groupId>commons-dbcp</groupId>
       <artifactId>commons-dbcp</artifactId>
@@ -286,6 +284,7 @@ limitations under the License.
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
+                <version>2.4</version>
                 <executions>
                     <execution>
                         <goals>

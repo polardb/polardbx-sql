@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
@@ -54,12 +55,14 @@ public class PartClauseIntervalInfo extends AbstractLifecycle {
         this.partClauseExec = initExprExec(this.partInfo, this.partClause, this.exprCtxHolder);
     }
 
-    public static PartClauseExprExec initExprExec(PartitionInfo partInfo, PartClauseInfo partPredClause,
-                                                  ExprContextProvider exprCtxHolder) {
+    private static PartClauseExprExec initExprExec(PartitionInfo partInfo,
+                                                   PartClauseInfo partPredClause,
+                                                   ExprContextProvider exprCtxHolder) {
         PartClauseExprExec partClauseExec = new PartClauseExprExec(PartitionBoundValueKind.DATUM_NORMAL_VALUE);
 
+        PartKeyLevel partLevel = partPredClause.getPartKeyLevel();
         int partKeyIndex = partPredClause.getPartKeyIndex();
-        SqlOperator partFuncOp = PartitionPruneStepBuilder.getPartFuncSqlOperation(partPredClause, partInfo);
+        SqlOperator partFuncOp = PartitionPruneStepBuilder.getPartFuncSqlOperation(partLevel, partKeyIndex, partInfo);
         boolean isNull = partPredClause.isNull();
         RexNode partPredExpr = partPredClause.getConstExpr();
         PartitionIntFunction partFunc = null;

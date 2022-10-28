@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory.oss;
 import com.alibaba.polardbx.common.ArchiveMode;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.BindingArchiveTableMetaTask;
@@ -36,9 +37,11 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateOssPartitionTable;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import org.eclipse.jetty.util.StringUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -85,6 +88,22 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
                 resources.add(concatWithDot(schemaName, tgName));
             }
         }
+        if (preparedData != null && !StringUtil.isEmpty(preparedData.getLoadTableSchema()) &&
+            !StringUtil.isEmpty(preparedData.getLoadTableName())) {
+            resources.add(concatWithDot(preparedData.getLoadTableSchema(), preparedData.getLoadTableName()));
+        }
+    }
+
+    @Override
+    protected void sharedResources(Set<String> resources) {
+        // lock load schema if the ddl is cross-schema
+        if (preparedData != null) {
+            if (!StringUtils.isEmpty(preparedData.getLoadTableSchema())) {
+                if (!preparedData.getLoadTableName().equalsIgnoreCase(schemaName)) {
+                    resources.add(LockUtil.genForbidDropResourceName(preparedData.getLoadTableName()));
+                }
+            }
+        }
     }
 
     @Override
@@ -96,14 +115,14 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
         // table info validator
         CreatePartitionTableValidateTask validateTask =
             new CreatePartitionTableValidateTask(schemaName, logicalTableName,
-                physicalPlanData.isIfNotExists(), physicalPlanData.getTableGroupConfig(), new ArrayList<>(), false,
+                physicalPlanData.isIfNotExists(), physicalPlanData.getTableGroupConfig(), null, new ArrayList<>(), null,false,
                 false);
         taskList.add(validateTask);
 
         // table partition info
         CreateTableAddTablesPartitionInfoMetaTask addPartitionInfoTask =
             new CreateTableAddTablesPartitionInfoMetaTask(schemaName, logicalTableName, physicalPlanData.isTemporary(),
-                physicalPlanData.getTableGroupConfig(), null, false, null);
+                physicalPlanData.getTableGroupConfig(), null, false, null, null);
         taskList.add(addPartitionInfoTask);
 
         // mysql physical ddl task

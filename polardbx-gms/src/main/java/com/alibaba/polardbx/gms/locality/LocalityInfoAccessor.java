@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
@@ -101,6 +102,7 @@ public class LocalityInfoAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, objectId);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, primaryZone);
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, locality);
+            DdlMetaLogUtil.logSql(INSERT_LOCALITY_INFO, params);
             MetaDbUtil.update(INSERT_LOCALITY_INFO, params, connection);
             logger.debug(String.format("insert locality_info: type=%d,id=%d,primary_zone=%s,locality=%s",
                 objectType, objectId, primaryZone, locality));

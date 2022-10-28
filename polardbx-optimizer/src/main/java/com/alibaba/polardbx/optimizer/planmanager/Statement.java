@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.planmanager;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -68,7 +69,7 @@ public class Statement {
      *
      * Since client will send blob data before execute, so we must save it in advance, furthermore,
      * since we don't know the exact value length(maybe not equal to DataTypes in prepare) so we can't
-     * create array in phase execute or send data long, so we ust a hashmap instead rather than array
+     * create array in phase execute or send_long_data, so we ust a hashmap instead rather than array
      * the key is paramIndex
      *
      * IMPORTANT!!!
@@ -78,7 +79,7 @@ public class Statement {
      * parsing incoming java Object.
      * </pre>
      */
-    private Map<Integer, Object> params = new HashMap<Integer, Object>();
+
     private Map<Integer, Short> paramTypes = new HashMap<Integer, Short>();
 
     /**
@@ -89,9 +90,16 @@ public class Statement {
      * to client.
      * </pre>
      */
-    private ReentrantLock executeLock = new ReentrantLock();
+    private final ReentrantLock executeLock = new ReentrantLock();
 
     private boolean isSetQuery;
+
+    /**
+     * lazy init params
+     * content of longDataParams is carried in send_long_data
+     */
+    private Map<Integer, Object> longDataParams;
+    private List<Object> paramArray;
 
     public Statement(String stmt_id, ByteString rawSql) {
         this.stmt_id = stmt_id;
@@ -106,29 +114,52 @@ public class Statement {
         return rawSql;
     }
 
-    public Map<Integer, Object> getParams() {
-        return params;
-    }
-
-    public void putAllParams(Map<Integer, Object> inparams) {
-        params.putAll(inparams);
+    public List<Object> getParams() {
+        return paramArray;
     }
 
     public Object getParam(int paramIndex) {
-        return params.get(paramIndex);
+        return paramArray.get(paramIndex);
     }
 
     // can only set one param rather the whole map
     public synchronized void setParam(int paramIndex, Object value) {
-        params.put(paramIndex, value);
+        paramArray.set(paramIndex, value);
     }
 
-    public synchronized void clearParams() {
-        params.clear();
+    public void initLongDataParams() {
+        longDataParams = new HashMap<>();
+    }
+
+    public void setLongDataParam(int paramIndex, Object value) {
+        longDataParams.put(paramIndex, value);
+    }
+
+    public Object getLongDataParam(int paramIndex) {
+        return longDataParams.get(paramIndex);
+    }
+
+    public synchronized Map<Integer, Object> getLongDataParams() {
+        return longDataParams;
+    }
+
+    public synchronized void clearLongDataParams() {
+        if (longDataParams != null) {
+            longDataParams.clear();
+        }
     }
 
     public void clearParamTypes() {
         paramTypes.clear();
+    }
+
+    public void clearParams() {
+        if (longDataParams != null) {
+            longDataParams.clear();
+        }
+        if (paramArray != null) {
+            paramArray.clear();
+        }
     }
 
     public Map<Integer, Short> getParamTypes() {
@@ -163,10 +194,18 @@ public class Statement {
         isSetQuery = setQuery;
     }
 
-    public static Object preprecessStringValue(Object obj) {
+    public List<Object> getParamArray() {
+        return paramArray;
+    }
+
+    public void setParamArray(List<Object> paramArray) {
+        this.paramArray = paramArray;
+    }
+
+    public static Object processStringValue(Object obj) {
         Object ret = obj;
 
-        if (obj instanceof String) {
+        if (obj instanceof String && ((String) obj).length() > 0) {
             String str = (String) obj;
             ret = trimStringValue(str);
         }

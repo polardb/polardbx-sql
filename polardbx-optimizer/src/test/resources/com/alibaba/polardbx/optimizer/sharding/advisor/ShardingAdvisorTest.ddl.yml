@@ -1,0 +1,116 @@
+customer:
+  CREATE TABLE `customer` (
+  `c_custkey` int(11) NOT NULL,
+  `c_name` varchar(25) NOT NULL,
+  `c_address` varchar(40) NOT NULL,
+  `c_nationkey` int(11) NOT NULL,
+  `c_phone` varchar(15) NOT NULL,
+  `c_acctbal` decimal(15,2) NOT NULL,
+  `c_mktsegment` varchar(10) NOT NULL,
+  `c_comment` varchar(117) NOT NULL,
+  PRIMARY KEY (`c_custkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by hash(`c_custkey`) tbpartition by hash(`c_custkey`) tbpartitions 4;
+
+lineitem:
+  CREATE TABLE `lineitem` (
+  `l_orderkey` int(11) NOT NULL,
+  `l_partkey` int(11) NOT NULL,
+  `l_suppkey` int(11) NOT NULL,
+  `l_linenumber` int(11) NOT NULL,
+  `l_quantity` decimal(15,2) NOT NULL,
+  `l_extendedprice` decimal(15,2) NOT NULL,
+  `l_discount` decimal(15,2) NOT NULL,
+  `l_tax` decimal(15,2) NOT NULL,
+  `l_returnflag` varchar(1) NOT NULL,
+  `l_linestatus` varchar(1) NOT NULL,
+  `l_shipdate` date NOT NULL,
+  `l_commitdate` date NOT NULL,
+  `l_receiptdate` date NOT NULL,
+  `l_shipinstruct` varchar(25) NOT NULL,
+  `l_shipmode` varchar(10) NOT NULL,
+  `l_comment` varchar(44) NOT NULL,
+  PRIMARY KEY (`l_orderkey`,`l_linenumber`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by RIGHT_SHIFT(`l_orderkey`, 6) tbpartition by RIGHT_SHIFT(`l_orderkey`, 6) tbpartitions 4;
+
+nation:
+  CREATE TABLE `nation` (
+  `n_nationkey` int(11) NOT NULL,
+  `n_name` varchar(25) NOT NULL,
+  `n_regionkey` int(11) NOT NULL,
+  `n_comment` varchar(152) DEFAULT NULL,
+  PRIMARY KEY (`n_nationkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 broadcast;
+
+orders:
+  CREATE TABLE `orders` (
+  `o_orderkey` int(11) NOT NULL,
+  `o_custkey` int(11) NOT NULL,
+  `o_orderstatus` varchar(1) NOT NULL,
+  `o_totalprice` decimal(15,2) NOT NULL,
+  `o_orderdate` date NOT NULL,
+  `o_orderpriority` varchar(15) NOT NULL,
+  `o_clerk` varchar(15) NOT NULL,
+  `o_shippriority` int(11) NOT NULL,
+  `o_comment` varchar(79) NOT NULL,
+  PRIMARY KEY (`o_orderkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by RIGHT_SHIFT(`O_ORDERKEY`, 6) tbpartition by RIGHT_SHIFT(`O_ORDERKEY`, 6) tbpartitions 4;
+
+part:
+  CREATE TABLE `part` (
+  `p_partkey` int(11) NOT NULL,
+  `p_name` varchar(55) NOT NULL,
+  `p_mfgr` varchar(25) NOT NULL,
+  `p_brand` varchar(10) NOT NULL,
+  `p_type` varchar(25) NOT NULL,
+  `p_size` int(11) NOT NULL,
+  `p_container` varchar(10) NOT NULL,
+  `p_retailprice` decimal(15,2) NOT NULL,
+  `p_comment` varchar(23) NOT NULL,
+  PRIMARY KEY (`p_partkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by hash(`p_partkey`) tbpartition by hash(`p_partkey`) tbpartitions 4;
+
+partsupp:
+  CREATE TABLE `partsupp` (
+  `ps_partkey` int(11) NOT NULL,
+  `ps_suppkey` int(11) NOT NULL,
+  `ps_availqty` int(11) NOT NULL,
+  `ps_supplycost` decimal(15,2) NOT NULL,
+  `ps_comment` varchar(199) NOT NULL,
+  PRIMARY KEY (`ps_partkey`,`ps_suppkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by hash(`ps_partkey`) tbpartition by hash(`ps_partkey`) tbpartitions 4;
+
+region:
+  CREATE TABLE `region` (
+  `r_regionkey` int(11) NOT NULL,
+  `r_name` varchar(25) NOT NULL,
+  `r_comment` varchar(152) DEFAULT NULL,
+  PRIMARY KEY (`r_regionkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 broadcast;
+
+supplier:
+  CREATE TABLE `supplier` (
+  `s_suppkey` int(11) NOT NULL,
+  `s_name` varchar(25) NOT NULL,
+  `s_address` varchar(40) NOT NULL,
+  `s_nationkey` int(11) NOT NULL,
+  `s_phone` varchar(15) NOT NULL,
+  `s_acctbal` decimal(15,2) NOT NULL,
+  `s_comment` varchar(101) NOT NULL,
+  PRIMARY KEY (`s_suppkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 dbpartition by hash(`s_suppkey`) tbpartition by hash(`s_suppkey`) tbpartitions 4;
+
+test_index:
+  CREATE TABLE `test_index` (
+  `id` int(11) NOT NULL,
+  `k1` int(11) NOT NULL,
+  `k2` int(11) NOT NULL,
+  `value` char(40) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1  dbpartition by hash(`id`)
+
+test_index_join:
+  CREATE TABLE `test_index_join` (
+  `id` int(11) NOT NULL,
+  `k` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1  dbpartition by hash(`id`)

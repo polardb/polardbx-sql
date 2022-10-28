@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
-import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.parse.bean.PreparedParamRef;
+import com.google.common.collect.Lists;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelVisitor;
@@ -47,6 +51,7 @@ import java.util.Map;
  * @since 5.0.0
  */
 public class OptimizerUtils {
+    public static final String EMPTY_KEY = "NO_IN_EXPR";
 
     public static Date parseDate(String str, String[] parsePatterns) throws ParseException {
         try {
@@ -54,6 +59,29 @@ public class OptimizerUtils {
         } catch (ParseException e) {
             return parseDate(str, parsePatterns, Locale.getDefault());
         }
+    }
+
+    public static String buildInexprKey(Map<Integer, ParameterContext> currentParameter) {
+        StringBuilder key = new StringBuilder();
+        for (Map.Entry<Integer, ParameterContext> entry : currentParameter.entrySet()) {
+            if (entry.getValue().getValue() instanceof RawString) {
+                RawString rawString = (RawString) entry.getValue().getValue();
+                key.append(rawString.size()).append(":");
+            }
+        }
+        if (key.length() > 1) {
+            key.setLength(key.length() - 1);
+            return key.toString();
+        } else {
+            return EMPTY_KEY;
+        }
+    }
+
+    public static String buildInexprKey(ExecutionContext ec) {
+        if (ec.getParams() == null) {
+            return EMPTY_KEY;
+        }
+        return buildInexprKey(ec.getParams().getCurrentParameter());
     }
 
     public static Date parseDate(String str, String[] parsePatterns, Locale locale) throws ParseException {
@@ -81,12 +109,22 @@ public class OptimizerUtils {
     }
 
     public static Map<Integer, ParameterContext> buildParam(List<?> params) {
+        return buildParam(params, null);
+    }
+
+    public static Map<Integer, ParameterContext> buildParam(List<?> params, ExecutionContext executionContext) {
         Int2ObjectOpenHashMap<ParameterContext> newParam = new Int2ObjectOpenHashMap<>();
-        int i = 1;
-        for (Object o : params) {
-            ParameterContext pc = new ParameterContext(getParameterMethod(o), new Object[] {i, o});
-            newParam.put(i, pc);
-            i++;
+        for (int i = 0, j = 1; i < params.size(); i++, j++) {
+            Object o = params.get(i);
+            if (executionContext != null && executionContext.isExecutingPreparedStmt()) {
+                if (o instanceof PreparedParamRef) {
+                    o = ((PreparedParamRef) o).getValue();
+                } else {
+                    o = Planner.processSingleParam(i, o, executionContext);
+                }
+            }
+            ParameterContext pc = new ParameterContext(getParameterMethod(o), new Object[] {j, o});
+            newParam.put(j, pc);
         }
         return newParam;
     }
@@ -132,11 +170,18 @@ public class OptimizerUtils {
         case ALTER_RULE:
         case CREATE_DATABASE:
         case DROP_DATABASE:
-        case CREATE_JAVA_FUNCTION:
-        case DROP_JAVA_FUNCTION:
         case CHANGE_CONSENSUS_ROLE:
         case ALTER_SYSTEM_SET_CONFIG:
         case LOCK_TABLE:
+        case CREATE_TRIGGER:
+        case DROP_TRIGGER:
+        case PUSH_DOWN_UDF:
+        case CREATE_FUNCTION:
+        case DROP_FUNCTION:
+        case ALTER_FUNCTION:
+        case ALTER_PROCEDURE:
+        case CREATE_PROCEDURE:
+        case DROP_PROCEDURE:
         case WITH:
         case WITH_ITEM:
         case ALTER_TABLEGROUP:
@@ -150,6 +195,13 @@ public class OptimizerUtils {
         case ALTER_FILESTORAGE:
         case DROP_FILESTORAGE:
         case CREATE_FILESTORAGE:
+        case PAUSE_SCHEDULE:
+        case CONTINUE_SCHEDULE:
+        case FIRE_SCHEDULE:
+        case CREATE_JOINGROUP:
+        case DROP_JOINGROUP:
+        case ALTER_JOINGROUP:
+        case MERGE_TABLEGROUP:
             return true;
         default:
             if (ast.isA(SqlKind.DAL)) {
@@ -215,6 +267,29 @@ public class OptimizerUtils {
         }
 
         return new RelDynamicParamFinder().run(rootRel);
+    }
+
+    public static boolean findSemiJoin(RelNode rootRel) {
+        class RelSemiJoinFinder extends RelVisitor {
+            private boolean semiJoin = false;
+
+            @Override
+            public void visit(RelNode node, int ordinal, RelNode parent) {
+                if (node instanceof LogicalSemiJoin) {
+                    semiJoin = true;
+                }
+                if (!semiJoin) {
+                    super.visit(node, ordinal, parent);
+                }
+            }
+
+            boolean run(RelNode node) {
+                go(node);
+                return semiJoin;
+            }
+        }
+
+        return new RelSemiJoinFinder().run(rootRel);
     }
 
     static public class DynamicDeepFinder extends RexVisitorImpl<Void> {

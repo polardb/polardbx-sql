@@ -3,24 +3,21 @@
     select * from test_hash_tb a join test_hash_tb b on a.id=b.id join test_hash_tb c  on b.id=c.id where a.id="xx";
 
   plan: |
-
-    PhyTableOperation(tables="optest_0000.[test_hash_tb, test_hash_tb, test_hash_tb]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time`, `c`.`id`, `c`.`name`, `c`.`create_time` FROM ? AS `a` INNER JOIN ? AS `b` ON (`a`.`id` = `b`.`id`) INNER JOIN ? AS `c` ON (`b`.`id` = `c`.`id`) WHERE (`a`.`id` = 'xx')")
+    phytableoperation(tables="optest_0000.[test_hash_tb, test_hash_tb, test_hash_tb]", sql="select `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time`, `c`.`id`, `c`.`name`, `c`.`create_time` from ? as `a` inner join ? as `b` on (`a`.`id` = `b`.`id`) inner join ? as `c` on (`b`.`id` = `c`.`id`) where (`a`.`id` = 'xx')")
 
 -
   sql: |
     select * from test_hash_tb a join test_hash_tb b join test_hash_tb c on a.id=b.id and a.id=c.id where a.id="xx";
 
   plan: |
-
-    PhyTableOperation(tables="optest_0000.[test_hash_tb, test_hash_tb, test_hash_tb]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time`, `c`.`id`, `c`.`name`, `c`.`create_time` FROM ? AS `a` INNER JOIN ? AS `b` INNER JOIN ? AS `c` ON ((`a`.`id` = `b`.`id`) AND (`a`.`id` = `c`.`id`)) WHERE (`a`.`id` = 'xx')")
+    phytableoperation(tables="optest_0000.[test_hash_tb, test_hash_tb, test_hash_tb]", sql="select `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time`, `c`.`id`, `c`.`name`, `c`.`create_time` from ? as `a` inner join ? as `b` inner join ? as `c` on ((`a`.`id` = `b`.`id`) and (`a`.`id` = `c`.`id`)) where (`a`.`id` = 'xx')")
 
 -
   sql: |
     select * from test_hash_tb a left join test_hash_tb b on a.id = b.id and b.id = 'xx' left join test_hash_tb c on b.id = c.id and c.id = 'xx' where a.id = 'xx';
 
   plan: |
-
-    PhyTableOperation(tables="optest_0000.[test_hash_tb, test_hash_tb, test_hash_tb]", sql="SELECT `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time`, `c`.`id`, `c`.`name`, `c`.`create_time` FROM ? AS `a` LEFT JOIN ? AS `b` ON ((`a`.`id` = `b`.`id`) AND (`b`.`id` = 'xx')) LEFT JOIN ? AS `c` ON ((`b`.`id` = `c`.`id`) AND (`c`.`id` = 'xx')) WHERE (`a`.`id` = 'xx')")
+    phytableoperation(tables="optest_0000.[test_hash_tb, test_hash_tb, test_hash_tb]", sql="select `a`.`id`, `a`.`name`, `a`.`create_time`, `b`.`id`, `b`.`name`, `b`.`create_time`, `c`.`id`, `c`.`name`, `c`.`create_time` from ? as `a` left join ? as `b` on ((`a`.`id` = `b`.`id`) and (`b`.`id` = 'xx')) left join ? as `c` on ((`b`.`id` = `c`.`id`) and (`c`.`id` = 'xx')) where (`a`.`id` = 'xx')")
 
 -
   sql: |

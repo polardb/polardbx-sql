@@ -17,11 +17,9 @@
 package com.alibaba.polardbx.executor.vectorized.build;
 
 import com.alibaba.polardbx.common.charset.CollationName;
-import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -49,8 +47,10 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
 import com.alibaba.polardbx.optimizer.core.expression.build.Rex2ExprUtil;
+import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
+import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -74,7 +74,6 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.util.IntervalString;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -144,6 +143,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
     private final boolean fallback;
     private final boolean enableCSE;
     private int currentOutputIndex;
+    private ExprContextProvider contextProvider;
 
     public Rex2VectorizedExpressionVisitor(ExecutionContext executionContext, int startIndex) {
         super(false);
@@ -153,6 +153,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             !executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_EXPRESSION_VECTORIZATION);
         this.enableCSE =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE);
+        this.contextProvider = new ExprContextProvider(executionContext);
     }
 
     private RexCall rewrite(RexCall call, boolean isScalar) {
@@ -160,80 +161,132 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
         if (TddlOperatorTable.CONTROL_FLOW_VECTORIZED_OPERATORS.contains(call.op)) {
             return rewriteControlFlowFunction(call);
         } else if (call.op == TddlOperatorTable.TRIM) {
-            ImmutableList<RexNode> operands = call.operands;
-            List<RexNode> nodes = Arrays.asList(operands.get(2), operands.get(1), operands.get(0));
-            return call.clone(call.type, nodes);
+            return rewriteTrim(call);
         } else if (call.op == TddlOperatorTable.DATE_ADD
             || call.op == TddlOperatorTable.ADDDATE
             || call.op == TddlOperatorTable.DATE_SUB
             || call.op == TddlOperatorTable.SUBDATE) {
-
-            RexNode interval = call.getOperands().get(1);
-            if (interval instanceof RexCall && ((RexCall) interval).op == TddlOperatorTable.INTERVAL_PRIMARY) {
-                // flat the operands tree:
-                //
-                //       DATE_ADD                                 DATE_ADD
-                //       /      \                               /    |     \
-                //   TIME   INTERVAL_PRIMARY        =>      TIME    VALUE   TIME_UNIT
-                //                 /    \
-                //           VALUE        TIME_UNIT
-                RexNode literal = ((RexCall) interval).getOperands().get(1);
-                if (literal instanceof RexLiteral && ((RexLiteral) literal).getValue() != null) {
-                    String unit = ((RexLiteral) literal).getValue().toString();
-                    RexCall newCall = (RexCall) REX_BUILDER.makeCall(
-                        call.getType(),
-                        call.op,
-                        ImmutableList.of(
-                            call.getOperands().get(0),
-                            ((RexCall) interval).getOperands().get(0),
-                            REX_BUILDER.makeLiteral(unit)
-                        ));
-                    return newCall;
-                }
-
-            } else if (call.getOperands().size() == 2) {
-                // flat the operands tree:
-                //
-                //       DATE_ADD                                   DATE_ADD
-                //       /      \                               /     |         \
-                //   TIME    DAY VALUE        =>           TIME    DAY VALUE   INTERVAL_DAY
-                //
-                RexCall newCall = (RexCall) REX_BUILDER.makeCall(
-                    call.getType(),
-                    call.op,
-                    ImmutableList.of(
-                        call.getOperands().get(0),
-                        call.getOperands().get(1),
-                        REX_BUILDER.makeLiteral(MySQLIntervalType.INTERVAL_DAY.name())
-                    ));
-                return newCall;
-            }
-
+            return rewriteTemporalCalc(call);
         } else if (!isScalar && !fallback && call.op == TddlOperatorTable.IN) {
-            List<RexNode> operands = call.getOperands();
-            List<RexNode> newOperandList = new ArrayList<>();
-            RexNode left = operands.get(0);
-            RexNode right = operands.get(1);
-            newOperandList.add(left);
-            if (right instanceof RexCall
-                && ((RexCall) right).op == TddlOperatorTable.ROW
-                && RexUtil.isConstant(right)) {
-                for (RexNode operand : ((RexCall) right).getOperands()) {
-                    newOperandList.add(operand);
-                }
-            }
-            RexCall newCall = (RexCall) REX_BUILDER.makeCall(
-                call.getType(),
-                call.op,
-                newOperandList
-            );
-            return newCall;
+            return rewriteIn(call);
         } else if (enableCSE && call.op == TddlOperatorTable.OR) {
             return rewriteOr(call);
         } else if (enableCSE && call.op == TddlOperatorTable.AND) {
             return rewriteAnd(call);
         }
         return call;
+    }
+
+    private RexCall rewriteTrim(RexCall call) {
+        ImmutableList<RexNode> operands = call.operands;
+        List<RexNode> nodes = Arrays.asList(operands.get(2), operands.get(1), operands.get(0));
+        return call.clone(call.type, nodes);
+    }
+
+    private RexCall rewriteTemporalCalc(RexCall call) {
+        RexNode interval = call.getOperands().get(1);
+        if (interval instanceof RexCall && ((RexCall) interval).op == TddlOperatorTable.INTERVAL_PRIMARY) {
+            // flat the operands tree:
+            //
+            //       DATE_ADD                                 DATE_ADD
+            //       /      \                               /    |     \
+            //   TIME   INTERVAL_PRIMARY        =>      TIME    VALUE   TIME_UNIT
+            //                 /    \
+            //           VALUE        TIME_UNIT
+            RexNode literal = ((RexCall) interval).getOperands().get(1);
+            if (literal instanceof RexLiteral && ((RexLiteral) literal).getValue() != null) {
+                String unit = ((RexLiteral) literal).getValue().toString();
+                RexCall newCall = (RexCall) REX_BUILDER.makeCall(
+                    call.getType(),
+                    call.op,
+                    ImmutableList.of(
+                        call.getOperands().get(0),
+                        ((RexCall) interval).getOperands().get(0),
+                        REX_BUILDER.makeLiteral(unit)
+                    ));
+                return newCall;
+            }
+
+        } else if (call.getOperands().size() == 2) {
+            // flat the operands tree:
+            //
+            //       DATE_ADD                                   DATE_ADD
+            //       /      \                               /     |         \
+            //   TIME    DAY VALUE        =>           TIME    DAY VALUE   INTERVAL_DAY
+            //
+            RexCall newCall = (RexCall) REX_BUILDER.makeCall(
+                call.getType(),
+                call.op,
+                ImmutableList.of(
+                    call.getOperands().get(0),
+                    call.getOperands().get(1),
+                    REX_BUILDER.makeLiteral(MySQLIntervalType.INTERVAL_DAY.name())
+                ));
+            return newCall;
+        }
+        return call;
+    }
+
+    private RexCall rewriteIn(RexCall call) {
+        List<RexNode> operands = call.getOperands();
+        List<RexNode> newOperandList = new ArrayList<>();
+        RexNode left = operands.get(0);
+        RexNode right = operands.get(1);
+        newOperandList.add(left);
+
+        // expand the in(...) to operand list.
+        boolean expanded = expandIn(newOperandList, right);
+        if (!expanded) {
+            // fail to expand the IN value list.
+            return call;
+        }
+        RexCall newCall = (RexCall) REX_BUILDER.makeCall(
+            call.getType(),
+            call.op,
+            newOperandList
+        );
+        return newCall;
+    }
+
+    private boolean expandIn(List<RexNode> newOperandList, RexNode right) {
+        boolean expandable = right instanceof RexCall
+            && ((RexCall) right).op == TddlOperatorTable.ROW
+            && RexUtil.isConstant(right);
+        if (!expandable) {
+            return false;
+        }
+        // row expression optimized
+        for (RexNode operand : ((RexCall) right).getOperands()) {
+            if (operand instanceof RexDynamicParam) {
+                // evaluate dynamic param
+                Object value = extractDynamicValue((RexDynamicParam) operand);
+
+                // check if list value
+                if (value instanceof List) {
+                    for (Object listItem : (List) value) {
+                        if (listItem instanceof List) {
+                            // cannot expand: row in format of ((1,2,3), (2,3,4))
+                            return false;
+                        }
+                        SqlTypeName typeName = DataTypeUtil.typeNameOfParam(listItem);
+                        RelDataType relDataType = TYPE_FACTORY.createSqlType(typeName);
+                        DataType dataType = DataTypeUtil.calciteToDrdsType(relDataType);
+                        RexNode literalNode = REX_BUILDER.makeLiteral(
+                            dataType.convertFrom(listItem),
+                            relDataType,
+                            false);
+                        newOperandList.add(literalNode);
+                    }
+                } else {
+                    // ban prepare mode
+                    return false;
+                }
+            } else {
+                newOperandList.add(operand);
+            }
+        }
+
+        return true;
     }
 
     private RexCall rewriteOr(RexCall call) {
@@ -286,9 +339,11 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             RexNode operandValue2 = child.getOperands().get(2);
             if (operandValue1 instanceof RexDynamicParam) {
                 lowerBound =
-                    Math.min(lowerBound, DataTypes.LongType.convertFrom(extractValue((RexDynamicParam) operandValue1)));
+                    Math.min(lowerBound,
+                        DataTypes.LongType.convertFrom(extractDynamicValue((RexDynamicParam) operandValue1)));
                 upperBound =
-                    Math.max(upperBound, DataTypes.LongType.convertFrom(extractValue((RexDynamicParam) operandValue2)));
+                    Math.max(upperBound,
+                        DataTypes.LongType.convertFrom(extractDynamicValue((RexDynamicParam) operandValue2)));
             } else if (operandValue2 instanceof RexLiteral) {
                 lowerBound =
                     Math.min(lowerBound, DataTypes.LongType.convertFrom(((RexLiteral) operandValue1).getValue3()));
@@ -606,7 +661,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
 
     @Override
     public VectorizedExpression visitFieldAccess(RexFieldAccess fieldAccess) {
-        throw new IllegalArgumentException("Correlated variable not supported in cectorized expression!");
+        throw new IllegalArgumentException("Correlated variable not supported in vectorized expression!");
     }
 
     @Override
@@ -615,28 +670,22 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             throw new IllegalStateException("Subquery not supported yet!");
         }
 
-        Object value = extractValue(dynamicParam);
+        Object value = extractDynamicValue(dynamicParam);
 
         DataType<?> dataType = DataTypeUtil.calciteToDrdsType(dynamicParam.getType());
         return new LiteralVectorizedExpression(dataType, value, addOutput(dataType));
     }
 
-    private Object extractValue(RexDynamicParam dynamicParam) {
-        return Optional.ofNullable(executionContext.getParams())
-            .map(Parameters::getCurrentParameter)
-            .flatMap(m -> Optional.ofNullable(m.get(dynamicParam.getIndex() + 1)))
-            .map(ParameterContext::getValue)
-            .map(v -> {
-                if (v instanceof BigDecimal) {
-                    return Decimal.fromBigDecimal((BigDecimal) v);
-                } else {
-                    return v;
-                }
-            }).orElse(null);
+    private Object extractDynamicValue(RexDynamicParam dynamicParam) {
+        // pre-compute the dynamic value when binging expression.
+        DynamicParamExpression dynamicParamExpression =
+            new DynamicParamExpression(dynamicParam.getIndex(), contextProvider,
+                dynamicParam.getSubIndex(), dynamicParam.getSkIndex());
+
+        return dynamicParamExpression.eval(null, executionContext);
     }
 
-
-    private VectorizedExpression createGeneralVectorizedExpression(RexCall call) {
+    public AbstractScalarFunction createFunction(RexCall call, List<VectorizedExpression> args) {
         call = rewrite(call, true);
 
         String functionName = call.getOperator().getName();
@@ -648,7 +697,9 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
         }
 
         List<RexNode> operands = call.getOperands();
-        List<VectorizedExpression> args = new ArrayList<>(operands.size());
+        if (args == null) {
+            args = new ArrayList<>(operands.size());
+        }
         for (RexNode rexNode : operands) {
             args.add(rexNode.accept(this));
         }
@@ -665,10 +716,16 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             CollationName collation = Rex2ExprUtil.fixCollation(call, executionContext);
             ((AbstractCollationScalarFunction) scalarFunction).setCollation(collation);
         }
+        return scalarFunction;
+    }
 
+    private VectorizedExpression createGeneralVectorizedExpression(RexCall call) {
+        List<VectorizedExpression> args = new ArrayList<>();
+        AbstractScalarFunction expression = createFunction(call, args);
         return BuiltInFunctionVectorizedExpression
-            .from(args.toArray(new VectorizedExpression[0]), addOutput(scalarFunction.getReturnType()),
-                scalarFunction, executionContext);
+            .from(args.toArray(new VectorizedExpression[0]), addOutput(expression.getReturnType()),
+                expression,
+                executionContext);
     }
 
     private Optional<VectorizedExpression> createVectorizedExpression(RexCall call) {

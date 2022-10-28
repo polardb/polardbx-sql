@@ -37,6 +37,7 @@ import com.alibaba.polardbx.executor.scaleout.fastchecker.MoveTableFastChecker;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
@@ -78,6 +79,8 @@ public class MoveTableBackfillHandler extends HandlerCommon {
         });
 
         executionContext = clearSqlMode(executionContext.copy());
+
+        PhyTableOperationUtil.disableIntraGroupParallelism(schemaName, executionContext);
 
         upgradeEncoding(executionContext, schemaName, logicalTable);
 

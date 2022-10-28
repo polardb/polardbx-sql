@@ -61,8 +61,7 @@ public class SchemataAccessor extends AbstractAccessor {
 
     public static List<SchemataRecord> getAllSchemata() {
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            return AbstractAccessor.query(SELECT_TABLES, SCHEMATA_TABLE, SchemataRecord.class, null,
-                null, metaDbConn);
+            return AbstractAccessor.query(SELECT_TABLES, SCHEMATA_TABLE, SchemataRecord.class, null, metaDbConn);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
                 SCHEMATA_TABLE, e.getMessage());

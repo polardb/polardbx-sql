@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
+import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -44,6 +48,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 import java.sql.Date;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 class DateColumnProvider implements ColumnProvider<Long> {
     @Override
@@ -100,10 +105,10 @@ class DateColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -114,6 +119,7 @@ class DateColumnProvider implements ColumnProvider<Long> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((LongColumnVector) columnVector).vector[rowNumber] = 0;
+                accumulator.ifPresent(CrcAccumulator::appendNull);
                 return;
             }
             t = DataTypeUtil.toMySQLDatetimeByFlags(
@@ -123,6 +129,7 @@ class DateColumnProvider implements ColumnProvider<Long> {
             long l = TimeStorage.writeDate(t);
 
             ((LongColumnVector) columnVector).vector[rowNumber] = l;
+            accumulator.ifPresent(a -> a.appendHash(Long.hashCode(l)));
         }
     }
 

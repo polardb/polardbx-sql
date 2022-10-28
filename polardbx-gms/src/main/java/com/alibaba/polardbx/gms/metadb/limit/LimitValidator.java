@@ -159,6 +159,11 @@ public class LimitValidator {
         validateIdentifierNameLength(tableGroupName, Limits.MAX_LENGTH_OF_TABLE_GROUP);
     }
 
+    //join group limits
+    public static void validateJoinGroupNameLength(String joinGroupName) {
+        validateIdentifierNameLength(joinGroupName, Limits.MAX_LENGTH_OF_JOIN_GROUP);
+    }
+
     // Private methods
 
     private static void validateIdentifierNameLength(String identifierName, int maxLength) {

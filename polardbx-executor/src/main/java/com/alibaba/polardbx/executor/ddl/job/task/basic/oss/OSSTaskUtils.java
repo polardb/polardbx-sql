@@ -153,10 +153,9 @@ public class OSSTaskUtils {
         }
 
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
-        StoreTableLocalityTask dropLocality =
-                StoreTableLocalityTask.buildDropLocalityTask(schemaName, logicalTableName);
+        StoreTableLocalityTask dropLocality = new
+            StoreTableLocalityTask(schemaName, logicalTableName, "", true);
 
-        ExecutableDdlJob4DropPartitionTable executableDdlJob = new ExecutableDdlJob4DropPartitionTable();
         /**
          * todo chenyi
          * DropTableJobFactory中已经把元数据操作都合并到一个Task中了

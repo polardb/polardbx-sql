@@ -17,8 +17,10 @@
 package com.alibaba.polardbx.optimizer.core.rel.dml.writer;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dml.CaseWhenWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
@@ -26,6 +28,9 @@ import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.ClassifyResult;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.RowClassifier;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.SourceRows;
+import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptTable;
@@ -56,11 +61,12 @@ public class RelocateWriter extends AbstractSingleWriter implements CaseWhenWrit
     protected final Mapping identifierKeySourceMapping;
     protected final List<ColumnMeta> identifierKeyMetas;
     protected final boolean modifySkOnly;
+    protected final boolean usePartFieldChecker;
 
     public RelocateWriter(RelOptTable targetTable, DistinctWriter deleteWriter, DistinctWriter insertWriter,
                           DistinctWriter modifyWriter, Mapping identifierKeyTargetMapping,
                           Mapping identifierKeySourceMapping,
-                          List<ColumnMeta> identifierKeyMetas, boolean modifySkOnly) {
+                          List<ColumnMeta> identifierKeyMetas, boolean modifySkOnly, boolean usePartFieldChecker) {
         super(targetTable, Operation.UPDATE);
 
         this.deleteWriter = deleteWriter;
@@ -70,6 +76,7 @@ public class RelocateWriter extends AbstractSingleWriter implements CaseWhenWrit
         this.identifierKeySourceMapping = identifierKeySourceMapping;
         this.identifierKeyMetas = identifierKeyMetas;
         this.modifySkOnly = modifySkOnly;
+        this.usePartFieldChecker = usePartFieldChecker;
     }
 
     public DistinctWriter getDeleteWriter() {
@@ -98,6 +105,10 @@ public class RelocateWriter extends AbstractSingleWriter implements CaseWhenWrit
 
     public boolean getModifySkOnly() {
         return modifySkOnly;
+    }
+
+    public boolean isUsePartFieldChecker() {
+        return usePartFieldChecker;
     }
 
     public SourceRows getInput(ExecutionContext ec, ExecutionContext insertEc,
@@ -166,5 +177,47 @@ public class RelocateWriter extends AbstractSingleWriter implements CaseWhenWrit
         writerList.add(deleteWriter);
         writerList.add(modifyWriter);
         return writerList;
+    }
+
+    public static boolean checkSkUsePartField(List<Object> srcObject, List<Object> tarObject,
+                                              List<DataType> srcDataType, List<DataType> tarDataType,
+                                              List<DataType> skDataType, ExecutionContext executionContext) {
+        final int fieldCnt = srcObject.size();
+        for (int i = 0; i < fieldCnt; i++) {
+            try {
+                PartitionField srcPartField =
+                    PartitionPrunerUtils.buildPartField(srcObject.get(i), srcDataType.get(i), skDataType.get(i), null,
+                        executionContext, PartFieldAccessType.DML_PRUNING);
+                PartitionField tarPartField =
+                    PartitionPrunerUtils.buildPartField(tarObject.get(i), tarDataType.get(i), skDataType.get(i), null,
+                        executionContext, PartFieldAccessType.DML_PRUNING);
+
+                if (tarPartField.isNull() || srcPartField.isNull()) {
+                    if (tarPartField.isNull() && srcPartField.isNull()) {
+                        continue;
+                    }
+                    return false;
+                }
+
+                // Compare bytes directly, since 2 fields' type must be same
+                if (memCmp(srcPartField.rawBytes(), tarPartField.rawBytes()) != 0) {
+                    return false;
+                }
+            } catch (Throwable ex) {
+                // Can not convert, just use delete + insert
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static int memCmp(byte[] left, byte[] right) {
+        int minLen = Math.min(left.length, right.length);
+        int index = 0;
+        while (index < minLen - 1 && left[index] == right[index]) {
+            index++;
+        }
+        return left[index] - right[index];
     }
 }

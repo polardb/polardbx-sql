@@ -42,6 +42,7 @@ public class DdlPlanRecord implements SystemTableRecord {
     private String  extras;
     public Date     gmtCreate;
     public Date     gmtModified;
+    private String  resource;
 
     @Override
     public DdlPlanRecord fill(ResultSet rs) throws SQLException {
@@ -59,6 +60,7 @@ public class DdlPlanRecord implements SystemTableRecord {
         this.result = rs.getString("result");
         this.gmtCreate = rs.getTimestamp("gmt_created");
         this.gmtModified = rs.getTimestamp("gmt_modified");
+        this.resource = rs.getString("resource");
 
         return this;
     }
@@ -75,6 +77,7 @@ public class DdlPlanRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setInt,  this.retryCount);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.result);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.extras);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.resource);
         return params;
     }
 
@@ -146,6 +149,14 @@ public class DdlPlanRecord implements SystemTableRecord {
         this.retryCount = retryCount;
     }
 
+    public String getResource() {
+        return resource;
+    }
+
+    public void setResource(String resource) {
+        this.resource = resource;
+    }
+
     public String getResult() {
         return result;
     }
@@ -182,6 +193,7 @@ public class DdlPlanRecord implements SystemTableRecord {
         ddlPlanRecord.setTableSchema(tableSchema);
         ddlPlanRecord.setResult("");
         ddlPlanRecord.setExtras("");
+        ddlPlanRecord.setResource("");
         return ddlPlanRecord;
     }
 }

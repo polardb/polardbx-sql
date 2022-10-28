@@ -1,5 +1,5 @@
 ## DISABLE_FAST_SQL_PARSER
-create tablegroup tg2;
+create tablegroup mytg21;
 CREATE TABLE `t2` (
   `a` varchar(32) DEFAULT NULL,
   `b` int(11) DEFAULT NULL
@@ -10,7 +10,7 @@ PARTITION BY RANGE COLUMNS(`a`,`b`) (
   PARTITION p3 VALUES LESS THAN ('hij', maxvalue),
   PARTITION p4 VALUES LESS THAN (maxvalue, maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg21;
 show full create table t2;
 
 CREATE TABLE `t1` (
@@ -22,30 +22,32 @@ PARTITION BY RANGE COLUMNS(`a`) (
   PARTITION p2 VALUES LESS THAN ('efg'),
   PARTITION p3 VALUES LESS THAN ('hij'),
   PARTITION p4 VALUES LESS THAN (maxvalue)
-);
+)
+tablegroup = mytg21;
+
 show full create table t1;
 explain select t1.a from t1 join t2 on t1.a=t2.a;
-alter tablegroup tg2 split partition p2 into (
+alter tablegroup mytg21 split partition p2 into (
   PARTITION p2_1 VALUES LESS THAN ('adc'),
   PARTITION p2_2 VALUES LESS THAN ('efg')
 );
 show create table t1;
 show create table t2;
 explain select t1.a from t1 join t2 on t1.a=t2.a;
-alter tablegroup tg2 merge partitions p2_1,p2_2 to p2;
+alter tablegroup mytg21 merge partitions p2_1,p2_2 to p2;
 show create table t1;
 show create table t2;
 explain select t1.a from t1 join t2 on t1.a=t2.a;
 
 ## error_msg: $# ERR_PARTITION_INVALID_PARAMS #$
-alter tablegroup tg2 split partition p2 into (
+alter tablegroup mytg21 split partition p2 into (
   PARTITION p2_1 VALUES LESS THAN ('adc', 100),
   PARTITION p2_2 VALUES LESS THAN ('efg', maxvalue)
 );
 
 create tablegroup newtg;
 alter table t2 set tablegroup=newtg;
-alter tablegroup tg2 split partition p2 into (
+alter tablegroup mytg21 split partition p2 into (
   PARTITION p2_1 VALUES LESS THAN ('adc'),
   PARTITION p2_2 VALUES LESS THAN ('efg')
 );
@@ -58,14 +60,14 @@ show create table t1;
 show create table t2;
 explain select t1.a from t1 join t2 on t1.a=t2.a;
 
-alter table t2 set tablegroup=newtg;
+alter table t2 set tablegroup=newtg force;
 show create table t1;
 show create table t2;
 explain select t1.a from t1 join t2 on t1.a=t2.a;
 
 create tablegroup newtg2;
-alter table t2 set tablegroup=newtg2;
-alter table t1 set tablegroup=newtg2;
+alter table t2 set tablegroup=newtg2 force;
+alter table t1 set tablegroup=newtg2 force;
 
 show create table t1;
 show create table t2;

@@ -36,6 +36,7 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
  */
 public class TimestampBlock extends AbstractCommonBlock {
     private static final long NULL_VALUE = 0L;
+    private static final byte[] NULL_VALUE_FOR_HASHER = new byte[0];
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(TimestampBlock.class).instanceSize();
 
     public static final long ZERO_TIMESTAMP_MILLIS = -1;
@@ -116,9 +117,9 @@ public class TimestampBlock extends AbstractCommonBlock {
     @Override
     public void addToHasher(IStreamingHasher sink, int position) {
         if (isNull(position)) {
-            sink.putLong(NULL_VALUE);
+            sink.putBytes(NULL_VALUE_FOR_HASHER);
         } else {
-            sink.putLong(packed[position]);
+            sink.putString(getTimestamp(position).toString());
         }
     }
 

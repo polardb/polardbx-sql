@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
@@ -31,6 +32,7 @@ import org.apache.orc.TypeDescription;
 import java.sql.Blob;
 import java.sql.SQLException;
 import java.time.ZoneId;
+import java.util.Optional;
 
 class BlobColumnProvider implements ColumnProvider<Blob> {
     @Override
@@ -93,10 +95,10 @@ class BlobColumnProvider implements ColumnProvider<Blob> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -107,11 +109,14 @@ class BlobColumnProvider implements ColumnProvider<Blob> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((BytesColumnVector) columnVector).setRef(rowNumber, ColumnProviders.EMPTY_BYTES, 0, 0);
+                accumulator.ifPresent(CrcAccumulator::appendNull);
                 return;
             }
 
             try {
-                ((BytesColumnVector) columnVector).setVal(rowNumber, blob.getBytes(1, (int) blob.length()));
+                byte[] rawBytes = blob.getBytes(1, (int) blob.length());
+                ((BytesColumnVector) columnVector).setVal(rowNumber, rawBytes);
+                accumulator.ifPresent(a -> a.appendBytes(rawBytes, 0, rawBytes.length));
             } catch (SQLException t) {
                 throw new NestableRuntimeException(t);
             }

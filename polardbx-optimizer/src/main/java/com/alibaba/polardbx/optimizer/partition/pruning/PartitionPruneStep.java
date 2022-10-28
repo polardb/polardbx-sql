@@ -22,7 +22,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 /**
  * @author chenghui.lch
  */
-public interface PartitionPruneStep {
+public interface PartitionPruneStep extends PartitionPruneBase {
 
     String getStepDigest();
 
@@ -37,5 +37,7 @@ public interface PartitionPruneStep {
     boolean needMergeRanges(PartPruneStepPruningContext pruningCtx);
     
     int getOpStepCount();
+
+
 }
 

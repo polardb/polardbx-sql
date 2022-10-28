@@ -54,6 +54,7 @@ import java.util.StringTokenizer;
  * @since 5.0.0
  */
 public class TGroupDataSource extends AbstractLifecycle implements IDataSource, Lifecycle {
+    public static final String LOCAL_ADDRESS = "127.0.0.1:3306";
 
     private static final Logger logger = LoggerFactory.getLogger(TGroupDataSource.class);
 
@@ -400,6 +401,39 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             atomDataSources.add(wrapper.getWrappedDataSource());
         }
         return atomDataSources;
+    }
+
+    public TAtomDataSource getOneAtomDs(boolean master) {
+        TAtomDataSource ds = null;
+        if (master) {
+            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+                if (wrapper.getWeight() != null && wrapper.getWeight().w > 0) {
+                    ds = wrapper.getWrappedDataSource();
+                    break;
+                }
+            }
+        } else {
+            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+                if (wrapper.getWeight() != null && (wrapper.getWeight().w <= 0 && wrapper.getWeight().r > 0)) {
+                    ds = wrapper.getWrappedDataSource();
+                    break;
+                }
+            }
+        }
+
+        if (ds == null) {
+            //The write weight is always > 0 for MetaDB Connection.
+            logger.warn(
+                "Not as expected for the appname:" + appName + ", dbGroupKey:" + dbGroupKey);
+            for (DataSourceWrapper wrapper : this.configManager.getDataSourceWrapperMap().values()) {
+                ds = wrapper.getWrappedDataSource();
+                if (ds != null) {
+                    break;
+                }
+            }
+        }
+
+        return ds;
     }
 
     public String getOneAtomAddress(boolean master) {

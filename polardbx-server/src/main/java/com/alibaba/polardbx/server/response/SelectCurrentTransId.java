@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -27,10 +30,7 @@ import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.PacketUtil;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 
 public class SelectCurrentTransId {
@@ -89,7 +89,7 @@ public class SelectCurrentTransId {
     }
 
     private static String getCurrentTransId(ServerConnection c) throws SQLException {
-        Connection conn = c.getTddlConnection();
+        TConnection conn = c.getTddlConnection();
         if (conn.getAutoCommit()) {
             throw new SQLException("Set auto-commit mode to off");
         }

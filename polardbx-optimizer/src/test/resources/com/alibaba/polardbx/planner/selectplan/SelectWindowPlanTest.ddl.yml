@@ -1,3 +1,19 @@
+test_simple_table:
+  CREATE TABLE `test_simple_table` (
+  `id1` int(10) DEFAULT NULL,
+  `id2` int(10) DEFAULT NULL,
+  `id3` int(10) DEFAULT NULL,
+  KEY `auto_shard_key_id1` USING BTREE (`id1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DEFAULT COLLATE = utf8_unicode_ci;
+
+test_simple_table2:
+  CREATE TABLE `test_simple_table2` (
+  `id1` int(10) DEFAULT NULL,
+  `id2` int(10) DEFAULT NULL,
+  `id3` int(10) DEFAULT NULL,
+  KEY `auto_shard_key_id1` USING BTREE (`id1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DEFAULT COLLATE = utf8_unicode_ci;
+
 testwin:
   CREATE TABLE `testwin` (
   `id1` int(10) DEFAULT NULL,

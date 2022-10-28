@@ -1,5 +1,6 @@
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.SqlString;
 
@@ -18,23 +19,29 @@ public class SqlAlterTableRepartition extends SqlAlterTable {
     private SqlIdentifier originTableName;
     private boolean broadcast;
     private boolean single;
+    private boolean alignToTableGroup = false;
+    private SqlIdentifier tableGroupName;
 
     private String logicalSecondaryTableName;
 
     public SqlAlterTableRepartition(SqlIdentifier tableName,
                                     String sql, List<SqlAlterSpecification> alters,
-                                    SqlNode sqlPartition) {
-        super(tableName, null, sql, null, alters, SqlParserPos.ZERO);
+                                    SqlNode sqlPartition,
+                                    boolean alignToTableGroup,
+                                    SqlIdentifier tableGroupName) {
+        super(null, tableName, null, sql, null, alters, SqlParserPos.ZERO);
         this.sourceSql = sql;
         this.sqlPartition = sqlPartition;
         this.originTableName = tableName;
+        this.tableGroupName = tableGroupName;
+        this.alignToTableGroup = alignToTableGroup;
     }
 
     static public SqlAlterTableRepartition create(SqlAlterTablePartitionKey sqlAlterTablePartitionKey) {
         SqlAlterTableRepartition sqlAlterPartitionTableRepartition =
             new SqlAlterTableRepartition(sqlAlterTablePartitionKey.getOriginTableName(),
                 sqlAlterTablePartitionKey.getSourceSql() ,
-                sqlAlterTablePartitionKey.getAlters(), null);
+                sqlAlterTablePartitionKey.getAlters(), null, false, null);
         sqlAlterPartitionTableRepartition.setBroadcast(sqlAlterTablePartitionKey.isBroadcast());
         sqlAlterPartitionTableRepartition.setSingle(sqlAlterTablePartitionKey.isSingle());
         return sqlAlterPartitionTableRepartition;
@@ -42,6 +49,10 @@ public class SqlAlterTableRepartition extends SqlAlterTable {
 
     public SqlNode getSqlPartition() {
         return sqlPartition;
+    }
+
+    public void setSqlPartition(SqlNode sqlPartition) {
+        this.sqlPartition = sqlPartition;
     }
 
     @Override
@@ -141,5 +152,21 @@ public class SqlAlterTableRepartition extends SqlAlterTable {
 
     public boolean isSingleOrBroadcast() {
         return this.single || this.broadcast;
+    }
+
+    public boolean isAlignToTableGroup() {
+        return alignToTableGroup;
+    }
+
+    public void setAlignToTableGroup(boolean alignToTableGroup) {
+        this.alignToTableGroup = alignToTableGroup;
+    }
+
+    public SqlIdentifier getTableGroupName() {
+        return tableGroupName;
+    }
+
+    public void setTableGroupName(SqlIdentifier tableGroupName) {
+        this.tableGroupName = tableGroupName;
     }
 }

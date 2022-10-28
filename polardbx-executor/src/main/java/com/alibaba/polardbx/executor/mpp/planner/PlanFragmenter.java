@@ -252,7 +252,7 @@ public class PlanFragmenter {
             RelNode remoteSourceNode = null;
             if (mergeSort.getInput() instanceof LogicalUnion) {
                 LogicalUnion union = (LogicalUnion) mergeSort.getInput();
-                remoteSourceNode = visitUnion(union, shuffleHandle, parentProperties);
+                remoteSourceNode = visitUnion(union, shuffleHandle, parentProperties, ImmutableList.of(), orderBys);
             } else {
                 SubPlan subPlan =
                     generateFragment(mergeSort, 0, shuffleHandle, ImmutableList.of(), orderBys);
@@ -307,7 +307,8 @@ public class PlanFragmenter {
             }
             if (exchange.getInput() instanceof LogicalUnion) {
                 LogicalUnion union = (LogicalUnion) exchange.getInput();
-                RelNode remoteSourceNode = visitUnion(union, shuffleHandle, parentProperties);
+                RelNode remoteSourceNode = visitUnion(
+                    union, shuffleHandle, parentProperties, exchange.distribution.getKeys(), orderBys);
                 remoteSourceNode.setRelatedId(exchange.getRelatedId());
                 return remoteSourceNode;
             } else {
@@ -330,14 +331,15 @@ public class PlanFragmenter {
             PartitionShuffleHandle shuffleHandle = new PartitionShuffleHandle(
                 PartitionShuffleHandle.PartitionShuffleMode.FIXED,
                 false);
-            return visitUnion(union, shuffleHandle, parentProperties);
+            return visitUnion(union, shuffleHandle, parentProperties, ImmutableList.of(), ImmutableList.of());
         }
 
         private RelNode visitUnion(
-            LogicalUnion union, PartitionShuffleHandle shuffleHandle, FragmentProperties parentProperties) {
+            LogicalUnion union, PartitionShuffleHandle shuffleHandle, FragmentProperties parentProperties,
+            List<Integer> keys, List<OrderByOption> orderByOptions) {
             List<Integer> sourceFragmentIds = new ArrayList<>();
             for (int i = 0; i < union.getInputs().size(); i++) {
-                SubPlan subPlan = generateFragment(union, i, shuffleHandle, ImmutableList.of(), ImmutableList.of());
+                SubPlan subPlan = generateFragment(union, i, shuffleHandle, keys, orderByOptions);
                 parentProperties.addChildren(subPlan);
                 sourceFragmentIds.add(subPlan.getFragment().getId());
             }
@@ -372,7 +374,7 @@ public class PlanFragmenter {
             Pair<List<Integer>, List<Integer>> pairs = getPartitionSourceIds(currentProperties);
 
             SplitInfo splitInfo = null;
-            if (currentProperties.getCurrentLogicalView() != null) {
+            if (currentProperties.getCurrentLogicalView() != null && !session.isIgnoreSplitInfo()) {
                 LogicalView logicalView = currentProperties.getCurrentLogicalView();
                 if (logicalView.fromTableOperation() != null) {
                     splitInfo = new SplitManager().getSingleSplit(logicalView, session.getClientContext());

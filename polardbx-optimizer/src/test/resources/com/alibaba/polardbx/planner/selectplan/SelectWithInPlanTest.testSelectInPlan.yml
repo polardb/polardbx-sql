@@ -51,10 +51,8 @@
 
 
   plan: |
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`name` IN('a', 'b', 'c')) AND (`name1` = '7'))")
-
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where ((`name1` = '7') and (`name` in('a', 'b', 'c')))")
 - sql: |
     select id
     from test_hash_tb a
@@ -89,7 +87,7 @@
 
   plan: |
 
-    LogicalInsert(table="test_hash_tb1", columns=RecordType(INTEGER id))
+    LogicalInsert(table="test_hash_tb1", columns=RecordType(INTEGER id), mode=multi)
       Gather(concurrent=true)
         LogicalView(tables="[0001-0003].test_hash_tb", shardCount=3, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN(5, 6, 7))")
 
@@ -100,5 +98,4 @@
 
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb2", sql="SELECT `a`.`id` FROM `test_hash_tb2` AS `a` WHERE (`a`.`id` IN (3, 5, 7))")
+    logicalview(tables="optest_0000.test_hash_tb2", sql="select `a`.`id` from `test_hash_tb2` as `a` where (`a`.`id` in (3, 5, 7))")

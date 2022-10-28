@@ -26,22 +26,36 @@ import org.apache.calcite.sql.SqlNode;
 import java.util.List;
 
 public final class TruncateTable extends DDL {
+    /**
+     * insert overwrite语句，truncate table还包含insert 语句
+     */
+    private boolean isInsertOverwriteSql;
 
-    protected TruncateTable(RelOptCluster cluster, RelTraitSet traits, SqlNode sqlNode, SqlNode tableNameNode) {
+    protected TruncateTable(RelOptCluster cluster, RelTraitSet traits, SqlNode sqlNode, SqlNode tableNameNode,
+                            boolean isInsertOverwriteSql) {
         super(cluster, traits, null);
         this.sqlNode = sqlNode;
         this.setTableName(tableNameNode);
+        this.isInsertOverwriteSql = isInsertOverwriteSql;
     }
 
-    public static TruncateTable create(RelOptCluster cluster, SqlNode sqlNode, SqlNode tableName) {
-        return new TruncateTable(cluster, cluster.traitSet(), sqlNode, tableName);
+    public static TruncateTable create(RelOptCluster cluster, SqlNode sqlNode, SqlNode tableName, boolean insert) {
+        return new TruncateTable(cluster, cluster.traitSet(), sqlNode, tableName, insert);
     }
 
     @Override
     public TruncateTable copy(
         RelTraitSet traitSet, List<RelNode> inputs) {
         assert traitSet.containsIfApplicable(Convention.NONE);
-        return new TruncateTable(this.getCluster(), traitSet, this.sqlNode, getTableName());
+        return new TruncateTable(this.getCluster(), traitSet, this.sqlNode, getTableName(), isInsertOverwriteSql());
+    }
+
+    public boolean isInsertOverwriteSql () {
+        return isInsertOverwriteSql;
+    }
+
+    public void setInsertOverwriteSql(boolean insert) {
+        this.isInsertOverwriteSql = insert;
     }
 
 }

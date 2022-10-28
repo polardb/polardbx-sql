@@ -70,7 +70,11 @@ public class InsertSelectGsiTest extends GsiDMLTest {
     @Parameterized.Parameters(name = "{index}:hint={0} table1={1} table2={2}")
     public static List<String[]> prepareData() {
         List<String[]> rets = doPrepareData();
-        return prepareNewTableNames(rets, tddlTables, shadowTables, mysqlTables);
+        List<String[]> allTests = new ArrayList<>();
+        String Hint = " /*+TDDL:CMD_EXTRA(INSERT_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+        allTests.addAll(rets);
+        rets.forEach(strings -> allTests.add(new String[] {strings[0] + Hint, strings[1], strings[2]}));
+        return prepareNewTableNames(allTests, tddlTables, shadowTables, mysqlTables);
     }
 
     public InsertSelectGsiTest(String hint, String baseOneTableName, String baseTwoTableName) throws Exception {
@@ -80,7 +84,7 @@ public class InsertSelectGsiTest extends GsiDMLTest {
     @Before
     public void initData() throws Exception {
         super.initData();
-        String sql = (HINT_STRESS_FLAG.equalsIgnoreCase(hint) ? hint + "insert " : "insert " + hint) + "into "
+        String sql = (HINT_STRESS_FLAG.equalsIgnoreCase(hint) || hint.contains(HINT_STRESS_FLAG) ? hint + "insert " : "insert " + hint) + "into "
             + baseTwoTableName
             + " (pk,integer_test,bigint_test,varchar_test,datetime_test,year_test,char_test)"
             + " values (?,?,?,?,?,?,?)";

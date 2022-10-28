@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.spill;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 
@@ -33,6 +34,20 @@ public interface Spiller extends Closeable {
      * Returns list of previously spilled Chunks streams.
      */
     List<Iterator<Chunk>> getSpills();
+
+    /**
+     * 返回的每一个Iterator最多读取maxChunkNum个Chunk
+     */
+    default List<Iterator<Chunk>> getSpills(long maxChunkNum) {
+        throw new NotSupportException();
+    }
+
+    /**
+     * flush
+     */
+    default void flush() {
+        throw new NotSupportException();
+    }
 
     /**
      * Close releases/removes all underlying resources used during spilling

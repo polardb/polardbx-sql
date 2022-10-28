@@ -21,7 +21,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
@@ -177,8 +177,8 @@ public class BaseSequenceTestCase extends BaseTestCase {
         return null;
     }
 
-    public NewSequence showSequence(String seqName) {
-        NewSequence newSequence = null;
+    public TestSequence showSequence(String seqName) {
+        TestSequence testSequence = null;
         ResultSet rs;
         String curSchema = null;
 
@@ -186,44 +186,37 @@ public class BaseSequenceTestCase extends BaseTestCase {
             curSchema = seqName.split("\\.")[0];
         }
 
-        String sql = "show sequences";
+        seqName = getSimpleTableName(seqName);
+
+        String sql = String.format("show sequences where name='%s'", seqName);
         if (curSchema != null && curSchema.equalsIgnoreCase(PropertiesUtil.polardbXDBName2(usingNewPartDb()))) {
             rs = JdbcUtil.executeQuerySuccess(tddlConnection2, sql);
         } else {
-            curSchema = PropertiesUtil.polardbXDBName1(usingNewPartDb());
             rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         }
-        seqName = getSimpleTableName(seqName);
-        try {
-            while (rs.next()) {
-                if (rs.getString("name").equalsIgnoreCase(seqName)) {
-                    if (!rs.getString("schema_name").equalsIgnoreCase(curSchema)) {
-                        // polarx为实例级别
-                        continue;
-                    }
-                    newSequence = new NewSequence();
-                    newSequence.setName(rs.getString("name"));
-                    newSequence.setValue(parseLongWithNA(rs.getString("value")));
-                    newSequence.setIncrementBy(parseLongWithNA(getSeqAttrWithoutEx(rs, "increment_by")));
-                    newSequence.setStartWith(parseLongWithNA(getSeqAttrWithoutEx(rs, "start_with")));
-                    newSequence.setMaxValue(parseLongWithNA(getSeqAttrWithoutEx(rs, "max_value")));
-                    newSequence.setCycle(getSeqAttrWithoutEx(rs, "cycle"));
-                    newSequence.setUnitCount(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_count")));
-                    newSequence.setUnitIndex(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_index")));
-                    newSequence.setInnerStep(parseLongWithNA(getSeqAttrWithoutEx(rs, "inner_step")));
-                    break;
-                }
-            }
 
+        try {
+            if (rs.next()) {
+                testSequence = new TestSequence();
+                testSequence.setName(rs.getString("name"));
+                testSequence.setValue(parseLongWithNA(rs.getString("value")));
+                testSequence.setIncrementBy(parseLongWithNA(getSeqAttrWithoutEx(rs, "increment_by")));
+                testSequence.setStartWith(parseLongWithNA(getSeqAttrWithoutEx(rs, "start_with")));
+                testSequence.setMaxValue(parseLongWithNA(getSeqAttrWithoutEx(rs, "max_value")));
+                testSequence.setCycle(getSeqAttrWithoutEx(rs, "cycle"));
+                testSequence.setUnitCount(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_count")));
+                testSequence.setUnitIndex(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_index")));
+                testSequence.setInnerStep(parseLongWithNA(getSeqAttrWithoutEx(rs, "inner_step")));
+            }
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
             Assert.fail(e.getMessage());
-            newSequence = null;
-
+            testSequence = null;
         } finally {
             JdbcUtil.close(rs);
         }
-        return newSequence;
+
+        return testSequence;
     }
 
     private String getSeqAttrWithoutEx(ResultSet rs, String colName) {
@@ -257,7 +250,7 @@ public class BaseSequenceTestCase extends BaseTestCase {
         return nextVal;
     }
 
-    public void dropSeqence(String seqName) {
+    public void dropSequence(String seqName) {
         String sql = "drop sequence " + seqName;
         JdbcUtil.executeUpdate(tddlConnection, sql);
     }
@@ -314,20 +307,12 @@ public class BaseSequenceTestCase extends BaseTestCase {
      * 正常的非边界值的情况下对不同类型的sequence做粗粒度的检测
      */
     public void simpleCheckSequence(String seqName, String seqType) throws Exception {
-        NewSequence sequence = showSequence(seqName);
-
-        String schemaPrefix = "";
-        String simpleSeqName = seqName;
-        if (seqName.contains(".")) {
-            schemaPrefix = seqName.split("\\.")[0] + ".";
-            simpleSeqName = seqName.split("\\.")[1];
-        }
+        TestSequence sequence = showSequence(seqName);
 
         if (seqType.equalsIgnoreCase("simple") || seqType.equalsIgnoreCase("by simple")) {
             // 先判断表结构
             assertThat(isExistInSequence(seqName, "sequence")).isFalse();
             assertThat(isExistInSequence(seqName, "sequence_opt")).isTrue();
-            //assertNotExistsTable(schemaPrefix + "sequence_opt_mem_" + simpleSeqName, tddlConnection);
 
             // 粗判断show sequence结果
             assertThat(sequence.getStartWith()).isNotEqualTo(0);
@@ -344,10 +329,9 @@ public class BaseSequenceTestCase extends BaseTestCase {
             sequence = showSequence(seqName);
             assertThat(sequence.getValue()).isEqualTo(nextVal + sequence.getIncrementBy());
 
-        } else if (seqType.equalsIgnoreCase("") || seqType.contains("group")) {
+        } else if (seqType.contains("group") || (!usingNewPartDb() && seqType.equalsIgnoreCase(""))) {
             assertThat(isExistInSequence(seqName, "sequence")).isTrue();
             assertThat(isExistInSequence(seqName, "sequence_opt")).isFalse();
-            //assertNotExistsTable(schemaPrefix + "sequence_opt_mem_" + simpleSeqName, tddlConnection);
 
             // 粗判断sequence
             assertThat(sequence.getStartWith()).isEqualTo(0);
@@ -361,27 +345,17 @@ public class BaseSequenceTestCase extends BaseTestCase {
             assertThat(sequence.getCycle()).isEqualTo(SequenceAttribute.STR_NA);
             assertThat(sequence.getValue()).isAtLeast(100000L);
 
-        } else if (seqType.contains("simple with cache")) {
+        } else if (seqType.contains("new") || (usingNewPartDb() && seqType.equalsIgnoreCase(""))) {
+            // New Sequence
             assertThat(isExistInSequence(seqName, "sequence")).isFalse();
             assertThat(isExistInSequence(seqName, "sequence_opt")).isTrue();
-            //assertExistsTable(schemaPrefix + "sequence_opt_mem_" + simpleSeqName, tddlConnection);
 
+            // 粗判断sequence
             assertThat(sequence.getStartWith()).isNotEqualTo(0);
             assertThat(sequence.getMaxValue()).isNotEqualTo(0);
             assertThat(sequence.getIncrementBy()).isNotEqualTo(0);
             assertThat(sequence.getValue()).isAtLeast(sequence.getStartWith());
             assertThat(sequence.getCycle()).isAnyOf(SequenceAttribute.STR_YES, SequenceAttribute.STR_NO);
-
-            // //取下一个值,判断值正常变化
-            // long nextVal = getSequenceNextVal(seqName);
-            // assertThat(sequence.getValue()).isAnyOf(nextVal,
-            // sequence.getStartWith() + 100000);
-            // nextVal = getSequenceNextVal(seqName);
-            // assertThat(nextVal).isEqualTo(sequence.getValue() +
-            // sequence.getIncrementBy());
-            // sequence = showSequence(seqName);
-            // assertThat(sequence.getValue()).isEqualTo(sequence.getStartWith()
-            // + 100000);
 
         } else if (seqType.contains("time")) {
             assertThat(isExistInSequence(seqName, "sequence")).isFalse();
@@ -407,6 +381,10 @@ public class BaseSequenceTestCase extends BaseTestCase {
     public boolean isSpecialSequence(String seqType) {
         return seqType.toLowerCase().contains("time") || seqType.toLowerCase().contains("group")
             || seqType.trim().isEmpty();
+    }
+
+    public boolean isSpecialSequencePart(String seqType) {
+        return seqType.toLowerCase().contains("time") || seqType.toLowerCase().contains("group");
     }
 
     /**

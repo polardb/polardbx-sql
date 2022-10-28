@@ -16,49 +16,77 @@
 
 package org.apache.calcite.util.trace;
 
+import org.apache.calcite.plan.Context;
+import org.apache.calcite.plan.RelOptRuleCall;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlExplainLevel;
+import org.apache.calcite.util.PlannerContextWithParam;
 
 /**
  * Created by chuanqin on 18/1/3.
  */
 public class CalcitePlanOptimizerTrace {
-
-    private static final ThreadLocal<Boolean>             open           = new ThreadLocal<Boolean>() {
-
-                                                                               @Override
-                                                                               protected Boolean initialValue() {
-                                                                                   return false;
-                                                                               }
-                                                                           };
-
-    private static final ThreadLocal<SqlExplainLevel>    sqlExplainLevel = new ThreadLocal<SqlExplainLevel>() {
-                                                                                @Override
-                                                                                protected SqlExplainLevel initialValue() {
-                                                                                    return SqlExplainLevel.EXPPLAN_ATTRIBUTES;
-                                                                                }
-                                                                            };
-
-    private static final ThreadLocal<PlanOptimizerTracer> OPTIMIZER_TRACER = new ThreadLocal<PlanOptimizerTracer>() {
-
-                                                                               @Override
-                                                                               protected PlanOptimizerTracer initialValue() {
-                                                                                   return new PlanOptimizerTracer();
-                                                                               }
-                                                                           };
-
-    public static ThreadLocal<PlanOptimizerTracer> getOptimizerTracer() {
-        return OPTIMIZER_TRACER;
+    public static SqlExplainLevel DEFAULT_LEVEL = SqlExplainLevel.EXPPLAN_ATTRIBUTES;
+    private boolean open;
+    private SqlExplainLevel sqlExplainLevel;
+    private PlanOptimizerTracer optimizerTracer;
+    public CalcitePlanOptimizerTrace() {
+        this.open = false;
+        this.sqlExplainLevel = SqlExplainLevel.EXPPLAN_ATTRIBUTES;
+        this.optimizerTracer = new PlanOptimizerTracer();
     }
 
-    public static boolean isOpen() {
-        return open.get();
+    public PlanOptimizerTracer getOptimizerTracer() {
+        return optimizerTracer;
     }
 
-    public static void setOpen(boolean b) {
-        open.set(b);
+
+    public boolean isOpen() {
+        return open;
     }
 
-    public static SqlExplainLevel getSqlExplainLevel() { return sqlExplainLevel.get(); }
+    public void setOpen(boolean b) {
+        this.open = b;
+    }
+
+    public SqlExplainLevel getSqlExplainLevel() {
+        return sqlExplainLevel;
+    }
     
-    public static void setSqlExplainLevel(SqlExplainLevel v) { sqlExplainLevel.set(v); }
+    public void setSqlExplainLevel(SqlExplainLevel v) {
+        this.sqlExplainLevel = v;
+    }
+
+    public void savePlanDisplayIfNecessary(RelNode rootPlan, Context context) {
+        if (open) {
+            optimizerTracer.savePlanDisplayIfNecessary(rootPlan, context, getSqlExplainLevel());
+        }
+    }
+
+    public void traceIt(RelOptRuleCall ruleCall) {
+        if (open) {
+            optimizerTracer.traceIt(ruleCall);
+        }
+    }
+
+
+    public void addSnapshot(String ruleName, RelNode plan, PlannerContextWithParam context) {
+        if (open) {
+            optimizerTracer.addSnapshot(ruleName, plan, context, getSqlExplainLevel());
+        }
+    }
+
+    public static void savePlanDisplayIfNecessaryFromContext(RelNode rootPlan, Context context) {
+        if (context instanceof PlannerContextWithParam) {
+            ((PlannerContextWithParam) context).getCalcitePlanOptimizerTrace().ifPresent(x ->
+                x.savePlanDisplayIfNecessary(rootPlan, context));
+        }
+    }
+
+    public static void traceItFromContext(RelOptRuleCall ruleCall, Context context) {
+        if (context instanceof PlannerContextWithParam) {
+            ((PlannerContextWithParam) context).getCalcitePlanOptimizerTrace().ifPresent(x ->
+                x.traceIt(ruleCall));
+        }
+    }
 }

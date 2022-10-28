@@ -81,7 +81,6 @@ public class CreateTableTest extends PartitionTestBase {
         "create table %s(%s) %s";
 
     @Test
-    @Ignore("fix by ???")
     public void hashTableTest() {
         String dropTable = "drop table if exists %s";
         String tb1 = "tb1";
@@ -228,7 +227,6 @@ public class CreateTableTest extends PartitionTestBase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void listTableTest() {
         String dropTable = "drop table if exists %s";
         String tb1 = "tb1";
@@ -356,7 +354,6 @@ public class CreateTableTest extends PartitionTestBase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void rangeTableTest() {
         String dropTable = "drop table if exists %s";
         String tb1 = "tb1";
@@ -499,5 +496,42 @@ public class CreateTableTest extends PartitionTestBase {
         String newCreateTable = showFullCreateTable(tddlConnection, tableName + "_like");
         Assert.assertTrue(newCreateTable.contains("EXPIRE AFTER 12"));
         Assert.assertTrue(newCreateTable.contains("LOCAL PARTITION BY RANGE"));
+    }
+
+    @Test
+    public void testLargeBlobBackfill() {
+        String dropTable = "drop table if exists `largeCol`";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropTable);
+
+        String createTable =
+            "CREATE TABLE  if not exists `largeCol` ( `id` int(11) NOT NULL AUTO_INCREMENT, `c1` longtext, PRIMARY KEY (`id`)) partition by key(id) partitions 1;";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+        String insertSql = "insert into largeCol(id, c1) values(null,%s)";
+        int rowSize = 1024 * 1024;
+        int rowCount = 136;
+        String baseText =
+            "1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < rowSize; i = i + baseText.length()) {
+            sb.append(baseText);
+        }
+        String sql = String.format(insertSql, sb.toString());
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        //16 rows
+        for (int i = 0; i < 4; i++) {
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "insert into largeCol(id,c1) select null, c1 from largeCol");
+        }
+        //15*3 rows
+        for (int i = 0; i < 4; i++) {
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                "insert into largeCol(id,c1) select null, c1 from largeCol limit 15");
+        }
+        //6 rows
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "insert into largeCol(id,c1) select null, c1 from largeCol limit 6");
+
+        sql = "alter table largeCol add global index g1(id) covering(c1) partition by key(id) partitions 1";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 }

@@ -22,7 +22,12 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoAccessor;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupTableDetailAccessor;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
@@ -49,6 +54,7 @@ import java.util.List;
 public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
 
     protected String curTableGroup;
+    protected String curJoinGroup;
     protected String targetTableGroup;
     protected String logicalTable;
     protected boolean tableGroupExists;
@@ -57,13 +63,14 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
     @JSONCreator
     public AlterTableSetTableGroupChangeMetaOnlyTask(String schemaName, String logicalTable, String curTableGroup,
                                                      String targetTableGroup, boolean reCreatePartitionGroups,
-                                                     boolean tableGroupExists) {
+                                                     boolean tableGroupExists, String curJoinGroup) {
         super(schemaName);
         this.logicalTable = logicalTable;
         this.curTableGroup = curTableGroup;
         this.targetTableGroup = targetTableGroup;
         this.reCreatePartitionGroups = reCreatePartitionGroups;
         this.tableGroupExists = tableGroupExists;
+        this.curJoinGroup = curJoinGroup;
     }
 
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
@@ -96,7 +103,8 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
     protected void onRollbackSuccess(ExecutionContext executionContext) {
     }
 
-    protected void updateTableVersion(Connection metaDbConnection, String schemaName, String logicalTableName, ExecutionContext executionContext) {
+    protected void updateTableVersion(Connection metaDbConnection, String schemaName, String logicalTableName,
+                                      ExecutionContext executionContext) {
         try {
             SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
             TableMeta tableMeta = schemaManager.getTable(logicalTableName);
@@ -191,6 +199,18 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                 firstPart = false;
             }
         }
+        if (!reCreatePartitionGroups && curJoinGroup != null) {
+            JoinGroupInfoAccessor joinGroupInfoAccessor = new JoinGroupInfoAccessor();
+            JoinGroupTableDetailAccessor joinGroupTableDetailAccessor = new JoinGroupTableDetailAccessor();
+            JoinGroupInfoRecord joinGroupInfoRecord =
+                joinGroupInfoAccessor.getJoinGroupInfoByName(schemaName, curJoinGroup, false);
+            if (joinGroupInfoRecord != null) {
+                joinGroupTableDetailAccessor.deleteJoinGroupTableDetailBySchemaTable(schemaName, logicalTable);
+                joinGroupTableDetailAccessor.insertJoingroupTableDetail(schemaName, joinGroupInfoRecord.id,
+                    logicalTable);
+            }
+
+        }
         updateTableVersion(metaDbConnection, schemaName, logicalTable, executionContext);
     }
 
@@ -278,6 +298,24 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                     tablePartitionAccessor.updateGroupIdById(tableGroupId, partitionSpec.getParentId());
                 }
                 firstPart = false;
+            }
+            JoinGroupInfoAccessor joinGroupInfoAccessor = new JoinGroupInfoAccessor();
+            JoinGroupTableDetailAccessor joinGroupTableDetailAccessor = new JoinGroupTableDetailAccessor();
+            joinGroupInfoAccessor.setConnection(connection);
+            joinGroupTableDetailAccessor.setConnection(connection);
+
+            TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+                .getTableGroupConfigById(tableGroupId);
+            if (tableGroupConfig != null && GeneralUtil.isNotEmpty(tableGroupConfig.getTables())) {
+                TablePartRecordInfoContext tablePartRecordInfoContext = tableGroupConfig.getAllTables().get(0);
+                String tableName = tablePartRecordInfoContext.getTableName();
+                JoinGroupInfoRecord
+                    joinGroupInfoRecord = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tableName, connection);
+                joinGroupTableDetailAccessor.deleteJoinGroupTableDetailBySchemaTable(schemaName, logicalTable);
+                if (joinGroupInfoRecord != null) {
+                    joinGroupTableDetailAccessor.insertJoingroupTableDetail(schemaName, joinGroupInfoRecord.id,
+                        logicalTable);
+                }
             }
         }
     }

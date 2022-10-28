@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx.transaction.sync;
 
+import com.alibaba.polardbx.executor.sync.CreateProcedureSyncAction;
+import com.alibaba.polardbx.executor.sync.CreateStoredFunctionSyncAction;
+import com.alibaba.polardbx.executor.sync.DropProcedureSyncAction;
+import com.alibaba.polardbx.executor.sync.DropStoredFunctionSyncAction;
+import com.alibaba.polardbx.executor.sync.DropDbRelatedProcedureSyncAction;
 import com.alibaba.polardbx.gms.node.StorageStatus;
 import com.alibaba.polardbx.gms.sync.RefreshStorageStatusSyncAction;
 import org.junit.Assert;
@@ -41,6 +46,75 @@ public class SyncActionTest {
         System.out.println(obj.toString());
 
         Assert.assertEquals(obj.getSchema(), action.getSchema());
+    }
+
+    @Test
+    public void testCreateProcedureSyncAction() {
+        CreateProcedureSyncAction action =
+            new CreateProcedureSyncAction("db2", "proc1");
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+
+        CreateProcedureSyncAction obj =
+            (CreateProcedureSyncAction) JSON.parse(data, Feature.SupportAutoType);
+
+        Assert.assertEquals(obj.getClass(), action.getClass());
+        Assert.assertEquals(obj.getSchemaName(), action.getSchemaName());
+        Assert.assertEquals(obj.getProcedureName(), obj.getProcedureName());
+    }
+
+    @Test
+    public void testCreateStoredFunctionSyncAction() {
+        CreateStoredFunctionSyncAction
+            action = new CreateStoredFunctionSyncAction("my_func", "create function test begin end;", false);
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+
+        CreateStoredFunctionSyncAction obj =
+            (CreateStoredFunctionSyncAction) JSON.parse(data, Feature.SupportAutoType);
+
+        Assert.assertEquals(obj.getClass(), action.getClass());
+        Assert.assertEquals(obj.getFunctionName(), action.getFunctionName());
+        Assert.assertEquals(obj.getCreateFunction(), obj.getCreateFunction());
+    }
+
+    @Test
+    public void testDropProcedureSyncAction() {
+        DropProcedureSyncAction
+            action = new DropProcedureSyncAction("my_func", "create function test begin end;");
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+
+        DropProcedureSyncAction obj =
+            (DropProcedureSyncAction) JSON.parse(data, Feature.SupportAutoType);
+
+        Assert.assertEquals(obj.getClass(), action.getClass());
+        Assert.assertEquals(obj.getSchemaName(), action.getSchemaName());
+        Assert.assertEquals(obj.getProcedureName(), obj.getProcedureName());
+    }
+
+    @Test
+    public void testDropStoredFunctionSyncAction() {
+        DropStoredFunctionSyncAction
+            action = new DropStoredFunctionSyncAction("my_func");
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+
+        DropStoredFunctionSyncAction obj =
+            (DropStoredFunctionSyncAction) JSON.parse(data, Feature.SupportAutoType);
+        System.out.println(obj.toString());
+
+        Assert.assertEquals(obj.getClass(), action.getClass());
+        Assert.assertEquals(obj.getFunctionName(), action.getFunctionName());
+    }
+
+    @Test
+    public void testDropWholeDbProcedureSyncAction() {
+        DropDbRelatedProcedureSyncAction
+            action = new DropDbRelatedProcedureSyncAction("my_func");
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+
+        DropDbRelatedProcedureSyncAction obj =
+            (DropDbRelatedProcedureSyncAction) JSON.parse(data, Feature.SupportAutoType);
+
+        Assert.assertEquals(obj.getClass(), action.getClass());
+        Assert.assertEquals(obj.getSchemaName(), action.getSchemaName());
     }
 
     @Test
@@ -74,5 +148,14 @@ public class SyncActionTest {
         RefreshStorageStatusSyncAction obj =
             (RefreshStorageStatusSyncAction) JSON.parse(data, Feature.SupportAutoType);
         Assert.assertEquals(map.size(), obj.getStatusMap().size());
+    }
+
+    @Test
+    public void testFetchTimerTaskInfoSyncAction() {
+        FetchTimerTaskInfoSyncAction action = new FetchTimerTaskInfoSyncAction("db2");
+        String data = JSON.toJSONString(action, SerializerFeature.WriteClassName);
+        FetchTimerTaskInfoSyncAction obj =
+            (FetchTimerTaskInfoSyncAction) JSON.parse(data, Feature.SupportAutoType);
+        Assert.assertEquals(obj.getSchemaName(), action.getSchemaName());
     }
 }

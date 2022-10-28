@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.common.TddlNode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
@@ -50,9 +52,12 @@ public class FetchMetadataLockSyncAction implements ISyncAction {
                         continue;
                     }
 
-                    String formatSql = info.getSql();
+                    ByteString formatSql = info.getSql();
+                    String sql = null;
                     if (formatSql != null && formatSql.length() > 1024) {
-                        formatSql = formatSql.substring(0, 1024 - 3) + "...";
+                        sql = formatSql.substring(0, 1024 - 3) + "...";
+                    } else if (formatSql != null) {
+                        sql = formatSql.toString();
                     }
 
                     Object[] row;
@@ -61,14 +66,14 @@ public class FetchMetadataLockSyncAction implements ISyncAction {
                             serverInfo,
                             ctxStamped.getConnId(),
                             info.getTrxId(), info.getTraceId(), key.getDbName(), key.getTableName(),
-                            null, null, null, info.getFrontend(), formatSql};
+                            null, null, null, info.getFrontend(), sql};
                     } else {
                         row = new Object[] {
                             serverInfo,
                             ctxStamped.getConnId(),
                             info.getTrxId(), info.getTraceId(), key.getDbName(), key.getTableName(),
                             ticket.getType().name(), ticket.getDuration().name(),
-                            ticket.isValidate() ? 1 : 0, info.getFrontend(), formatSql};
+                            ticket.isValidate() ? 1 : 0, info.getFrontend(), sql};
                     }
 
                     resultCursor.addRow(row);

@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
+import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.UInt64Utils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -40,6 +44,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 class UnsignedLongColumnProvider implements ColumnProvider<Long> {
 
@@ -97,10 +102,10 @@ class UnsignedLongColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, true);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, true, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -110,8 +115,10 @@ class UnsignedLongColumnProvider implements ColumnProvider<Long> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((LongColumnVector) columnVector).vector[rowNumber] = 0 ^ UInt64Utils.FLIP_MASK;
+                accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
                 ((LongColumnVector) columnVector).vector[rowNumber] = num ^ UInt64Utils.FLIP_MASK;
+                accumulator.ifPresent(a -> a.appendHash(Long.hashCode(num)));
             }
         }
     }

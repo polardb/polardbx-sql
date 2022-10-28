@@ -18,13 +18,16 @@ package com.alibaba.polardbx.qatest.transaction;
 
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
+import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -40,16 +43,33 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeBatchOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
 public class TsoTransactionTest extends CrudBasedLockTestCase {
+    /**
+     * only works for RR isolation level
+     */
+    private final boolean shareReadView;
 
-    @Parameterized.Parameters(name = "{index}:table={0}")
-    public static List<String[]> prepare() {
-        return Arrays.asList(ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE));
+    @Parameterized.Parameters(name = "{index}:table={0},shareReadView={1}")
+    public static List<Object[]> prepare() throws SQLException {
+        boolean supportShareReadView;
+        try (Connection connection = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+            supportShareReadView = JdbcUtil.supportShareReadView(connection);
+        }
+        List<Object[]> ret = new ArrayList<>();
+        for (String[] tables : ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE)) {
+            ret.add(new Object[] {tables[0], false});
+            if (supportShareReadView) {
+                ret.add(new Object[] {tables[0], true});
+            }
+        }
+        return ret;
     }
 
-    public TsoTransactionTest(String baseOneTableName) {
+    public TsoTransactionTest(String baseOneTableName, boolean shareReadView) {
         this.baseOneTableName = baseOneTableName;
+        this.shareReadView = shareReadView;
     }
 
     @Before
@@ -64,10 +84,13 @@ public class TsoTransactionTest extends CrudBasedLockTestCase {
         executeBatchOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, params, true);
     }
 
+    private void setShareReadView(Connection conn) throws SQLException {
+        JdbcUtil.setShareReadView(shareReadView, conn);
+    }
+
     @Test
     public void checkAutoCommitUsingTSO() throws Exception {
         try (Statement stmt = tddlConnection.createStatement()) {
-            System.out.println(baseOneTableName);
             stmt.execute("/*+TDDL:CMD_EXTRA(TRX_CLASS_REQUIRED=TSO_READONLY)*/ SELECT * FROM " + baseOneTableName);
         }
     }
@@ -75,6 +98,8 @@ public class TsoTransactionTest extends CrudBasedLockTestCase {
     @Test
     public void checkTransUsingTSO() throws Exception {
         tddlConnection.setAutoCommit(false);
+        setShareReadView(tddlConnection);
+
         try (Statement stmt = tddlConnection.createStatement()) {
             String varchar_test = "12";
             stmt.execute(" SELECT count(*) FROM " + baseOneTableName);
@@ -85,6 +110,80 @@ public class TsoTransactionTest extends CrudBasedLockTestCase {
         }
         tddlConnection.commit();
         tddlConnection.setAutoCommit(true);
+    }
+
+    @Test
+    public void checkTransUsingTSO2() throws Exception {
+        tddlConnection.setAutoCommit(false);
+        mysqlConnection.setAutoCommit(false);
+        setShareReadView(tddlConnection);
+
+        List<Object> params = Lists.newArrayList("12");
+        List<List<Object>> results;
+        results =
+            selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+                mysqlConnection, tddlConnection);
+        Assert.assertTrue(results.size() == 1 && results.get(0).size() == 1);
+        Assert.assertEquals(new JdbcUtil.MyNumber(new BigDecimal(0)), results.get(0).get(0));
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, " UPDATE " + baseOneTableName
+            + " set varchar_test = ? where pk = 1", params);
+        results =
+            selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+                mysqlConnection, tddlConnection);
+        Assert.assertTrue(results.size() == 1 && results.get(0).size() == 1);
+        Assert.assertEquals(new JdbcUtil.MyNumber(new BigDecimal(1)), results.get(0).get(0));
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, " UPDATE " + baseOneTableName
+            + " set varchar_test = ? where pk = 2", params);
+        // 重复查询两次 避免连接复用状态问题
+        selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+            mysqlConnection, tddlConnection);
+        results =
+            selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+                mysqlConnection, tddlConnection);
+        Assert.assertTrue(results.size() == 1 && results.get(0).size() == 1);
+        Assert.assertEquals(new JdbcUtil.MyNumber(new BigDecimal(2)), results.get(0).get(0));
+        tddlConnection.commit();
+        mysqlConnection.commit();
+        tddlConnection.setAutoCommit(true);
+        mysqlConnection.setAutoCommit(true);
+    }
+
+    @Test
+    public void checkTransUsingTSOWithRollback() throws Exception {
+        tddlConnection.setAutoCommit(false);
+        mysqlConnection.setAutoCommit(false);
+        setShareReadView(tddlConnection);
+
+        List<Object> params = Lists.newArrayList("12");
+        List<List<Object>> results;
+        results =
+            selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+                mysqlConnection, tddlConnection);
+        Assert.assertTrue(results.size() == 1 && results.get(0).size() == 1);
+        Assert.assertEquals(new JdbcUtil.MyNumber(new BigDecimal(0)), results.get(0).get(0));
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, " UPDATE " + baseOneTableName
+            + " set varchar_test = ? where pk = 1", params);
+        results =
+            selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+                mysqlConnection, tddlConnection);
+        Assert.assertTrue(results.size() == 1 && results.get(0).size() == 1);
+        Assert.assertEquals(new JdbcUtil.MyNumber(new BigDecimal(1)), results.get(0).get(0));
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, " UPDATE " + baseOneTableName
+            + " set varchar_test = ? where pk = 2", params);
+        results =
+            selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+                mysqlConnection, tddlConnection);
+        Assert.assertTrue(results.size() == 1 && results.get(0).size() == 1);
+        Assert.assertEquals(new JdbcUtil.MyNumber(new BigDecimal(2)), results.get(0).get(0));
+        tddlConnection.rollback();
+        mysqlConnection.rollback();
+        results =
+            selectContentSameAssert(" SELECT count(*) FROM " + baseOneTableName + " where varchar_test = ?", params,
+                mysqlConnection, tddlConnection);
+        Assert.assertTrue(results.size() == 1 && results.get(0).size() == 1);
+        Assert.assertEquals(new JdbcUtil.MyNumber(new BigDecimal(0)), results.get(0).get(0));
+        tddlConnection.setAutoCommit(true);
+        mysqlConnection.setAutoCommit(true);
     }
 
     @Test
@@ -539,6 +638,7 @@ public class TsoTransactionTest extends CrudBasedLockTestCase {
             connection = getPolardbxDirectConnection();
 
             connection.setAutoCommit(false);
+            setShareReadView(connection);
             JdbcUtil.executeUpdateSuccess(connection, "START TRANSACTION READ ONLY");
             JdbcUtil.executeUpdateSuccess(connection, "SET DRDS_TRANSACTION_POLICY='TSO'");
 

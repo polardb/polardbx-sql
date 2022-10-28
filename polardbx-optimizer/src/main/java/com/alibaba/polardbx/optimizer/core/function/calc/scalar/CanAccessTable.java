@@ -17,7 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar;
 
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.constants.SystemTables;
+import com.alibaba.polardbx.common.model.DbPriv;
+import com.alibaba.polardbx.common.model.TbPriv;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
@@ -32,7 +33,6 @@ import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author dylan
@@ -74,10 +74,6 @@ public class CanAccessTable extends AbstractScalarFunction {
         }
 
         tableName = TStringUtil.normalizePriv(SQLUtils.normalizeNoTrim(tableName));
-
-        if (SystemTables.contains(tableName)) {
-            return false;
-        }
 
         PrivilegeContext pc = executionContext.getPrivilegeContext();
         if (TStringUtil.isBlank(schemaName)) {

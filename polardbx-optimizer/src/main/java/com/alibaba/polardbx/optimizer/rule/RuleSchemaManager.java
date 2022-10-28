@@ -228,10 +228,10 @@ public class RuleSchemaManager extends AbstractLifecycle implements SchemaManage
     }
 
     @Override
-    public TableMeta getTableMetaFromConnection(String tableName, Connection conn) {
+    public TableMeta getTableMetaFromConnection(String schema, String tableName, Connection conn) {
         final Group defaultGroup = matrix.getGroup(rule.getDefaultDbIndex(null));
         try {
-            return repos.get(defaultGroup).getTableMetaFromConnection(tableName, conn);
+            return repos.get(defaultGroup).getTableMetaFromConnection(schema, tableName, conn);
         } catch (ExecutionException e) {
             throw GeneralUtil.nestedException(e);
         }

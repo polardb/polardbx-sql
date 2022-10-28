@@ -16,16 +16,13 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.google.common.collect.Lists;
+import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;
-import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.profiler.memory.MemoryStatAttribute;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.QueryMemoryPoolHolder;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import org.apache.calcite.rel.RelNode;
@@ -60,35 +57,23 @@ public class SubqueryUtils {
     public static void buildScalarSubqueryValue(List<RexDynamicParam> scalarList, ExecutionContext executionContext) {
         for (RexNode rexNode : scalarList) {
             RexDynamicParam rexDynamicParam = (RexDynamicParam) rexNode;
-            DynamicParamExpression dynamicParamExpression = null;
-            if (rexDynamicParam.getSubqueryKind() == null) {
-                dynamicParamExpression = new DynamicParamExpression(rexDynamicParam.getRel());
-            } else {
-                List<IExpression> iExpressionList = Lists.newArrayList();
-                for (RexNode rexTemp : rexDynamicParam.getSubqueryOperands()) {
-                    iExpressionList.add(RexUtils.buildRexNode(rexTemp, executionContext));
-                }
-                dynamicParamExpression = new DynamicParamExpression(rexDynamicParam.getRel(),
-                    rexDynamicParam.getSubqueryKind(),
-                    rexDynamicParam.getSubqueryOp(),
-                    iExpressionList);
-            }
-
             String subqueryId =
-                dynamicParamExpression.getRelNode().getId() + "_" + Thread.currentThread().getName() + "_"
+                rexDynamicParam.getRel().getId() + "_" + Thread.currentThread().getName() + "_"
                     + nextSubqueryId.getAndIncrement();
-
             SubqueryApply subqueryApply =
-                createSubqueryApply(subqueryId, null, dynamicParamExpression.getRelNode(), null, null, executionContext,
+                createSubqueryApply(subqueryId, null, rexDynamicParam.getRel(), null, null, executionContext,
                     null, null,
                     rexDynamicParam.getSemiType(), rexDynamicParam.isMaxOnerow());
+
             try {
                 subqueryApply.prepare();
                 subqueryApply.processUntilFinish();
             } finally {
                 subqueryApply.close();
             }
-            rexDynamicParam.setValue(subqueryApply.getResultValue());
+            SubQueryDynamicParamUtils.saveScalarSubQueryComputedValue(
+                executionContext.getScalarSubqueryCtxMap(),
+                rexDynamicParam, subqueryApply.getResultValue());
         }
     }
 

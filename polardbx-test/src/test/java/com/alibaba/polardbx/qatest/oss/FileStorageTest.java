@@ -71,7 +71,7 @@ public class FileStorageTest extends BaseTestCase {
         try (Connection conn = getConnectionNoDefaultDb()) {
             Statement statement = conn.createStatement();
             statement.execute(String.format("drop database if exists %s ", testDataBase));
-            statement.execute(String.format("create database %s mode = 'partitioning'", testDataBase));
+            statement.execute(String.format("create database %s mode = 'auto'", testDataBase));
             statement.execute(String.format("use %s", testDataBase));
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -80,7 +80,7 @@ public class FileStorageTest extends BaseTestCase {
         try (Connection conn = getConnectionNoDefaultDb()) {
             Statement statement = conn.createStatement();
             statement.execute(String.format("drop database if exists %s ", testDataBase2));
-            statement.execute(String.format("create database %s mode = 'partitioning'", testDataBase2));
+            statement.execute(String.format("create database %s mode = 'auto'", testDataBase2));
             statement.execute(String.format("use %s", testDataBase2));
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -89,7 +89,7 @@ public class FileStorageTest extends BaseTestCase {
         try (Connection conn = getConnectionNoDefaultDb()) {
             Statement statement = conn.createStatement();
             statement.execute(String.format("drop database if exists %s ", testDataBase3));
-            statement.execute(String.format("create database %s mode = 'partitioning'", testDataBase3));
+            statement.execute(String.format("create database %s mode = 'auto'", testDataBase3));
             statement.execute(String.format("use %s", testDataBase3));
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -255,6 +255,7 @@ public class FileStorageTest extends BaseTestCase {
             Statement statement = conn.createStatement();
             String testTableName = "testOssRecycleBinTable";
             createFileStorageTableWith10000Rows(testTableName);
+            statement.execute("rebalance database");
             statement.execute(String.format("drop table %s", testTableName));
             ResultSet resultSet = statement.executeQuery("show recyclebin;");
             while (resultSet.next()) {
@@ -622,7 +623,8 @@ public class FileStorageTest extends BaseTestCase {
 
                     Assert.assertTrue(countBeforeDropTime > countAfterDropTable);
 
-                    statement2.executeUpdate(String.format("ALTER FILESTORAGE '%s' PURGE BEFORE TIMESTAMP '%s'",
+                    statement2.executeUpdate(String.format(
+                        "/*+TDDL:cmd_extra(BACKUP_OSS_PERIOD=0)*/ ALTER FILESTORAGE '%s' PURGE BEFORE TIMESTAMP '%s'",
                         engine.name(),
                         String.format("%04d-%02d-%02d %02d:%02d:%02d",
                             afterDropTime.getYear(),
@@ -763,7 +765,8 @@ public class FileStorageTest extends BaseTestCase {
 
             try (Connection connection2 = getPolardbxConnection(testDataBase2)) {
                 Statement statement2 = connection2.createStatement();
-                statement2.execute(String.format("alter fileStorage '%s' purge before timestamp '%s'",
+                statement2.execute(String.format(
+                    "/*+TDDL:cmd_extra(BACKUP_OSS_PERIOD=0)*/ alter fileStorage '%s' purge before timestamp '%s'",
                     engine.name(),
                     String.format("%04d-%02d-%02d %02d:%02d:%02d",
                         localDateTime.getYear(),
@@ -1025,7 +1028,8 @@ public class FileStorageTest extends BaseTestCase {
             //unarchive database
             stmt.execute("unarchive database " + testDataBase3);
             int unarchiveDatabase = JdbcUtil.getAllResult(stmt.executeQuery(SHOWARCHIVE), false).size();
-            assertWithMessage(String.format("unarchive database %s 结果不合符预期", tables.get(0))).that(unarchiveDatabase)
+            assertWithMessage(String.format("unarchive database %s 结果不合符预期", tables.get(0))).that(
+                    unarchiveDatabase)
                 .isEqualTo(0);
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -1075,6 +1079,24 @@ public class FileStorageTest extends BaseTestCase {
                 }
                 // table has 8 partition, with bloomfilter we expect at least pruning half (4 partition).
                 Assert.assertTrue(traceCount <= 4 && traceCount > 0);
+            }
+
+            for (int i = 0; i < 10; i++) {
+                String expSql =
+                    String.format("trace select * from %s where varchar_column in('%s', '%s') or id in(%s, %s)",
+                        ossTableName,
+                        varcharValues.get(random.nextInt(10000)), varcharValues.get(random.nextInt(10000)),
+                        random.nextInt(10000), random.nextInt(10000));
+                statement.executeQuery(expSql);
+                ResultSet resultSet = statement.executeQuery("show trace");
+
+                boolean findArgument = false;
+                while (resultSet.next()) {
+                    String argument = resultSet.getString("STATEMENT").toLowerCase();
+                    findArgument |= (argument.contains("in varchar_column") && argument.contains("in id"));
+                }
+                assertWithMessage(String.format("sql %s should build search argument", expSql))
+                    .that(findArgument).isTrue();
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -1168,6 +1190,21 @@ public class FileStorageTest extends BaseTestCase {
                 }
                 // table has 8 partition, with bloomfilter we expect at least pruning half (4 partition).
                 Assert.assertTrue(traceCount <= 4 && traceCount > 0);
+            }
+
+            for (int i = 0; i < 10; i++) {
+                String expSql = String.format("trace select * from %s where decimal_column in(%s, %s)", ossTableName,
+                    decimalValues.get(random.nextInt(10000)), decimalValues.get(random.nextInt(10000)));
+                statement.executeQuery(expSql);
+                ResultSet resultSet = statement.executeQuery("show trace");
+
+                boolean findArgument = false;
+                while (resultSet.next()) {
+                    String argument = resultSet.getString("STATEMENT").toLowerCase();
+                    findArgument |= argument.contains("in decimal_column");
+                }
+                assertWithMessage(String.format("sql %s should build search argument", expSql))
+                    .that(findArgument).isTrue();
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);

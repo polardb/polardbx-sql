@@ -141,7 +141,8 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                 } else {
                     tablePartRecordInfoContext =
                         TableGroupUtils.getTablePartRecordInfoContextsByDbNameAndTableName(conn, dbName, tableName);
-                    if (tablePartRecordInfoContext != null) {
+                    if (tablePartRecordInfoContext != null && tablePartRecordInfoContext.getLogTbRec().partStatus
+                        == TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC) {
                         synchronized (tableGroupConfig.getAllTables()) {
                             tableGroupConfig.getAllTables().add(tablePartRecordInfoContext);
                         }
@@ -167,7 +168,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
             }
             TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
             if (tableGroupConfig.getAllTables().isEmpty()
-                && tableGroupRecord.tg_type != TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG) {
+                && tableGroupRecord.manual_create == 0) {
                 synchronized (tableGroupConfigInfoCache) {
                     tableGroupConfigInfoCache.remove(id);
                 }
@@ -352,7 +353,8 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     new TableGroupConfig(
                         tableGroupRecord,
                         partitionGroupRecords,
-                        newTablePartRecordsInfoContext);
+                        newTablePartRecordsInfoContext,
+                        tableGroupRecord.getLocality());
                 tableGroupConfigInfoCache.put(tableGroupRecord.id, newTableGroupConfig);
             } else {
                 TablePartRecordInfoContext existsTablePart =

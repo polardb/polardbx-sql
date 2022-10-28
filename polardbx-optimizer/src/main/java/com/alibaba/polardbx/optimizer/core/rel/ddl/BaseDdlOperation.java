@@ -19,15 +19,21 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
+import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.plan.RelOptCluster;
@@ -42,6 +48,7 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.Util;
 import org.apache.commons.lang3.StringUtils;
 
@@ -58,7 +65,8 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
     protected Map<String, List<List<String>>> targetTablesHintCache;
 
     public BaseDdlOperation(RelOptCluster cluster, RelTraitSet traitSet, SqlDdl sqlDdl, RelDataType rowType) {
-        super(cluster, traitSet, RelUtils.toNativeSqlLine(sqlDdl), sqlDdl, DbType.MYSQL);
+        super(cluster, traitSet, BytesSql.getBytesSql(RelUtils.toNativeSqlLine(sqlDdl)), sqlDdl,
+            DbType.MYSQL);
         this.rowType = rowType;
         this.cursorMeta = CursorMeta.build(CalciteUtils.buildColumnMeta(rowType, "Ddl"));
     }
@@ -81,6 +89,77 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             }
             this.tableName = Util.last(tableName.names);
             this.schemaName = schemaName;
+        }
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = DefaultSchema.getSchemaName();
+        }
+    }
+
+    public BaseDdlOperation(DDL ddl, List<SqlIdentifier> objectNames) {
+        this(ddl.getCluster(), ddl.getTraitSet(), ddl);
+        int nameHierarchy = objectNames.size();
+        if (nameHierarchy > 3) {
+            throw new TddlNestableRuntimeException("Invalid table:" + tableName);
+        }
+        this.tableName = objectNames.get(0).getSimple();
+        if (nameHierarchy == 1) {
+            this.schemaName = PlannerContext.getPlannerContext(ddl).getSchemaName();
+        } else if (nameHierarchy == 2) {
+            String schemaOrTable = objectNames.get(1).getSimple();
+            SchemaManager schemaManager =
+                OptimizerContext.getContext(DefaultSchema.getSchemaName()).getLatestSchemaManager();
+            boolean throwEx = false;
+            try {
+                TableMeta tableMeta = schemaManager.getTable(schemaOrTable);
+                if (tableMeta.withGsi()) {
+                    String tableNameStr = tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
+                        .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(this.tableName))
+                        .findFirst().orElse(null);
+                    if (tableNameStr == null) {
+                        throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, this.tableName);
+                    }
+                    throwEx = true;
+                    this.tableName = tableNameStr;
+                    ddl.setTableName(new SqlIdentifier(this.tableName, SqlParserPos.ZERO));
+                } else {
+                    throwEx = true;
+                    if (OptimizerContext.getContext(schemaOrTable) == null) {
+                        throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, this.tableName);
+                    } else {
+                        schemaManager = OptimizerContext.getContext(schemaOrTable).getLatestSchemaManager();
+                        schemaManager.getTable(this.tableName);
+                        this.schemaName = schemaOrTable;
+                    }
+                }
+            } catch (Exception ex) {
+                if (throwEx) {
+                    throw ex;
+                }
+                if (OptimizerContext.getContext(schemaOrTable) == null) {
+                    throw new TddlNestableRuntimeException("Unknown database " + schemaOrTable);
+                } else {
+                    schemaManager = OptimizerContext.getContext(schemaOrTable).getLatestSchemaManager();
+                    schemaManager.getTable(this.tableName);
+                    this.schemaName = schemaOrTable;
+                }
+            }
+        } else if (nameHierarchy == 3) {
+            String thisSchema = objectNames.get(2).getSimple();
+            if (OptimizerContext.getContext(thisSchema) == null) {
+                throw new TddlNestableRuntimeException("Unknown database " + thisSchema);
+            }
+            SchemaManager schemaManager = OptimizerContext.getContext(thisSchema).getLatestSchemaManager();
+            String thisTable = objectNames.get(1).getSimple();
+            TableMeta tableMeta = schemaManager.getTable(thisTable);
+            if (tableMeta.withGsi()) {
+                this.tableName = tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
+                    .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(this.tableName))
+                    .findFirst().orElse(null);
+                ddl.setTableName(new SqlIdentifier(this.tableName, SqlParserPos.ZERO));
+            } else {
+                throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, this.tableName);
+            }
+            this.schemaName = thisSchema;
         }
         if (TStringUtil.isEmpty(schemaName)) {
             schemaName = DefaultSchema.getSchemaName();
@@ -151,6 +230,20 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             return DdlType.REBALANCE;
         case REFRESH_TOPOLOGY:
             return DdlType.REFRESH_TOPOLOGY;
+        case CREATE_FUNCTION:
+            return DdlType.CREATE_FUNCTION;
+        case DROP_FUNCTION:
+            return DdlType.DROP_FUNCTION;
+        case ALTER_FUNCTION:
+            return DdlType.ALTER_FUNCTION;
+        case CREATE_PROCEDURE:
+            return DdlType.CREATE_PROCEDURE;
+        case DROP_PROCEDURE:
+            return DdlType.DROP_PROCEDURE;
+        case ALTER_PROCEDURE:
+            return DdlType.ALTER_PROCEDURE;
+        case PUSH_DOWN_UDF:
+            return DdlType.PUSH_DOWN_UDF;
         default:
             return DdlType.UNSUPPORTED;
         }
@@ -185,7 +278,7 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
     @Override
     public RelWriter explainTermsForDisplay(RelWriter pw) {
         pw.item(RelDrdsWriter.REL_NAME, getExplainName());
-        pw.item("sql", this.sqlTemplate);
+        pw.item("sql", this.bytesSql.display());
         return pw;
     }
 

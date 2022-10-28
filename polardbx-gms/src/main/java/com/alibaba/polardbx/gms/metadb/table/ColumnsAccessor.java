@@ -233,15 +233,17 @@ public class ColumnsAccessor extends AbstractAccessor {
 
     public List<ColumnsInfoSchemaRecord> queryInfoSchema(String phyTableSchema, String phyTableName,
                                                          List<String> columnNames, DataSource dataSource) {
-        return query(String.format(SELECT_INFO_SCHEMA_SPECIFIED, concat(columnNames)), COLUMNS_INFO_SCHEMA,
-            ColumnsInfoSchemaRecord.class, phyTableSchema, phyTableName, dataSource);
+        Map<Integer, ParameterContext> params = buildParams(phyTableSchema, phyTableName, columnNames);
+        return query(String.format(SELECT_INFO_SCHEMA_SPECIFIED, concatParams(columnNames)),
+            COLUMNS_INFO_SCHEMA, ColumnsInfoSchemaRecord.class, params, dataSource);
     }
 
     public List<ColumnsInfoSchemaRecord> queryInfoSchema(String phyTableSchema, String phyTableName,
                                                          List<String> columnNames, Connection phyDbConn) {
         if (GeneralUtil.isNotEmpty(columnNames)) {
-            return query(String.format(SELECT_INFO_SCHEMA_SPECIFIED, concat(columnNames)), COLUMNS_INFO_SCHEMA,
-                ColumnsInfoSchemaRecord.class, phyTableSchema, phyTableName, null, phyDbConn);
+            Map<Integer, ParameterContext> params = buildParams(phyTableSchema, phyTableName, columnNames);
+            return query(String.format(SELECT_INFO_SCHEMA_SPECIFIED, concatParams(columnNames)),
+                COLUMNS_INFO_SCHEMA, ColumnsInfoSchemaRecord.class, params, phyDbConn);
         } else {
             return query(SELECT_INFO_SCHEMA, COLUMNS_INFO_SCHEMA, ColumnsInfoSchemaRecord.class, phyTableSchema,
                 phyTableName, null, phyDbConn);
@@ -324,8 +326,9 @@ public class ColumnsAccessor extends AbstractAccessor {
     }
 
     public List<ColumnsRecord> query(String tableSchema, String tableName, List<String> columnNames) {
-        return query(String.format(SELECT_COLUMNS_SPECIFIED, concat(columnNames)), COLUMNS_TABLE, ColumnsRecord.class,
-            tableSchema, tableName);
+        Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, columnNames);
+        return query(String.format(SELECT_COLUMNS_SPECIFIED, concatParams(columnNames)),
+            COLUMNS_TABLE, ColumnsRecord.class, params);
     }
 
     public int count(String tableSchema, String tableName) {
@@ -346,17 +349,28 @@ public class ColumnsAccessor extends AbstractAccessor {
     }
 
     public int updateStatus(String tableSchema, String tableName, List<String> columnNames, int newStatus) {
-        return update(String.format(UPDATE_COLUMNS_STATUS_SPECIFIED, concat(columnNames)), COLUMNS_TABLE, tableSchema,
-            tableName, newStatus);
+        Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, columnNames, newStatus);
+        return update(String.format(UPDATE_COLUMNS_STATUS_SPECIFIED, concatParams(columnNames)), COLUMNS_TABLE,
+            params);
     }
 
     public int updateStatus(String tableSchema, List<String> tableNames, List<String> columnNames, int oldStatus,
                             int newStatus) {
-        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(new String[] {
-            String.valueOf(newStatus),
-            tableSchema, String.valueOf(oldStatus)});
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(String.valueOf(newStatus));
+        paramValues.add(tableSchema);
+        if (GeneralUtil.isNotEmpty(tableNames)) {
+            paramValues.addAll(tableNames);
+        }
+        if (GeneralUtil.isNotEmpty(columnNames)) {
+            paramValues.addAll(columnNames);
+        }
+        paramValues.add(String.valueOf(oldStatus));
 
-        return update(String.format(UPDATE_COLUMNS_STATUS_SPECIFIED_STATUS, concat(tableNames), concat(columnNames)),
+        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
+
+        return update(
+            String.format(UPDATE_COLUMNS_STATUS_SPECIFIED_STATUS, concatParams(tableNames), concatParams(columnNames)),
             COLUMNS_TABLE, params);
     }
 
@@ -460,8 +474,8 @@ public class ColumnsAccessor extends AbstractAccessor {
     }
 
     public int delete(String tableSchema, String tableName, List<String> columnNames) {
-        return delete(String.format(DELETE_COLUMNS_SPECIFIED, concat(columnNames)), COLUMNS_TABLE, tableSchema,
-            tableName);
+        Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, columnNames);
+        return delete(String.format(DELETE_COLUMNS_SPECIFIED, concatParams(columnNames)), COLUMNS_TABLE, params);
     }
 
     public long queryMaxColumnPosition(String tableSchema, String tableName) {

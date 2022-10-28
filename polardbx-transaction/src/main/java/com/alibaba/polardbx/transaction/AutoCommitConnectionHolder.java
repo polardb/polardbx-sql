@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import com.alibaba.polardbx.transaction.utils.TransactionAsyncUtils;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -80,31 +81,6 @@ public class AutoCommitConnectionHolder extends BaseConnectionHolder {
         List<Runnable> tasks = new ArrayList<>(connections.size());
         connections.forEach((heldConn) -> tasks.add(() -> action.accept(heldConn)));
 
-        if (tasks.size() >= TransactionAttribute.CONCURRENT_COMMIT_LIMIT) {
-            // Execute actions (except the last one) in async queue concurrently
-            List<Future> futures = new ArrayList<>(tasks.size() - 1);
-            for (int i = 0; i < tasks.size() - 1; i++) {
-                futures.add(asyncQueue.submit(tasks.get(i)));
-            }
-
-            // Execute the last action by this thread
-            RuntimeException exception = null;
-            try {
-                tasks.get(tasks.size() - 1).run();
-            } catch (RuntimeException ex) {
-                exception = ex;
-            }
-
-            AsyncUtils.waitAll(futures);
-
-            if (exception != null) {
-                throw exception;
-            }
-        } else {
-            // Execute action by plain loop
-            for (Runnable task : tasks) {
-                task.run();
-            }
-        }
+        TransactionAsyncUtils.runTasksConcurrently(asyncQueue, tasks);
     }
 }

@@ -44,6 +44,11 @@ public class Repeat extends AbstractScalarFunction {
         super(operandTypes, resultType);
     }
 
+    /**
+     * The max length of the value returned by function REPEAT
+     */
+    private static final Long REPEAT_MAX_RETURN_LENGTH = 1024 * 1024 * 16L;
+
     @Override
     public String[] getFunctionNames() {
         return new String[] {"REPEAT"};
@@ -58,8 +63,11 @@ public class Repeat extends AbstractScalarFunction {
         }
         String str = DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]);
         Integer count = DataTypes.IntegerType.convertFrom(args[1]);
-        if (count < 1) {
+        if (count == null || count < 1) {
             return "";
+        }
+        if (str != null && count * str.length() > REPEAT_MAX_RETURN_LENGTH) {
+            return null;
         }
 
         return TStringUtil.repeat(str, count);

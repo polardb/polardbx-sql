@@ -52,29 +52,29 @@ public class InformationSchemaRoutines extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("ROUTINE_TYPE", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("DATA_TYPE", 5, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(
-            new RelDataTypeFieldImpl("CHARACTER_MAXIMUM_LENGTH", 6, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            new RelDataTypeFieldImpl("CHARACTER_MAXIMUM_LENGTH", 6, typeFactory.createSqlType(SqlTypeName.INTEGER)));
         columns
-            .add(new RelDataTypeFieldImpl("CHARACTER_OCTET_LENGTH", 7, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            .add(new RelDataTypeFieldImpl("CHARACTER_OCTET_LENGTH", 7, typeFactory.createSqlType(SqlTypeName.INTEGER)));
         columns.add(
-            new RelDataTypeFieldImpl("NUMERIC_PRECISION", 8, typeFactory.createSqlType(SqlTypeName.INTEGER_UNSIGNED)));
+            new RelDataTypeFieldImpl("NUMERIC_PRECISION", 8, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns
-            .add(new RelDataTypeFieldImpl("NUMERIC_SCALE", 9, typeFactory.createSqlType(SqlTypeName.INTEGER_UNSIGNED)));
+            .add(new RelDataTypeFieldImpl("NUMERIC_SCALE", 9, typeFactory.createSqlType(SqlTypeName.INTEGER)));
         columns.add(new RelDataTypeFieldImpl("DATETIME_PRECISION", 10,
-            typeFactory.createSqlType(SqlTypeName.INTEGER_UNSIGNED)));
+            typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("CHARACTER_SET_NAME", 11, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("COLLATION_NAME", 12, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("DTD_IDENTIFIER", 13, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("ROUTINE_BODY", 14, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("ROUTINE_DEFINITION", 15, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("EXTERNAL_NAME", 16, typeFactory.createSqlType(SqlTypeName.BINARY)));
+        columns.add(new RelDataTypeFieldImpl("EXTERNAL_NAME", 16, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("EXTERNAL_LANGUAGE", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PARAMETER_STYLE", 18, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("IS_DETERMINISTIC", 19, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("SQL_DATA_ACCESS", 20, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SQL_PATH", 21, typeFactory.createSqlType(SqlTypeName.BINARY)));
+        columns.add(new RelDataTypeFieldImpl("SQL_PATH", 21, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("SECURITY_TYPE", 22, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("CREATED", 23, typeFactory.createSqlType(SqlTypeName.TIMESTAMP)));
-        columns.add(new RelDataTypeFieldImpl("LAST_ALTERED", 24, typeFactory.createSqlType(SqlTypeName.TIMESTAMP)));
+        columns.add(new RelDataTypeFieldImpl("CREATED", 23, typeFactory.createSqlType(SqlTypeName.DATETIME)));
+        columns.add(new RelDataTypeFieldImpl("LAST_ALTERED", 24, typeFactory.createSqlType(SqlTypeName.DATETIME)));
         columns.add(new RelDataTypeFieldImpl("SQL_MODE", 25, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("ROUTINE_COMMENT", 26, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("DEFINER", 27, typeFactory.createSqlType(SqlTypeName.VARCHAR)));

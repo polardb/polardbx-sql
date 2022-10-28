@@ -16,15 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.planmanager;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
-import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
@@ -39,10 +35,9 @@ public class StatementMap {
 
     private static final Logger logger = LoggerFactory.getLogger(StatementMap.class);
     /**
-     * 同一个session中query串行
-     * 不用考虑并发安全
+     * 异步驱动考虑并发安全
      */
-    private final Map<String, PreparedStmtCache> stmtCacheMap;
+    private final ConcurrentMap<String, PreparedStmtCache> stmtCacheMap;
 
     public StatementMap(boolean isServerPrepare) {
         if (isServerPrepare) {
@@ -50,9 +45,9 @@ public class StatementMap {
               二进制prepare协议下 stmtId由内核分配
               不需要区分stmtId的大小写
              */
-            this.stmtCacheMap = new HashMap<>();
+            this.stmtCacheMap = new ConcurrentHashMap<>();
         } else {
-            this.stmtCacheMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            this.stmtCacheMap = new ConcurrentSkipListMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         }
     }
 
@@ -73,5 +68,9 @@ public class StatementMap {
 
     public PreparedStmtCache find(String stmtId) {
         return stmtCacheMap.get(stmtId);
+    }
+
+    public void clear() {
+        stmtCacheMap.clear();
     }
 }

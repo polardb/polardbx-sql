@@ -25,8 +25,293 @@ a
 201
 202
 203
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+/* tablegroup = `tg` */
 TRUNCATE TABLE tbl;
 SELECT *
 FROM tbl
 ORDER BY a;
 a
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(`a`)
+(PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB)
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL
+)
+PARTITION BY HASH (a) PARTITIONS 4;
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+INSERT INTO tbl
+VALUES (10),
+	(99),
+	(100),
+	(101);
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+10
+99
+100
+101
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+TRUNCATE TABLE tbl;
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	c int NOT NULL,
+	b int NOT NULL,
+	a int NOT NULL
+)
+PARTITION BY KEY (a, c) PARTITIONS 8;
+CREATE TABLEGROUP tbl_tg;
+ALTER TABLE tbl
+	SET tablegroup = tbl_tg;
+ALTER TABLEGROUP tbl_tg MERGE PARTITIONS p6, p7, p8 TO p9 ;
+INSERT INTO tbl (a, b, c)
+VALUES (10, 100, 100),
+	(20, 200, 200);
+SELECT *
+FROM tbl
+ORDER BY a, b, c;
+c,b,a
+100,100,10
+200,200,20
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`c` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`a` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_c` USING BTREE (`a`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`c`)
+PARTITIONS 6
+tablegroup = `tbl_tg`
+TRUNCATE TABLE tbl;
+SELECT *
+FROM tbl
+ORDER BY a, b, c;
+c,b,a
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`c` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`a` int(11) NOT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_c` USING BTREE (`a`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`c`)
+PARTITIONS 6
+tablegroup = `tbl_tg`
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY LIST (a) (
+	PARTITION p1 VALUES IN (10, 101),
+	PARTITION p2 VALUES IN (99, 100, 98),
+	PARTITION p3 VALUES IN (200, 201)
+);
+CREATE TABLEGROUP tbl_tg1;
+ALTER TABLE tbl
+	SET tablegroup = tbl_tg1;
+ALTER TABLEGROUP tbl_tg1 SPLIT PARTITION p2 INTO (PARTITION p4 VALUES IN (98, 99), PARTITION p5 VALUES IN (100)) ;
+INSERT INTO tbl
+VALUES (99),
+	(100);
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+99
+100
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,101) ENGINE = InnoDB,
+ PARTITION p4 VALUES IN (98,99) ENGINE = InnoDB,
+ PARTITION p5 VALUES IN (100) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `tbl_tg1`
+TRUNCATE TABLE tbl;
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (10,101) ENGINE = InnoDB,
+ PARTITION p4 VALUES IN (98,99) ENGINE = InnoDB,
+ PARTITION p5 VALUES IN (100) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `tbl_tg1`
+ALTER TABLEGROUP tbl_tg1 MERGE PARTITIONS p1, p4 TO p2 ;
+INSERT INTO tbl
+VALUES (99),
+	(100);
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+99
+100
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p2 VALUES IN (98,99,10,101) ENGINE = InnoDB,
+ PARTITION p5 VALUES IN (100) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `tbl_tg1`
+TRUNCATE TABLE tbl;
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p2 VALUES IN (98,99,10,101) ENGINE = InnoDB,
+ PARTITION p5 VALUES IN (100) ENGINE = InnoDB,
+ PARTITION p3 VALUES IN (200,201) ENGINE = InnoDB)
+tablegroup = `tbl_tg1`
+
+
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int,
+	CLUSTERED INDEX tbl_index_1(a) PARTITION BY HASH (a) PARTITIONS 8,
+	UNIQUE CLUSTERED INDEX tbl_index_2 (a) PARTITION BY HASH (a) PARTITIONS 8,
+	UNIQUE GLOBAL INDEX tbl_index_3 (a) PARTITION BY HASH (a) PARTITIONS 8,
+	GLOBAL INDEX tbl_index_4(a) PARTITION BY HASH (a) PARTITIONS 8,
+	INDEX tbl_index_5(a),
+	UNIQUE INDEX tbl_index_6 (a)
+)
+PARTITION BY HASH (a) PARTITIONS 8;
+INSERT INTO tbl
+VALUES (101),
+	(102),
+	(103),
+	(201),
+	(202),
+	(203);
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+101
+102
+103
+201
+202
+203
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	CLUSTERED INDEX /* tbl_index_1_$ */ `tbl_index_1` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	UNIQUE CLUSTERED INDEX /* tbl_index_2_$ */ `tbl_index_2` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	UNIQUE GLOBAL INDEX /* tbl_index_3_$ */ `tbl_index_3` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	GLOBAL INDEX /* tbl_index_4_$ */ `tbl_index_4` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	UNIQUE LOCAL KEY `tbl_index_6` (`a`),
+	LOCAL KEY `tbl_index_5` (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 8
+/* tablegroup = `tg` */
+TRUNCATE TABLE tbl;
+SELECT *
+FROM tbl
+ORDER BY a;
+a
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	CLUSTERED INDEX /* tbl_index_1_$ */ `tbl_index_1` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	UNIQUE CLUSTERED INDEX /* tbl_index_2_$ */ `tbl_index_2` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	UNIQUE GLOBAL INDEX /* tbl_index_3_$ */ `tbl_index_3` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	GLOBAL INDEX /* tbl_index_4_$ */ `tbl_index_4` (`a`) PARTITION BY KEY (`a`) PARTITIONS 8,
+	UNIQUE LOCAL KEY `tbl_index_6` (`a`),
+	LOCAL KEY `tbl_index_5` (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 8
+/* tablegroup = `tg` */

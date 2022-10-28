@@ -27,20 +27,7 @@ import java.util.concurrent.TimeUnit;
  * @author dylan
  */
 public interface SystemTablePlanInfo {
-    /**
-     * check system table exists
-     */
-    Cache<String, Boolean> APPNAME_PLAN_INFO_ENABLED = CacheBuilder.newBuilder()
-        .expireAfterWrite(1, TimeUnit.HOURS)
-        .build();
-
-    static void invalidateAll() {
-        APPNAME_PLAN_INFO_ENABLED.invalidateAll();
-    }
-
-    void resetDataSource(DataSource dataSource);
-
     void createTableIfNotExist();
 
-    boolean deleteAll(Connection conn);
+    boolean deleteAll(String schema);
 }

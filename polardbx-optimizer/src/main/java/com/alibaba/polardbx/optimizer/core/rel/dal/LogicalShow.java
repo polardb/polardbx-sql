@@ -28,6 +28,8 @@ import java.util.List;
  */
 public class LogicalShow extends LogicalDal {
 
+    private boolean showForTruncateTable = false;
+
     private LogicalShow(Show show, String dbIndex,
                        String phyTable, String schemaName){
         super(show, dbIndex, phyTable, schemaName);
@@ -45,5 +47,13 @@ public class LogicalShow extends LogicalDal {
     @Override
     public LogicalShow copy(RelTraitSet traitSet, List<RelNode> inputs) {
         return create((Show) dal.copy(traitSet, inputs), dbIndex, phyTable, schemaName);
+    }
+
+    public boolean isShowForTruncateTable() {
+        return showForTruncateTable;
+    }
+
+    public void setShowForTruncateTable(boolean showForTruncateTable) {
+        this.showForTruncateTable = showForTruncateTable;
     }
 }

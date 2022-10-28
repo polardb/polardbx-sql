@@ -17,6 +17,11 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 
 public interface SQLShowStatement extends SQLStatement {
+    @Override
+    default SqlType getSqlType() {
+        return SqlType.SHOW;
+    }
 }

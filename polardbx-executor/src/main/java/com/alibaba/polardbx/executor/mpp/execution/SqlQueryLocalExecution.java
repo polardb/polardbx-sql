@@ -265,28 +265,29 @@ public class SqlQueryLocalExecution extends QueryExecution {
         } else {
             //并发度 > 1
             if (splitInfo.getSplits().size() > 1) {
+
                 if (expand) {
                     //其实这里将无法保证事务，除非并发度设置为1,所以这里显示异常
                     throw new TddlNestableRuntimeException("Don't Support expand logicalview!");
-                } else {
-                    //开启事务, 不支持worker内部各个scan动态消费split
-                    List<List<Split>> taskLocalSplits = new ArrayList<>();
-                    filterDrivers.stream().forEach(driver -> taskLocalSplits.add(new ArrayList<>()));
+                }
 
-                    int index = 0;
-                    for (List<Split> list : splitInfo.getSplits()) {
-                        index++;
-                        if (index >= taskLocalSplits.size()) {
-                            index = 0;
-                        }
-                        for (Split split : list) {
-                            taskLocalSplits.get(index).add(split);
-                        }
-                    }
+                //开启事务, 不支持worker内部各个scan动态消费split
+                List<List<Split>> taskLocalSplits = new ArrayList<>();
+                filterDrivers.stream().forEach(driver -> taskLocalSplits.add(new ArrayList<>()));
 
-                    for (int i = 0; i < taskLocalSplits.size(); i++) {
-                        filterDrivers.get(i).processNewSources(sourceId, taskLocalSplits.get(i), expand, true);
+                int index = 0;
+                for (List<Split> list : splitInfo.getSplits()) {
+                    index++;
+                    if (index >= taskLocalSplits.size()) {
+                        index = 0;
                     }
+                    for (Split split : list) {
+                        taskLocalSplits.get(index).add(split);
+                    }
+                }
+
+                for (int i = 0; i < taskLocalSplits.size(); i++) {
+                    filterDrivers.get(i).processNewSources(sourceId, taskLocalSplits.get(i), expand, true);
                 }
             } else {
                 if (expand) {
@@ -323,7 +324,6 @@ public class SqlQueryLocalExecution extends QueryExecution {
                         filterDrivers.get(i).processNewSources(sourceId, ImmutableList.of(), expand, true);
                     }
                 }
-
             }
         }
     }

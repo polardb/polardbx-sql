@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.core.function.calc.scalar.cast;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -130,6 +132,18 @@ public class Cast extends AbstractScalarFunction {
         } else if (type.equalsIgnoreCase("YEAR")) {
             castType.type = DataTypes.YearType;
             castType.signed = false;
+        } else if (type.equalsIgnoreCase("TINYINT")) {
+            castType.type = DataTypes.TinyIntType;
+            castType.signed = false;
+        } else if (type.equalsIgnoreCase("SMALLINT")) {
+            castType.type = DataTypes.SmallIntType;
+            castType.signed = false;
+        } else if (type.equalsIgnoreCase("BLOB")) {
+            castType.type = DataTypes.BlobType;
+            castType.signed = false;
+        } else if (type.equalsIgnoreCase("BIT")) {
+            castType.type = DataTypes.BitType;
+            castType.signed = false;
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "cast type:" + type);
         }
@@ -184,8 +198,12 @@ public class Cast extends AbstractScalarFunction {
         } else if (DataTypeUtil.equalsSemantically(DataTypes.DecimalType, castType.type)) {
             BigDecimal bd = ((Decimal) obj).toBigDecimal();
             if (castType.type1 != null && castType.type2 != null && castType.type1 > 0) {
-                bd = bd.setScale(castType.type2, BigDecimal.ROUND_HALF_UP).round(new MathContext(castType.type1));
-                return Decimal.fromBigDecimal(bd);
+                DecimalStructure dec = ((Decimal) obj).getDecimalStructure();
+                int precision = castType.type1;
+                int scale = castType.type2;
+
+                DecimalConverter.rescale(dec, dec, precision, scale, false);
+                return obj;
             } else {
                 bd = bd.setScale(0, BigDecimal.ROUND_HALF_UP);
                 return Decimal.fromBigDecimal(bd);

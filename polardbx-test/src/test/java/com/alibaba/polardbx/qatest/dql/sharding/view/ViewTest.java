@@ -99,6 +99,22 @@ public class ViewTest extends ReadBaseTestCase {
     }
 
     @Test
+    public void showStatusView() {
+        String sql = "create or replace view v as select * from " + group1[1];
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+        try (PreparedStatement statement = tddlConnection.prepareStatement("show table status like 'v';")) {
+            ResultSet resultSet = statement.executeQuery();
+            Assert.assertTrue(resultSet.next());
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        sql = "drop view if exists v";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+    }
+
+    @Test
     public void multiTableView() {
         String sql = "create or replace view v(c1) as select a.pk from " + group1[1] + " a join " + group2[2]
             + " b on a.pk = b.pk";

@@ -32,6 +32,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -73,6 +74,22 @@ public class DataValidator {
         Assert.assertTrue("expect error is " + expectErrorMess + "\n but actual is " + errorMess,
             errorMess.contains(expectErrorMess));
 
+    }
+
+    /**
+     * ignore possible exception
+     */
+    public static void sqlMayErrorAssert(String sql, Connection tddlConnection,
+                                         String expectErrorMess) {
+        try (Statement tddlPs = JdbcUtil.createStatement(tddlConnection)) {
+            ResultSet rs = tddlPs.executeQuery(sql);
+            rs.next();
+        } catch (Exception e) {
+            if (!e.getMessage().contains(expectErrorMess)) {
+                String errorMs = "[Statement execute] failed:" + sql;
+                Assert.fail(errorMs + " \n " + e);
+            }
+        }
     }
 
     public static void explainResultMatchAssert(String sql, List<Object> param, Connection tddlConnection,

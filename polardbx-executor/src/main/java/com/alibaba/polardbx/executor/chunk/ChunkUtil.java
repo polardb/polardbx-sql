@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import io.airlift.slice.Slice;
+
 public abstract class ChunkUtil {
 
     public static int hashCode(byte[] arr, int start, int end) {
@@ -40,6 +42,17 @@ public abstract class ChunkUtil {
             } else {
                 result = 31 * result + arr[i];
             }
+        }
+        return result;
+    }
+
+    public static int hashCode(Slice slice, int start, int end) {
+        if (slice == null) {
+            return 0;
+        }
+        int result = 1;
+        for (int i = start; i < end; ++i) {
+            result = 31 * result + slice.getByte(i);
         }
         return result;
     }

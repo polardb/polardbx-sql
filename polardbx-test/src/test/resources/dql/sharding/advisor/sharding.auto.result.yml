@@ -1,0 +1,8 @@
+- alter table sharding_advisor_auto.partsupp PARTITION BY KEY(`ps_partkey`) PARTITIONS 8;
+- alter table sharding_advisor_auto.supplier PARTITION BY KEY(`s_suppkey`) PARTITIONS 10;
+- alter table sharding_advisor_auto.nation PARTITION BY KEY(`n_nationkey`) PARTITIONS 2;
+- alter table sharding_advisor_auto.customer PARTITION BY KEY(`c_custkey`) PARTITIONS 8;
+- alter table sharding_advisor_auto.orders PARTITION BY KEY(`o_orderkey`) PARTITIONS 4;
+- alter table sharding_advisor_auto.lineitem PARTITION BY KEY(`l_orderkey`) PARTITIONS 8;
+- alter table sharding_advisor_auto.part PARTITION BY KEY(`p_partkey`) PARTITIONS 6;
+- alter table sharding_advisor_auto.region PARTITION BY KEY(`r_regionkey`) PARTITIONS 2;

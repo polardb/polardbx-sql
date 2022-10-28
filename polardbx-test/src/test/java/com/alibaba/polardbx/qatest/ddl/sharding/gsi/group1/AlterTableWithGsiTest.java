@@ -18,9 +18,11 @@ package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group1;
 
 import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.validator.DataValidator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.util.Litmus;
+import org.hamcrest.MatcherAssert;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -31,6 +33,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.hamcrest.core.Is.is;
 
 /**
  * @author chenmo.cm
@@ -922,7 +925,7 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
                 + "%s(A int primary key,B varchar(30), C varchar(30), D varchar(30), E varchar(30), F varchar(30)"
                 + ", unique index u_i_c(C)"
                 + ", unique index u_i_d_e(D, E)"
-                + ", global unique %s(B, F) covering(C, D) dbpartition by hash(B)) dbpartition by hash(A) dbpartitions 4",
+                + ", global unique %s(B, F) covering(C, D) dbpartition by hash(B)) dbpartition by hash(A)",
             primaryTable,
             indexTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
@@ -1249,6 +1252,16 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
                 throw new RuntimeException("get insert result failed!", e);
             }
         }
+
+        JdbcUtil.executeQuery("analyze table " + primaryTable, tddlConnection);
+        try (ResultSet resultSet = JdbcUtil.executeQuery(
+            String.format("SELECT COUNT(1) FROM %s where c = 'b' ", primaryTable), tddlConnection)) {
+            MatcherAssert.assertThat(resultSet.next(), is(true));
+        } catch (Exception e) {
+            throw new RuntimeException("sharding advisor failed!", e);
+        }
+        sql = "/*+TDDL:cmd_extra(SHARDING_ADVISOR_BROADCAST_THRESHOLD=-1)*/shardingadvise";
+        DataValidator.sqlMayErrorAssert(sql, tddlConnection, "ERR_TABLE_NOT_EXIST");
 
         sql = String.format("alter table %s change column d1 d varchar(30)", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);

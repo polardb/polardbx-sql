@@ -106,7 +106,7 @@
   plan: |
 
     LogicalModify(TYPE="UPDATE", SET="test_single.id=?0")
-      Project(id="id", name="name", create_time="create_time", EXPR$0="?0")
+      Project(id="id", name="name", create_time="create_time", gen$0="?0")
         SemiBKAJoin(condition="id = id", type="semi")
           LogicalView(tables="optest_0000.test_single", sql="SELECT `id`, `name`, `create_time` FROM `test_single` AS `test_single` WHERE (`id` > ?) FOR UPDATE")
           Gather(concurrent=true)

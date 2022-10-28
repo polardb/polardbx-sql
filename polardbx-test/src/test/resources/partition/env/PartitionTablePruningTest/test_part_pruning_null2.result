@@ -97,7 +97,7 @@ EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b = NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` = ?)")
+PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` = ?)", params="NULL")
 EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b > NULL;

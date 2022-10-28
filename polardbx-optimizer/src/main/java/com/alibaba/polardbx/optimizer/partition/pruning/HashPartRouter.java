@@ -17,7 +17,11 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.sql.type.SqlTypeName;
 
 /**
  * @author chenghui.lch
@@ -26,6 +30,7 @@ public class HashPartRouter extends RangePartRouter {
 
     protected int partitionCount = 0;
     protected SearchDatumHasher hasher = null;
+    protected RelDataType boundValDataType = PartitionPrunerUtils.getTypeFactory().createSqlType(SqlTypeName.BIGINT);
 
     public HashPartRouter(Object[] sortedBoundObjArr, SearchDatumHasher hasher) {
         super(sortedBoundObjArr, new LongComparator());
@@ -41,10 +46,23 @@ public class HashPartRouter extends RangePartRouter {
             long hashVal = hasher.calcHashCodeForHashStrategy(ec, (SearchDatumInfo) searchVal);
             rs = super.routePartitions(ec, comp, hashVal);
         } else {
+            /**
+             * Here just use ComparisonKind.NOT_EQUAL to generate full scan RouterResult
+             */
             rs = super.routePartitions(ec, ComparisonKind.NOT_EQUAL, searchVal);
         }
         rs.strategy = PartitionStrategy.HASH;
         return rs;
     }
 
+    public SearchDatumInfo buildHashSearchDatumInfo(SearchDatumInfo queryValDatum, ExecutionContext ec) {
+        long hashVal = hasher.calcHashCodeForHashStrategy(ec, queryValDatum);
+        PartitionBoundVal[] boundValArr = new PartitionBoundVal[1];
+        boundValArr[0] =
+            PartitionInfoBuilder
+                .buildOneHashBoundValByLong(null, hashVal, this.boundValDataType,
+                    PartFieldAccessType.QUERY_PRUNING);
+        SearchDatumInfo hashValDatum = new SearchDatumInfo(boundValArr);
+        return hashValDatum;
+    }
 }

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.gms.metadb.table;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -26,7 +27,6 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import org.apache.commons.collections.CollectionUtils;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
@@ -71,9 +71,6 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String WHERE_SCHEMA_TABLE_INDEXES = WHERE_SCHEMA_TABLE + " and `index_name` in (%s)";
 
-    private static final String WHERE_SCHEMA_TABLE_ONE_INDEX_COLUMNS =
-        WHERE_SCHEMA_TABLE_ONE_INDEX + " and `column_name` in (%s)";
-
     private static final String WHERE_SCHEMA_TABLE_INDEXES_COLUMNS_STATUS_GSI =
         WHERE_SCHEMA_TABLE_INDEXES + " and `column_name` in (%s) and `index_status` = ? and `index_location` = 1";
 
@@ -103,6 +100,9 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String SELECT_INDEXES =
         SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA_TABLE + ORDER_BY_SEQ;
 
+    private static final String SELECT_ONE_INDEX =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA_TABLE_ONE_INDEX + ORDER_BY_SEQ;
+
     private static final String SELECT_ALL_INDEXES =
         SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA + ORDER_BY_SEQ;
 
@@ -127,15 +127,11 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String UPDATE_LOCAL_INDEXES_RENAME =
         UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE + " and `index_location` = 0";
 
+    private static final String UPDATE_GLOBAL_INDEXES_CUT_OVER =
+        UPDATE_INDEXES + "`index_table_name` = ?" + WHERE_SCHEMA + "and index_table_name = ? and `index_location` = 1";
+
     private static final String UPDATE_INDEXES_COLUMN_NAME =
         UPDATE_INDEXES + "`column_name` = ?" + WHERE_SCHEMA_TABLE_COLUMN;
-
-    private static final String UPDATE_INDEXES_COLUMN_TYPE_AND_STATUS_ALL =
-        UPDATE_INDEXES + "`comment` = ?, `index_column_type`=?, `index_status`=? " + WHERE_SCHEMA_TABLE_ONE_INDEX;
-
-    private static final String UPDATE_INDEXES_COLUMN_TYPE_AND_STATUS_SPECIFIED =
-        UPDATE_INDEXES + "`comment` = ?, `index_column_type`=?, `index_status`=? "
-            + WHERE_SCHEMA_TABLE_ONE_INDEX_COLUMNS;
 
     private static final String DELETE_INDEXES = "delete" + FROM_INDEXES_TABLE;
 
@@ -222,8 +218,9 @@ public class IndexesAccessor extends AbstractAccessor {
 
     public List<IndexesInfoSchemaRecord> queryInfoSchema(String phyTableSchema, String phyTableName,
                                                          List<String> indexNames, DataSource dataSource) {
-        return query(String.format(SELECT_INFO_SCHEMA_SPECIFIED, concat(indexNames)), INDEXES_INFO_SCHEMA,
-            IndexesInfoSchemaRecord.class, phyTableSchema, phyTableName, dataSource);
+        Map<Integer, ParameterContext> params = buildParams(phyTableSchema, phyTableName, indexNames);
+        return query(String.format(SELECT_INFO_SCHEMA_SPECIFIED, concatParams(indexNames)), INDEXES_INFO_SCHEMA,
+            IndexesInfoSchemaRecord.class, params, dataSource);
     }
 
     public List<IndexesInfoSchemaRecord> queryInfoSchemaByFirstColumn(String phyTableSchema, String phyTableName,
@@ -244,6 +241,10 @@ public class IndexesAccessor extends AbstractAccessor {
 
     public List<IndexesRecord> query(String tableSchema, String tableName) {
         return query(SELECT_INDEXES, INDEXES_TABLE, IndexesRecord.class, tableSchema, tableName);
+    }
+
+    public List<IndexesRecord> query(String tableSchema, String tableName, String indexName) {
+        return query(SELECT_ONE_INDEX, INDEXES_TABLE, IndexesRecord.class, tableSchema, tableName, indexName);
     }
 
     public List<IndexesRecord> queryByFirstColumn(String tableSchema, String tableName, String firstColumnName) {
@@ -275,16 +276,28 @@ public class IndexesAccessor extends AbstractAccessor {
     }
 
     public int updateStatus(String tableSchema, String tableName, List<String> indexNames, int newStatus) {
-        return update(String.format(UPDATE_INDEXES_STATUS_SPECIFIED, concat(indexNames)), INDEXES_TABLE, tableSchema,
-            tableName, newStatus);
+        Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, indexNames, newStatus);
+        return update(String.format(UPDATE_INDEXES_STATUS_SPECIFIED, concatParams(indexNames)), INDEXES_TABLE, params);
     }
 
     public int updateStatus(String tableSchema, String tableName, List<String> indexNames, List<String> columns,
                             int oldStatus, int newStatus) {
-        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(new String[] {
-            String.valueOf(newStatus),
-            tableSchema, tableName, String.valueOf(oldStatus)});
-        return update(String.format(UPDATE_INDEXES_STATUS_SPECIFIED_GSI_COLUMNS, concat(indexNames), concat(columns)),
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(String.valueOf(newStatus));
+        paramValues.add(tableSchema);
+        paramValues.add(tableName);
+        if (GeneralUtil.isNotEmpty(indexNames)) {
+            paramValues.addAll(indexNames);
+        }
+        if (GeneralUtil.isNotEmpty(columns)) {
+            paramValues.addAll(columns);
+        }
+        paramValues.add(String.valueOf(oldStatus));
+
+        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
+
+        return update(
+            String.format(UPDATE_INDEXES_STATUS_SPECIFIED_GSI_COLUMNS, concatParams(indexNames), concatParams(columns)),
             INDEXES_TABLE, params);
     }
 
@@ -292,60 +305,6 @@ public class IndexesAccessor extends AbstractAccessor {
         Map<Integer, ParameterContext> params = MetaDbUtil
             .buildStringParameters(new String[] {newColumnName, tableSchema, tableName, oldColumnName});
         return update(UPDATE_INDEXES_COLUMN_NAME, INDEXES_TABLE, params);
-    }
-
-    public int updateAllColumnType(
-        String tableSchema,
-        String tableName,
-        String indexName,
-        Integer indexColumnType,
-        Integer indexStatus) {
-
-        /**
-         * @see com.taobao.tddl.optimizer.config.table.GsiMetaManager.IndexColumnType
-         */
-        String comment = indexColumnType == 0 ? "INDEX" : "COVERING";
-
-        Map<Integer, ParameterContext> params = MetaDbUtil
-            .buildStringParameters(new String[] {
-                comment,
-                String.valueOf(indexColumnType),
-                String.valueOf(indexStatus),
-                tableSchema,
-                tableName,
-                indexName,
-            });
-        return update(UPDATE_INDEXES_COLUMN_TYPE_AND_STATUS_ALL, INDEXES_TABLE, params);
-    }
-
-    public int updateColumnType(
-        String tableSchema,
-        String tableName,
-        String indexName,
-        List<String> columnNameList,
-        Integer indexColumnType,
-        Integer indexStatus) {
-
-        if (CollectionUtils.isEmpty(columnNameList)) {
-            return 0;
-        }
-
-        /**
-         * @see com.taobao.tddl.optimizer.config.table.GsiMetaManager.IndexColumnType
-         */
-        String comment = indexColumnType == 0 ? "INDEX" : "COVERING";
-
-        Map<Integer, ParameterContext> params = MetaDbUtil
-            .buildStringParameters(new String[] {
-                comment,
-                String.valueOf(indexColumnType),
-                String.valueOf(indexStatus),
-                tableSchema,
-                tableName,
-                indexName,
-            });
-        return update(String.format(UPDATE_INDEXES_COLUMN_TYPE_AND_STATUS_SPECIFIED, concat(columnNameList)),
-            INDEXES_TABLE, params);
     }
 
     public int[] rename(String tableSchema, String tableName, Map<String, String> indexNamePairs) {
@@ -368,6 +327,10 @@ public class IndexesAccessor extends AbstractAccessor {
         return update(UPDATE_LOCAL_INDEXES_RENAME, INDEXES_TABLE, tableSchema, tableName, newTableName);
     }
 
+    public int cutOverGlobalIndex(String tableSchema, String indexName, String newIndexTableName) {
+        return update(UPDATE_GLOBAL_INDEXES_CUT_OVER, INDEXES_TABLE, tableSchema, indexName, newIndexTableName);
+    }
+
     public int delete(String tableSchema) {
         return delete(DELETE_INDEXES_ALL, INDEXES_TABLE, tableSchema);
     }
@@ -377,13 +340,13 @@ public class IndexesAccessor extends AbstractAccessor {
     }
 
     public int delete(String tableSchema, String tableName, List<String> indexNames) {
-        return delete(String.format(DELETE_INDEXES_SPECIFIED, concat(indexNames)), INDEXES_TABLE, tableSchema,
-            tableName);
+        Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, indexNames);
+        return delete(String.format(DELETE_INDEXES_SPECIFIED, concatParams(indexNames)), INDEXES_TABLE, params);
     }
 
     public int deleteColumns(String tableSchema, String tableName, List<String> columnNames) {
-        return delete(String.format(DELETE_INDEXES_COLUMNS, concat(columnNames)), INDEXES_TABLE, tableSchema,
-            tableName);
+        Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, columnNames);
+        return delete(String.format(DELETE_INDEXES_COLUMNS, concatParams(columnNames)), INDEXES_TABLE, params);
     }
 
     public int deletePrimaryKey(String tableSchema, String tableName) {

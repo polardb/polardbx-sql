@@ -29,6 +29,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
@@ -62,6 +63,7 @@ import java.util.stream.IntStream;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_MODIFY_SHARD_COLUMN;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_MODIFY_SHARD_COLUMN_ON_TABLE_WITHOUT_PK;
+import static org.apache.calcite.util.Static.RESOURCE;
 
 public class CheckModifyLimitation {
 
@@ -204,6 +206,20 @@ public class CheckModifyLimitation {
                 }
             }
         }
+    }
+
+    public static boolean checkUpsertModifyShardingColumn(LogicalInsert logicalInsert) {
+        if (!logicalInsert.isInsert()) {
+            return false;
+        }
+
+        String tableName = logicalInsert.getLogicalTableName();
+        String schemaName = logicalInsert.getSchemaName();
+        TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
+
+        final Set<String> updateColumnList = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        updateColumnList.addAll(BuildPlanUtils.buildUpdateColumnList(logicalInsert));
+        return or.getSharedColumns(tableName).stream().anyMatch(updateColumnList::contains);
     }
 
     public static boolean checkModifyShardingColumn(LogicalModify modify) {
@@ -416,6 +432,20 @@ public class CheckModifyLimitation {
                 tableMeta.getAutoUpdateColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
             return indexMeta.stream().anyMatch(tm -> autoUpdateColumns.stream().anyMatch(c -> null != tm.getColumn(c)));
         });
+    }
+
+    public static boolean checkOnlineModifyColumnDdl(List<RelOptTable> targetTables, ExecutionContext ec) {
+        for (RelOptTable targetTable: targetTables) {
+            if (TableColumnUtils.isModifying(targetTable, ec)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean checkOnlineModifyColumnDdl(TableModify tableModify, ExecutionContext ec) {
+        final List<RelOptTable> targetTables = tableModify.getTargetTables();
+        return checkOnlineModifyColumnDdl(targetTables, ec);
     }
 
     public static boolean checkModifyPk(TableModify tableModify, ExecutionContext ec) {

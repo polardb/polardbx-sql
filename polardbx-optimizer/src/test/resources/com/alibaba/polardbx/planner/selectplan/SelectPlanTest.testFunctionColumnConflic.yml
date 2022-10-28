@@ -1,0 +1,42 @@
+- sql: |
+    select concat('test', `current_user`) from t_user;
+
+  plan: |
+
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].t_user", shardcount=4, sql="select concat('test', `current_user`) as `concat('test', current_user)` from `t_user` as `t_user`")
+
+- sql: |
+    select concat('test', current_user) from t_user;
+
+  plan: |
+
+    project(concat('test', current_user)="concat('test', current_user())")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_user", shardcount=4, sql="select `id`, `current_user` from `t_user` as `t_user`")
+
+- sql: |
+    select concat(`current_user`, current_user) from t_user;
+
+  plan: |
+
+    project(concat(current_user, current_user)="concat(current_user, current_user())")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_user", shardcount=4, sql="select `id`, `current_user` from `t_user` as `t_user`")
+
+- sql: |
+    select * from t_user where CHAR_LENGTH(`current_user`) > id;
+
+  plan: |
+
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].t_user", shardcount=4, sql="select `id`, `current_user` from `t_user` as `t_user` where (char_length(`current_user`) > `id`)")
+
+- sql: |
+    select * from t_user where CHAR_LENGTH(current_user) > id;
+
+  plan: |
+
+    filter(condition="char_length(current_user()) > id")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_user", shardcount=4, sql="select `id`, `current_user` from `t_user` as `t_user`")

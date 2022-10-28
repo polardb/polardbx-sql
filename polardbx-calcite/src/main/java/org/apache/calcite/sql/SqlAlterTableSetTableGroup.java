@@ -33,20 +33,32 @@ public class SqlAlterTableSetTableGroup extends SqlCreate {
     final String sourceSql;
 
     final String targetTableGroup;
+    final List<SqlIdentifier> objectNames;
+    final boolean force;
 
-    public SqlAlterTableSetTableGroup(SqlIdentifier tableName, String targetTableGroup, String sql, SqlParserPos pos){
+    public SqlAlterTableSetTableGroup(List<SqlIdentifier> objectNames, SqlIdentifier tableName, String targetTableGroup, String sql, SqlParserPos pos, boolean force){
         super(OPERATOR, SqlParserPos.ZERO, false, false);
         this.name = tableName;
         this.sourceSql = sql;
         this.targetTableGroup = targetTableGroup;
+        this.objectNames = objectNames;
+        this.force = force;
     }
 
     public String getTargetTableGroup() {
         return targetTableGroup;
     }
 
+    public List<SqlIdentifier> getObjectNames() {
+        return objectNames;
+    }
+
     public String getSourceSql() {
         return sourceSql;
+    }
+
+    public boolean isForce() {
+        return force;
     }
 
     @Override

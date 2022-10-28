@@ -122,18 +122,19 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuesExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMovePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterSequenceStatement;
@@ -170,6 +171,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableConstrain
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableKeys;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableLifecycle;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableExchangePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupAddTable;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableImportPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
@@ -224,6 +226,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCopyFromStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
@@ -244,6 +247,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropEventStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
@@ -288,6 +292,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLLoopStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement.MergeInsertClause;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement.MergeUpdateClause;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLObjectType;
@@ -327,14 +332,13 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowErrorsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowFunctionsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPackagesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowProcessListStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowQueryTaskStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecylebinStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecyclebinStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowSessionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticListStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticStmt;
@@ -439,7 +443,9 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     protected boolean parameterizedQuesUnMergeInList = false;
     protected boolean parameterizedQuesUnMergeValuesList = false;
     protected boolean printNameQuote = false;
+    protected boolean onlyOutputPlDefinition = false;
     protected char quote = '"';
+    protected char backticks = '`';
 
     protected boolean parameterized = false;
     protected boolean shardingSupport = false;
@@ -451,6 +457,8 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     protected int tmpParamCnt = 0;
 
     protected Boolean printStatementAfterSemi = defaultPrintStatementAfterSemi;
+
+    private boolean specialNameWithBacktick = false;
 
     {
         features |= VisitorFeature.OutputPrettyFormat.mask;
@@ -711,6 +719,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             return;
         }
         print0(text);
+    }
+
+    protected void printWithQuote(String text) {
+        if (appender == null) {
+            return;
+        }
+        printChars(text);
     }
 
     protected void print0(String text) {
@@ -1570,7 +1585,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         printExpr(x, parameterized);
     }
 
-    protected final void printExpr(SQLExpr x, boolean parameterized) {
+    protected void printExpr(SQLExpr x, boolean parameterized) {
         Class<?> clazz = x.getClass();
         if (clazz == SQLIdentifierExpr.class) {
             visit((SQLIdentifierExpr) x);
@@ -1839,8 +1854,23 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         return false;
     }
 
+    private void printBacktickIfNeed(SQLIdentifierExpr x) {
+        if (specialNameWithBacktick && x.isEnclosedByBacktick()) {
+            if (SQLUtils.enclosedByBackTick(x.getName())) {
+                return;
+            }
+            try {
+                this.appender.append(backticks);
+            } catch (IOException e) {
+                throw new RuntimeException("println error", e);
+            }
+        }
+    }
+
     public boolean visit(SQLIdentifierExpr x) {
+        printBacktickIfNeed(x);
         printName0(x.getName());
+        printBacktickIfNeed(x);
         return false;
     }
 
@@ -1991,7 +2021,6 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                     }
                     changed = false;
                 }
-
                 if (quote) {
                     print('(');
                 }
@@ -2008,7 +2037,13 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
                 if ((!parameterizedQuesUnMergeInList) || (targetList.size() == 1 && !(targetList
                     .get(0) instanceof SQLListExpr))) {
-                    print(" (?)");
+                    if (targetList.get(0) instanceof SQLVariantRefExpr) {
+                        print(" (");
+                        printExpr(targetList.get(0));
+                        print(")");
+                    } else {
+                        print(" (?)");
+                    }
                 } else {
                     print(" (");
                     for (int i = 0; i < targetList.size(); i++) {
@@ -2019,8 +2054,10 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                         if (item instanceof SQLListExpr) {
                             visit((SQLListExpr) item);
                             changed = false;
+                        } else if (item instanceof SQLVariantRefExpr) {
+                            printExpr(item);
                         } else {
-                            print("?");
+                            print('?');
                         }
                     }
                     print(")");
@@ -2037,17 +2074,10 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                             parameters.add(subList);
                         } else {
                             for (SQLExpr target : x.getTargetList()) {
-                                boolean usingTmpParam = false;
-                                if (target instanceof SQLVariantRefExpr && (StringUtils.equals(((SQLVariantRefExpr) target).getName(), "?"))) {
-                                    if (this.tmpParameters != null) {
-                                        passTmpParameter(((SQLVariantRefExpr) target).getIndex());
-                                        usingTmpParam = true;
-                                    }
-                                }
-                                if (!usingTmpParam) {
-                                    ExportParameterVisitorUtils.exportParameter(this.parameters, target);
-                                }
+                                ExportParameterVisitorUtils.exportParameter(this.parameters, target);
                             }
+//                            ExportParameterVisitorUtils
+//                                .exportParameter(this.parameters, new SQLListExpr(targetList.toArray(new SQLExpr[0])));
                         }
                     }
                 }
@@ -2880,7 +2910,8 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         SQLExpr expr = x.getExpr();
 
         if (expr instanceof SQLIdentifierExpr) {
-            printName0(((SQLIdentifierExpr) expr).getName());
+            visit((SQLIdentifierExpr) expr);
+//            printName0(((SQLIdentifierExpr) expr).getName());
         } else if (expr instanceof SQLPropertyExpr) {
             visit((SQLPropertyExpr) expr);
         } else {
@@ -2908,7 +2939,9 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
                     }
                 }
             }
-            if ((!printNameQuote) && (!special)) {
+            if (x.isForceQuotaAlias()) {
+                printWithQuote(alias);
+            } else if ((!printNameQuote) && (!special)) {
                 print0(alias);
             } else {
                 print(quote);
@@ -5080,7 +5113,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupSplitPartition x) {
+    public boolean visit(DrdsSplitPartition x) {
         print0(ucase ? "SPLIT PARTITION " : "split partition ");
         x.getSplitPartitionName().accept(this);
         print0(" ");
@@ -5137,7 +5170,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupMergePartition x) {
+    public boolean visit(DrdsMergePartition x) {
         print0(ucase ? "MERGE PARTITIONS " : "merge partitions ");
         int i = 0;
         for (SQLName partition : x.getPartitions()) {
@@ -5161,28 +5194,37 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupMovePartition x) {
+    public boolean visit(DrdsMovePartition x) {
         print0(ucase ? "MOVE PARTITIONS " : "move partitions ");
-        int i = 0;
-        for (SQLName partition : x.getPartitions()) {
-            if (i > 0) {
+        int instCount = 0;
+        for (Map.Entry<SQLName, List<SQLName>> entry : x.getInstPartitions().entrySet()) {
+            int i = 0;
+            if (instCount > 0) {
                 print0(", ");
             }
-            partition.accept(this);
-            i++;
+            SQLName instId = entry.getKey();
+            List<SQLName> partitions = entry.getValue();
+            for (SQLName partition : partitions) {
+                if (i > 0) {
+                    print0(", ");
+                }
+                partition.accept(this);
+                i++;
+            }
+            print0(ucase ? " TO " : " to ");
+            instId.accept(this);
+            instCount++;
         }
-        print0(ucase ? " TO " : " to ");
-        x.getTargetStorageId().accept(this);
         return false;
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupMovePartition x) {
+    public void endVisit(DrdsMovePartition x) {
 
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupExtractHotKey x) {
+    public boolean visit(DrdsExtractHotKey x) {
         print0(ucase ? "EXTRACT TO PARTITION " : "extract to partition ");
         if (x.getHotKeyPartitionName() != null) {
             x.getHotKeyPartitionName().accept(this);
@@ -5202,7 +5244,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupExtractHotKey x) {
+    public void endVisit(DrdsExtractHotKey x) {
 
     }
 
@@ -5267,7 +5309,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(DrdsAlterTableGroupRenamePartition x) {
+    public boolean visit(DrdsRenamePartition x) {
         boolean firstPart = true;
         print0(ucase ? "RENAME PARTITION " : "rename partition ");
         for (Pair<SQLName, SQLName> pair : x.getChangePartitionsPair()) {
@@ -5283,7 +5325,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public void endVisit(DrdsAlterTableGroupRenamePartition x) {
+    public void endVisit(DrdsRenamePartition x) {
 
     }
 
@@ -6623,6 +6665,12 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             sqlPartitionBy.accept(this);
         }
 
+        SQLName tablegroup = x.getTableGroup();
+        if (tablegroup != null) {
+            print0(ucase ? " TABLEGROUP= " : " tablegroup= ");
+            tablegroup.accept(this);
+        }
+
         if (x.hasOptions()) {
             x.getOptions().accept(this);
         }
@@ -7035,6 +7083,16 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     public boolean visit(SQLAlterTableSetComment x) {
         print0(ucase ? "SET COMMENT " : "set comment ");
         x.getComment().accept(this);
+        return false;
+    }
+
+    @Override
+    public boolean visit(SQLAlterTableGroupAddTable x) {
+        assert x.getParent() instanceof SQLAlterTableStatement;
+
+        print0(ucase ? "ADD TABLES " : "add tables");
+        printAndAccept(x.getTables(), ", ");
+
         return false;
     }
 
@@ -8199,6 +8257,8 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             print0(ucase ? " CHANGE TO GROUP" : " change to group");
         } else if (x.isChangeToTime()) {
             print0(ucase ? " CHANGE TO TIME" : " change to time");
+        } else if (x.isChangeToNew()) {
+            print0(ucase ? " CHANGE TO NEW" : " change to new");
         }
 
         if (x.getStartWith() != null) {
@@ -8873,6 +8933,10 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
             this.parameterizedQuesUnMergeValuesList = state;
         } else if (feature == VisitorFeature.OutputNameQuote) {
             this.printNameQuote = state;
+        } else if (feature == VisitorFeature.OutputPlOnlyDefinition) {
+            this.onlyOutputPlDefinition = state;
+        } else if (feature == VisitorFeature.OutputParameterizedSpecialNameWithBackTick) {
+            this.specialNameWithBacktick = true;
         }
     }
 
@@ -8921,7 +8985,7 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(SQLShowRecylebinStatement x) {
+    public boolean visit(SQLShowRecyclebinStatement x) {
         print0(ucase ? "SHOW RECYCLEBIN" : "show recyclebin");
         return false;
     }
@@ -9516,13 +9580,6 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     }
 
     @Override
-    public boolean visit(SQLShowJavaFunctionStatement x) {
-        print0(ucase ? "SHOW " : "show ");
-        print0(ucase ? "FUNCTION " : "function ");
-        return false;
-    }
-
-    @Override
     public boolean visit(SQLAlterTableSetOption x) {
         if (!x.isAlterTableGroup()) {
             print0(ucase ? "SET TBLPROPERTIES (" : "set tblproperties (");
@@ -9537,6 +9594,9 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
         } else {
             print0(ucase ? "SET " : "set ");
             printAndAccept(x.getOptions(), ", ");
+            if (x.isForce()) {
+                print0(ucase ? " FORCE" : " force");
+            }
         }
 
         return false;
@@ -9843,8 +9903,14 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
 
         if (x.getTableGroup() != null) {
             println();
-            print0(ucase ? "TABLEGROUP " : "tablegroup ");
+            print0(ucase ? "TABLEGROUP = " : "tablegroup = ");
             x.getTableGroup().accept(this);
+        }
+
+        if (x.getJoinGroup() != null) {
+            println();
+            print0(ucase ? "JOINGROUP = " : "joingroup = ");
+            x.getJoinGroup().accept(this);
         }
 
         if (x.getLocality() != null) {
@@ -11117,5 +11183,71 @@ public class SQLASTOutputVisitor extends SQLASTVisitorAdapter implements Paramet
     @Override
     public void endVisit(DrdsRefreshTopology x) {
 
+    }
+
+    public boolean visit(SQLCreateJoinGroupStatement x) {
+        print0(ucase ? "CREATE JOINGROUP " : "create joingroup ");
+        if (x.isIfNotExists()) {
+            print0(ucase ? "IF NOT EXISTS " : "if not exists ");
+        }
+        x.getName().accept(this);
+
+        String locality = x.getLocality();
+        if (locality != null) {
+            print0(ucase ? " LOCALITY = " : " locality = ");
+            print('\'' + locality + '\'');
+        }
+
+        return false;
+    }
+
+    public boolean visit(SQLDropJoinGroupStatement x) {
+        print0(ucase ? "DROP JOINGROUP " : "drop joingroup ");
+        if (x.isIfExists()) {
+            print0(ucase ? "IF NOT EXISTS " : "if not exists ");
+        }
+        x.getName().accept(this);
+
+        return false;
+    }
+
+    public boolean visit(SQLAlterJoinGroupStatement x) {
+        print0(ucase ? "ALTER JOINGROUP " : "alter joingroup ");
+
+        print0(ucase ? x.getJoinGroupName().toUpperCase() : x.getJoinGroupName().toLowerCase());
+
+        String typeStr = x.isAdd() ? " add tables " : " remove tables ";
+        print0(ucase ? typeStr.toUpperCase() : typeStr);
+
+        int i = 0;
+        for (SQLName tableName : x.getTableNames()) {
+            if (i > 0) {
+                print0(", ");
+            }
+            tableName.accept(this);
+            i++;
+        }
+
+        return false;
+    }
+
+    public boolean visit(SQLMergeTableGroupStatement x) {
+        print0(ucase ? "MERGE TABLEROUPs " : "merge tablegroups ");
+
+        int i = 0;
+        for (SQLName tableName : x.getSourceTableGroup()) {
+            if (i > 0) {
+                print0(", ");
+            }
+            tableName.accept(this);
+            i++;
+        }
+
+        print0(ucase ? " INTO " : " into ");
+        x.getTargetTableGroup().accept(this);
+        if (x.isForce()) {
+            print0(ucase ? " FORCE" : " force");
+        }
+        return false;
     }
 }

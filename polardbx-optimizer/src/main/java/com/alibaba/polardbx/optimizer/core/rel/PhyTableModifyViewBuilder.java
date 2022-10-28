@@ -16,17 +16,19 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
@@ -56,16 +58,15 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
     private final List<String> logicalTableNames;
     private final String schemaName;
     private ExecutionContext executionContext;
+    private boolean buildForPushDownOneShardOnly = false;
 
-    public PhyTableModifyViewBuilder(SqlNode sqlTemplate, Map<String, List<List<String>>> targetTables,
-                                     ExecutionContext executionContext, LogicalView parent, DbType dbType,
+    public PhyTableModifyViewBuilder(SqlNode sqlTemplate,
+                                     Map<String, List<List<String>>> targetTables,
+                                     ExecutionContext executionContext,
+                                     RelNode parent,
+                                     DbType dbType,
+                                     List<String> logicalTableNames,
                                      String schemaName) {
-        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getTableNames(), schemaName);
-    }
-
-    public PhyTableModifyViewBuilder(SqlNode sqlTemplate, Map<String, List<List<String>>> targetTables,
-                                     ExecutionContext executionContext, RelNode parent, DbType dbType,
-                                     List<String> logicalTableNames, String schemaName) {
         this.executionContext = executionContext;
         this.sqlTemplate = sqlTemplate;
         this.targetTables = targetTables;
@@ -79,7 +80,7 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
 
     public List<RelNode> build() {
 
-        String sqlTemplateStr = RelUtils.toNativeSql(sqlTemplate, dbType);
+        BytesSql sqlTemplateStr = RelUtils.toNativeBytesSql(sqlTemplate, dbType);
         ShardPlanMemoryContext shardPlanMemoryContext = buildShardPlanMemoryContext(parent,
             sqlTemplateStr,
             (AbstractRelNode) parent,
@@ -103,6 +104,9 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
                     subTableNames);
             }
         }
+        if (buildForPushDownOneShardOnly && phyTableScans.size() > 1) {
+            throw new IllegalArgumentException("Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly=" + buildForPushDownOneShardOnly);
+        }
         return phyTableScans;
     }
 
@@ -114,22 +118,52 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
         return PlannerUtils.buildParam(tableNames, this.params, paramIndex);
     }
 
-    private void buildOnePhyTableOperatorForModify(String sqlTemplateStr, MemoryAllocatorCtx maOfPlanBuildingPool,
+    private void buildOnePhyTableOperatorForModify(BytesSql sqlTemplateStr, MemoryAllocatorCtx maOfPlanBuildingPool,
                                                    List<RelNode> phyTableScans, String group,
                                                    List<String> subTableNames) {
 
-        PhyTableOperation phyTableModify =
-            new PhyTableOperation(parent.getCluster(), parent.getTraitSet(), parent.getRowType(), null, parent);
-        phyTableModify.setDbIndex(group);
-        phyTableModify.setLogicalTableNames(logicalTableNames);
-        phyTableModify.setTableNames(ImmutableList.of(subTableNames));
-        phyTableModify.setKind(sqlTemplate.getKind());
-        phyTableModify.setSchemaName(schemaName);
-        phyTableModify.setSqlTemplate(sqlTemplateStr);
-        phyTableModify.setNativeSqlNode(sqlTemplate);
-        phyTableModify.setDbType(dbType);
-        phyTableModify.setParam(buildParams(subTableNames));
-        phyTableModify.setMemoryAllocator(maOfPlanBuildingPool);
+//        PhyTableOperation phyTableModify =
+//            new PhyTableOperation(parent.getCluster(), parent.getTraitSet(), parent.getRowType(), null, parent);
+//        phyTableModify.setDbIndex(group);
+//        phyTableModify.setLogicalTableNames(logicalTableNames);
+//        phyTableModify.setTableNames(ImmutableList.of(subTableNames));
+//        phyTableModify.setKind(sqlTemplate.getKind());
+//        phyTableModify.setSchemaName(schemaName);
+//        phyTableModify.setBytesSql(sqlTemplateStr);
+//        phyTableModify.setNativeSqlNode(sqlTemplate);
+//        phyTableModify.setDbType(dbType);
+//        phyTableModify.setParam(buildParams(subTableNames));
+//        phyTableModify.setMemoryAllocator(maOfPlanBuildingPool);
+
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setSchemaName(schemaName);
+        buildParams.setLogTables(logicalTableNames);
+        buildParams.setGroupName(group);
+        buildParams.setPhyTables(ImmutableList.of(subTableNames));
+        buildParams.setSqlKind(sqlTemplate.getKind());
+        buildParams.setLockMode(SqlSelect.LockMode.UNDEF);
+        buildParams.setOnlyOnePartitionAfterPruning(this.buildForPushDownOneShardOnly);
+
+        buildParams.setLogicalPlan(parent);
+        buildParams.setCluster(parent.getCluster());
+        buildParams.setTraitSet(parent.getTraitSet());
+        buildParams.setRowType(parent.getRowType());
+        buildParams.setCursorMeta(null);
+        buildParams.setNativeSqlNode(sqlTemplate);
+
+        buildParams.setMemoryAllocator(maOfPlanBuildingPool);
+        buildParams.setBuilderCommon(this);
+
+        buildParams.setBytesSql(sqlTemplateStr);
+        buildParams.setDbType(dbType);
+        buildParams.setDynamicParams(buildParams(subTableNames));
+        buildParams.setBatchParameters(null);
+
+        PhyTableOperation phyTableModify = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
         phyTableScans.add(phyTableModify);
+    }
+
+    public void setBuildForPushDownOneShardOnly(boolean buildForPushDownOneShardOnly) {
+        this.buildForPushDownOneShardOnly = buildForPushDownOneShardOnly;
     }
 }

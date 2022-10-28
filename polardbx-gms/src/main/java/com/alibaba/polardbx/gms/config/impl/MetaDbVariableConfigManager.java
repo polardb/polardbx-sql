@@ -26,15 +26,16 @@ import com.alibaba.polardbx.gms.topology.VariableConfigAccessor;
 import com.alibaba.polardbx.gms.topology.VariableConfigRecord;
 
 import java.sql.Connection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
  * @author youtianyu
  */
 public class MetaDbVariableConfigManager extends AbstractLifecycle implements VariableConfigManager {
-    protected volatile Properties dnVariableConfigMap = new Properties();
-    protected VariableConfigReceiver variableConfigReceiver = null;
+    protected volatile Map<String, Object> dnVariableConfigMap = new HashMap<>();
     protected static final MetaDbVariableConfigManager instance = new MetaDbVariableConfigManager();
 
     public static MetaDbVariableConfigManager getInstance() {
@@ -58,23 +59,10 @@ public class MetaDbVariableConfigManager extends AbstractLifecycle implements Va
     }
 
     @Override
-    public void registerVariableReceiver(VariableConfigReceiver variableConfigReceiver) {
-        synchronized (this) {
-            if (this.variableConfigReceiver != null) {
-                this.variableConfigReceiver.apply(dnVariableConfigMap);
-            }
-            this.variableConfigReceiver = variableConfigReceiver;
-        }
-    }
-
-    @Override
     public void reloadVariableConfig() {
         synchronized (this) {
             try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
                 reloadVariableConfigMapFromMetaDb(metaDbConn);
-                if (variableConfigReceiver != null) {
-                    this.variableConfigReceiver.apply(dnVariableConfigMap);
-                }
             } catch (Throwable t) {
                 throw GeneralUtil.nestedException(t);
             }
@@ -83,20 +71,28 @@ public class MetaDbVariableConfigManager extends AbstractLifecycle implements Va
 
     private void reloadVariableConfigMapFromMetaDb(Connection metaDbConnection) {
         try {
+            Map<String, Object> tempVariableConfig = new HashMap<>();
             VariableConfigAccessor variableConfigAccessor = new VariableConfigAccessor();
             variableConfigAccessor.setConnection(metaDbConnection);
             List<VariableConfigRecord> variableConfigRecordList = variableConfigAccessor.queryAll();
             MetaDbInstConfigManager instConfigManager = MetaDbInstConfigManager.getInstance();
             instConfigManager.reloadInstConfig();
             for (VariableConfigRecord record : variableConfigRecordList) {
-                dnVariableConfigMap.put(record.paramKey, record.paramValue);
+                if ("true".equalsIgnoreCase(record.paramValue)) {
+                    tempVariableConfig.put(record.paramKey, true);
+                } else if ("false".equalsIgnoreCase(record.paramValue)) {
+                    tempVariableConfig.put(record.paramKey, false);
+                } else {
+                    tempVariableConfig.put(record.paramKey, record.paramValue);
+                }
             }
+            this.dnVariableConfigMap = tempVariableConfig;
         } catch (Throwable t) {
             throw GeneralUtil.nestedException(t);
         }
     }
 
-    public Properties getDnVariableConfigMap() {
+    public Map<String, Object> getDnVariableConfigMap() {
         return dnVariableConfigMap;
     }
 

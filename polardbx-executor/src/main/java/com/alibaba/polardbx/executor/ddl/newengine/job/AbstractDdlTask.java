@@ -47,6 +47,7 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
 
     protected transient Long jobId;
     protected transient Long taskId;
+    protected transient Long rootJobId;
     protected String schemaName;
     protected transient volatile DdlTaskState state = DdlTaskState.READY;
     protected transient DdlExceptionAction exceptionAction = DdlExceptionAction.DEFAULT_ACTION;
@@ -205,6 +206,16 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     }
 
     @Override
+    public Long getRootJobId() {
+        return rootJobId;
+    }
+
+    @Override
+    public void setRootJobId(Long rootJobId) {
+        this.rootJobId = rootJobId;
+    }
+
+    @Override
     public String getName() {
         return SerializableClassMapper.getNameByTaskClass(this.getClass());
     }
@@ -281,33 +292,41 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
 
     @Override
     public String nodeInfo() {
-        return String.format(
-            "%s [shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
-            this.taskId,
-            color(state),
-            this.getName(),
-            this.taskId,
-            this.exceptionAction.name(),
-            state.name(),
-            cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
-            cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
-            remark()
-        );
+        try {
+            return String.format(
+                    "%s [shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
+                    this.taskId,
+                    color(state),
+                    this.getName(),
+                    this.taskId,
+                    this.exceptionAction.name(),
+                    state.name(),
+                    cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
+                    cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
+                    remark()
+            );
+        }catch (Exception e){
+            return "";
+        }
     }
 
     @Override
     public String executionInfo() {
-        return String.format(
-            "[shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
-            color(state),
-            this.getName(),
-            this.taskId,
-            this.exceptionAction.name(),
-            state.name(),
-            cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
-            cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
-            remark()
-        );
+        try {
+            return String.format(
+                    "[shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
+                    color(state),
+                    this.getName(),
+                    this.taskId,
+                    this.exceptionAction.name(),
+                    state.name(),
+                    cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
+                    cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
+                    remark()
+            );
+        }catch (Exception e){
+            return "";
+        }
     }
 
     /**

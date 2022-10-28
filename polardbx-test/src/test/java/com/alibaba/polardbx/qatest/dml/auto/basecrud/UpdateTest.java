@@ -24,6 +24,8 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.ResultSet;
@@ -49,6 +51,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * @since 5.0.1
  */
 
+@RunWith(Parameterized.class)
 public class UpdateTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 
@@ -474,7 +477,7 @@ public class UpdateTest extends AutoCrudBasedLockTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
             sql, null, true);
 
-        sql = "select * from " + baseOneTableName;
+        sql = "select pk from " + baseOneTableName + " order by pk";
         selectContentSameAssert(sql, null, mysqlConnection,
             tddlConnection);
     }
@@ -494,7 +497,7 @@ public class UpdateTest extends AutoCrudBasedLockTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection,
             sql, null, true);
 
-        sql = "select * from " + baseOneTableName;
+        sql = "select pk,integer_test  from " + baseOneTableName + " order by pk";
         selectContentSameAssert(sql, null, mysqlConnection,
             tddlConnection);
     }

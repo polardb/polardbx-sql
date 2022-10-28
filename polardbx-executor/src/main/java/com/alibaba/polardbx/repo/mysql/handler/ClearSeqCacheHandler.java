@@ -16,15 +16,13 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.common.logger.LoggerInit;
+import com.alibaba.polardbx.executor.sync.ClearSeqCacheSyncAction;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
-import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import org.apache.calcite.sql.SqlClearSeqCache;
 import org.apache.calcite.sql.SqlIdentifier;
 
@@ -35,8 +33,6 @@ import java.util.List;
  */
 public class ClearSeqCacheHandler extends AbstractDalHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger(ClearSeqCacheHandler.class);
-
     public ClearSeqCacheHandler(IRepository repo) {
         super(repo);
     }
@@ -46,21 +42,13 @@ public class ClearSeqCacheHandler extends AbstractDalHandler {
         SqlClearSeqCache stmt = (SqlClearSeqCache) logicalPlan.getNativeSqlNode();
 
         List<String> names = ((SqlIdentifier) stmt.getName()).names;
-        String schema = names.size() == 2 ? names.get(0) : context.getSchemaName();
-        String sequence = names.get(names.size() - 1);
-        boolean isAll = "ALL".equalsIgnoreCase(sequence);
+        String schemaName = names.size() == 2 ? names.get(0) : context.getSchemaName();
+        String seqName = names.get(names.size() - 1);
+        boolean isAll = "ALL".equalsIgnoreCase(seqName);
 
-        int count;
-        if (isAll) {
-            count = SequenceManagerProxy.getInstance().invalidateAll(schema);
-            LoggerInit.TDDL_SEQUENCE_LOG.info("All " + count + " sequence caches have been cleared");
-        } else {
-            SequenceManagerProxy.getInstance().invalidate(schema, sequence);
-            LoggerInit.TDDL_SEQUENCE_LOG.info("The sequence cache for '" + sequence + "' has been cleared");
-            count = 1;
-        }
+        SyncManagerHelper.sync(new ClearSeqCacheSyncAction(schemaName, seqName, isAll, true));
 
-        return new AffectRowCursor(count);
+        return new AffectRowCursor(isAll ? 0 : 1);
     }
 
 }

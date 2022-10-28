@@ -12,3 +12,4 @@ test_range_col
 test_list_col
 test_show_hash_by_rng
 test_invalid_part
+test_invalid_part2

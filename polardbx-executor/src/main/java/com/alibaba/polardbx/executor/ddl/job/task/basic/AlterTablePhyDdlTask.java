@@ -56,8 +56,14 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     private String sourceSql;
 
+    private String rollbackSql;
+
     public void setSourceSql(String sourceSql) {
         this.sourceSql = sourceSql;
+    }
+
+    public void setRollbackSql(String rollbackSql) {
+        this.rollbackSql = rollbackSql;
     }
 
     @JSONCreator
@@ -88,20 +94,22 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     @Override
     protected List<RelNode> genRollbackPhysicalPlans(ExecutionContext executionContext) {
+        if (StringUtils.isNotEmpty(rollbackSql)) {
+            return genReversedPhysicalPlans(rollbackSql, executionContext);
+        }
+
         String origSql = StringUtils.isNotEmpty(sourceSql) ? sourceSql : executionContext.getDdlContext().getDdlStmt();
         SQLAlterTableStatement alterTableStmt = (SQLAlterTableStatement) FastsqlUtils.parseSql(origSql).get(0);
         if (AlterTableRollbacker.checkIfRollbackable(alterTableStmt)) {
-            return genReversedPhysicalPlans(alterTableStmt, executionContext);
+            String reversedSql = genReversedAlterTableStmt(alterTableStmt);
+            return genReversedPhysicalPlans(reversedSql, executionContext);
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
                 "The DDL job is not rollbackable because the DDL includes some operations that doesn't support rollback");
         }
     }
 
-    private List<RelNode> genReversedPhysicalPlans(SQLAlterTableStatement alterTableStmt,
-                                                   ExecutionContext executionContext) {
-        String reversedSql = genReversedAlterTableStmt(alterTableStmt);
-
+    protected List<RelNode> genReversedPhysicalPlans(String reversedSql, ExecutionContext executionContext) {
         ReplaceTableNameWithQuestionMarkVisitor visitor =
             new ReplaceTableNameWithQuestionMarkVisitor(schemaName, executionContext);
 
@@ -126,7 +134,7 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
         return convertToRelNodes(alterTableBuilder.getPhysicalPlans());
     }
 
-    private String genReversedAlterTableStmt(SQLAlterTableStatement alterTableStmt) {
+    protected String genReversedAlterTableStmt(SQLAlterTableStatement alterTableStmt) {
         List<SQLAlterTableItem> reversedAlterItems = new ArrayList<>();
 
         for (SQLAlterTableItem alterItem : alterTableStmt.getItems()) {

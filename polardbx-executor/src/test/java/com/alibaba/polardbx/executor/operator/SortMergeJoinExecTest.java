@@ -39,7 +39,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 public class SortMergeJoinExecTest extends BaseExecTest {
     static EquiJoinKey mockEquiJoinKey(int outerIndex, int innerIndex, DataType unifiedType) {
-        return new EquiJoinKey(outerIndex, innerIndex, unifiedType, false, false);
+        return new EquiJoinKey(outerIndex, innerIndex, unifiedType, false);
     }
 
     static SortMergeJoinExec mockSortMergeJoinExec(Executor outerInput,

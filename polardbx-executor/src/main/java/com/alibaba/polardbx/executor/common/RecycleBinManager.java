@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.executor.common;
 
+import com.alibaba.polardbx.common.logical.ITDataSource;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 
-import javax.sql.DataSource;
 import java.util.Date;
 import java.util.Map;
 import java.util.Random;
@@ -62,7 +62,7 @@ public class RecycleBinManager {
         return apps.get(appName);
     }
 
-    public void initApp(String appName, String schemaName, DataSource dataSource, Map<String, Object> cmds) {
+    public void initApp(String appName, String schemaName, ITDataSource dataSource, Map<String, Object> cmds) {
         // mock mode avoid recycle bin
         if (ConfigDataMode.isFastMock()) {
             return;

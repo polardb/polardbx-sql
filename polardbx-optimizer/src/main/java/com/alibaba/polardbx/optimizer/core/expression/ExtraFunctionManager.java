@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.expression;
 
+import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.utils.ClassFinder;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
@@ -24,8 +25,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.bean.FunctionSignature;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
-import com.alibaba.polardbx.optimizer.core.function.calc.Dummy;
-import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 
 import java.lang.reflect.Constructor;
@@ -50,7 +49,6 @@ public class ExtraFunctionManager {
 
     private static final Logger logger = LoggerFactory.getLogger(ExtraFunctionManager.class);
     private static Map<FunctionSignature, Constructor<?>> functionCaches = new HashMap<>();
-    // 缓存一下dummy，避免每次都反射创建
 
     static {
         initFunctions();
@@ -61,31 +59,30 @@ public class ExtraFunctionManager {
      */
     public static AbstractScalarFunction getExtraFunction(String functionName, List<DataType> operandTypes,
                                                           DataType resultType) {
-        String name = functionName;
-        Constructor constructor = functionCaches.get(FunctionSignature.getFunctionSignature(null, name));
+        Constructor constructor = functionCaches.get(FunctionSignature.getFunctionSignature(null, functionName));
 
+        boolean dummyForUdf = false;
         if (constructor == null) {
-            AbstractScalarFunction function =
-                UserDefinedJavaFunctionManager.
-                    getUserDefinedJavaFunction(functionName, operandTypes, resultType);
-            if (function != null) {
-                return function;
+            try {
+                constructor = Class.forName("com.alibaba.polardbx.executor.function.calc.Dummy").getConstructor(String.class, List.class, DataType.class);
+                dummyForUdf = true;
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                logger.error("Dummy function cannot be load", e);
             }
         }
 
-        if (constructor == null) {
-            return new Dummy(functionName, operandTypes, resultType);
-        }
-
         try {
-            return (AbstractScalarFunction) constructor.newInstance(operandTypes, resultType);
+            if (dummyForUdf) {
+                return (AbstractScalarFunction) constructor.newInstance(functionName, operandTypes, resultType);
+            } else {
+                return (AbstractScalarFunction) constructor.newInstance(operandTypes, resultType);
+            }
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
     }
 
     public static void addFunction(Class clazz) {
-
         try {
             Constructor constructor = clazz.getConstructor(List.class, DataType.class);
             AbstractScalarFunction sample = (AbstractScalarFunction) constructor.newInstance(null, null);
@@ -99,13 +96,6 @@ public class ExtraFunctionManager {
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
-
-    }
-
-    public static boolean constainsFunction(String funcName) {
-        return functionCaches.containsKey(
-            FunctionSignature.
-                getFunctionSignature(null, funcName));
     }
 
     private static void initFunctions() {
@@ -133,9 +123,6 @@ public class ExtraFunctionManager {
         classes.addAll(ExtensionLoader.getAllExtendsionClass(AbstractScalarFunction.class));
 
         for (Class clazz : classes) {
-            if (clazz == Dummy.class) {
-                continue;
-            }
             addFunction(clazz);
         }
     }

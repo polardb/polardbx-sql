@@ -17,10 +17,10 @@
 package com.alibaba.polardbx.qatest.ddl.auto.locality;
 
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
-import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -45,7 +45,7 @@ public class LocalityTest extends LocalityTestBase {
 
     @Test
     public void testCreateDatabaseLocality() {
-        final String dn = chooseDatanode();
+        final String dn = chooseDatanode(true);
         final String localitySql = " LOCALITY=\"dn=" + dn + "\"";
         final String createDbSql = "create database " + databaseName + localitySql;
         final String dropDatabaseSql = "drop database if exists " + databaseName;
@@ -62,15 +62,6 @@ public class LocalityTest extends LocalityTestBase {
 
             String tmpRs = result.replaceAll(" = ", "=");
             Assert.assertTrue(tmpRs.contains(localitySql));
-
-            List<LocalityBean> localityInfoList = getLocalityInfo();
-            Assert.assertEquals(localityCount + 1, localityInfoList.size());
-            LocalityBean dbLocality = localityInfoList.get(0);
-            Assert.assertEquals("database", dbLocality.objectType);
-            Assert.assertEquals(databaseName.replaceAll("`", ""), dbLocality.objectName);
-            Assert.assertEquals("dn=" + dn, dbLocality.locality);
-            List<String> dnList = getDnListOfDb(databaseName, false);
-            Assert.assertEquals(Arrays.asList(dn), dnList);
 
             // drop database
             JdbcUtil.executeUpdate(tddlConnection, dropDatabaseSql);
@@ -89,12 +80,6 @@ public class LocalityTest extends LocalityTestBase {
             String result = JdbcUtil.executeQueryAndGetStringResult(showCreateDbSql, tddlConnection, 2);
             String tmpRs = result.replaceAll(" = ", "=");
             Assert.assertTrue(tmpRs.contains(multiDnLocality));
-            List<LocalityBean> localityInfoList = getLocalityInfo();
-            Assert.assertEquals(localityCount + 1, localityInfoList.size());
-            LocalityBean dbLocality = localityInfoList.get(0);
-            Assert.assertEquals("database", dbLocality.objectType);
-            Assert.assertEquals(databaseName.replaceAll("`", ""), dbLocality.objectName);
-            Assert.assertEquals("dn=" + dnListStr, dbLocality.locality);
 
             TreeSet<String> dnListActual = new TreeSet<>();
             TreeSet<String> dnListExpected = new TreeSet<>();
@@ -109,7 +94,6 @@ public class LocalityTest extends LocalityTestBase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testSingleTableLocality() {
         final String dn = chooseDatanode();
         final String localitySql = " LOCALITY='dn=" + dn + "'";
@@ -130,13 +114,6 @@ public class LocalityTest extends LocalityTestBase {
         Assert.assertTrue(showCreate.contains(localitySql));
 
         // check information_schema.locality_info
-        List<LocalityBean> localityInfoList = getLocalityInfo();
-        Assert.assertEquals(originLocalityInfo.size() + 1, localityInfoList.size());
-        LocalityBean
-            tableLocality = localityInfoList.get(localityInfoList.size() - 1);
-        Assert.assertEquals("table", tableLocality.objectType);
-        Assert.assertEquals(tableName.replaceAll("`", ""), tableLocality.objectName);
-        Assert.assertEquals("dn=" + dn, tableLocality.locality);
 
         // check show topology
         List<String> actualDn = getDnListOfTable(databaseName, tableName);

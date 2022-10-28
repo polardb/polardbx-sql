@@ -96,11 +96,25 @@ public class MppSortMergeJoinConvertRule extends RelOptRule {
         if (PlannerContext.getPlannerContext(call).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_BROADCAST_JOIN)) {
             // Broadcast Shuffle
-            RelNode broadCostLeft = convert(left, left.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
-            implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(broadCostLeft, right)));
-            RelNode broadcastRight =
-                convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
-            implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
+            switch (sortMergeJoin.getJoinType()) {
+                case LEFT: {
+                    RelNode broadcastRight = convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
+                    break;
+                }
+                case RIGHT:{
+                    RelNode broadcastLeft = convert(left, left.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(broadcastLeft, right)));
+                    break;
+                }
+                case INNER: {
+                    RelNode broadcastLeft = convert(left, left.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(broadcastLeft, right)));
+                    RelNode broadcastRight = convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
+                    break;
+                }
+            }
         }
 
         for (Pair<RelDistribution, Pair<RelNode, RelNode>> implementation : implementationList) {

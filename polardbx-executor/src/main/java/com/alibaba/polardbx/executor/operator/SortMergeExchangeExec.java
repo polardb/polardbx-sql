@@ -190,7 +190,7 @@ public class SortMergeExchangeExec extends SourceExec implements Closeable {
                 return blockedOnSplits;
             }
 
-            if (mergedPages.isBlocked()) {
+            if (mergedPages != null && mergedPages.isBlocked()) {
                 return mergedPages.getBlockedFuture();
             }
         }

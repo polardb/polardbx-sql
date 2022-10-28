@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 
 public class RenameStatisticSyncAction implements ISyncAction {
@@ -63,10 +62,8 @@ public class RenameStatisticSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        StatisticManager statisticManager =
-            (StatisticManager) OptimizerContext.getContext(schemaName).getStatisticManager();
         if (oldlogicalTableName != null && newlogicalTableName != null) {
-            statisticManager.renameTable(oldlogicalTableName, newlogicalTableName);
+            StatisticManager.getInstance().renameTable(schemaName, oldlogicalTableName, newlogicalTableName);
         }
         return null;
     }

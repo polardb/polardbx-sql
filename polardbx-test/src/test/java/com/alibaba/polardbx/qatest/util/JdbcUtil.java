@@ -42,6 +42,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.CrudBasedLockTestCase.CREATE_TABLE_LIKE_SQL;
@@ -308,6 +310,38 @@ public class JdbcUtil {
         }
     }
 
+    /**
+     * 向 CN 发送 set global 语句
+     */
+    public static void setGlobal(Connection tddlConn, String sql) {
+        executeUpdate(tddlConn, "set enable_set_global=true;" + sql);
+    }
+
+    /**
+     * 批量更新数据
+     */
+    public static int[] updateDataBatchIgnoreErr(Connection conn, String sql, List<List<Object>> params) {
+        int[] effectCount = new int[10];
+        PreparedStatement ps = preparedStatementBatch(sql, conn);
+        if (params == null) {
+            int affect = executeUpdate(ps);
+            JdbcUtil.close(ps);
+            return new int[] {affect};
+        } else {
+            for (List<Object> param : params) {
+                ps = preparedStatementSet(ps, param);
+                preparedStatementAddBatch(ps);
+            }
+
+            try {
+                effectCount = preparedStatementExecuteBatch(ps);
+            } catch (SQLException e) {
+            }
+            JdbcUtil.close(ps);
+            return effectCount;
+        }
+    }
+
     public static int[] updateDataBatchReturnKeys(Connection conn, String sql, List<List<Object>> params,
                                                   List<Long> keys) {
         int[] effectCount = new int[10];
@@ -470,6 +504,12 @@ public class JdbcUtil {
     public static String getTimeZone(Connection mysqlConnection) {
         String sql = "show variables like \"time_zone\"";
         return executeQueryAndGetStringResult(sql, mysqlConnection, 2);
+    }
+
+    public static void setTimeZone(Connection mysqlConnection, String timeZone) throws SQLException {
+        try (Statement stmt = mysqlConnection.createStatement()) {
+            stmt.execute("SET time_zone = '" + timeZone + "'");
+        }
     }
 
     /**
@@ -1070,12 +1110,16 @@ public class JdbcUtil {
         }
     }
 
-    public static boolean isShareReadView(Connection conn) throws SQLException {
+    public static boolean isShareReadView(Connection conn) {
         final ResultSet rs = executeQuerySuccess(conn, "show variables like 'share_read_view'");
-        Assert.assertTrue(rs.next());
-        boolean res = rs.getBoolean(2);
-        Assert.assertFalse(rs.next());
-        return res;
+        try {
+            Assert.assertTrue(rs.next());
+            boolean res = rs.getBoolean(2);
+            Assert.assertFalse(rs.next());
+            return res;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static boolean supportXA(Connection tddlConnection) throws SQLException {
@@ -1373,6 +1417,23 @@ public class JdbcUtil {
     }
 
     /**
+     * 执行错误，返回错误信息
+     */
+    public static String executeUpdateFailedReturn(Connection conn, String sql) {
+        Statement stmt = null;
+        try {
+            stmt = conn.createStatement();
+            stmt.execute(sql);
+            assertWithMessage("语句并未按照预期执行失败,sql is :" + sql).fail();
+        } catch (Exception e) {
+            return e.getMessage();
+        } finally {
+            close(stmt);
+        }
+        return "";
+    }
+
+    /**
      *
      */
     public static void havePrivToExecute(Connection conn, String sql) {
@@ -1439,8 +1500,39 @@ public class JdbcUtil {
         }
     }
 
+    /**
+     * 普通语句执行失败
+     */
+    public static void executeFaied(Connection conn, String sql, String[] errorMsg) {
+        Statement stmt = null;
+        try {
+            stmt = conn.createStatement();
+            stmt.execute(sql);
+            assertWithMessage("语句并未按照预期执行失败").fail();
+        } catch (SQLException e) {
+            log.error(e.getMessage(), e);
+            String message = e.getMessage().toLowerCase();
+            boolean contains = false;
+            for (String s : errorMsg) {
+                if (TStringUtil.isNotBlank(s)) {
+                    contains = message.contains(s.toLowerCase());
+                    if (contains) {
+                        break;
+                    }
+                }
+            }
+            Assert.assertTrue(contains);
+        } finally {
+            close(stmt);
+        }
+    }
+
     public static void executeQueryFaied(Connection conn, String sql, String errorMsg) {
         executeQueryFaied(conn, sql, new String[] {errorMsg});
+    }
+
+    public static void executeFaied(Connection conn, String sql, String errorMsg) {
+        executeFaied(conn, sql, new String[] {errorMsg});
     }
 
     public static DruidDataSource getDruidDataSource(String url, String user, String password) {
@@ -1648,6 +1740,13 @@ public class JdbcUtil {
         }
     }
 
+    public static void createPartDatabaseUsingUtf8(Connection polarxConn, String logDb) {
+        String createDbSql =
+            String.format("/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s mode='auto' DEFAULT CHARSET = utf8;", logDb);
+        JdbcUtil.executeUpdate(polarxConn, createDbSql);
+        useDb(polarxConn, logDb);
+    }
+
     public static void createPartDatabase(Connection polarxConn, String logDb) {
         String createDbSql =
             String.format("/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s mode='auto';", logDb);
@@ -1677,5 +1776,37 @@ public class JdbcUtil {
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
+    }
+
+    public static int getDriverMajorVersion(Connection tddlConnection) {
+        try {
+            String driverVersion = tddlConnection.getMetaData().getDriverVersion();
+            Pattern compile = Pattern.compile("\\d\\.\\d\\.\\d+");
+            Matcher matcher = compile.matcher(driverVersion);
+            if (!matcher.find()) {
+                Assert.fail("unrecognized driver version: " + driverVersion);
+            }
+            String version = matcher.group();
+            return Integer.parseInt(version.substring(0, 1));
+        } catch (Exception e) {
+            log.error("Failed to get driver version");
+            Assert.fail(e.getMessage());
+        }
+        return -1;
+    }
+
+    public static void createUser(Connection tddlConnection, String username, String host, String password) {
+        String sql = String.format("create user %s@'%s' identified by '%s'", username, host, password);
+        executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    public static void grantAllPrivOnDb(Connection tddlConnection, String username, String host, String db) {
+        String sql = String.format("grant all on %s.* to '%s'@'%s';", db, username, host);
+        executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    public static void dropUser(Connection tddlConnection, String username, String host) {
+        String sql = String.format("drop user if exists %s@'%s'", username, host);
+        executeUpdateSuccess(tddlConnection, sql);
     }
 }

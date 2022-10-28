@@ -37,7 +37,7 @@ public class DropTableSyncTask extends BaseSyncTask {
 
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new DropTableSyncAction(schemaName, logicalTableName));
+        SyncManagerHelper.sync(new DropTableSyncAction(schemaName, logicalTableName), true);
     }
 
 }

@@ -134,10 +134,11 @@ public class SqlShowSlow extends SqlShow {
             columns.add(new RelDataTypeFieldImpl("TRACE_ID"      , 0 , typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("USER"          , 1 , typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("HOST"          , 2 , typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("START_TIME"    , 3 , typeFactory.createSqlType(SqlTypeName.DATETIME)));
-            columns.add(new RelDataTypeFieldImpl("EXECUTE_TIME"  , 4 , typeFactory.createSqlType(SqlTypeName.BIGINT)));
-            columns.add(new RelDataTypeFieldImpl("AFFECT_ROW"    , 5 , typeFactory.createSqlType(SqlTypeName.BIGINT)));
-            columns.add(new RelDataTypeFieldImpl("SQL"           , 6 , typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("DB"            , 3 , typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("START_TIME"    , 4 , typeFactory.createSqlType(SqlTypeName.DATETIME)));
+            columns.add(new RelDataTypeFieldImpl("EXECUTE_TIME"  , 5 , typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            columns.add(new RelDataTypeFieldImpl("AFFECT_ROW"    , 6 , typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            columns.add(new RelDataTypeFieldImpl("SQL"           , 7 , typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
 
             return typeFactory.createStructType(columns);

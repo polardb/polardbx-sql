@@ -30,7 +30,7 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexColumnTyp
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexRecord;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
@@ -95,8 +95,9 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
 
     protected static String META_DB_HINT = "/*TDDL:NODE='__META_DB__'*/";
 
-    private static final String DDL1_DB_PREFIX = "ddl1_";
-    private static final String DDL2_DB_PREFIX = "ddl2_";
+    private static final String DDL_DB_CUSTOM_PREFIX = getDdlDbCustomPrefix();
+    private static final String DDL1_DB_PREFIX = DDL_DB_CUSTOM_PREFIX + "ddl1_";
+    private static final String DDL2_DB_PREFIX = DDL_DB_CUSTOM_PREFIX + "ddl2_";
 
     protected String tddlDatabase1;
     protected String mysqlDatabase1;
@@ -161,6 +162,13 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
+    }
+
+    private static String getDdlDbCustomPrefix() {
+        String value = System.getProperty("ddl_db_custom_prefix");
+        String result = StringUtils.isBlank(value) ? "" : (value.endsWith("_") ? value : value + "_");
+        logger.info("ddl db custom prefix is " + result);
+        return result;
     }
 
     @Override
@@ -291,7 +299,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
 
         if (PropertiesUtil.dnCount > 1) {
             for (String grpName : grpNameList) {
-                String storageAddress = getStorageAddressByGroupName(grpName);
+                Set<String> storageAddress = getStorageAddressByGroupName(grpName);
                 String phyDbName = groupInfos.groupAndPhyDbMaps.get(grpName);
                 Connection shardDbConn = getMysqlConnectionByAddress(storageAddress, phyDbName);
                 physicalDbConnList.add(shardDbConn);
@@ -306,7 +314,17 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         return physicalDbConnList;
     }
 
-    private String getStorageAddressByGroupName(String grpName) {
+    public Connection getMySQLPhysicalConnectionByGroupName(String db, String grpName) {
+        DefaultDBInfo.ShardGroupInfo groupInfos =
+            DefaultDBInfo.getInstance().getShardGroupListByMetaDb(db, usingNewPartDb()).getValue();
+        Set<String> storageAddress = getStorageAddressByGroupName(grpName);
+        String phyDbName = groupInfos.groupAndPhyDbMaps.get(grpName);
+        Connection shardDbConn = getMysqlConnectionByAddress(storageAddress, phyDbName);
+        return shardDbConn;
+    }
+
+    private Set<String> getStorageAddressByGroupName(String grpName) {
+        Set<String> address = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         try (Connection metaDbConn = ConnectionManager.getInstance().getDruidMetaConnection()) {
             JdbcUtil.useDb(metaDbConn, PropertiesUtil.getMetaDB);
             String instanceId = PropertiesUtil.configProp.getProperty("instanceId");
@@ -318,7 +336,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                     while (rs.next()) {
                         String ip = rs.getString("ip");
                         String port = rs.getString("port");
-                        return ip + ":" + port;
+                        address.add(ip + ":" + port);
                     }
 
                 } catch (Throwable ex) {
@@ -330,7 +348,11 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         } catch (Throwable ex) {
             throw new RuntimeException(ex);
         }
-        throw new RuntimeException("can`t find storage info for group " + grpName);
+        if (address.isEmpty()) {
+            throw new RuntimeException("can`t find storage info for group " + grpName);
+        }
+
+        return address;
     }
 
     protected static int[] gsiBatchUpdate(Connection tddlConnection, Connection mysqlConnection, String insert,
@@ -377,7 +399,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             }
 
             if (null != failed && compareWithMySql) {
-                assertWithMessage("DRDS 报错，MySQL 正常, Sql：\n " + failed.left + "\nCause: " + failed.right.getMessage())
+                assertWithMessage(
+                    "DRDS 报错，MySQL 正常, Sql：\n " + failed.left + "\nCause: " + failed.right.getMessage())
                     .fail();
             }
         } catch (SQLSyntaxErrorException msee) {
@@ -420,7 +443,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             }
 
             if (null != failed && compareWithMySql) {
-                assertWithMessage("DRDS 报错，MySQL 正常, Sql：\n " + failed.left + "\nCause: " + failed.right.getMessage())
+                assertWithMessage(
+                    "DRDS 报错，MySQL 正常, Sql：\n " + failed.left + "\nCause: " + failed.right.getMessage())
                     .fail();
             }
         } catch (SQLSyntaxErrorException msee) {
@@ -511,6 +535,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             }
             return;
         } catch (Exception e) {
+            logger.error(e);
             throw GeneralUtil.nestedException(e);
         }
     }
@@ -642,6 +667,9 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         ResultSet rs = JdbcUtil.executeQuerySuccess(conn, sql);
         try {
             assertThat(rs.next()).isTrue();
+            if (isMySQL80()) {
+                return rs.getString("Create Table").replace(" DEFAULT COLLATE = utf8mb4_0900_ai_ci", "");
+            }
             return rs.getString("Create Table").replace(" DEFAULT COLLATE = utf8mb4_0900_ai_ci", "");
         } catch (SQLException e) {
             logger.error(e.getMessage(), e);
@@ -649,6 +677,25 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             JdbcUtil.close(rs);
         }
         return null;
+    }
+
+    public List<Pair<String, String>> showTopologyWithGroup(Connection conn, String tbName) {
+        List<Pair<String, String>> phyTables = new ArrayList<>();
+        String sql = "show topology " + tbName;
+
+        ResultSet rs = JdbcUtil.executeQuerySuccess(conn, sql);
+        try {
+            while (rs.next()) {
+                String group = rs.getString("GROUP_NAME");
+                String table = rs.getString("TABLE_NAME");
+                phyTables.add(Pair.of(group, table));
+            }
+        } catch (SQLException e) {
+            logger.error(e.getMessage(), e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+        return phyTables;
     }
 
     public List<String> showTopology(Connection conn, String tbName) {
@@ -726,8 +773,8 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         }
     }
 
-    public NewSequence showSequence(String seqName) {
-        NewSequence newSequence = null;
+    public TestSequence showSequence(String seqName) {
+        TestSequence testSequence = null;
         ResultSet rs;
         String curSchema = null;
 
@@ -750,16 +797,16 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
                         // polarx为实例级别
                         continue;
                     }
-                    newSequence = new NewSequence();
-                    newSequence.setName(rs.getString("name"));
-                    newSequence.setValue(parseLongWithNA(rs.getString("value")));
-                    newSequence.setIncrementBy(parseLongWithNA(getSeqAttrWithoutEx(rs, "increment_by")));
-                    newSequence.setStartWith(parseLongWithNA(getSeqAttrWithoutEx(rs, "start_with")));
-                    newSequence.setMaxValue(parseLongWithNA(getSeqAttrWithoutEx(rs, "max_value")));
-                    newSequence.setCycle(getSeqAttrWithoutEx(rs, "cycle"));
-                    newSequence.setUnitCount(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_count")));
-                    newSequence.setUnitIndex(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_index")));
-                    newSequence.setInnerStep(parseLongWithNA(getSeqAttrWithoutEx(rs, "inner_step")));
+                    testSequence = new TestSequence();
+                    testSequence.setName(rs.getString("name"));
+                    testSequence.setValue(parseLongWithNA(rs.getString("value")));
+                    testSequence.setIncrementBy(parseLongWithNA(getSeqAttrWithoutEx(rs, "increment_by")));
+                    testSequence.setStartWith(parseLongWithNA(getSeqAttrWithoutEx(rs, "start_with")));
+                    testSequence.setMaxValue(parseLongWithNA(getSeqAttrWithoutEx(rs, "max_value")));
+                    testSequence.setCycle(getSeqAttrWithoutEx(rs, "cycle"));
+                    testSequence.setUnitCount(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_count")));
+                    testSequence.setUnitIndex(parseLongWithNA(getSeqAttrWithoutEx(rs, "unit_index")));
+                    testSequence.setInnerStep(parseLongWithNA(getSeqAttrWithoutEx(rs, "inner_step")));
                     break;
                 }
             }
@@ -767,12 +814,12 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         } catch (Exception e) {
             logger.error(e.getMessage(), e);
             Assert.fail(e.getMessage());
-            newSequence = null;
+            testSequence = null;
 
         } finally {
             JdbcUtil.close(rs);
         }
-        return newSequence;
+        return testSequence;
     }
 
     private String getSeqAttrWithoutEx(ResultSet rs, String colName) {
@@ -806,7 +853,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         return nextVal;
     }
 
-    public void dropSeqence(String seqName) {
+    public void dropSequence(String seqName) {
         String sql = "drop sequence " + seqName;
         JdbcUtil.executeUpdate(tddlConnection, sql);
     }
@@ -959,7 +1006,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
      * 正常的非边界值的情况下对不同类型的sequence做粗粒度的检测
      */
     public void simpleCheckSequence(String seqName, String seqType) throws Exception {
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
 
         String schemaPrefix = "";
         String simpleSeqName = seqName;
@@ -1050,8 +1097,7 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     }
 
     public boolean isSpecialSequence(String seqType) {
-        return seqType.toLowerCase().contains("time") || seqType.toLowerCase().contains("group")
-            || seqType.trim().isEmpty();
+        return seqType.toLowerCase().contains("time") || seqType.toLowerCase().contains("group");
     }
 
     public void assertNoSequenceExist(String seqName) {
@@ -1924,5 +1970,24 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         } finally {
             JdbcUtil.close(rs);
         }
+    }
+
+    protected String getRealGsiName(Connection tddlConnection, String tableName, String gsiName) {
+        String sql = "show full create table " + tableName;
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            if (rs.next()) {
+                String fullCreateTable = rs.getString(2);
+                for (String line : fullCreateTable.split("\n")) {
+                    if (line.contains("`" + gsiName + "`")) {
+                        return line.substring(line.indexOf("/*") + 2, line.indexOf("*/")).trim();
+                    }
+                }
+
+            }
+        } catch (SQLException e) {
+
+        }
+        return null;
     }
 }

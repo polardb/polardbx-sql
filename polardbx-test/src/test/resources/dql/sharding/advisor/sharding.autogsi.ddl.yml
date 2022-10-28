@@ -1,0 +1,5 @@
+nn1:
+  CREATE TABLE `nn1` ( 	`n_nationkey` int(11) NOT NULL primary key, 	`n_regionkey` int(11) NOT NULL, n_de int(11), n_gg int(11), global index(`n_de`)  PARTITION BY key(`n_de`)) PARTITION BY key(`n_regionkey`) PARTITIONS 3 DEFAULT CHARSET = latin1;
+
+nn2:
+  CREATE TABLE `nn2` ( 	`n_nationkey` int(11) NOT NULL primary key, 	`n_regionkey` int(11) NOT NULL, n_de int(11), n_gg int(11), index(`n_gg`) ) DEFAULT CHARSET = latin1;

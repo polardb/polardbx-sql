@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.dal;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -60,7 +61,7 @@ public class PhyShow extends BaseDalOperation {
         super(cluster, traitSet, nativeSqlNode, rowType, targetTable, tableNames, schemaName);
     }
 
-    public PhyShow(RelOptCluster cluster, RelTraitSet traitSet, String sqlTemplate, SqlNode nativeSqlNode,
+    public PhyShow(RelOptCluster cluster, RelTraitSet traitSet, BytesSql sqlTemplate, SqlNode nativeSqlNode,
                    DbType dbType, RelDataType rowType, Map<String, List<List<String>>> targetTable,
                    List<String> tableNames, String dbIndex, String phyTable, String schemaName) {
         super(cluster,
@@ -104,7 +105,7 @@ public class PhyShow extends BaseDalOperation {
             final SqlDal sqlDal = (SqlDal) this.nativeSqlNode;
             if (null != sqlDal.getDbName()) {
                 sqlDal.setDbName((SqlNode) null);
-                this.sqlTemplate = RelUtils.toNativeSqlLine(sqlDal);
+                this.bytesSql = RelUtils.toNativeBytesSql(sqlDal);
             }
         }
 
@@ -138,7 +139,7 @@ public class PhyShow extends BaseDalOperation {
             } else {
                 PhyShow subShow = new PhyShow(getCluster(),
                     getTraitSet(),
-                    this.sqlTemplate,
+                    this.bytesSql,
                     show,
                     this.dbType,
                     this.rowType,
@@ -175,7 +176,7 @@ public class PhyShow extends BaseDalOperation {
                 pw.item("node", node);
             }
         }
-        pw.item("sql", this.sqlTemplate);
+        pw.item("sql", this.bytesSql.display());
         return pw;
     }
 
@@ -191,7 +192,7 @@ public class PhyShow extends BaseDalOperation {
     public PhyShow copy(RelTraitSet traitSet, List<RelNode> inputs) {
         return new PhyShow(getCluster(),
             traitSet,
-            sqlTemplate,
+            bytesSql,
             nativeSqlNode,
             dbType,
             rowType,

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
@@ -83,10 +84,19 @@ public class PartitionInfo {
     protected Integer autoFlag;
 
     /**
+     * default table group
+     */
+    protected Boolean nonDefaultSingleTableGroup;
+
+    /**
      * The general partition flags
      */
     protected Long partFlags;
 
+    /**
+     * the locality Info
+     */
+    protected String locality;
     /**
      * the table type of partitioned table, may be primary table or gsi table
      * tableType=0: partition table
@@ -117,6 +127,11 @@ public class PartitionInfo {
      * The session variables during creating partitioned table
      */
     protected PartInfoSessionVars sessionVars;
+
+    /**
+     * use the search the partSpec by phyDb and phyTbl
+     */
+    protected PartSpecSearcher partSpecSearcher;
 
     public PartitionInfo() {
     }
@@ -279,6 +294,14 @@ public class PartitionInfo {
 //        this.gsiTableType = gsiTableType;
 //    }
 
+    public void setBuildNoneDefaultSingleGroup(Boolean flag) {
+        this.nonDefaultSingleTableGroup = flag;
+    }
+
+    public Boolean getBuildNoneDefaultSingleGroup() {
+        return (this.nonDefaultSingleTableGroup == null) ? false : this.nonDefaultSingleTableGroup;
+    }
+
     public boolean enableAutoSplit() {
         return autoFlag.equals(TablePartitionRecord.PARTITION_AUTO_BALANCE_ENABLE_ALL);
     }
@@ -299,8 +322,17 @@ public class PartitionInfo {
         this.partFlags = partFlags;
     }
 
-    public Map<String, List<PhysicalPartitionInfo>> getPhysicalPartitionTopology(List<String> partitionNames, boolean throwException) {
+    public Map<String, List<PhysicalPartitionInfo>> getPhysicalPartitionTopology(List<String> partitionNames,
+                                                                                 boolean throwException) {
         return getPhysicalPartitionTopology(partitionNames, throwException, false);
+    }
+
+    public String getLocality() {
+        return locality;
+    }
+
+    public void setLocality(String locality) {
+        this.locality = locality;
     }
 
     /**
@@ -415,14 +447,7 @@ public class PartitionInfo {
     }
 
     public List<String> getPartitionColumns() {
-        Set<String> shardCols = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        if (partitionBy != null) {
-            shardCols.addAll(partitionBy.getPartitionColumnNameList());
-        }
-        if (subPartitionBy != null) {
-            shardCols.addAll(subPartitionBy.getSubPartitionColumnNameList());
-        }
-        return shardCols.stream().collect(Collectors.toList());
+        return getPartitionColumnsNotReorder();
     }
 
     public List<String> getPartitionColumnsNotReorder() {
@@ -501,12 +526,23 @@ public class PartitionInfo {
         newPartInfo.setPartFlags(this.partFlags);
         newPartInfo.setTableType(this.tableType);
         newPartInfo.setSessionVars(this.sessionVars.copy());
+        newPartInfo.setBuildNoneDefaultSingleGroup(this.getBuildNoneDefaultSingleGroup());
+
         if (this.partitionBy != null) {
             newPartInfo.setPartitionBy(this.partitionBy.copy());
         }
 
         if (this.subPartitionBy != null) {
             newPartInfo.setSubPartitionBy(this.subPartitionBy.copy());
+        }
+
+        if (this.locality != null) {
+            newPartInfo.setLocality(this.locality);
+        }
+
+        if (this.partSpecSearcher != null) {
+            newPartInfo.setPartSpecSearcher(
+                PartSpecSearcher.buildPartSpecSearcher(newPartInfo.getTableType(), newPartInfo.getPartitionBy()));
         }
         return newPartInfo;
     }
@@ -603,10 +639,6 @@ public class PartitionInfo {
     /**
      * check equals by specifying prefix partition column prefixPartColCnt，
      * if prefixPartColCnt <= 0, then use all partition columns
-     *
-     * @param obj
-     * @param prefixPartColCnt
-     * @return
      */
     public boolean equals(Object obj, int prefixPartColCnt) {
         if (this == obj) {
@@ -622,6 +654,9 @@ public class PartitionInfo {
         }
 
         PartitionInfo objPartInfo = (PartitionInfo) obj;
+        if (!StringUtils.equals(locality, (objPartInfo.getLocality()))) {
+            return false;
+        }
         if (objPartInfo.getTableType() != this.tableType) {
             if (objPartInfo.isGsiBroadcastOrBroadcast() && this.isGsiBroadcastOrBroadcast()) {
                 return true;
@@ -638,7 +673,7 @@ public class PartitionInfo {
                 return true;
             }
         }
-        if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT ) {
+        if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
             return getPartitionBy().equals(objPartInfo.getPartitionBy());
         } else {
             return getPartitionBy().equals(objPartInfo.getPartitionBy(), prefixPartColCnt);
@@ -666,5 +701,34 @@ public class PartitionInfo {
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    public boolean canPerformPruning(List<String> actualUsedCols, PartKeyLevel level) {
+        if (level == PartKeyLevel.PARTITION_KEY && (this.tableType == PartitionTableType.PARTITION_TABLE
+            || this.tableType == PartitionTableType.GSI_TABLE)) {
+            return this.partitionBy.canPerformPruning(actualUsedCols);
+        } else {
+            return false;
+        }
+    }
+
+    public PartSpecSearcher getPartSpecSearcher() {
+        return partSpecSearcher;
+    }
+
+    public void setPartSpecSearcher(PartSpecSearcher partSpecSearcher) {
+        this.partSpecSearcher = partSpecSearcher;
+    }
+
+    public void initPartSpecSearcher() {
+        /**
+         * Prepare the orderNum in one phyDb for each partition
+         */
+        PartitionInfoBuilder.prepareOrderNumForPartitions(getTableType(), getPartitionBy().getPartitions());
+
+        /**
+         * Prepare the mapping from phy_db.phy_tb to partSpec
+         */
+        this.partSpecSearcher = PartSpecSearcher.buildPartSpecSearcher(getTableType(), getPartitionBy());
     }
 }

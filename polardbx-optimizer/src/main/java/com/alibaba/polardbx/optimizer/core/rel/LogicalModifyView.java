@@ -23,6 +23,7 @@ import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.rel2sql.RelToSqlConverter;
 import org.apache.calcite.sql.SqlNode;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -48,13 +49,23 @@ public class LogicalModifyView extends LogicalView {
     @Override
     public List<RelNode> getInput(ExecutionContext executionContext) {
         Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
-        PhyTableModifyViewBuilder phyTableModifyBuilder = new PhyTableModifyViewBuilder(getSqlTemplate(),
-            targetTables,
-            executionContext,
-            this,
-            dbType,
-            getSchemaName());
+        List<String> logTbls = new ArrayList<>();
+        logTbls.addAll(this.tableNames);
+
+        PhyTableModifyViewBuilder phyTableModifyBuilder =
+            new PhyTableModifyViewBuilder(getSqlTemplate(executionContext),
+                targetTables,
+                executionContext,
+                this,
+                dbType,
+                logTbls,
+                getSchemaName());
         return phyTableModifyBuilder.build();
+    }
+
+    @Override
+    public List<RelNode> getInputWithoutCache(ExecutionContext executionContext) {
+        return getInput(executionContext);
     }
 
     /**
@@ -63,12 +74,20 @@ public class LogicalModifyView extends LogicalView {
      */
     public List<RelNode> getInput(SqlNode sqlTemplate, ExecutionContext executionContext) {
         Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
+        List<String> logTbls = new ArrayList<>();
+//        if (this.getTableModify() instanceof LogicalInsert) {
+//            logTbls.addAll(this.getTableModify().getTargetTableNames());
+//        }
+//        logTbls.addAll(this.getTableModify().getSourceTableNames());
+        logTbls.addAll(this.tableNames);
         PhyTableModifyViewBuilder phyTableModifyBuilder = new PhyTableModifyViewBuilder(sqlTemplate,
             targetTables,
             executionContext,
             this,
             dbType,
-            getSchemaName());
+            logTbls,
+            getSchemaName()
+        );
         return phyTableModifyBuilder.build();
     }
 

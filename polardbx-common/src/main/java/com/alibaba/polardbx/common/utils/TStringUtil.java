@@ -800,4 +800,32 @@ public class TStringUtil extends StringUtils {
         return value;
     }
 
+    public static String[] truncate(String[] strings, int maxStringLength) {
+        if (strings == null) {
+            return null;
+        }
+        boolean needTruncate = false;
+        for (String string : strings) {
+            if (string != null && string.length() > maxStringLength) {
+                needTruncate = true;
+                break;
+            }
+        }
+
+        if (!needTruncate) {
+            return strings;
+        }
+
+        String[] strings1 = new String[strings.length];
+        for (int i = 0; i < strings.length; i++) {
+            if (strings[i] != null && strings[i].length() > maxStringLength) {
+                strings1[i] = strings[i].substring(0, maxStringLength);
+            } else {
+                strings1[i] = strings[i];
+            }
+
+        }
+        return strings1;
+    }
+
 }

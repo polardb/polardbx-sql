@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -34,6 +35,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 public interface ColumnProvider<T> {
     TypeDescription orcType();
@@ -44,11 +46,32 @@ public interface ColumnProvider<T> {
 
     void putBloomFilter(ColumnVector vector, OrcBloomFilter bf, int startIndex, int endIndex);
 
-    void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone);
+    /**
+     *
+     * @param columnVector
+     * @param rowNumber
+     * @param row
+     * @param columnId
+     * @param dataType
+     * @param timezone
+     * @param accumulator
+     */
+    void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator);
 
-    default void putRow(ColumnVector columnVector, ColumnVector redundantColumnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    /**
+     *
+     * @param columnVector
+     * @param redundantColumnVector
+     * @param rowNumber
+     * @param row
+     * @param columnId
+     * @param dataType
+     * @param timezone
+     * @param accumulator
+     */
+    default void putRow(ColumnVector columnVector, ColumnVector redundantColumnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         // ignore redundant Column Vector by default.
-        putRow(columnVector, rowNumber, row, columnId, dataType, timezone);
+        putRow(columnVector, rowNumber, row, columnId, dataType, timezone, accumulator);
     }
 
     default PruningResult prune(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics,

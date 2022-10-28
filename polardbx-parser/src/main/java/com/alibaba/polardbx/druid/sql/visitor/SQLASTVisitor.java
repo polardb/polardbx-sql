@@ -106,17 +106,20 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuesExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupExtractHotKey;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMergePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupMovePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupRenamePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMovePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsRenamePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupReorgPartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetPartitionsLocality;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsSplitHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterIndexStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterProcedureStatement;
@@ -159,6 +162,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableConstrain
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableKeys;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableEnableLifecycle;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableExchangePartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupAddTable;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableImportPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableModifyClusteredBy;
@@ -213,7 +217,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCopyFromStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
@@ -233,7 +237,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropEventStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJavaFunctionStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJoinGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
@@ -273,6 +277,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLJoinTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLLateralViewTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLLoopStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLMergeTableGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLOpenStatement;
@@ -311,14 +316,13 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowErrorsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowFunctionsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowGrantsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowIndexesStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowOutlinesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPackagesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowProcessListStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowQueryTaskStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecylebinStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecyclebinStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowSessionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticListStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticStmt;
@@ -699,14 +703,6 @@ public interface SQLASTVisitor {
 
     boolean visit(SQLCreateDatabaseStatement x);
 
-    void endVisit(SQLCreateJavaFunctionStatement x);
-
-    boolean visit(SQLCreateJavaFunctionStatement x);
-
-    void endVisit(SQLDropJavaFunctionStatement x);
-
-    boolean visit(SQLDropJavaFunctionStatement x);
-
     void endVisit(SQLOver x);
 
     boolean visit(SQLOver x);
@@ -930,6 +926,10 @@ public interface SQLASTVisitor {
     void endVisit(SQLAlterTableSetComment x);
 
     boolean visit(SQLAlterTableSetComment x);
+
+    void endVisit(SQLAlterTableGroupAddTable x);
+
+    boolean visit(SQLAlterTableGroupAddTable x);
 
     void endVisit(SQLAlterTableSetLifecycle x);
 
@@ -1250,9 +1250,9 @@ public interface SQLASTVisitor {
 
     void endVisit(SQLShowPackagesStatement x);
 
-    boolean visit(SQLShowRecylebinStatement x);
+    boolean visit(SQLShowRecyclebinStatement x);
 
-    void endVisit(SQLShowRecylebinStatement x);
+    void endVisit(SQLShowRecyclebinStatement x);
 
     boolean visit(SQLAlterCharacter x);
 
@@ -1369,10 +1369,6 @@ public interface SQLASTVisitor {
     void endVisit(SQLShowProcessListStatement x);
 
     boolean visit(SQLShowProcessListStatement x);
-
-    void endVisit(SQLShowJavaFunctionStatement x);
-
-    boolean visit(SQLShowJavaFunctionStatement x);
 
     void endVisit(SQLAlterTableSetOption x);
 
@@ -1730,21 +1726,21 @@ public interface SQLASTVisitor {
 
     boolean visit(SQLAlterTableDropCheck x);
 
-    void endVisit(DrdsAlterTableGroupSplitPartition x);
+    void endVisit(DrdsSplitPartition x);
 
-    boolean visit(DrdsAlterTableGroupSplitPartition x);
+    boolean visit(DrdsSplitPartition x);
 
-    void endVisit(DrdsAlterTableGroupMergePartition x);
+    void endVisit(DrdsMergePartition x);
 
-    boolean visit(DrdsAlterTableGroupMergePartition x);
+    boolean visit(DrdsMergePartition x);
 
-    void endVisit(DrdsAlterTableGroupMovePartition x);
+    void endVisit(DrdsMovePartition x);
 
-    boolean visit(DrdsAlterTableGroupMovePartition x);
+    boolean visit(DrdsMovePartition x);
 
-    void endVisit(DrdsAlterTableGroupExtractHotKey x);
+    void endVisit(DrdsExtractHotKey x);
 
-    boolean visit(DrdsAlterTableGroupExtractHotKey x);
+    boolean visit(DrdsExtractHotKey x);
 
     void endVisit(DrdsSplitHotKey x);
 
@@ -1758,14 +1754,24 @@ public interface SQLASTVisitor {
 
     boolean visit(SQLAlterTableModifyPartitionValues x);
 
-    void endVisit(DrdsAlterTableGroupRenamePartition x);
+    void endVisit(DrdsRenamePartition x);
 
-    boolean visit(DrdsAlterTableGroupRenamePartition x);
+    boolean visit(DrdsRenamePartition x);
+
+    void endVisit(DrdsAlterTableGroupSetLocality x);
+
+    boolean visit(DrdsAlterTableGroupSetLocality x);
+
+    void endVisit(DrdsAlterTableGroupSetPartitionsLocality x);
+
+    boolean visit(DrdsAlterTableGroupSetPartitionsLocality x);
 
     void endVisit(DrdsAlterTableAllocateLocalPartition x);
+
     boolean visit(DrdsAlterTableAllocateLocalPartition x);
 
     void endVisit(DrdsAlterTableExpireLocalPartition x);
+
     boolean visit(DrdsAlterTableExpireLocalPartition x);
 
     void endVisit(DrdsRefreshTopology x);
@@ -1779,4 +1785,20 @@ public interface SQLASTVisitor {
     void endVisit(SQLAlterTableDropFile x);
 
     boolean visit(SQLAlterTableDropFile x);
+    boolean visit(SQLCreateJoinGroupStatement x);
+
+    void endVisit(SQLCreateJoinGroupStatement x);
+
+    boolean visit(SQLDropJoinGroupStatement x);
+
+    void endVisit(SQLDropJoinGroupStatement x);
+
+    boolean visit(SQLAlterJoinGroupStatement x);
+
+    void endVisit(SQLAlterJoinGroupStatement x);
+
+    boolean visit(SQLMergeTableGroupStatement x);
+
+    void endVisit(SQLMergeTableGroupStatement x);
+
 }

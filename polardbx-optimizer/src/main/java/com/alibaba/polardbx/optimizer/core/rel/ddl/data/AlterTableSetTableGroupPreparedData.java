@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import java.util.Map;
+import java.util.TreeMap;
+
 public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
 
     public AlterTableSetTableGroupPreparedData() {
@@ -26,6 +29,11 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
     private String originalTableGroup;
     private Long tableVersion;
     private String primaryTableName;
+    private String originalJoinGroup;
+    private boolean alignPartitionNameFirst = false;
+    private boolean repartition = false;
+    private boolean force = false;
+    private Map<String, String> partitionNamesMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     public String getTableGroupName() {
         return tableGroupName;
@@ -41,6 +49,14 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
 
     public void setOriginalTableGroup(String originalTableGroup) {
         this.originalTableGroup = originalTableGroup;
+    }
+
+    public String getOriginalJoinGroup() {
+        return originalJoinGroup;
+    }
+
+    public void setOriginalJoinGroup(String originalJoinGroup) {
+        this.originalJoinGroup = originalJoinGroup;
     }
 
     public String getSourceSql() {
@@ -65,5 +81,33 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
 
     public void setPrimaryTableName(String primaryTableName) {
         this.primaryTableName = primaryTableName;
+    }
+
+    public boolean isAlignPartitionNameFirst() {
+        return alignPartitionNameFirst;
+    }
+
+    public void setAlignPartitionNameFirst(boolean alignPartitionNameFirst) {
+        this.alignPartitionNameFirst = alignPartitionNameFirst;
+    }
+
+    public boolean isRepartition() {
+        return repartition;
+    }
+
+    public void setRepartition(boolean repartition) {
+        this.repartition = repartition;
+    }
+
+    public Map<String, String> getPartitionNamesMap() {
+        return partitionNamesMap;
+    }
+
+    public boolean isForce() {
+        return force;
+    }
+
+    public void setForce(boolean force) {
+        this.force = force;
     }
 }

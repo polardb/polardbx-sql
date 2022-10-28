@@ -61,7 +61,7 @@ public class ExplainExecuteTest extends CrudBasedLockTestCase {
      */
     @Test
     public void explainSelectTest() {
-        String sql = "explain execute select * from " + baseOneTableName;
+        String sql = "explain execute /*+ TDDL: MIN_MERGE_UNION_SIZE=1 */ select * from " + baseOneTableName;
         try {
             Statement statement = tddlConnection.createStatement();
             ResultSet rs = statement.executeQuery(sql);
@@ -91,6 +91,8 @@ public class ExplainExecuteTest extends CrudBasedLockTestCase {
             while (rs.next()) {
                 String actualExplainResult = rs.getString("select_type");
                 Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
+                String extra = rs.getString("Extra");
+                Assert.assertTrue(extra != null && extra.contains("XPlan"));
                 rowsize++;
             }
             Assert.assertTrue(rowsize == 1);
@@ -113,9 +115,31 @@ public class ExplainExecuteTest extends CrudBasedLockTestCase {
             while (rs.next()) {
                 String actualExplainResult = rs.getString("select_type");
                 Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
+                String extra = rs.getString("Extra");
+                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
                 rowsize++;
             }
             Assert.assertTrue(rowsize == 1);
+        } catch (Exception e) {
+            log.error(e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void explainJoinTest() {
+        String sql = "explain execute select * from %s a join %s b on a.varchar_test = b.varchar_test and a.pk=1";
+        try {
+            Statement statement = tddlConnection.createStatement();
+            ResultSet rs = statement.executeQuery(String.format(sql, baseOneTableName, baseTwoTableName));
+            int rowsize = 0;
+            while (rs.next()) {
+                String actualExplainResult = rs.getString("select_type");
+                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
+                String extra = rs.getString("Extra");
+                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
+                rowsize++;
+            }
         } catch (Exception e) {
             log.error(e.getMessage());
             throw new RuntimeException(e);
@@ -135,6 +159,8 @@ public class ExplainExecuteTest extends CrudBasedLockTestCase {
             while (rs.next()) {
                 String actualExplainResult = rs.getString("select_type");
                 Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
+                String extra = rs.getString("Extra");
+                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
                 rowsize++;
             }
             Assert.assertTrue(rowsize == 1);
@@ -157,6 +183,8 @@ public class ExplainExecuteTest extends CrudBasedLockTestCase {
             while (rs.next()) {
                 String actualExplainResult = rs.getString("select_type");
                 Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
+                String extra = rs.getString("Extra");
+                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
                 rowsize++;
             }
             Assert.assertTrue(rowsize == 1);
@@ -179,6 +207,8 @@ public class ExplainExecuteTest extends CrudBasedLockTestCase {
             while (rs.next()) {
                 String actualExplainResult = rs.getString("select_type");
                 Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
+                String extra = rs.getString("Extra");
+                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
                 rowsize++;
             }
             Assert.assertTrue(rowsize == 1);

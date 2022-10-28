@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -38,8 +39,10 @@ public interface IPhyQueryOperation {
      *
      * @param param ExecutionContext的ParameterContext（逻辑SQL级别的参数化参数）
      */
-//    Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param);
+    Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                    ExecutionContext executionContext);
 
     Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
+                                                                    List<List<String>> phyTableNamesOutput,
                                                                     ExecutionContext executionContext);
 }

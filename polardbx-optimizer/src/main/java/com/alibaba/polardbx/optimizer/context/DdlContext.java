@@ -23,10 +23,12 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
-import org.apache.commons.collections.CollectionUtils;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,10 +55,11 @@ public class DdlContext {
     private transient long parentJobId = 0;
     private transient long parentTaskId = 0;
     private transient boolean forRollback = false;
+    private DdlContext parentDdlContext = null;
 
     private ConcurrentHashMap<Long, AtomicBoolean> physicalDdlInjectionFlag = new ConcurrentHashMap<>();
 
-    private transient AtomicReference<Boolean>  clientConnectionReset = new AtomicReference<>(false);
+    private transient AtomicReference<Boolean> clientConnectionReset = new AtomicReference<>(false);
     /**
      * Get current DDL state.
      */
@@ -65,6 +68,8 @@ public class DdlContext {
      * whether current execution is interrupted
      */
     private transient AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
+
+    private transient AtomicReference<LeaseRecord> jobLease = new AtomicReference<>();
 
     /**
      * from ExecutionContext.enableTrace
@@ -84,7 +89,6 @@ public class DdlContext {
     private Map<String, Object> extraCmds = new HashMap<>();
     private String encoding;
     private String timeZone;
-    
 
     public static DdlContext create(String schemaName, String objectName, DdlType ddlType,
                                     ExecutionContext executionContext) {
@@ -128,17 +132,18 @@ public class DdlContext {
         ddlContext.setExtraCmds(executionContext.getExtraCmds());
         ddlContext.setEncoding(executionContext.getEncoding());
         if (executionContext.getTimeZone() != null) {
-            ddlContext.setTimeZone(executionContext.getTimeZone().getMySqlTimeZoneName());            
+            ddlContext.setTimeZone(executionContext.getTimeZone().getMySqlTimeZoneName());
         }
 
         boolean asyncMode = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE);
         ddlContext.setAsyncMode(asyncMode);
 
-        if(executionContext.getDdlContext() != null && executionContext.getDdlContext().isSubJob()){
+        if (executionContext.getDdlContext() != null && executionContext.getDdlContext().isSubJob()) {
             ddlContext.setIsSubJob(executionContext.getDdlContext().isSubJob());
             ddlContext.setParentJobId(executionContext.getDdlContext().getParentJobId());
             ddlContext.setParentTaskId(executionContext.getDdlContext().getParentTaskId());
             ddlContext.setForRollback(executionContext.getDdlContext().isForRollback());
+            ddlContext.setParentDdlContext(executionContext.getDdlContext().getParentDdlContext());
         }
 
         return ddlContext;
@@ -171,6 +176,7 @@ public class DdlContext {
 
         res.setEncoding(getEncoding());
         res.setTimeZone(getTimeZone());
+        res.setParentDdlContext(getParentDdlContext());
 
         return res;
     }
@@ -315,12 +321,11 @@ public class DdlContext {
         this.state.set(update);
     }
 
-
-    public Boolean isClientConnectionReset(){
+    public Boolean isClientConnectionReset() {
         return this.clientConnectionReset.get();
     }
 
-    public void setClientConnectionResetAsTrue(){
+    public void setClientConnectionResetAsTrue() {
         this.clientConnectionReset.set(true);
     }
 
@@ -329,7 +334,17 @@ public class DdlContext {
      * false: everything is cool
      */
     public Boolean isInterrupted() {
-        return this.interrupted.get();
+        if (this.interrupted.get()) {
+            return true;
+        }
+        if (jobLease != null && jobLease.get() != null && jobLease.get().inValid()) {
+            return true;
+        }
+        return false;
+    }
+
+    public AtomicReference<LeaseRecord> getJobLease() {
+        return this.jobLease;
     }
 
     public void setInterruptedAsTrue() {
@@ -344,7 +359,6 @@ public class DdlContext {
         physicalDdlInjectionFlag.putIfAbsent(taskId, new AtomicBoolean(false));
         return physicalDdlInjectionFlag.get(taskId).compareAndSet(false, true);
     }
-
 
     public String getEncoding() {
         return encoding;
@@ -392,5 +406,13 @@ public class DdlContext {
 
     public void setForRollback(final boolean forRollback) {
         this.forRollback = forRollback;
+    }
+
+    public DdlContext getParentDdlContext() {
+        return parentDdlContext;
+    }
+
+    public void setParentDdlContext(DdlContext parentDdlContext) {
+        this.parentDdlContext = parentDdlContext;
     }
 }

@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.charset.CollationHandlers;
 import com.alibaba.polardbx.common.collation.CollationHandler;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
@@ -40,6 +41,7 @@ import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.ZoneId;
 import java.util.Arrays;
 
 /**
@@ -133,6 +135,19 @@ public class DateField extends AbstractTemporalField {
                 OriginalTemporalValue temporalValue = (OriginalTemporalValue) value;
                 MysqlDateTime mysqlDateTime = temporalValue.getMysqlDateTime();
                 return storeMysqlDatetime(mysqlDateTime, sessionProperties);
+            } else if (value instanceof Timestamp) {
+                // Bad case: Use jdbc-style temporal value (java.sql.Timestamp)
+                ZoneId zoneId = sessionProperties.getTimezone();
+                MysqlDateTime mysqlDateTime = MySQLTimeConverter.convertTimestampToDatetime((Timestamp) value, zoneId);
+                mysqlDateTime.setSqlType(Types.TIMESTAMP);
+                return storeMysqlDatetime(mysqlDateTime, sessionProperties);
+            } else if (value instanceof Date) {
+                // Bad case: Use jdbc-style temporal value (java.sql.Date)
+                ZoneId zoneId = sessionProperties.getTimezone();
+                MysqlDateTime mysqlDateTime =
+                    MySQLTimeConverter.toMySqlDatetime(zoneId, ((Date) value).getTime() / 1000L, 0);
+                mysqlDateTime.setSqlType(Types.DATE);
+                return storeMysqlDatetime(mysqlDateTime, sessionProperties);
             } else if (value instanceof Slice) {
                 // for parameterized value.
                 return storeSlice((Slice) value, sessionProperties);
@@ -140,9 +155,6 @@ public class DateField extends AbstractTemporalField {
                 return storeString((String) value, sessionProperties);
             } else if (value instanceof byte[]) {
                 return storeBytes((byte[]) value, sessionProperties);
-            } else if (value == null) {
-                setNull();
-                return TypeConversionStatus.TYPE_OK;
             } else if (value == null) {
                 setNull();
                 return TypeConversionStatus.TYPE_OK;

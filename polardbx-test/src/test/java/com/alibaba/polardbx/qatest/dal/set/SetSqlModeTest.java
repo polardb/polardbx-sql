@@ -41,8 +41,6 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 
 public class SetSqlModeTest extends CrudBasedLockTestCase {
 
-    protected String baseOneTableName;
-
     @Parameters(name = "{index}:table0={0},table1={1}")
     public static List<String[]> prepare() {
         return Arrays.asList(ExecuteTableName.allBaseTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE));

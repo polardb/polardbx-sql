@@ -19,13 +19,13 @@ package com.alibaba.polardbx.qatest.dql.auto.select;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.AutoCrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.CommonCaseRunner;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
-import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
@@ -44,7 +44,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
+import static com.alibaba.polardbx.qatest.util.PropertiesUtil.usePrepare;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.explainAllResultMatchAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.resultsSize;
@@ -63,7 +63,6 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
 @NotThreadSafe
 public class SelectTest {
 
-    @RunWith(CommonCaseRunner.class)
     @NotThreadSafe
     public static class SelectTest1 extends AutoCrudBasedLockTestCase {
 
@@ -929,8 +928,11 @@ public class SelectTest {
             selectContentSameAssert(sql1, null, mysqlConnection, tddlConnection);
             String explainSql = "explain " + sql1;
             String explainResult = explainResultString(explainSql, null, tddlConnection);
+            System.out.println(explainResult);
             Assert.assertTrue(explainResult.indexOf("group=\"pk\", $f1=\"__FIRST_VALUE(integer_test)\"") > -1
-                || explainResult.indexOf("group=\"pk\", integer_test=\"__FIRST_VALUE(integer_test)\"") > -1);
+                || explainResult.indexOf("group=\"pk\", integer_test=\"__FIRST_VALUE(integer_test)\"") > -1
+                || explainResult.indexOf("group=\"pk0\", $f1=\"__FIRST_VALUE(integer_test)\"") > -1
+                || explainResult.indexOf("group=\"pk0\", integer_test=\"__FIRST_VALUE(integer_test)\"") > -1);
         }
 
         /**
@@ -975,7 +977,7 @@ public class SelectTest {
 
         @Test
         public void selectPrepareTest() {
-            if (!PropertiesUtil.usePrepare()) {
+            if (usePrepare()) {
                 return;
             }
             JdbcUtil.executeUpdateSuccess(tddlConnection,
@@ -993,7 +995,7 @@ public class SelectTest {
 
         @Test
         public void selectPrepareBkaJoinTest() {
-            if (!PropertiesUtil.usePrepare()) {
+            if (usePrepare()) {
                 return;
             }
             JdbcUtil.executeUpdateSuccess(tddlConnection,

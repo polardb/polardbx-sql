@@ -34,8 +34,8 @@ public class SpecialUpdateTest2 extends AutoCrudBasedLockTestCase {
         "/*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,COMPLEX_DML_WITH_TRX=FALSE)*/";
 
     public SpecialUpdateTest2() {
-        this.baseOneTableName = ExecuteTableName.COMPOSIT_PRIMARY_KEY + ExecuteTableName.MUlTI_DB_MUTIL_TB_SUFFIX;
-        this.baseTwoTableName = ExecuteTableName.COMPOSIT_PRIMARY_KEY + ExecuteTableName.MULTI_DB_ONE_TB_SUFFIX;
+        this.baseOneTableName = ExecuteTableName.COMPOSITE_PRIMARY_KEY + ExecuteTableName.MUlTI_DB_MUTIL_TB_SUFFIX;
+        this.baseTwoTableName = ExecuteTableName.COMPOSITE_PRIMARY_KEY + ExecuteTableName.MULTI_DB_ONE_TB_SUFFIX;
     }
 
     private void clearData(String table) {

@@ -23,7 +23,6 @@ import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -39,8 +38,6 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
 
 public class IsolationLevelTest extends CrudBasedLockTestCase {
 
-    private boolean useBedTrans;
-
     public IsolationLevelTest() {
         // Test on table `update_delete_base_multi_db_multi_tb`
         this.baseOneTableName = ExecuteTableName.UPDATE_DELETE_BASE + ExecuteTableName.MULTI_DB_ONE_TB_SUFFIX;
@@ -51,7 +48,6 @@ public class IsolationLevelTest extends CrudBasedLockTestCase {
         tableDataPrepare(baseOneTableName, 20,
             TableColumnGenerator.getBaseMinColum(), PK_COLUMN_NAME, mysqlConnection,
             tddlConnection, columnDataGenerator);
-        useBedTrans = !JdbcUtil.supportXA(tddlConnection);
     }
 
     /**
@@ -64,10 +60,6 @@ public class IsolationLevelTest extends CrudBasedLockTestCase {
             Connection conn2 = getPolardbxConnection()) {
             conn1.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
             conn1.setAutoCommit(false);
-
-            if (useBedTrans) {
-                //JdbcUtil.setTxPolicy(ITransactionPolicy.BEST_EFFORT, conn1);
-            }
 
             int result1;
             int result2;
@@ -111,10 +103,6 @@ public class IsolationLevelTest extends CrudBasedLockTestCase {
             conn1.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             conn1.setAutoCommit(false);
 
-            if (useBedTrans) {
-                //JdbcUtil.setTxPolicy(ITransactionPolicy.BEST_EFFORT, conn1);
-            }
-
             try (Statement stmt = conn1.createStatement()) {
                 try (ResultSet rs = stmt.executeQuery("select @@transaction_isolation")) {
                     Assert.assertTrue(rs.next());
@@ -153,7 +141,6 @@ public class IsolationLevelTest extends CrudBasedLockTestCase {
      * Test setting/getting isolation level
      */
     @Test
-    @Ignore
     public void testSetIsolationLevel() throws Exception {
         try (Connection conn = getPolardbxConnection(); Statement stmt = conn.createStatement()) {
             // set session transaction isolation

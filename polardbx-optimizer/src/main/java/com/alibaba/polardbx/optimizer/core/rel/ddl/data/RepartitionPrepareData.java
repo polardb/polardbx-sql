@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
-import com.alibaba.polardbx.optimizer.parse.util.Pair;
+import com.alibaba.polardbx.common.utils.Pair;
 import lombok.Data;
 
 import java.util.List;
@@ -41,11 +41,18 @@ public class RepartitionPrepareData extends DdlPreparedData {
     private Map<String, List<String>> backFilledIndexes;
 
     /**
+     * gsi which need to drop columns
+     * key: global index name
+     * value: columns list
+     */
+    private Map<String, List<String>> dropColumnIndexes;
+
+    /**
      * change gsi to local index when alter table single/broadcast
      * key: global index name
-     * value: local index columns name
+     * value: Pair<index columns name, gsi nonUnique>
      */
-    private Map<String, List<String>> localIndexes;
+    private Map<String, Pair<List<String>, Boolean>> gsiInfo;
 
     private String primaryTableDefinition;
 

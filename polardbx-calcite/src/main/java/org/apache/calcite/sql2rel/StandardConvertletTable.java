@@ -308,7 +308,10 @@ public class StandardConvertletTable extends ReflectiveConvertletTable {
         new AvgVarianceConvertlet(SqlKind.STDDEV_SAMP));
     registerOp(
         SqlStdOperatorTable.STDDEV,
-        new AvgVarianceConvertlet(SqlKind.STDDEV_SAMP));
+        new AvgVarianceConvertlet(SqlKind.STDDEV));
+    registerOp(
+        SqlStdOperatorTable.STD,
+        new AvgVarianceConvertlet(SqlKind.STD));
     registerOp(
         SqlStdOperatorTable.VAR_POP,
         new AvgVarianceConvertlet(SqlKind.VAR_POP));
@@ -317,7 +320,7 @@ public class StandardConvertletTable extends ReflectiveConvertletTable {
         new AvgVarianceConvertlet(SqlKind.VAR_SAMP));
     registerOp(
         SqlStdOperatorTable.VARIANCE,
-        new AvgVarianceConvertlet(SqlKind.VAR_SAMP));
+        new AvgVarianceConvertlet(SqlKind.VARIANCE));
 
     final SqlRexConvertlet floorCeilConvertlet = new FloorCeilConvertlet();
     registerOp(SqlStdOperatorTable.FLOOR, floorCeilConvertlet);
@@ -1199,12 +1202,15 @@ public class StandardConvertletTable extends ReflectiveConvertletTable {
         expr = expandAvg(arg, type, cx);
         break;
       case STDDEV_POP:
+      case STD:
+      case STDDEV:
         expr = expandVariance(arg, type, cx, true, true);
         break;
       case STDDEV_SAMP:
         expr = expandVariance(arg, type, cx, false, true);
         break;
       case VAR_POP:
+      case VARIANCE:
         expr = expandVariance(arg, type, cx, true, false);
         break;
       case VAR_SAMP:

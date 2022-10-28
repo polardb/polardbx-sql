@@ -65,6 +65,7 @@ public class InformationSchemaDdlPlan extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("extras", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("gmt_created", i++, typeFactory.createSqlType(SqlTypeName.DATETIME)));
         columns.add(new RelDataTypeFieldImpl("gmt_modified", i++, typeFactory.createSqlType(SqlTypeName.DATETIME)));
+        columns.add(new RelDataTypeFieldImpl("resource", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

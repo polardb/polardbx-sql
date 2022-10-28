@@ -48,7 +48,7 @@ public class ValidateGsiExistenceTask extends BaseValidateTask {
         this.primaryTableName = primaryTableName;
         this.indexName = indexName;
         this.tableGroupIds = tableGroupIds;
-        this.tableGroupConfig = tableGroupConfig;
+        this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
     }
 
     @Override

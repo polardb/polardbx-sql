@@ -36,7 +36,7 @@ public class LogicalAlterTableGroupMergePartitionHandler extends LogicalCommonDd
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         LogicalAlterTableGroupMergePartition alterTableGroupMergePartition =
             (LogicalAlterTableGroupMergePartition) logicalDdlPlan;
-        alterTableGroupMergePartition.preparedData();
+        alterTableGroupMergePartition.preparedData(executionContext);
         CheckOSSArchiveUtil.checkWithoutOSS(alterTableGroupMergePartition.getPreparedData());
         return AlterTableGroupMergePartitionJobFactory
             .create(alterTableGroupMergePartition.relDdl, alterTableGroupMergePartition.getPreparedData(),
@@ -47,6 +47,7 @@ public class LogicalAlterTableGroupMergePartitionHandler extends LogicalCommonDd
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         AlterTableGroupUtils.alterTableGroupPreCheck(
             (SqlAlterTableGroup) (((LogicalAlterTableGroupMergePartition) logicalDdlPlan).relDdl.getSqlNode()),
+            logicalDdlPlan.getSchemaName(),
             executionContext);
         return super.validatePlan(logicalDdlPlan, executionContext);
     }

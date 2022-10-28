@@ -115,11 +115,6 @@ public class SavePointTest extends CrudBasedLockTestCase {
     }
 
     @Test
-    public void testOnBestEffort() throws Exception {
-        //testSavePoint(ITransactionPolicy.BEST_EFFORT, 2);
-    }
-
-    @Test
     public void testOnXA() throws Exception {
         if (!JdbcUtil.supportXA(tddlConnection)) {
             return;

@@ -34,6 +34,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
+import com.alibaba.polardbx.gms.util.DbEventUtil;
 import com.alibaba.polardbx.gms.util.DbNameUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
@@ -46,6 +47,8 @@ import org.apache.calcite.sql.SqlCreateDatabase;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.Optional;
+
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
 /**
  * @author chenmo.cm
@@ -91,7 +94,6 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
 
         String locality = Strings.nullToEmpty(sqlCreateDatabase.getLocality());
 
-
         if (!MySQLCharsetDDLValidator.checkCharset(charset)) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 String.format(
@@ -114,7 +116,6 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
                         "Unknown character set and collation: %s %s",
                         charset, collate));
             }
-
         }
 
         String partitionMode = Strings.nullToEmpty(sqlCreateDatabase.getPartitionMode());
@@ -132,20 +133,24 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
 
         // choose dn by locality
         LocalityDesc localityDesc = LocalityDesc.parse(locality);
+        if (!localityDesc.holdEmptyDnList() && !localityDesc.getDnList()
+            .contains(DbTopologyManager.singleGroupStorageInstList.get(0))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                String.format("Failed to create database because the locality[%s] is invalid, storage 0 is required",
+                    localityDesc.toString()));
+        }
         Predicate<StorageInfoRecord> predLocality = (x -> localityDesc.matchStorageInstance(x.getInstanceId()));
         int dbType = decideDbType(partitionMode, executionContext);
         CreateDbInfo createDbInfo = DbTopologyManager.initCreateDbInfo(
             dbName, charset, collate, locality, predLocality, dbType,
             isCreateIfNotExists, socketTimeoutVal, shardDbCountEachStorageInst);
         long dbId = DbTopologyManager.createLogicalDb(createDbInfo);
-
+        DbEventUtil.logFirstAutoDbCreationEvent(createDbInfo);
         CdcManagerHelper.getInstance()
             .notifyDdl(dbName, null, sqlCreateDatabase.getKind().name(), executionContext.getOriginSql(),
-                DdlVisibility.Public, executionContext.getExtraCmds());
+                DdlVisibility.Public, buildExtendParameter(executionContext));
 
-        if (!localityDesc.isEmpty()) {
-            lm.setLocalityOfDb(dbId, locality);
-        }
+        lm.setLocalityOfDb(dbId, locality);
         return new AffectRowCursor(new int[] {1});
     }
 

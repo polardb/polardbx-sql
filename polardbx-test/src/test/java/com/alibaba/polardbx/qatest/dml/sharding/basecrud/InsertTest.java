@@ -23,6 +23,7 @@ import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.entity.ColumnEntity;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.RandomStringUtils;
@@ -49,7 +50,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeBatchOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAssert;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
@@ -1138,9 +1138,13 @@ public class InsertTest extends CrudBasedLockTestCase {
 
     /**
      * Explain an insert, and its sharding key is a function.
+     * prepare模式暂不支持
      */
     @Test
     public void explainInsertShardingKeyFunc() throws Exception {
+        if (PropertiesUtil.usePrepare()) {
+            return;
+        }
         String sql = String.format("explain insert into %s(pk,integer_test,varchar_test) values(?+?,?+?,concat(?,?))",
             baseOneTableName);
         List<Object> param = new ArrayList<Object>();

@@ -55,7 +55,7 @@ public class GsiLoader extends Loader {
                       ExecutionPlan checkerPlan, int[] checkerPkMapping, int[] checkerParamMapping,
                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc);
+            executeFunc, false);
     }
 
     public static Loader create(String schemaName, String primaryTable, String indexTable,
@@ -153,7 +153,7 @@ public class GsiLoader extends Loader {
 
     @Override
     public int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
-                             ExecutionContext executionContext, String sourceDbIndex) {
+                             ExecutionContext executionContext, String sourceDbIndex, String phyTableName) {
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
         return InsertIndexExecutor
             .insertIntoTable(null, sqlInsert, tableMeta, schemaName, executionContext, executeFunc, false);

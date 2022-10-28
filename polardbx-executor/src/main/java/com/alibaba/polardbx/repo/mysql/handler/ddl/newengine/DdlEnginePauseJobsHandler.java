@@ -74,9 +74,10 @@ public class DdlEnginePauseJobsHandler extends DdlEngineJobsHandler {
                            List<Long> pausedJobs) {
         DdlState before = DdlState.valueOf(record.state);
         DdlState after = DdlState.PAUSE_JOB_STATE_TRANSFER.get(before);
-        if (!(before == DdlState.RUNNING || before == DdlState.ROLLBACK_RUNNING)) {
+        if (!(before == DdlState.RUNNING || before == DdlState.ROLLBACK_RUNNING || before == DdlState.QUEUED)) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, String.format(
-                "Only RUNNING/ROLLBACK_RUNNING jobs can be paused, job %s is in %s state", record.jobId, before));
+                "Only RUNNING/ROLLBACK_RUNNING/QUEUED jobs can be paused, job %s is in %s state", record.jobId,
+                before));
         }
 
         if (schedulerManager.tryPauseDdl(record.jobId, before, after)) {

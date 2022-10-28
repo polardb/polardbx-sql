@@ -31,13 +31,13 @@ import com.alibaba.polardbx.executor.balancer.policy.PolicyDataBalance;
 import com.alibaba.polardbx.executor.balancer.policy.PolicyDrainNode;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.val;
-import org.apache.calcite.sql.SqlRebalance;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -62,10 +62,10 @@ public class TestBalancer {
             .collect(Collectors.toList());
     }
 
-    private Map<String, Long> buildDataSizeMap(String dn, int startId, int endId, long dataSize) {
+    private Map<String, Pair<Long, Long>> buildDataSizeMap(String dn, int startId, int endId, long dataSize) {
         return IntStream.range(startId, endId)
             .mapToObj(id -> Pair.of("g" + id, dataSize))
-            .collect(Collectors.toMap(Pair::getKey, Pair::getValue));
+            .collect(Collectors.toMap(e->e.getKey(), e->Pair.of(0L, e.getValue())));
     }
 
     private Map<String, List<GroupStats.GroupsOfStorage>> makeGroups0() {
@@ -204,7 +204,7 @@ public class TestBalancer {
                 Arrays.asList(
                     new ActionLockResource(
                         "db1",
-                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, "db1"), "db1")
                     ),
                     new ActionMoveGroups("db1",
                         Arrays.asList(
@@ -212,14 +212,17 @@ public class TestBalancer {
                             new ActionMoveGroup("db1", Arrays.asList("g5"), "dn1")
                         ))
                 );
-
+            List<BalanceAction> actMoveAction = new ArrayList<>();
             for (BalanceAction action : actions) {
                 if (action instanceof ActionMoveGroups) {
                     ActionMoveGroups mg = (ActionMoveGroups) action;
                     Collections.sort(mg.getActions());
+                    actMoveAction.add(action);
+                } else if (action instanceof ActionLockResource) {
+                    actMoveAction.add(action);
                 }
             }
-            Assert.assertEquals(expectedActions, actions);
+            Assert.assertEquals(expectedActions, actMoveAction);
         }
 
         // one empty storage node
@@ -230,7 +233,7 @@ public class TestBalancer {
                 Arrays.asList(
                     new ActionLockResource(
                         "db1",
-                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, "db1"), "db1")
                     ),
                     new ActionMoveGroups("db1",
                         Arrays.asList(
@@ -239,14 +242,18 @@ public class TestBalancer {
                             new ActionMoveGroup("db1", Arrays.asList("g5"), "dn3")
                         ))
                 );
+            List<BalanceAction> actMoveAction = new ArrayList<>();
 
             for (BalanceAction action : actions) {
                 if (action instanceof ActionMoveGroups) {
                     ActionMoveGroups mg = (ActionMoveGroups) action;
                     Collections.sort(mg.getActions());
+                    actMoveAction.add(action);
+                } else if (action instanceof ActionLockResource) {
+                    actMoveAction.add(action);
                 }
             }
-            Assert.assertEquals(expectedActions, actions);
+            Assert.assertEquals(expectedActions, actMoveAction);
         }
 
         // two empty storage nodes
@@ -257,7 +264,7 @@ public class TestBalancer {
                 Arrays.asList(
                     new ActionLockResource(
                         "db1",
-                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, "db1"), "db1")
                     ),
                     new ActionMoveGroups(
                         "db1",
@@ -269,13 +276,17 @@ public class TestBalancer {
                         )
                     )
                 );
+            List<BalanceAction> actMoveAction = new ArrayList<>();
             for (BalanceAction action : actions) {
                 if (action instanceof ActionMoveGroups) {
                     ActionMoveGroups mg = (ActionMoveGroups) action;
                     Collections.sort(mg.getActions());
+                    actMoveAction.add(action);
+                } else if (action instanceof ActionLockResource) {
+                    actMoveAction.add(action);
                 }
             }
-            Assert.assertEquals(expectedActions, actions);
+            Assert.assertEquals(expectedActions, actMoveAction);
         }
     }
 
@@ -299,7 +310,7 @@ public class TestBalancer {
                 Arrays.asList(
                     new ActionLockResource(
                         "db1",
-                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(SqlRebalance.RebalanceTarget.DATABASE, "db1"))
+                        Sets.newHashSet(ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, "db1"), "db1")
                     ),
                     new ActionMoveGroups("db1",
                         Arrays.asList(
@@ -309,7 +320,13 @@ public class TestBalancer {
                             new ActionMoveGroup("db1", Arrays.asList("g3"), "dn3")
                         ))
                 );
-            Assert.assertEquals(expectedActions, actions);
+            List<BalanceAction> actMoveAction = new ArrayList<>();
+            for (BalanceAction action : actions) {
+                if (action instanceof ActionMoveGroups || action instanceof ActionLockResource) {
+                    actMoveAction.add(action);
+                }
+            }
+            Assert.assertEquals(expectedActions, actMoveAction);
         }
 
         // non-existed storage node

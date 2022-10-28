@@ -110,21 +110,24 @@ public class MySqlTableIndex extends SQLConstraintImpl implements SQLTableElemen
         for (SQLSelectOrderByItem orderByItem : getColumns()) {
             SQLExpr expr = orderByItem.getExpr();
             if (expr instanceof SQLName
-                    && SQLUtils.nameEquals((SQLName) expr, columnName)) {
+                && SQLUtils.nameEquals((SQLName) expr, columnName)) {
                 orderByItem.setExpr(to.getName().clone());
                 return true;
             }
 
             if (expr instanceof SQLMethodInvokeExpr
-                    && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
+                && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
                 // More complex when with key length.
                 if (1 == ((SQLMethodInvokeExpr) expr).getArguments().size() &&
-                        ((SQLMethodInvokeExpr) expr).getArguments().get(0) instanceof SQLIntegerExpr) {
+                    ((SQLMethodInvokeExpr) expr).getArguments().get(0) instanceof SQLIntegerExpr) {
                     if (to.getDataType().hasKeyLength() &&
-                            1 == to.getDataType().getArguments().size() &&
-                            to.getDataType().getArguments().get(0) instanceof SQLIntegerExpr) {
-                        int newKeyLength = ((SQLIntegerExpr)to.getDataType().getArguments().get(0)).getNumber().intValue();
-                        int oldKeyLength = ((SQLIntegerExpr)((SQLMethodInvokeExpr) expr).getArguments().get(0)).getNumber().intValue();
+                        1 == to.getDataType().getArguments().size() &&
+                        to.getDataType().getArguments().get(0) instanceof SQLIntegerExpr) {
+                        int newKeyLength =
+                            ((SQLIntegerExpr) to.getDataType().getArguments().get(0)).getNumber().intValue();
+                        int oldKeyLength =
+                            ((SQLIntegerExpr) ((SQLMethodInvokeExpr) expr).getArguments().get(0)).getNumber()
+                                .intValue();
                         if (newKeyLength > oldKeyLength) {
                             // Change name and keep key length.
                             ((SQLMethodInvokeExpr) expr).setMethodName(to.getName().getSimpleName());
@@ -144,12 +147,12 @@ public class MySqlTableIndex extends SQLConstraintImpl implements SQLTableElemen
         for (int i = indexDefinition.getColumns().size() - 1; i >= 0; i--) {
             SQLExpr expr = indexDefinition.getColumns().get(i).getExpr();
             if (expr instanceof SQLName
-                    && SQLUtils.nameEquals((SQLName) expr, columnName)) {
+                && SQLUtils.nameEquals((SQLName) expr, columnName)) {
                 indexDefinition.getColumns().remove(i);
                 return true;
             }
             if (expr instanceof SQLMethodInvokeExpr
-                    && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
+                && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
                 indexDefinition.getColumns().remove(i);
                 return true;
             }
@@ -282,7 +285,15 @@ public class MySqlTableIndex extends SQLConstraintImpl implements SQLTableElemen
         this.indexDefinition.setPartitioning(sqlPartitioning);
     }
 
-    public SQLPartitionBy getPartitioning () {
+    public SQLPartitionBy getPartitioning() {
         return this.indexDefinition.getPartitioning();
+    }
+
+    public SQLName getTableGroup() {
+        return this.indexDefinition.getTableGroup();
+    }
+
+    public void setTableGroup(SQLName tableGroup) {
+        this.indexDefinition.setTableGroup(tableGroup);
     }
 }

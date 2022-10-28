@@ -59,4 +59,12 @@ public class GroupConnPair {
     public int hashCode() {
         return Objects.hash(group, connId);
     }
+
+    @Override
+    public String toString() {
+        return "GroupConnPair{" +
+            "group='" + group + '\'' +
+            ", connId=" + connId +
+            '}';
+    }
 }

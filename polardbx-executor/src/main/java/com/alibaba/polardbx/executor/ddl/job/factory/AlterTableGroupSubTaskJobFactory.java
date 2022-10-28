@@ -16,13 +16,17 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.job.builder.DropPartLocalIndexBuilder;
+import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupItemBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropIndexPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTableGroupDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddSubTaskMetaTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -33,12 +37,15 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAlterTableGroup;
@@ -49,6 +56,7 @@ import org.apache.commons.lang.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
@@ -62,6 +70,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
     private final Map<String, Set<String>> sourceTableTopology;
     protected final List<Pair<String, String>> orderedTargetTableLocations;
     private final boolean skipBackfill;
+    private final ComplexTaskMetaManager.ComplexTaskType taskType;
     protected final ExecutionContext executionContext;
     private final String targetPartition;
     private DdlTask cdcTableGroupDdlMarkTask;
@@ -74,6 +83,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
                                             List<Pair<String, String>> orderedTargetTableLocations,
                                             String targetPartition,
                                             boolean skipBackfill,
+                                            ComplexTaskMetaManager.ComplexTaskType taskType,
                                             ExecutionContext executionContext) {
         this.preparedData = preparedData;
         this.phyDdlTableOperations = phyDdlTableOperations;
@@ -85,6 +95,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         this.skipBackfill = skipBackfill;
         this.executionContext = executionContext;
         this.targetPartition = targetPartition;
+        this.taskType = taskType;
     }
 
     @Override
@@ -154,9 +165,27 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         List<DdlTask> bringUpNewPartitions = ComplexTaskFactory
             .addPartitionTasks(schemaName, tableName, sourceTableTopology, targetTableTopology,
                 stayAtCreating, stayAtDeleteOnly, stayAtWriteOnly, stayAtWriteReOrg,
-                skipBackfill || tableTopology.isEmpty(), executionContext);
+                skipBackfill || tableTopology.isEmpty(), executionContext, isBroadcast(), taskType);
         //3.2 status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> READY_TO_PUBLIC
         taskList.addAll(bringUpNewPartitions);
+
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        if (!tableTopology.isEmpty() && tableMeta.isGsi() && !tableMeta.isClustered()
+            && !tableMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique) {
+
+            String sql = "drop index " + TddlConstants.UGSI_PK_UNIQUE_INDEX_NAME + " on " + tableName;
+
+            DropPartLocalIndexBuilder builder =
+                DropPartLocalIndexBuilder.createBuilder(schemaName, tableName, TddlConstants.UGSI_PK_UNIQUE_INDEX_NAME,
+                    sql, tableTopology, newPartitionInfo, executionContext);
+            List<PhyDdlTableOperation> phyDdlTableOperations = builder.build().getPhysicalPlans();
+
+            PhysicalPlanData physicalPlanData =
+                DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations);
+            DdlTask phyDdlTask =
+                new DropIndexPhyDdlTask(schemaName, physicalPlanData);
+            taskList.add(phyDdlTask);
+        }
 
         //cdc ddl mark task
         SqlKind sqlKind = ddl.kind();
@@ -234,5 +263,51 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
 
     public DdlTask getCdcTableGroupDdlMarkTask() {
         return cdcTableGroupDdlMarkTask;
+    }
+
+    public boolean isBroadcast() {
+        return false;
+    }
+
+    protected boolean schemaChange(PartitionInfo curPartInfo, PartitionInfo newPartInfo) {
+        if (curPartInfo.getPartitionBy().getPartitions().size() != newPartInfo.getPartitionBy().getPartitions()
+            .size()) {
+            return true;
+        }
+        for (int i = 0; i < curPartInfo.getPartitionBy().getPartitions().size(); i++) {
+            PartitionSpec curPartSpec = curPartInfo.getPartitionBy().getPartitions().get(i);
+            PartitionSpec newPartSpec = newPartInfo.getPartitionBy().getPartitions().get(i);
+            if (curPartSpec.getBoundSpaceComparator()
+                .compare(curPartSpec.getBoundSpec().getSingleDatum(), newPartSpec.getBoundSpec().getSingleDatum())
+                != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected void updateNewPartitionInfoByTargetGroup(AlterTableGroupBasePreparedData parentPrepareData,
+                                                       PartitionInfo newPartInfo) {
+        assert parentPrepareData.isMoveToExistTableGroup();
+        String schemaName = parentPrepareData.getSchemaName();
+        String targetTableGroup = parentPrepareData.getTargetTableGroup();
+        TableGroupConfig targetTableGroupInfo =
+            OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+                .getTableGroupConfigByName(targetTableGroup);
+        List<PartitionGroupRecord> partitionGroupRecords = targetTableGroupInfo.getPartitionGroupRecords();
+        List<PartitionSpec> partitionSpecs = newPartInfo.getPartitionBy().getPartitions();
+        assert partitionGroupRecords.size() == partitionSpecs.size();
+        newPartInfo.setTableGroupId(targetTableGroupInfo.getTableGroupRecord().id);
+        for (int i = 0; i < partitionSpecs.size(); i++) {
+            final String partitionName = partitionSpecs.get(i).getName();
+            Optional<PartitionGroupRecord> partitionGroupRecord = partitionGroupRecords.stream()
+                .filter(o -> o.partition_name.equalsIgnoreCase(partitionName)).findFirst();
+            if (!partitionGroupRecord.isPresent()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_NAME_NOT_EXISTS,
+                    "the partition:" + partitionSpecs.get(i).getName() + " is not exists in table group:"
+                        + parentPrepareData.getTargetTableGroup());
+            }
+            partitionSpecs.get(i).getLocation().setPartitionGroupId(partitionGroupRecord.get().id);
+        }
     }
 }

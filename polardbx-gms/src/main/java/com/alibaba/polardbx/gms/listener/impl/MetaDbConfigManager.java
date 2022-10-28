@@ -42,6 +42,7 @@ import java.util.Date;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -440,25 +441,50 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
             ConfigListenerRecord dataIdInfo = null;
             if (metaDbConn == null) {
                 try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+                    ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();
+                    configListenerAccessor.setConnection(conn);
                     try {
                         conn.setAutoCommit(false);
 
-                        ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();
-                        configListenerAccessor.setConnection(conn);
-                        dataIdInfo = configListenerAccessor.getDataId(dataId, true);
-                        if (dataIdInfo != null && dataIdInfo.status == ConfigListenerRecord.DATA_ID_STATUS_NORMAL) {
-                            // dataId has already exists, so ignore
-                            conn.commit();
-                            return dataIdInfo;
-                        }
-
                         // add dataId into metaDB
-                        configListenerAccessor
-                            .addDataId(dataId, ConfigListenerRecord.DATA_ID_STATUS_NORMAL,
-                                ConfigListenerAccessor.DEFAULT_OP_VERSION);
+                        while (true) {
+                            try {
+
+                                dataIdInfo = configListenerAccessor.getDataId(dataId, true);
+                                if (dataIdInfo != null
+                                    && dataIdInfo.status == ConfigListenerRecord.DATA_ID_STATUS_NORMAL) {
+                                    // dataId has already exists, so ignore
+                                    break;
+                                }
+
+                                configListenerAccessor
+                                    .addDataId(dataId, ConfigListenerRecord.DATA_ID_STATUS_NORMAL,
+                                        ConfigListenerAccessor.DEFAULT_OP_VERSION);
+                                break;
+                            } catch (Exception e) {
+                                if (e.getMessage().toLowerCase().contains("deadlock found")) {
+                                    Random rnd = new Random();
+                                    int randWaitTime = Math.abs(rnd.nextInt(500) + 1);
+                                    try {
+                                        Thread.sleep(randWaitTime);
+                                    } catch (Throwable ex) {
+                                        // ignore
+                                    }
+                                    dataIdInfo = configListenerAccessor.getDataId(dataId, false);
+                                    if (dataIdInfo != null) {
+                                        break;
+                                    }
+                                } else {
+                                    throw e;
+                                }
+                            }
+                        }
                         conn.commit();
+
                         // Select only
-                        dataIdInfo = configListenerAccessor.getDataId(dataId, false);
+                        if (dataIdInfo == null) {
+                            dataIdInfo = configListenerAccessor.getDataId(dataId, false);
+                        }
                         return dataIdInfo;
                     } catch (Throwable e) {
                         conn.rollback();
@@ -628,7 +654,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
     }
 
     private static void logLocalSyncConfig(String dataId, ConfigListener listener, long oldVer, long newVer,
-                                         boolean isSucc, long callListenerCostTime) {
+                                           boolean isSucc, long callListenerCostTime) {
         String listenerClassName = listener != null ? listener.getClass().getSimpleName() : "None";
         String logMsgTemplate =
             "[MetaDB Local Sync] DataId[%s]-Version[old:%s, new:%s]-Listener(%s)[isSucc:%s, handleTime: %.3f ms]";

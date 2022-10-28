@@ -1466,6 +1466,11 @@ public class CreateGsiTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, dropTable);
     }
 
+    /***
+     * Let DN rather CN validate whether the GSI key is too long.
+     * The following test cases depend on CN's validation, so ignore them.
+     */
+    @Ignore
     @Test
     public void testCreateGsiColumnTooLong() {
         final String table = "t_idx_order";
@@ -1512,6 +1517,11 @@ public class CreateGsiTest extends DDLBaseNewDBTestCase {
 
     }
 
+    /***
+     * Let DN rather CN validate whether the GSI key is too long.
+     * The following test cases depend on CN's validation, so ignore them.
+     */
+    @Ignore
     @Test
     public void testAlterTableAddGsiWithHintColumnTooLong() {
         final String primaryTable = "t_idx_order";
@@ -1816,8 +1826,8 @@ public class CreateGsiTest extends DDLBaseNewDBTestCase {
     }
 
     public void testCreateGsiDoubleDrop0() {
-        final String primaryTable = "t_idx_order";
-        final String indexTable = "g_i_idx_seller";
+        final String primaryTable = "t_idx_order_dp0";
+        final String indexTable = "g_i_idx_seller_dp0";
 
         dropTableWithGsi(primaryTable, ImmutableList.of());
 
@@ -1864,9 +1874,10 @@ public class CreateGsiTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
+    @Ignore("New DDL engine solve this problem")
     public void testCreateGsiDoubleDrop1() {
-        final String primaryTable = "t_idx_order";
-        final String indexTable = "g_i_idx_seller";
+        final String primaryTable = "t_idx_order_dp1";
+        final String indexTable = "g_i_idx_seller_dp1";
 
         dropTableWithGsi(primaryTable, ImmutableList.of());
 

@@ -21,11 +21,9 @@ import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.OperandTypes;
-import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlReturnTypeInference;
 
-import static org.apache.calcite.sql.type.ReturnTypes.VARCHAR_BINARY;
-import static org.apache.calcite.sql.type.ReturnTypes.explicit;
+import static org.apache.calcite.sql.type.ReturnTypes.VARCHAR_2000;
 
 /**
  * Created by chuanqin on 17/12/18.
@@ -44,9 +42,9 @@ public class FunctionWithVariadicArg extends SqlFunction {
     public static FunctionWithVariadicArg exportSet =
         new FunctionWithVariadicArg(
             "EXPORT_SET",
-            VARCHAR_BINARY,
+            VARCHAR_2000,
             SqlFunctionCategory.STRING);
 
     public static FunctionWithVariadicArg charFunc =
-        new FunctionWithVariadicArg("CHAR", ReturnTypes.VARCHAR_2000, SqlFunctionCategory.STRING);
+        new FunctionWithVariadicArg("CHAR", VARCHAR_2000, SqlFunctionCategory.STRING);
 }

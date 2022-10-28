@@ -43,7 +43,7 @@ public class InformationSchemaFileStorageHandler extends BaseVirtualViewSubClass
             if (!Engine.isFileStore(engine)) {
                 continue;
             }
-            FileSystemGroup group = FileSystemManager.getFileSystemGroup(engine);
+            FileSystemGroup group = FileSystemManager.getFileSystemGroup(engine, false);
             if (group != null) {
                 cursor.addRow(new Object[] {
                     group.getMaster().getWorkingDirectory(),

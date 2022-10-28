@@ -106,6 +106,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.common.TddlConstants.UGSI_PK_INDEX_NAME;
 
 /**
  * Parse tree for {@code CREATE TABLE} statement.
@@ -122,7 +123,10 @@ public class SqlCreateTable extends SqlCreate {
     private boolean autoPartition = false;
     private boolean broadcast;
     private boolean single = false;
+    //sourceSql maybe change
     private String sourceSql;
+    //originalSql is the same as what user input
+    private String originalSql;
     private SequenceBean autoIncrement;
 
     private List<MappingRule> mappingRules;
@@ -160,7 +164,7 @@ public class SqlCreateTable extends SqlCreate {
     // default collation for create table
     private String defaultCollation = null;
 
-    private String locality;
+    private String locality = "";
 
     // auto-split for partition-table
     private boolean autoSplit;
@@ -175,6 +179,7 @@ public class SqlCreateTable extends SqlCreate {
     private SqlNode localPartition = null;
 
     private SqlNode tableGroupName = null;
+    private SqlNode joinGroupName = null;
 
     private SQLPartitionByRange localPartitionSuffix;
 
@@ -264,6 +269,7 @@ public class SqlCreateTable extends SqlCreate {
                    SqlNodeList columnList, SqlNode query, SqlNode dbpartitionBy, SqlNode dbpartitions,
                    SqlNode tbpartitionBy, SqlNode tbpartitions, String sourceSql, boolean broadcast,
                    SequenceBean autoIncrement, SqlNode sqlPartition, SqlNode localPartition, SqlNode tableGroupName,
+                   SqlNode joinGroupName,
                    SQLPartitionByRange localPartitionSuffix) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.name = Preconditions.checkNotNull(name);
@@ -280,6 +286,7 @@ public class SqlCreateTable extends SqlCreate {
         this.sqlPartition = sqlPartition;
         this.localPartition = localPartition;
         this.tableGroupName = tableGroupName;
+        this.joinGroupName = joinGroupName;
         this.localPartitionSuffix = localPartitionSuffix;
     }
 
@@ -297,7 +304,8 @@ public class SqlCreateTable extends SqlCreate {
                           List<Pair<SqlIdentifier, SqlIndexDefinition>> foreignKeys, List<SqlCall> checks,
                           SqlIdentifier primaryKeyConstraint, boolean hasPrimaryKeyConstraint, SqlNode sqlPartition,
                           SqlNode localPartition,
-                          SqlNode tableGroupName) {
+                          SqlNode tableGroupName,
+                          SqlNode joinGroupName) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.name = name;
         this.likeTableName = likeTableName;
@@ -329,6 +337,7 @@ public class SqlCreateTable extends SqlCreate {
         this.sqlPartition = sqlPartition;
         this.localPartition = localPartition;
         this.tableGroupName = tableGroupName;
+        this.joinGroupName = joinGroupName;
     }
 
     public boolean shouldLoad() {
@@ -431,6 +440,14 @@ public class SqlCreateTable extends SqlCreate {
 
     public void setTableGroupName(SqlNode tableGroupName) {
         this.tableGroupName = tableGroupName;
+    }
+
+    public SqlNode getJoinGroupName() {
+        return joinGroupName;
+    }
+
+    public void setJoinGroupName(SqlNode joinGroupName) {
+        this.joinGroupName = joinGroupName;
     }
 
     /**
@@ -592,6 +609,14 @@ public class SqlCreateTable extends SqlCreate {
         this.sourceSql = sourceSql;
     }
 
+    public String getOriginalSql() {
+        return originalSql;
+    }
+
+    public void setOriginalSql(String originalSql) {
+        this.originalSql = originalSql;
+    }
+
     public String getLocality() {
         return this.locality;
     }
@@ -642,7 +667,8 @@ public class SqlCreateTable extends SqlCreate {
             hasPrimaryKeyConstraint,
             sqlPartition,
             localPartition,
-            tableGroupName);
+            tableGroupName,
+            joinGroupName);
     }
 
     public MySqlStatement rewriteForGsi() {
@@ -842,6 +868,10 @@ public class SqlCreateTable extends SqlCreate {
             stmt.setTableGroup(null);
         }
 
+        if (joinGroupName == null) {
+            stmt.setJoinGroup(null);
+        }
+
         if (!autoSplit) {
             stmt.setAutoSplit(null);
         }
@@ -991,7 +1021,10 @@ public class SqlCreateTable extends SqlCreate {
                     }
                     if (indexColumns.equals(elementColumns)) {
                         if (isUniqueIndex) {
-                            it.remove();    // Need to be replaced with MySqlUnique
+                            if (!((MySqlTableIndex) sqlTableElement).getName().getSimpleName()
+                                .equalsIgnoreCase(UGSI_PK_INDEX_NAME)) {
+                                it.remove();    // Need to be replaced with MySqlUnique
+                            }
                         } else {
                             needAddIndexColumns = false;
                             ((MySqlTableIndex) sqlTableElement).setIndexType(indexType);
@@ -1018,7 +1051,11 @@ public class SqlCreateTable extends SqlCreate {
                     if (indexColumns.equals(elementColumns)) {
                         if (isUniqueIndex && !(sqlTableElement instanceof MySqlUnique)
                             && !(sqlTableElement instanceof MySqlPrimaryKey)) {
-                            it.remove();  //  Need to be replaced with MySqlUnique
+                            // never remove implicit pk info
+                            if (!((MySqlKey) sqlTableElement).getName().getSimpleName()
+                                .equalsIgnoreCase(UGSI_PK_INDEX_NAME)) {
+                                it.remove();  //  Need to be replaced with MySqlUnique
+                            }
                         } else {
                             needAddIndexColumns = false;
                             ((MySqlKey) sqlTableElement).setIndexType(indexType);
@@ -1059,7 +1096,7 @@ public class SqlCreateTable extends SqlCreate {
             // For unique index, create unified index with all index columns included
             // Max length of MySQL index name is 64
             if (needAddIndexColumns) {
-                // Should keep the order.
+                // Should keep the order. indexColumnDefMap is a LinkedHashMap(keys in order)
                 final Set<String> orderedIndexColumnNames = indexColumnDefMap.keySet();
                 final String suffix = buildUnifyIndexName(orderedIndexColumnNames, 45);
                 final String indexName = buildIndexName(existingIndexNames, suffix);
@@ -1326,16 +1363,37 @@ public class SqlCreateTable extends SqlCreate {
         return getPartitionKeys(partitionBy, shardings, true);
     }
 
-    protected static class PartitionColumnFinder extends SqlShuttle {
+    public static class PartitionColumnFinder extends SqlShuttle {
 
         protected SqlIdentifier partColumn;
+        protected boolean containConstExpr = false;
+        protected boolean containPartFunc = false;
+        protected boolean useNestingPartFunc = false;
 
-        protected PartitionColumnFinder() {
+        public PartitionColumnFinder() {
         }
 
         public boolean find(SqlNode partExpr) {
             partExpr.accept(this);
             return partColumn != null;
+        }
+
+        @Override
+        public SqlNode visit(SqlCall call) {
+            containPartFunc = true;
+            List<SqlNode> operandList = call.getOperandList();
+            for (int i = 0; i < operandList.size(); i++) {
+                if (operandList.get(i) instanceof  SqlCall) {
+                    useNestingPartFunc = true;
+                }
+            }
+            return super.visit(call);
+        }
+
+        @Override
+        public SqlNode visit(SqlLiteral literal) {
+            containConstExpr =  true;
+            return super.visit(literal);
         }
 
         @Override
@@ -1348,6 +1406,17 @@ public class SqlCreateTable extends SqlCreate {
             return partColumn;
         }
 
+        public boolean isContainConstExpr() {
+            return containConstExpr;
+        }
+
+        public boolean isContainPartFunc() {
+            return containPartFunc;
+        }
+
+        public boolean isUseNestingPartFunc() {
+            return useNestingPartFunc;
+        }
     }
 
     public static Set<String> getPartitionKeys(SqlNode partitionBy, Set<String> shardingKeys, boolean toUpperCase) {

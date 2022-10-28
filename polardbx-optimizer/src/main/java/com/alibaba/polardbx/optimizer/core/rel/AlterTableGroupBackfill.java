@@ -39,28 +39,36 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
     final String logicalTableName;
     final Map<String, Set<String>> sourcePhyTables;
     final Map<String, Set<String>> targetPhyTables;
+    final boolean broadcast;
+    final boolean movePartitions;
 
     public AlterTableGroupBackfill(RelOptCluster cluster,
                                    RelTraitSet traitSet,
                                    String schemaName,
                                    String logicalTableName,
                                    Map<String, Set<String>> sourcePhyTables,
-                                   Map<String, Set<String>> targetPhyTables) {
+                                   Map<String, Set<String>> targetPhyTables,
+                                   boolean broadcast,
+                                   boolean movePartitions) {
         super(cluster, traitSet);
         this.logicalTableName = logicalTableName;
         this.schemaName = schemaName;
         this.sourcePhyTables = sourcePhyTables;
         this.targetPhyTables = targetPhyTables;
+        this.broadcast = broadcast;
+        this.movePartitions = movePartitions;
     }
 
     public static AlterTableGroupBackfill createAlterTableGroupBackfill(String schemaName,
                                                                         String logicalTableName, ExecutionContext ec,
                                                                         Map<String, Set<String>> sourcePhyTables,
-                                                                        Map<String, Set<String>> targetPhyTables) {
+                                                                        Map<String, Set<String>> targetPhyTables,
+                                                                        boolean broadcast,
+                                                                        boolean movePartitions) {
         final RelOptCluster cluster = SqlConverter.getInstance(schemaName, ec).createRelOptCluster(null);
         RelTraitSet traitSet = RelTraitSet.createEmpty();
         return new AlterTableGroupBackfill(cluster, traitSet, schemaName, logicalTableName, sourcePhyTables,
-            targetPhyTables);
+            targetPhyTables, broadcast, movePartitions);
     }
 
     @Override
@@ -78,5 +86,11 @@ public class AlterTableGroupBackfill extends AbstractRelNode {
 
     public Map<String, Set<String>> getTargetPhyTables() {
         return targetPhyTables;
+    }
+
+    public boolean getBroadcast() { return broadcast; }
+
+    public boolean getMovePartitions() {
+        return movePartitions;
     }
 }

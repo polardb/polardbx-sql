@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dql.auto.select;
 
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
@@ -347,9 +348,12 @@ public class SelectWithOperatorTest extends AutoReadBaseTestCase {
     }
 
     /**
+     * In FileStorage, float is recorded as double, thus the result may be different
+     *
      * @since 5.0.1
      */
     @Test
+    @FileStoreIgnore
     public void complicateCalcuationTest() throws Exception {
         String sql =
             "select integer_test/(pk+1)*float_test as c from " + baseOneTableName + " where varchar_test=? order by pk";

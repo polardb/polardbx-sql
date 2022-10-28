@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
@@ -25,6 +26,7 @@ import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
@@ -42,6 +44,7 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -117,8 +120,9 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
      */
     public List<RelNode> buildUpdate(LogicalModify logicalModify, String tableNameAlias, List<String> primaryKeyNames,
                                      int sourceExpressionBeginIndex,
+                                     Pair<String, String> logDbNameAndLogTbName,
                                      Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
-                                     List<List<Object>> values) {
+                                     List<List<Object>> values, ExecutionContext ec) {
         SqlNode targetTableNode = RelUtils.buildTargetNode();
 
         List<Integer> pickedColumnIndexes = new ArrayList<>();
@@ -168,11 +172,14 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
                     .getTypeFactory());
                 PhyTableOperation operation = buildPhyTableOperation(newNode,
                     logicalModify,
+                    logDbNameAndLogTbName.getKey(),
+                    logDbNameAndLogTbName.getValue(),
                     targetDb,
                     tableNames,
                     returnType,
                     null,
-                    batchParams);
+                    batchParams,
+                    ec);
 
                 newPhysicalPlans.add(operation);
             }
@@ -189,7 +196,9 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
      */
     public List<RelNode> buildUpdateWithPk(LogicalModify logicalModify, List<List<Object>> distinctRows,
                                            Mapping updateSetMapping,
-                                           Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults) {
+                                           Pair<String, String> logDbNameAndLogTbName,
+                                           Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
+                                           ExecutionContext ec) {
         final SqlUpdate update = (SqlUpdate) logicalModify.getOriginalSqlNode();
 
         // Build physical plans
@@ -228,11 +237,14 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
                     .getTypeFactory());
                 final PhyTableOperation operation = buildPhyTableOperation(update,
                     logicalModify,
+                    logDbNameAndLogTbName.getKey(),
+                    logDbNameAndLogTbName.getValue(),
                     targetDb,
                     tableNames,
                     returnType,
                     null,
-                    batchParams);
+                    batchParams,
+                    ec);
 
                 result.add(operation);
             }
@@ -248,7 +260,9 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
      * @return physical plans
      */
     public List<RelNode> buildDelete(LogicalModify logicalModify, List<String> primaryKeyNames,
-                                     Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults) {
+                                     Pair<String, String> logDbNameAndLogTbName,
+                                     Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
+                                     ExecutionContext ec) {
         SqlNode targetTableNode = RelUtils.buildTargetNode();
 
         List<RelNode> newPhysicalPlans = new ArrayList<>();
@@ -279,17 +293,30 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
                     .getTypeFactory());
                 PhyTableOperation operation = buildPhyTableOperation(newNode,
                     logicalModify,
+                    logDbNameAndLogTbName.getKey(),
+                    logDbNameAndLogTbName.getValue(),
                     targetDb,
                     tableNames,
                     returnType,
                     currentParams,
-                    null);
+                    null,
+                    ec);
 
                 newPhysicalPlans.add(operation);
             }
         }
 
         return newPhysicalPlans;
+    }
+
+    public List<RelNode> buildDelete(LogicalModify logicalModify, Pair<String, String> logDbNameAndLogTbName,
+                                     Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
+                                     ExecutionContext ec, boolean withoutPk) {
+        if (withoutPk) {
+            return buildDeleteWithPkSk(logicalModify, logDbNameAndLogTbName, shardResults, ec);
+        } else {
+            return buildDeleteWithPk(logicalModify, logDbNameAndLogTbName, shardResults, ec);
+        }
     }
 
     /**
@@ -299,6 +326,7 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
      * @return physical plans
      */
     public List<RelNode> buildDeleteWithPk(LogicalModify logicalModify,
+                                           Pair<String, String> logDbNameAndLogTbName,
                                            Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
                                            ExecutionContext ec) {
         final SqlNode targetTable = RelUtils.buildTargetNode();
@@ -359,11 +387,98 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
                     logicalModify.getCluster().getTypeFactory());
                 final PhyTableOperation operation = buildPhyTableOperation(delete,
                     logicalModify,
+                    logDbNameAndLogTbName.getKey(),
+                    logDbNameAndLogTbName.getValue(),
                     targetDb,
                     tableNames,
                     returnType,
                     currentParams,
-                    null);
+                    null,
+                    ec);
+
+                result.add(operation);
+            }
+        }
+
+        return result;
+    }
+
+
+    /**
+     * Build delete for each table: DELETE FROM tb WHERE (pk1 = ? AND pk2 = ? AND ...) OR ...
+     *
+     * @param shardResults targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
+     * @return physical plans
+     */
+    public List<RelNode> buildDeleteWithPkSk(LogicalModify logicalModify, Pair<String, String> logDbNameAndLogTbName,
+                                             Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
+                                             ExecutionContext ec) {
+        final SqlNode targetTable = RelUtils.buildTargetNode();
+
+        final SqlDelete originDelete = (SqlDelete) logicalModify.getOriginalSqlNode();
+        final SqlIdentifier alias = originDelete.getAlias();
+
+        // Build from with parameterized table name and alias
+        final SqlBasicCall originFrom = (SqlBasicCall) originDelete.getFrom();
+        assert originFrom.getKind() == SqlKind.AS;
+
+        final SqlNode from = new SqlBasicCall(SqlStdOperatorTable.AS,
+            new SqlNode[] {targetTable, originFrom.getOperands()[1]},
+            SqlParserPos.ZERO);
+
+        // Get column part of in condition
+        final SqlBasicCall originCondition = (SqlBasicCall) originDelete.getCondition();
+        assert originCondition.getKind() == SqlKind.IN;
+
+        final SqlNode columnPart = originCondition.getOperands()[0];
+
+        // Build physical plans
+        final List<RelNode> result = new ArrayList<>();
+        for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbEntry : shardResults.entrySet()) {
+            // Target physical db
+            final String targetDb = dbEntry.getKey();
+
+            for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbEntry : dbEntry.getValue().entrySet()) {
+
+                resetParams();
+
+                // Target physical table
+                final String targetTb = tbEntry.getKey();
+                buildTargetTableParams(targetTb);
+
+                // IN condition
+                final List<List<Object>> pkValues = tbEntry.getValue()
+                    .stream()
+                    .map(Pair::getValue)
+                    .collect(Collectors.toList());
+                final SqlNode orCondition = buildOrCondition(pkValues, columnPart);
+
+                final SqlNode delete = FastSqlConstructUtils.collectTableInfo(new SqlDelete(SqlParserPos.ZERO,
+                    targetTable,
+                    orCondition,
+                    null,
+                    alias,
+                    from,
+                    null,
+                    new SqlNodeList(ImmutableList.of(alias), SqlParserPos.ZERO),
+                    null,
+                    null,
+                    originDelete.getKeywords(),
+                    originDelete.getHints()), ec);
+
+                final List<List<String>> tableNames = ImmutableList.of(ImmutableList.of(targetTb));
+                final RelDataType returnType = RelOptUtil.createDmlRowType(SqlKind.DELETE,
+                    logicalModify.getCluster().getTypeFactory());
+                final PhyTableOperation operation = buildPhyTableOperation(delete,
+                    logicalModify,
+                    logDbNameAndLogTbName.getKey(),
+                    logDbNameAndLogTbName.getValue(),
+                    targetDb,
+                    tableNames,
+                    returnType,
+                    currentParams,
+                    null,
+                    ec);
 
                 result.add(operation);
             }
@@ -509,20 +624,81 @@ public class PhyTableModifyBuilder extends PhyOperationBuilderCommon {
         return new SqlBasicCall(SqlStdOperatorTable.IN, new SqlNode[] {keyNameNode, outerRow}, SqlParserPos.ZERO);
     }
 
-    private static PhyTableOperation buildPhyTableOperation(SqlNode sqlNode, RelNode relNode, String dbIndex,
+    private SqlNode buildOrCondition(List<List<Object>> pkValues, SqlNode keyNameNode) {
+        List<SqlNode> allValues = new ArrayList<>();
+        List<SqlIdentifier> columnNames = new ArrayList<>();
+        if (keyNameNode instanceof SqlBasicCall) {
+            // multiple columns
+            for (SqlNode operand : ((SqlBasicCall) keyNameNode).getOperands()) {
+                columnNames.add((SqlIdentifier) operand);
+            }
+        } else {
+            // single column
+            columnNames.add((SqlIdentifier)keyNameNode);
+        }
+
+        for (List<Object> pkRow : pkValues) {
+            List<SqlNode> equals = new ArrayList<>();
+
+            // Build and for each pk value
+            for (int j = 0; j < columnNames.size(); j++) {
+                SqlIdentifier sqlIdentifier = columnNames.get(j);
+                SqlDynamicParam dynamicParam = new SqlDynamicParam(nextDynamicIndex, SqlParserPos.ZERO);
+                addParam(pkRow.get(j));
+                SqlNode equal = new SqlBasicCall(SqlStdOperatorTable.IS_NOT_DISTINCT_FROM,
+                    new SqlNode[] {sqlIdentifier, dynamicParam},
+                    SqlParserPos.ZERO);
+                equals.add(equal);
+            }
+            allValues.add(PlannerUtils.buildAndTree(equals));
+        }
+        return PlannerUtils.buildOrTree(allValues);
+    }
+
+    private static PhyTableOperation buildPhyTableOperation(SqlNode sqlNode, LogicalModify relNode,
+                                                            String logDbName,
+                                                            String logTbName,
+                                                            String dbIndex,
                                                             List<List<String>> tableNames, RelDataType rowType,
                                                             Map<Integer, ParameterContext> params,
-                                                            List<Map<Integer, ParameterContext>> batchParams) {
-        String sql = RelUtils.toNativeSql(sqlNode);
-        PhyTableOperation operation =
-            new PhyTableOperation(relNode.getCluster(), relNode.getTraitSet(), rowType, null, relNode);
-        operation.setDbIndex(dbIndex);
-        operation.setTableNames(tableNames);
-        operation.setSqlTemplate(sql);
-        operation.setKind(sqlNode.getKind());
-        operation.setDbType(DbType.MYSQL);
-        operation.setParam(params);
-        operation.setBatchParameters(batchParams);
+                                                            List<Map<Integer, ParameterContext>> batchParams,
+                                                            ExecutionContext ec) {
+        BytesSql sql = RelUtils.toNativeBytesSql(sqlNode);
+//        PhyTableOperation operation =
+//            new PhyTableOperation(relNode.getCluster(), relNode.getTraitSet(), rowType, null, relNode);
+//        operation.setSchemaName(logDbName);
+//        operation.setLogicalTableNames(ImmutableList.of(logTbName));
+//        operation.setDbIndex(dbIndex);
+//        operation.setTableNames(tableNames);
+//        operation.setBytesSql(sql);
+//        operation.setKind(sqlNode.getKind());
+//        operation.setDbType(DbType.MYSQL);
+//        operation.setParam(params);
+//        operation.setBatchParameters(batchParams);
+
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setSchemaName(logDbName);
+        buildParams.setLogTables(ImmutableList.of(logTbName));
+        buildParams.setGroupName(dbIndex);
+        buildParams.setPhyTables(tableNames);
+        buildParams.setSqlKind(sqlNode.getKind());
+        buildParams.setLockMode(SqlSelect.LockMode.UNDEF);
+
+        buildParams.setLogicalPlan(relNode);
+        buildParams.setCluster(relNode.getCluster());
+        buildParams.setTraitSet(relNode.getTraitSet());
+        buildParams.setRowType(relNode.getRowType());
+        buildParams.setCursorMeta(null);
+
+        buildParams.setBytesSql(sql);
+        buildParams.setDbType(DbType.MYSQL);
+        buildParams.setDynamicParams(params);
+        buildParams.setBatchParameters(batchParams);
+
+        // generate galaxy prepare digest and set into buildParams
+        Planner.setGalaxyPrepareDigest(buildParams, logDbName, sql, relNode.getTableNames(), ec, relNode);
+
+        PhyTableOperation operation = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
         return operation;
     }
 

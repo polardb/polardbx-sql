@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.common.lock;
 
-import java.sql.Connection;
+import com.alibaba.polardbx.common.logical.ITConnection;
 
 public class PolarDBXLockingFunctionHandle extends LockingFunctionHandle {
-    PolarDBXLockingFunctionHandle(LockingFunctionManager manager, Connection tddlConnection, String drdsSession) {
+    PolarDBXLockingFunctionHandle(LockingFunctionManager manager, ITConnection tddlConnection, String drdsSession) {
         super(manager, tddlConnection, drdsSession);
     }
 

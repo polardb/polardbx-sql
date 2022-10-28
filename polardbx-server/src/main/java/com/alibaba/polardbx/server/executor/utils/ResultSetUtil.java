@@ -16,6 +16,13 @@
 
 package com.alibaba.polardbx.server.executor.utils;
 
+import com.alibaba.druid.proxy.jdbc.ResultSetMetaDataProxy;
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
+import com.alibaba.polardbx.matrix.jdbc.TResultSet;
+import com.alibaba.polardbx.matrix.jdbc.TResultSetMetaData;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -26,23 +33,19 @@ import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataMultiPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
 import com.alibaba.polardbx.net.util.CharsetUtil;
-import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.druid.proxy.jdbc.ResultSetMetaDataProxy;
-import com.mysql.jdbc.Field;
-import com.alibaba.polardbx.common.exception.NotSupportException;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
-import com.alibaba.polardbx.matrix.jdbc.TResultSet;
-import com.alibaba.polardbx.matrix.jdbc.TResultSetMetaData;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.server.util.StringUtil;
+import com.mysql.jdbc.Field;
 
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -53,7 +56,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class ResultSetUtil {
 
-    public static int toFlag(java.sql.ResultSetMetaData metaData, int column, ColumnMeta meta) throws SQLException {
+    public static int toFlag(TResultSetMetaData metaData, int column, ColumnMeta meta) throws SQLException {
         int flags = toFlag(metaData, column);
         DataType dataType = meta.getDataType();
         if (DataTypeUtil.equalsSemantically(dataType, DataTypes.BinaryType)) {
@@ -68,6 +71,9 @@ public class ResultSetUtil {
 
             // is blob
             flags |= 16;
+        } else if (DataTypeUtil.equalsSemantically(dataType, DataTypes.VarcharType)
+            && dataType.getCharsetName() == CharsetName.BINARY) {
+            flags |= 128;
         }
 
         if (meta.getField().isPrimary()) {
@@ -100,10 +106,15 @@ public class ResultSetUtil {
      *      isBinary:  ((this.colFlag & 128) > 0)
      * </pre>
      */
-    public static int toFlag(java.sql.ResultSetMetaData metaData, int column) throws SQLException {
+    public static int toFlag(TResultSetMetaData metaData, int column) throws SQLException {
         int flags = 0;
-        if (metaData.isNullable(column) == 1) {
+        if (metaData.isNullable(column) != ResultSetMetaData.columnNullable) {
             flags |= 1;
+        }
+        com.alibaba.polardbx.optimizer.config.table.Field field = metaData.getField(column);
+        if (field.isPrimary()) {
+            flags |= 1;
+            flags |= 2;
         }
 
         if (!metaData.isSigned(column)) {
@@ -119,6 +130,10 @@ public class ResultSetUtil {
 
     public static boolean isUnsigned(int flag) {
         return (flag & 32) > 0;
+    }
+
+    public static boolean isBinary(int charsetIndex) {
+        return charsetIndex == 63;
     }
 
     // ResultSetMetaData.fields
@@ -140,8 +155,13 @@ public class ResultSetUtil {
     }
 
     public static IPacketOutputProxy resultSetToPacket(ResultSet rs, String charset, FrontendConnection c,
-                                                       AtomicLong affectRow) throws Exception {
+                                                       AtomicLong affectRow, IPacketOutputProxy proxy)
+        throws Exception {
 
+        boolean withProxy = proxy != null;
+        if (withProxy) {
+            proxy.packetBegin();
+        }
         MysqlResultSetPacket packet = new MysqlResultSetPacket();
         // 先执行一次next，因为存在lazy-init处理，可能写了packet head包出去，但实际获取数据时出错导致客户端出现lost
         // connection，没有任何其他异常
@@ -150,11 +170,11 @@ public class ResultSetUtil {
         java.sql.ResultSetMetaData metaData = rs.getMetaData();
         int columnCount = metaData.getColumnCount();
         boolean existUndecidedType = false;
-        List<Integer> undecidedTypeIndexs = new ArrayList<Integer>();
+        final Set<Integer> undecidedTypeIndexes = new HashSet<>();
         synchronized (packet) {
-            if (packet.resulthead == null) {
-                packet.resulthead = new ResultSetHeaderPacket();
-                packet.resulthead.fieldCount = columnCount;
+            if (packet.resultHead == null) {
+                packet.resultHead = new ResultSetHeaderPacket();
+                packet.resultHead.fieldCount = columnCount;
             }
             String javaCharset = CharsetUtil.getJavaCharset(charset);
             int charsetIndex = CharsetUtil.getIndex(charset);
@@ -179,7 +199,8 @@ public class ResultSetUtil {
                         } else if (metaData instanceof TResultSetMetaData) {
                             List<ColumnMeta> metas = ((TResultSetMetaData) metaData).getColumnMetas();
                             ColumnMeta meta = metas.get(i);
-                            packet.fieldPackets[i].catalog = StringUtil.encode_0("def", javaCharset);
+                            packet.fieldPackets[i].catalog =
+                                StringUtil.encode_0(FieldPacket.DEFAULT_CATALOG_STR, javaCharset);
                             packet.fieldPackets[i].orgName =
                                 StringUtil.encode_0(((TResultSetMetaData) metaData).getOriginColumnName(j),
                                     javaCharset);
@@ -190,7 +211,7 @@ public class ResultSetUtil {
                             packet.fieldPackets[i].table = StringUtil.encode_0(metaData.getTableName(j), javaCharset);
                             packet.fieldPackets[i].db = StringUtil.encode_0(c.getSchema(), javaCharset);
                             packet.fieldPackets[i].length = metaData.getColumnDisplaySize(j);
-                            packet.fieldPackets[i].flags = toFlag(metaData, j, meta);
+                            packet.fieldPackets[i].flags = toFlag((TResultSetMetaData) metaData, j, meta);
                             packet.fieldPackets[i].decimals = (byte) metaData.getScale(j);
                             final com.alibaba.polardbx.optimizer.config.table.Field field = meta.getField();
                             final Integer collationIndex = field.getCollationIndex();
@@ -199,6 +220,9 @@ public class ResultSetUtil {
                             } else {
                                 if (DataTypeUtil.anyMatchSemantically(meta.getDataType(), DataTypes.BinaryType,
                                     DataTypes.BlobType)) {
+                                    packet.fieldPackets[i].charsetIndex = 63; // iso-8859-1
+                                } else if (DataTypeUtil.equalsSemantically(meta.getDataType(), DataTypes.VarcharType)
+                                    && meta.getDataType().getCharsetName() == CharsetName.BINARY) {
                                     packet.fieldPackets[i].charsetIndex = 63; // iso-8859-1
                                 } else {
                                     packet.fieldPackets[i].charsetIndex = charsetIndex;
@@ -224,7 +248,7 @@ public class ResultSetUtil {
                                 packet.fieldPackets[i].type = (byte) i1;
                             } else {
                                 packet.fieldPackets[i].type = (byte) (MysqlDefs.FIELD_TYPE_NULL & 0xff); // 默认设置为string
-                                undecidedTypeIndexs.add(i);
+                                undecidedTypeIndexes.add(i);
                                 existUndecidedType = true;
                             }
                         } else {
@@ -235,13 +259,11 @@ public class ResultSetUtil {
             }
         }
 
-        IPacketOutputProxy proxy = null;
-
         // 如果未出现未决类型，先输出header
         // 如果出现未决类型，但没有数据，强行输出header
         // 如果出现未决类型，并且有数据, 等拿到第一条数据后再输出
         if (!existUndecidedType || !existNext) {
-            proxy = writeHeader(packet, c);
+            proxy = withProxy ? writeHeaderWithProxy(packet, c, proxy) : writeHeader(packet, c);
             existUndecidedType = false;
 
         }
@@ -258,23 +280,8 @@ public class ResultSetUtil {
                     (XRowSet) ((TResultSet) rs).getCurrentKVPair() : null;
             for (int i = 0; i < columnCount; i++) {
                 int j = i + 1;
-                if (existUndecidedType && undecidedTypeIndexs.contains(i)) {
-                    // 根据数据的类型，重新设置下type
-                    DataType type = DataTypes.StringType;
-                    try {
-                        DataType objType = DataTypeUtil.getTypeOfObject(rs.getObject(j));
-                        if (objType.getSqlType() != DataType.UNDECIDED_SQL_TYPE) {
-                            type = objType;
-                        }
-                    } catch (Throwable e) {
-                        // ignore
-                        // 针对0000-00-00的时间类型可能getObject会失败，getBytes没问题
-                    }
-
-                    undecidedTypeIndexs.remove(Integer.valueOf(i)); // 必须是对象
-                    packet.fieldPackets[i].type =
-                        (byte) (MysqlDefs.javaTypeMysql(MysqlDefs.javaTypeDetect(type.getSqlType(),
-                            packet.fieldPackets[i].decimals)) & 0xff);
+                if (existUndecidedType && undecidedTypeIndexes.contains(i)) {
+                    resetUndecidedType(rs, i, packet, undecidedTypeIndexes);
                 }
 
                 if (xRowSet != null) {
@@ -285,32 +292,35 @@ public class ResultSetUtil {
                         row.fieldValues.add(((TResultSet) rs).getBytes(j, charset));
                     } else {
                         byte[] bytes = ((TResultSet) rs).getBytes(j, charset);
-                        row.fieldValues.add(bytes == null ? null : bytes);
+                        row.fieldValues.add(bytes);
                     }
                 } else {
                     if (packet.fieldPackets[i].type == MysqlDefs.FIELD_TYPE_BIT) {
                         row.fieldValues.add(rs.getBytes(j));
                     } else {
                         byte[] bytes = rs.getBytes(j);
-                        row.fieldValues.add(bytes == null ? null : bytes);
+                        row.fieldValues.add(bytes);
                     }
                 }
             }
 
             if (existUndecidedType) {// 如果出现未决类型，一条数据都没有，强制输出packet
-                proxy = writeHeader(packet, c);
+                proxy = withProxy ? writeHeaderWithProxy(packet, c, proxy) : writeHeader(packet, c);
                 existUndecidedType = false;
             }
 
-//            row.packetId = c.getNewPacketId();
             proxy = row.write(proxy);
             affectRow.incrementAndGet();// 计数
             existNext = rs.next();
         } while (existNext);
 
         if (existUndecidedType) {// 如果出现未决类型， 一条数据都没有，强制输出packet
-            proxy = writeHeader(packet, c);
-            existUndecidedType = false;
+            proxy = withProxy ? writeHeaderWithProxy(packet, c, proxy) : writeHeader(packet, c);
+        }
+
+        if (withProxy) {
+            writeEOFPacket(proxy, c, EOFPacket.SERVER_MORE_RESULTS_EXISTS);
+            proxy.packetEnd();
         }
         return proxy;
     }
@@ -346,28 +356,86 @@ public class ResultSetUtil {
         proxy.packetEnd();
     }
 
-    private static IPacketOutputProxy writeHeader(MysqlResultSetPacket packet, FrontendConnection c) {
+    public static IPacketOutputProxy writeHeader(MysqlResultSetPacket packet, FrontendConnection c) {
+        // By default, write EOF packet for header.
+        return writeHeader(packet, c, true);
+    }
+
+    public static IPacketOutputProxy writeHeader(MysqlResultSetPacket packet, FrontendConnection c, boolean writeEof) {
         // write header
-        packet.resulthead.packetId = c.getNewPacketId();
+        packet.resultHead.packetId = c.getNewPacketId();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c);
         proxy.packetBegin();
 
-        proxy = packet.resulthead.write(proxy);
+        proxy = packet.resultHead.write(proxy);
 
         // write fields
-
         if (packet.fieldPackets != null) {
             for (FieldPacket field : packet.fieldPackets) {
                 field.packetId = c.getNewPacketId();
                 proxy = field.write(proxy);
             }
-
         }
 
         // write eof
+        if (writeEof) {
+            writeEOFPacket(proxy, c, EOFPacket.SERVER_STATUS_AUTOCOMMIT);
+        }
+
+        return proxy;
+    }
+
+    private static IPacketOutputProxy writeHeaderWithProxy(MysqlResultSetPacket packet, FrontendConnection c,
+                                                           IPacketOutputProxy proxy) {
+        // write header
+        packet.resultHead.packetId = c.getNewPacketId();
+
+        proxy = packet.resultHead.write(proxy);
+
+        // write fields
+        if (packet.fieldPackets != null) {
+            for (FieldPacket field : packet.fieldPackets) {
+                field.packetId = c.getNewPacketId();
+                proxy = field.write(proxy);
+            }
+        }
+
+        // write eof
+        // TODO Is this necessary or fully correct? using wireshark to check later.
         writeEOFPacket(proxy, c, EOFPacket.SERVER_STATUS_AUTOCOMMIT);
 
         return proxy;
+    }
+
+    /**
+     * Reset data-type of the (i+1)-th column in the result set,
+     * i.e., the i-th element of headerPacket.fieldPackets[] array.
+     */
+    public static void resetUndecidedType(ResultSet rs, int i,
+                                          MysqlResultSetPacket headerPacket,
+                                          Set<Integer> undecidedTypeIndexes) {
+        // 根据数据的类型，重新设置下type
+        DataType type = DataTypes.StringType;
+        // Result set begins with 1, but array in java begins with 0.
+        final int j = i + 1;
+        try {
+            Object obj = rs.getObject(j);
+
+            if (obj != null) {
+                DataType objType = DataTypeUtil.getTypeOfObject(obj);// 将JavaTypeObject转换为Tddl的DataType
+                if (objType.getSqlType() != DataType.UNDECIDED_SQL_TYPE) {
+                    type = objType;
+                }
+            }
+
+        } catch (Throwable e) {
+            // ignore
+            // 针对0000-00-00的时间类型可能getObject会失败，getBytes没问题
+        }
+        undecidedTypeIndexes.remove(Integer.valueOf(i)); // 必须是对象
+        headerPacket.fieldPackets[i].type =
+            (byte) (MysqlDefs.javaTypeMysql(MysqlDefs.javaTypeDetect(type.getSqlType(),
+                headerPacket.fieldPackets[i].decimals)) & 0xff);
     }
 
 }

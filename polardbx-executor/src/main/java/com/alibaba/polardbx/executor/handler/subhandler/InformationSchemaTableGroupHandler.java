@@ -35,6 +35,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaFullTableGroup;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaTableGroup;
@@ -50,6 +51,7 @@ import java.util.Map;
  */
 public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassHandler {
     private static final Logger logger = LoggerFactory.getLogger(InformationSchemaTableGroupHandler.class);
+    private static final String LOGICAL_GSI_NAME = "%s.%s";
 
     public InformationSchemaTableGroupHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
@@ -150,9 +152,9 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                         for (TablePartRecordInfoContext context : tableGroupConfig
                             .getAllTables()) {
                             String tableName = context.getLogTbRec().tableName;
+                            TableMeta tableMeta = schemaManager.getTable(tableName);
                             if (tableCount == 0) {
                                 try {
-                                    TableMeta tableMeta = schemaManager.getTable(context.getLogTbRec().tableName);
                                     PartitionInfo partInfo = tableMeta.getPartitionInfo();
                                     int actualPartColCnt = PartitionInfoUtil.getActualPartitionColumns(partInfo).size();
                                     if (partInfo.getPartitionBy().getStrategy() == PartitionStrategy.HASH) {
@@ -167,6 +169,11 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                                 }
                             } else {
                                 sb.append(",");
+                            }
+                            if (tableMeta.isGsi()) {
+                                String primaryTable = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+                                String unwrapGsiName = TddlSqlToRelConverter.unwrapGsiName(tableName);
+                                tableName = String.format(LOGICAL_GSI_NAME, primaryTable, unwrapGsiName);
                             }
                             sb.append(tableName);
                             tableCount++;

@@ -30,6 +30,11 @@ public class DDLExtInfo {
      */
     private String createSql4PhyTable;
 
+    /**
+     * should be set if polardbx_server_id variable is in execution context
+     */
+    private String serverId;
+
     public Long getTaskId() {
         return taskId;
     }
@@ -44,5 +49,13 @@ public class DDLExtInfo {
 
     public void setCreateSql4PhyTable(String createSql4PhyTable) {
         this.createSql4PhyTable = createSql4PhyTable;
+    }
+
+    public String getServerId() {
+        return serverId;
+    }
+
+    public void setServerId(String serverId) {
+        this.serverId = serverId;
     }
 }

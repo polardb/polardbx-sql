@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.partitionmanagement.backfill;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.gsi.InsertIndexExecutor;
@@ -41,8 +42,10 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
@@ -53,18 +56,24 @@ import java.util.stream.Collectors;
  * @author luoyanxin
  */
 public class AlterTableGroupLoader extends Loader {
+    private final Map<String, Pair<String, String>> physicalTableGroupMap;
+
     protected AlterTableGroupLoader(String schemaName, String tableName, SqlInsert insert, SqlInsert insertIgnore,
                                     ExecutionPlan checkerPlan,
                                     int[] checkerPkMapping,
                                     int[] checkerParamMapping,
-                                    BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc) {
+                                    BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
+                                    Map<String, Pair<String, String>> physicalTableGroupMap,
+                                    boolean mirrorCopy) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc);
+            executeFunc, mirrorCopy);
+        this.physicalTableGroupMap = physicalTableGroupMap;
     }
 
     public static Loader create(String schemaName, String primaryTable, String indexTable,
                                 BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
-                                boolean useHint, ExecutionContext ec) {
+                                boolean useHint, ExecutionContext ec,
+                                Map<String, Pair<String, String>> physicalTableGroupMap, boolean mirrorCopy) {
         final OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
 
         // Construct target table
@@ -151,16 +160,25 @@ public class AlterTableGroupLoader extends Loader {
             checkerPlan,
             checkerPkMapping,
             checkerParamMapping,
-            executeFunc);
+            executeFunc,
+            physicalTableGroupMap,
+            mirrorCopy);
     }
 
     @Override
     public int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
-                             ExecutionContext executionContext, String sourceDbIndex) {
+                             ExecutionContext executionContext, String sourceDbIndex, String phyTableName) {
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
         PartitionInfo newPartInfo = tableMeta.getNewPartitionInfo();
+        String targetGroup = "";
+        if (StringUtils.isNotEmpty(phyTableName) && this.mirrorCopy) {
+            Pair<String, String> groupPair = physicalTableGroupMap.get(phyTableName);
+            if (groupPair != null && groupPair.getKey().equalsIgnoreCase(sourceDbIndex)) {
+                targetGroup = groupPair.getValue();
+            }
+        }
         return InsertIndexExecutor
             .backfillIntoPartitionedTable(null, sqlInsert, tableMeta, schemaName, executionContext, executeFunc, false,
-                newPartInfo);
+                newPartInfo, targetGroup, phyTableName, this.mirrorCopy);
     }
 }

@@ -18,20 +18,19 @@ package com.alibaba.polardbx.qatest.ddl.sharding.cdc;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Calendar;
 
 /**
  * 针对分区表的DDL打标测试
  * <p>
  * created by ziyang.lb
  **/
-@Ignore
 public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
-    private String T_ORDER = "CREATE TABLE `t_order` (\n"
+    private String T_ORDER = String.format("CREATE TABLE `t_order` (\n"
         + "\t`id` bigint(20) DEFAULT NULL,\n"
         + "\t`gmt_modified` datetime NOT NULL,\n"
         + "\tPRIMARY KEY (`gmt_modified`)\n"
@@ -39,11 +38,11 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
         + "PARTITION BY KEY(`gmt_modified`)\n"
         + "PARTITIONS 8\n"
         + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
-        + "STARTWITH '2020-01-01'\n"
+        + "STARTWITH '%s-01-01'\n"
         + "INTERVAL 1 MONTH\n"
         + "EXPIRE AFTER 12\n"
         + "PRE ALLOCATE 6\n"
-        + "PIVOTDATE NOW()\n";
+        + "PIVOTDATE NOW()\n", Calendar.getInstance().get(Calendar.YEAR) - 1);
 
     @Test
     public void testCdcDdlRecord() throws SQLException, InterruptedException {
@@ -90,7 +89,9 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
 
         // Test Step
         tokenHints = buildTokenHints();
-        sql = tokenHints + "ALTER TABLE t_order EXPIRE LOCAL PARTITION p20200401";
+        sql = tokenHints + String
+            .format("ALTER TABLE t_order EXPIRE LOCAL PARTITION p%s0401",
+                Calendar.getInstance().get(Calendar.YEAR) - 1);
         stmt.execute(sql);
         Assert.assertEquals("", getDdlRecordSql(tokenHints));
 

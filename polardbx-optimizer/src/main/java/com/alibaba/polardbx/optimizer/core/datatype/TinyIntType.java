@@ -26,7 +26,7 @@ import java.math.BigDecimal;
  * @author agapple 2014年11月21日 上午11:19:51
  * @since 5.1.14
  */
-public class TinyIntType extends ShortType {
+public class TinyIntType extends ByteType {
 
     private static final byte MIN_VALUE = Byte.MIN_VALUE;
     private static final byte MAX_VALUE = Byte.MAX_VALUE;
@@ -38,15 +38,15 @@ public class TinyIntType extends ShortType {
         return java.sql.Types.TINYINT;
     }
 
-    @Override
-    public Short getMaxValue() {
-        return MAX_VALUE;
-    }
+//    @Override
+//    public Short getMaxValue() {
+//        return MAX_VALUE;
+//    }
 
-    @Override
-    public Short getMinValue() {
-        return MIN_VALUE;
-    }
+//    @Override
+//    public Short getMinValue() {
+//        return MIN_VALUE;
+//    }
 
     @Override
     protected BigDecimal getMaxValueToDecimal() {

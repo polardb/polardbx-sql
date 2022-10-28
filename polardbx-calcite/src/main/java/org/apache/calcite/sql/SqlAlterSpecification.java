@@ -31,4 +31,7 @@ public abstract class SqlAlterSpecification extends SqlCall {
         return this;
     }
 
+    public SqlAlterSpecification removeAfterColumn() {
+        return this;
+    }
 }

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task;
 
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.Connection;
@@ -42,5 +44,9 @@ public abstract class BaseSyncTask extends BaseDdlTask {
     }
 
     protected abstract void executeImpl(ExecutionContext executionContext);
+
+    protected boolean isFromCDC() {
+        return TStringUtil.equalsIgnoreCase(schemaName, SystemDbHelper.CDC_DB_NAME);
+    }
 
 }

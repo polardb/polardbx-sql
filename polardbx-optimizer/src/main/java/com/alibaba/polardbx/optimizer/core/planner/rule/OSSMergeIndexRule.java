@@ -42,12 +42,12 @@ import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
-import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.tools.RelBuilder;
+import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -434,7 +434,7 @@ public class OSSMergeIndexRule extends RelOptRule {
             if (baseRelNode instanceof LogicalTableScan) {
                 return LogicalTableScan.create(baseRelNode.getCluster(), baseRelNode.getTable());
             }
-            RelDrdsWriter relWriter = new RelDrdsWriter(null);
+            RelDrdsWriter relWriter = new RelDrdsWriter(CalcitePlanOptimizerTrace.DEFAULT_LEVEL);
             (baseRelNode).explainForDisplay(relWriter);
             throw new TddlRuntimeException(ErrorCode.ERR_UNEXPECTED_REL_TREE, "tree is " + relWriter.asString());
         }
@@ -549,7 +549,7 @@ public class OSSMergeIndexRule extends RelOptRule {
         RelNode[] nodes = new RelNode[] {newRoot, oldRoot};
         for (RelNode node : nodes) {
             StringBuilder sb = new StringBuilder();
-            RelDrdsWriter relWriter = new RelDrdsWriter(null);
+            RelDrdsWriter relWriter = new RelDrdsWriter(CalcitePlanOptimizerTrace.DEFAULT_LEVEL);
             node.explainForDisplay(relWriter);
             sb.append(relWriter.asString());
             RelMetadataQuery mq = node.getCluster().getMetadataQuery();

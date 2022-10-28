@@ -19,6 +19,7 @@ package com.alibaba.polardbx.common.lock;
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.logical.ITConnection;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -52,13 +53,13 @@ public class LockingFunctionHandle {
     private static final Map<String, ScheduledFuture> HEARTBEAT_FUTURES = new ConcurrentHashMap<>();
     private LockingFunctionManager manager;
 
-    private Connection tddlConnection;
+    private ITConnection tddlConnection;
     private String drdsSession;
     private LockingFunctionSystableDao dao;
 
     private Map<String, Integer> reentries;
 
-    LockingFunctionHandle(LockingFunctionManager manager, Connection tddlConnection, String drdsSession) {
+    LockingFunctionHandle(LockingFunctionManager manager, ITConnection tddlConnection, String drdsSession) {
         this.manager = manager;
         this.tddlConnection = tddlConnection;
         this.reentries = new HashMap<>();

@@ -93,6 +93,11 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
 
     @Test
     public void insertFromDualAllFieldTest() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
 
         String sql = "insert into " + baseOneTableName
             + "(pk,integer_test,varchar_test) select AUTO_SEQ_" + baseOneTableName
@@ -115,6 +120,12 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
      */
     @Test
     public void insertWithMutil_sequenceTest() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
+
         String sql = "insert into " + baseOneTableName
             + "(pk,integer_test,varchar_test) values(AUTO_SEQ_" + baseOneTableName
             + ".nextval,?,?),(AUTO_SEQ_" + baseOneTableName + ".nextval,?,?)";
@@ -137,6 +148,12 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
      */
     @Test
     public void insert_SequenceTest() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
+
         String sql = "insert into " + baseOneTableName + " (pk,varchar_test,integer_test) values(AUTO_SEQ_"
             + baseOneTableName + ".nextval,?,?)";
         List<Object> param = new ArrayList<Object>();
@@ -216,6 +233,12 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
      */
     @Test
     public void insertAutoIncrementInTransactionTest() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
+
         tddlConnection.setAutoCommit(false);
         try {
             JdbcUtil.executeUpdate(tddlConnection, "set drds_transaction_policy='2PC'");
@@ -613,6 +636,49 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
+    @Test
+    public void insertSelectLastInsertIdByMultiTest() throws Exception {
+        String hint = "/*+TDDL:CMD_EXTRA(INSERT_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+
+        List<ColumnEntity> columns = TableColumnGenerator.getAllTypeColum();
+        String sql = "insert into " + baseOneTableName + " (";
+        String values = " values ( ";
+        for (int j = 0; j < columns.size(); j++) {
+            String columnName = columns.get(j).getName();
+            sql = sql + columnName + ",";
+            values = values + " ?,";
+        }
+        sql = sql.substring(0, sql.length() - 1) + ") ";
+        values = values.substring(0, values.length() - 1) + ")";
+        sql = sql + values;
+
+        List<Object> param = columnDataGenerator.getAllColumnValue(columns, PK_COLUMN_NAME, 1);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
+
+        // Check last_insert_id for INSERT SELECT
+        sql = hint + MessageFormat
+            .format(
+                "insert into {0} (varchar_test, integer_test) select /*+TDDL:cmd_extra(MERGE_UNION_SIZE=0)*/ varchar_test, integer_test from {0} order by pk",
+                baseOneTableName);
+        String returnedLastInsertId =
+            String.valueOf(JdbcUtil.updateDataTddlAutoGen(tddlConnection, sql, null, "pk"));
+        String lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+
+        Assert.assertEquals(lastInsertId, returnedLastInsertId);
+
+        returnedLastInsertId =
+            String.valueOf(JdbcUtil.updateDataTddlAutoGen(mysqlConnection, sql, null, "pk"));
+        lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", mysqlConnection);
+
+        Assert.assertEquals(lastInsertId, returnedLastInsertId);
+
+        sql = "select integer_test, varchar_test, char_test, bigint_test, float_test from " + baseOneTableName;
+
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
     /**
      * Test multi value with expression in it
      */
@@ -869,6 +935,11 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
      */
     @Test
     public void insertMultiValueAutoGeneratedKeyTest5() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
 
         // Check last_insert_id for INSERT SELECT
         final String sql = MessageFormat.format(
@@ -1079,6 +1150,11 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
      */
     @Test
     public void insertMultiValueAutoGeneratedKeyTest9() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
 
         // Check last_insert_id for INSERT SELECT
         final String sql = MessageFormat.format(
@@ -1181,5 +1257,41 @@ public class InsertSequenceTest extends CrudBasedLockTestCase {
                 Assert.assertTrue(!rs.next());
             }
         }
+    }
+
+    @Test
+    public void insert_SequenceInsideFuncTest() throws Exception {
+        // There isn't a sequence associated with a single table in DRDS mode.
+        String singleTable = ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC + ExecuteTableName.ONE_DB_ONE_TB_SUFFIX;
+        if (baseOneTableName.equalsIgnoreCase(singleTable)) {
+            return;
+        }
+
+        String seqName = "insert_seq_func_test_seq";
+        String dropSql = "drop sequence " + seqName;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropSql);
+
+        String createSql = "create sequence " + seqName;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
+
+        String sql = String.format(
+            "insert into %s (pk,varchar_test,integer_test) values (%s.nextval, lpad(%s.nextval, 30, '0'), %s.nextval + 10)",
+            baseOneTableName, seqName, seqName, seqName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        String lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+        Assert.assertEquals(lastInsertId, "0");
+
+        sql = String.format("insert into %s (pk) values (%s.nextval)", baseOneTableName, seqName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+        Assert.assertEquals(lastInsertId, "0");
+
+        sql = String.format("insert into %s (pk) values (null)", baseOneTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        lastInsertId =
+            JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
+        Assert.assertNotEquals(lastInsertId, "0");
     }
 }

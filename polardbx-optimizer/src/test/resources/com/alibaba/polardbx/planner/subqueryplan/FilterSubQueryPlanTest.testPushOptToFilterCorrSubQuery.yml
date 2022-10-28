@@ -218,7 +218,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`test_hash_tb2`.`id` = `id`) and (`name` = `test_hash_tb2`.`name`)) and (`name` = 'xx')))))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = 'xx') and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`)) and (`name` = `test_hash_tb2`.`name`)))))))")
 
 - sql: |
     select a.id
@@ -331,4 +331,4 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where (((`id` = `test_hash_tb`.`id`) and (`name` = 'xx')) and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`test_hash_tb2`.`id` = `id`) and (`name` = `test_hash_tb2`.`name`)) and (`name` = 'xx')))))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_hash_tb3", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where (((`id` = `test_hash_tb`.`id`) and (`name` = 'xx')) and (`id` in (select `id` from `test_hash_tb3` as `test_hash_tb3` where (((`name` = 'xx') and (`test_hash_tb2`.`id` = `id`)) and (`name` = `test_hash_tb2`.`name`)))))))")

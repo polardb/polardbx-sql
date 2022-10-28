@@ -40,7 +40,7 @@ public class HandleJsonModule
     @Override
     public void configure(Binder binder) {
         jsonBinder(binder).addModuleBinding().to(SplitJacksonModule.class);
-
+        jsonBinder(binder).addModuleBinding().to(DefinedSimpleModule.class);
         binder.bind(HandleResolver.class).in(Scopes.SINGLETON);
     }
 }

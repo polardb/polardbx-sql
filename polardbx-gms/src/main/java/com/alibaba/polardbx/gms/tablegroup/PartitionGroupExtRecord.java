@@ -29,6 +29,7 @@ public class PartitionGroupExtRecord extends PartitionGroupRecord {
 
     @Override
     public PartitionGroupExtRecord fill(ResultSet rs) throws SQLException {
+        this.tg_id = rs.getLong("tg_id");
         this.phy_db = rs.getString("phy_db");
         this.phy_tb_cnt = rs.getLong("phy_tb_cnt");
         return this;

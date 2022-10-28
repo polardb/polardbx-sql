@@ -52,6 +52,6 @@ public class ExecutableDdlJob4DropPartitionGsi extends ExecutableDdlJob {
     /**
      * last task in Drop GSI
      */
-    private TablesSyncTask finalSyncTask;
+    private TableSyncTask finalSyncTask;
 
 }

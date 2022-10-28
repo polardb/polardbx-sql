@@ -74,41 +74,46 @@ public class SqlTypeAssignmentRule implements SqlTypeMappingRule {
 
     // BIG_BIT is assignable from ...
     rule.clear();
-    rules.add(SqlTypeName.BIG_BIT, EnumSet.of(SqlTypeName.BIG_BIT));
+    rules.add(SqlTypeName.BIG_BIT, EnumSet.of(SqlTypeName.BIG_BIT, SqlTypeName.BIGINT));
 
     // BIT is assignable from ...
     rule.clear();
     rule.add(SqlTypeName.BIT);
     rule.add(SqlTypeName.INTEGER);
+    rule.add(SqlTypeName.BIGINT);
     rules.add(SqlTypeName.BIT, rule);
 
     // MULTISET is assignable from...
     rules.add(SqlTypeName.MULTISET, EnumSet.of(SqlTypeName.MULTISET));
 
     // TINYINT is assignable from...
-    rules.add(SqlTypeName.TINYINT, EnumSet.of(SqlTypeName.TINYINT));
+    rules.add(SqlTypeName.TINYINT, EnumSet.of(SqlTypeName.TINYINT, SqlTypeName.BIGINT));
 
     // TINYINT_UNSIGNED is assignable from...
     rule.clear();
     rule.add(SqlTypeName.TINYINT);
     rule.add(SqlTypeName.TINYINT_UNSIGNED);
+    rule.add(SqlTypeName.BIGINT);
     rules.add(SqlTypeName.TINYINT_UNSIGNED, rule);
 
     // SMALLINT is assignable from...
     rule.add(SqlTypeName.SMALLINT);
     rules.add(SqlTypeName.SMALLINT, rule);
     rule.add(SqlTypeName.SMALLINT_UNSIGNED);
+    rule.add(SqlTypeName.BIGINT);
     rules.add(SqlTypeName.SMALLINT_UNSIGNED, rule);
 
     // MEDIUMINT is assignable from...
     rule.add(SqlTypeName.MEDIUMINT);
     rules.add(SqlTypeName.MEDIUMINT, rule);
     rule.add(SqlTypeName.MEDIUMINT_UNSIGNED);
+    rule.add(SqlTypeName.BIGINT);
     rules.add(SqlTypeName.MEDIUMINT_UNSIGNED, rule);
 
     // INTEGER is assignable from...
     rule.add(SqlTypeName.INTEGER);
     rule.add(SqlTypeName.YEAR);
+    rule.add(SqlTypeName.BIGINT);
     rules.add(SqlTypeName.INTEGER, rule);
     rule.add(SqlTypeName.INTEGER_UNSIGNED);
     rules.add(SqlTypeName.INTEGER_UNSIGNED, rule);

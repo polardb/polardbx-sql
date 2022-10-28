@@ -19,15 +19,20 @@ package com.alibaba.polardbx.optimizer.hint;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.hint.DirectlyRouteCondition;
 import com.alibaba.polardbx.common.model.hint.ExtraCmdRouteCondition;
 import com.alibaba.polardbx.common.model.hint.FullRouteCondition;
 import com.alibaba.polardbx.common.model.hint.RouteCondition;
 import com.alibaba.polardbx.common.model.hint.RuleRouteCondition;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -35,16 +40,18 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSelectQueryBlock;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelOptCostImpl;
-import com.alibaba.polardbx.optimizer.config.schema.RootSchemaFactory;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
-import com.alibaba.polardbx.optimizer.core.TddlJavaTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
@@ -64,9 +71,13 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperationBuilder;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.rel.PhyViewUnion;
-import com.alibaba.polardbx.optimizer.core.rel.ReplaceLogicalTableNameWithPhysicalTableNameVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceTblWithPhyTblVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.dal.BaseDalOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
@@ -77,6 +88,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.mpp.MppExchange;
 import com.alibaba.polardbx.optimizer.hint.operator.BaseHintOperator;
+import com.alibaba.polardbx.optimizer.hint.operator.HintCmdNode;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator.CmdBean;
 import com.alibaba.polardbx.optimizer.hint.operator.HintPushOperator;
@@ -87,22 +99,24 @@ import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.hint.visitor.HintCollectVisitor;
 import com.alibaba.polardbx.optimizer.hint.visitor.HintRelVisitor;
 import com.alibaba.polardbx.optimizer.hint.visitor.HintRelVisitor.HintTableFinder;
-import com.alibaba.polardbx.optimizer.hint.visitor.HintRelVisitor.PushdownHandlerVisitor;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.parse.hint.SimpleHintParser;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils.TableProperties;
@@ -110,16 +124,14 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
-import org.apache.calcite.config.CalciteConnectionConfig;
-import org.apache.calcite.config.CalciteConnectionConfigImpl;
-import org.apache.calcite.config.CalciteConnectionProperty;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import org.apache.calcite.config.Lex;
 import org.apache.calcite.config.NullCollation;
-import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.plan.Contexts;
 import org.apache.calcite.plan.ConventionTraitDef;
 import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.plan.hep.HepMatchOrder;
@@ -175,7 +187,6 @@ import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
-import org.apache.commons.collections.MapUtils;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -186,8 +197,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
@@ -230,15 +241,7 @@ public class HintPlanner extends TddlSqlToRelConverter {
             .withExpand(false)
             .build();
 
-        Properties properties = new Properties();
-        properties.setProperty(CalciteConnectionProperty.CASE_SENSITIVE.camelName(),
-            String.valueOf(parserConfig.caseSensitive()));
-        CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
-        CalciteSchema calciteSchema = RootSchemaFactory.createRootSchema(schemaName, ec);
-        catalog = new CalciteCatalogReader(calciteSchema,
-            calciteSchema.path(schemaName),
-            new TddlJavaTypeFactoryImpl(),
-            connectionConfig);
+        catalog = RelUtils.buildCatalogReader(schemaName, ec);
 
         VolcanoPlanner planner = new VolcanoPlanner(DrdsRelOptCostImpl.FACTORY, Contexts.EMPTY_CONTEXT);
         if (ec.isEnableRuleCounter()) {
@@ -419,22 +422,17 @@ public class HintPlanner extends TddlSqlToRelConverter {
         final RelOptCluster cluster = converter.createRelOptCluster(null);
         final List<Integer> dynamicParamIndex = PlannerUtils.getDynamicParamIndex(ast);
 
+        boolean useGrpParallelism = ec.getGroupParallelism() > 1;
+        boolean shouldUseGrpConnId = false;
+        boolean usingAutoCommit = ec.isAutoCommit();
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         List<RelNode> results = new ArrayList<>();
-        for (String group : finalGroups) {
-            PhyQueryOperation phyQueryOperation = new PhyQueryOperation(cluster,
-                RelTraitSet.createEmpty(),
-                ast,
-                group,
-                param,
-                dynamicParamIndex);
-            phyQueryOperation.setKind(ast.getKind());
-            results.add(phyQueryOperation);
-        } // end of for
+        PhyQueryOperationBuilder phyQueryBuilder = new PhyQueryOperationBuilder();
+        List<String> logTbls = new ArrayList<>();
+        List<List<String>> phyTbls = new ArrayList<>();
 
         final ExecutionPlanPropertiesVisitor logicalPlanPropertiesVisitor = new ExecutionPlanPropertiesVisitor();
         ast.accept(logicalPlanPropertiesVisitor);
-
-        final List<String> modifiedTableNames = logicalPlanPropertiesVisitor.getModifiedTableNames();
 
         boolean pushdownHintOnGsi = false;
         if (cmdBean.getExtraCmd().containsKey(ConnectionProperties.PUSHDOWN_HINT_ON_GSI)) {
@@ -442,20 +440,158 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 Boolean.valueOf(cmdBean.getExtraCmd().get(ConnectionProperties.PUSHDOWN_HINT_ON_GSI).toString());
         }
 
-        List<TableProperties> tableModified = null;
-        if (ast.getKind().belongsTo(SqlKind.DML)) {
-            if (!pushdownHintOnGsi) {
-                tableModified = checkModifyGsiDirectly(schemaName, modifiedTableNames, ec);
-            } else {
-                tableModified = getModifiedTable(schemaName, modifiedTableNames, ec);
-            }
+        boolean pushdownDmlOnBroadcast = false;
+        if (cmdBean.getExtraCmd().containsKey(ConnectionProperties.PUSHDOWN_HINT_ON_BROADCAST)) {
+            pushdownDmlOnBroadcast =
+                Boolean.valueOf(cmdBean.getExtraCmd().get(ConnectionProperties.PUSHDOWN_HINT_ON_BROADCAST).toString());
         }
 
-        final BitSet planProperties = logicalPlanPropertiesVisitor.appendPlanProperties(null, null, ec);
+        SqlSelect.LockMode lockMode = logicalPlanPropertiesVisitor.getLockMode();
+        List<String> allPhyTableNames = new ArrayList<>();
+        final List<String> modifiedPhyTableNames = logicalPlanPropertiesVisitor.getModifiedTableNames();
+        SqlKind sqlKind = logicalPlanPropertiesVisitor.getSqlKind();
+        if (sqlKind == null) {
+            sqlKind = ast.getKind();
+        }
+        List<TableProperties> tableModified = null;
 
+        /**
+         * <pre>
+         *     key: logTbName
+         *     val: map {
+         *          key: grp
+         *          val: list of phy
+         *     }
+         *
+         * </pre>
+         */
+        Map<String, Map<String, List<String>>> logTbPhyTbListMapping =
+            new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        if (sqlKind != null && sqlKind.belongsTo(SqlKind.DML)) {
+            if ((!pushdownHintOnGsi) || (!pushdownDmlOnBroadcast)) {
+                tableModified =
+                    checkModifyGsiOrBroadcastDirectly(schemaName, modifiedPhyTableNames, ec, pushdownHintOnGsi,
+                        pushdownDmlOnBroadcast);
+            } else {
+                tableModified = getModifiedTable(schemaName, modifiedPhyTableNames, ec);
+            }
+            allPhyTableNames = modifiedPhyTableNames;
+        } else if (sqlKind != null && sqlKind.belongsTo(SqlKind.QUERY)) {
+            Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(ast);
+            allPhyTableNames.addAll(tableSet.stream().map(dbTb -> dbTb.getValue()).collect(Collectors.toList()));
+        }
+
+        if (isNewPartDb) {
+            if (!usingAutoCommit && (
+                (lockMode != SqlSelect.LockMode.UNDEF && sqlKind.belongsTo(SqlKind.QUERY)) || sqlKind.belongsTo(
+                    SqlKind.DML))) {
+                buildLogTblPhyTblsMapping(schemaName, finalGroups, allPhyTableNames, ec, logTbPhyTbListMapping);
+                if (logTbPhyTbListMapping.size() > 1) {
+                    // Not allowed access multi logical table by direct hint
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        "Unsupported to use direct HINT for modifying physical tables[%s] which is belong to more than one logical table[%s]",
+                        String.join("", allPhyTableNames), String.join(",", logTbPhyTbListMapping.keySet()));
+                } else if (logTbPhyTbListMapping.isEmpty()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        "Unsupported to use direct HINT for accessing physical tables[%s] which is not belong to any logical tables",
+                        String.join("", allPhyTableNames));
+                }
+                String logTb = logTbPhyTbListMapping.keySet().iterator().next();
+                Map<String, List<String>> grpToPhyTbls = logTbPhyTbListMapping.get(logTb);
+                if (grpToPhyTbls.size() > 1 && useGrpParallelism) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        String.format(
+                            "Not allowed to use direct HINT to access more than one groups[%s] of db[%s] with auto mode in transaction, please use partition selection syntax instead.",
+                            String.join(",", grpToPhyTbls.keySet()), schemaName)
+                    );
+                }
+                String grpName = grpToPhyTbls.keySet().iterator().next();
+                List<String> phyTblsOfOneGrp = grpToPhyTbls.get(grpName);
+                if (phyTblsOfOneGrp.size() > 1 && useGrpParallelism) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        String.format(
+                            "Not allowed to use direct HINT to access more than one physical tables[%s] of table[%s] of db[%s] with auto mode in transaction, please use partition selection syntax instead.",
+                            String.join(",", phyTblsOfOneGrp), logTb, schemaName)
+                    );
+                }
+                if (useGrpParallelism) {
+                    PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, ec);
+                    shouldUseGrpConnId = true;
+                }
+            }
+        }
+        if (shouldUseGrpConnId) {
+            String logTb = logTbPhyTbListMapping.keySet().iterator().next();
+            Map<String, List<String>> grpToPhyTbls = logTbPhyTbListMapping.get(logTb);
+            String grpName = grpToPhyTbls.keySet().iterator().next();
+            List<String> phyTblsOfOneGrp = grpToPhyTbls.get(grpName);
+            logTbls.add(logTb);
+            phyTbls.add(phyTblsOfOneGrp);
+            for (String group : finalGroups) {
+                PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
+                    cluster, RelTraitSet.createEmpty(),
+                    schemaName,
+                    logTbls,
+                    phyTbls,
+                    ast,
+                    ast.getKind(),
+                    lockMode,
+                    group,
+                    null,
+                    true,
+                    param,
+                    dynamicParamIndex,
+                    ec);
+                results.add(phyQueryOperation);
+            } // end of for
+        } else {
+            if (!isNewPartDb &&
+                ec.getParamManager().getBoolean(ConnectionParams.ENABLE_NODE_HINT_REPLACE) &&
+                hintCollection.nodeOnly()) {
+                // change suffix for node hint of select
+                ReplaceTblWithPhyTblVisitor visitor = new ReplaceTblWithPhyTblVisitor(schemaName, ec);
+                ast = ast.accept(visitor);
+
+                // replace node 0 to single
+                if (visitor.shouldChooseSingleGroup()) {
+                    boolean zeroGroup = true;
+                    for (HintCmdOperator operator : hintCollection.cmdHintResult) {
+                        if (operator instanceof HintCmdNode && !((HintCmdNode) operator).isNodeZero()) {
+                            zeroGroup = false;
+                            break;
+                        }
+                    }
+                    if (zeroGroup) {
+                        for (Group group : OptimizerContext.getContext(schemaName).getMatrix().getGroups()) {
+                            if (GroupInfoUtil.isSingleGroup(group.getName())) {
+                                finalGroups = ImmutableList.of(group.getName());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            for (String group : finalGroups) {
+                PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
+                    cluster, RelTraitSet.createEmpty(),
+                    schemaName,
+                    logTbls,
+                    phyTbls,
+                    ast,
+                    ast.getKind(),
+                    lockMode,
+                    group,
+                    null,
+                    false,
+                    param,
+                    dynamicParamIndex,
+                    ec);
+                results.add(phyQueryOperation);
+            } // end of for
+        }
+        final BitSet planProperties = logicalPlanPropertiesVisitor.appendPlanProperties(null, null, ec);
         final ExecutionPlan result = new ExecutionPlan(ast, wrapWithViewUnion(results), null, planProperties);
         result.setModifiedTables(tableModified);
-
         return result;
     }
 
@@ -464,8 +600,41 @@ public class HintPlanner extends TddlSqlToRelConverter {
         return getLogicalTable(schemaName, phyTables, checker, false, ec);
     }
 
-    public <T> List<T> getLogicalTable(String schemaName, List<String> phyTables,
-                                       BiFunction<String, TableMeta, T> checker, boolean allowDuplicate,
+    public void buildLogTblPhyTblsMapping(String schemaName,
+                                          List<String> groupList,
+                                          List<String> phyTables,
+                                          ExecutionContext ec,
+                                          Map<String, Map<String, List<String>>> logTbPhyTbListMappingOutput) {
+        PartitionInfoManager partInfoMgr =
+            ec.getSchemaManager(schemaName).getTddlRuleManager().getPartitionInfoManager();
+        List<PartitionInfo> allPartInfos = partInfoMgr.getPartitionInfos();
+        if (logTbPhyTbListMappingOutput == null) {
+            return;
+        }
+        for (int k = 0; k < groupList.size(); k++) {
+            String grp = groupList.get(k);
+            for (int i = 0; i < phyTables.size(); i++) {
+                String phyTb = phyTables.get(i);
+                for (int j = 0; j < allPartInfos.size(); j++) {
+                    PartitionInfo partInfo = allPartInfos.get(j);
+                    PartitionSpec tarPartSpec = partInfo.getPartSpecSearcher().getPartSpec(grp, phyTb);
+                    if (tarPartSpec != null) {
+                        String logTbName = partInfo.getTableName();
+                        Map<String, List<String>> grpPhyTbsMapping =
+                            logTbPhyTbListMappingOutput.computeIfAbsent(logTbName,
+                                logTb -> new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+                        List<String> phyTbls = grpPhyTbsMapping.computeIfAbsent(grp, g -> new ArrayList<>());
+                        phyTbls.add(phyTb);
+                    }
+                }
+            }
+        }
+    }
+
+    public <T> List<T> getLogicalTable(String schemaName,
+                                       List<String> phyTables,
+                                       BiFunction<String, TableMeta, T> checker,
+                                       boolean allowDuplicate,
                                        ExecutionContext ec) {
         final List<T> result = new ArrayList<>();
         final Set<String> currentTableNames = new HashSet<>();
@@ -498,15 +667,18 @@ public class HintPlanner extends TddlSqlToRelConverter {
                 OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTables();
 
             tables = tables.stream().filter(rule ->
-                schemaManager.getTable(rule.getVirtualTbName()).isGsi()
-                    || schemaManager.getTable(rule.getVirtualTbName()).withGsi()).collect(Collectors.toSet());
+                rule.isBroadcast()
+                        || schemaManager.getTable(rule.getVirtualTbName()).isGsi()
+                        || schemaManager.getTable(rule.getVirtualTbName()).withGsi()
+                ).collect(Collectors.toSet());
 
             Map<String, Set<String>> logicalTableMap = buildLogicalTableMap(tables);
 
             Set<String> partitionTables = partitionInfoManager.getPartitionTables();
             if (!partitionTables.isEmpty()) {
                 partitionTables = partitionTables.stream().filter(tableName ->
-                    schemaManager.getTable(tableName).isGsi()
+                    partitionInfoManager.getPartitionInfo(tableName).isBroadcastTable() ||
+                        schemaManager.getTable(tableName).isGsi()
                         || schemaManager.getTable(tableName).withGsi()).collect(Collectors.toSet());
 
                 for (String partitionTableName : partitionTables) {
@@ -551,15 +723,25 @@ public class HintPlanner extends TddlSqlToRelConverter {
         return logicalTableMap;
     }
 
-    public List<TableProperties> checkModifyGsiDirectly(final String schemaName,
-                                                        final List<String> modifiedTableNames, ExecutionContext ec) {
+    public List<TableProperties> checkModifyGsiOrBroadcastDirectly(final String schemaName,
+                                                                   final List<String> modifiedTableNames,
+                                                                   ExecutionContext ec,
+                                                                   final boolean pushdownDmlOnGsi,
+                                                                   final boolean pushdownDmlOnBroadcast) {
         return getLogicalTable(schemaName, modifiedTableNames, (phyTable, tableMeta) -> {
-            if (tableMeta.isGsi()) {
+            if (tableMeta.isGsi() && !pushdownDmlOnGsi) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY,
                     phyTable);
-            } else if (tableMeta.withGsi()) {
+            } else if (tableMeta.withGsi() && !pushdownDmlOnGsi) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_PRIMARY_TABLE_DIRECTLY,
                     phyTable);
+            }
+
+            boolean isBroadCast = ec.getSchemaManager().getTddlRuleManager().isBroadCast(tableMeta.getTableName());
+            if (isBroadCast && !pushdownDmlOnBroadcast) {
+                throw new TddlRuntimeException(ErrorCode.ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED,
+                    String.format("Not allowed to modify broadcast table[%s] by direct hint",
+                        tableMeta.getTableName()));
             }
 
             return new TableProperties(tableMeta.getTableName(), schemaName, ec);
@@ -626,7 +808,6 @@ public class HintPlanner extends TddlSqlToRelConverter {
                         new LogicalView(origin, tableFinder.getTable(), new SqlNodeList(SqlParserPos.ZERO));
                     lv.getPushDownOpt().setNativeSqlNode(realAst);
                     lv.setSqlTemplate(realAst);
-
                     final LogicalModifyView logicalModifyView = new LogicalModifyView(lv);
                     logicalModifyView.push(origin);
                     RelUtils.changeRowType(logicalModifyView, origin.getRowType());
@@ -646,6 +827,9 @@ public class HintPlanner extends TddlSqlToRelConverter {
                             new SqlNodeList(SqlParserPos.ZERO));
 
                         LogicalModifyView lmv = new LogicalModifyView(lv);
+                        lmv.push(origin);
+                        RelUtils.changeRowType(lmv, origin.getRowType());
+
                         lmv.getPushDownOpt().setNativeSqlNode(realAst);
                         lmv.setSqlTemplate(realAst);
 
@@ -879,11 +1063,9 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
                         SqlExplain explainSqlNode = (SqlExplain) ast.clone(SqlParserPos.ZERO);
                         explainSqlNode.setExplicandum(oriSqlNode);
-                        PhyQueryOperation phyQueryOperation = new PhyQueryOperation(phyTableOperation.getCluster(),
-                            phyTableOperation.getTraitSet(),
-                            explainSqlNode,
-                            phyTableOperation.getDbIndex(),
-                            phyTableOperation.getParam());
+                        PhyQueryOperationBuilder phyQueryOpBuilder = new PhyQueryOperationBuilder();
+                        PhyQueryOperation phyQueryOperation =
+                            phyQueryOpBuilder.buildPhyQueryOperationByPhyTableOp(phyTableOperation, explainSqlNode, ec);
                         results.add(phyQueryOperation);
                     }
 
@@ -1016,17 +1198,36 @@ public class HintPlanner extends TddlSqlToRelConverter {
             final List<Integer> dynamicParamIndex = PlannerUtils.getDynamicParamIndex(ast);
 
             SqlNode clonedAst = ast.clone(SqlParserPos.ZERO);
-            clonedAst = clonedAst.accept(new ReplaceLogicalTableNameWithPhysicalTableNameVisitor(schemaName, ec));
+            clonedAst = clonedAst.accept(new ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor(schemaName, ec));
 
             List<RelNode> results = new ArrayList<>();
+            SqlSelect.LockMode lockMode = SqlSelect.LockMode.UNDEF;
+            PhyQueryOperationBuilder phyQueryOpBuilder = new PhyQueryOperationBuilder();
+            List<String> logTbls = directTableOperation.getLogicalTableNames();
+            String dbName = directTableOperation.getSchemaName();
+            List<List<String>> phyTbls = new ArrayList<>();
+            List<String> opPhyTbs = directTableOperation.getTableNames();
+            for (int i = 0; i < opPhyTbs.size(); i++) {
+                phyTbls.add(ImmutableList.of(opPhyTbs.get(i)));
+            }
+
             for (String group : finalGroups) {
-                PhyQueryOperation phyQueryOperation = new PhyQueryOperation(directTableOperation.getCluster(),
-                    directTableOperation.getTraitSet(),
-                    clonedAst,
-                    group,
-                    param,
-                    dynamicParamIndex);
-                phyQueryOperation.setKind(ast.getKind());
+                PhyQueryOperation phyQueryOperation =
+                    phyQueryOpBuilder.buildPhyQueryOperation(
+                        directTableOperation.getCluster(),
+                        directTableOperation.getTraitSet(),
+                        dbName,
+                        logTbls,
+                        phyTbls,
+                        clonedAst,
+                        ast.getKind(),
+                        lockMode,
+                        group,
+                        null,
+                        false,
+                        param,
+                        dynamicParamIndex,
+                        ec);
                 results.add(phyQueryOperation);
             } // end of for
 
@@ -1055,14 +1256,16 @@ public class HintPlanner extends TddlSqlToRelConverter {
             } else if (origin instanceof DirectTableOperation) {
                 return executionPlan;
             } else {
-                SqlNode clonedAst = ast.clone(SqlParserPos.ZERO);
-                clonedAst = clonedAst.accept(new ReplaceLogicalTableNameWithPhysicalTableNameVisitor(schemaName, ec));
-                PhyTableOperation phyTableOperation = buildPhyTableOperation(executionPlan,
-                    clonedAst,
-                    param,
-                    finalGroups.get(0));
 
-                return new ExecutionPlan(ast, phyTableOperation, executionPlan.getCursorMeta());
+                List<RelNode> phyOps =
+                    buildPhyTableOpsByHintParams(executionPlan, ast, param, finalGroups, schemaName, ec);
+
+//                PhyTableOperation phyTableOperation = buildPhyTableOperation(executionPlan,
+//                    clonedAst,
+//                    param,
+//                    finalGroups.get(0));
+
+                return new ExecutionPlan(ast, phyOps.get(0), executionPlan.getCursorMeta());
             }
         } else {
             // multi group specified
@@ -1104,21 +1307,96 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
                     resulRel.add(optimizeTable);
                 } else {
-                    SqlNode clonedAst = ast.clone(SqlParserPos.ZERO);
-                    clonedAst =
-                        clonedAst.accept(new ReplaceLogicalTableNameWithPhysicalTableNameVisitor(schemaName, ec));
-                    for (String group : finalGroups) {
-                        PhyTableOperation phyTableOperation =
-                            buildPhyTableOperation(executionPlan, clonedAst, param, group);
+//                    ReplaceLogicalTableNameWithPhysicalTableNameVisitor visitor =
+//                        new ReplaceLogicalTableNameWithPhysicalTableNameVisitor(schemaName, ec);
+//                    SqlNode clonedAst = ast.clone(SqlParserPos.ZERO);
+//                    clonedAst = clonedAst.accept(visitor);
+//                    for (String group : finalGroups) {
+//                        PhyTableOperation phyTableOperation =
+//                            buildPhyTableOperation(executionPlan, clonedAst, param, group);
+//
+//                        resulRel.add(phyTableOperation);
+//                    }
 
-                        resulRel.add(phyTableOperation);
-                    }
-                    return new ExecutionPlan(ast, PhyViewUnion.create(resulRel), executionPlan.getCursorMeta());
+                    List<RelNode> phyOps =
+                        buildPhyTableOpsByHintParams(executionPlan, ast, param, finalGroups, schemaName, ec);
+                    return new ExecutionPlan(ast, phyOps.size() > 1 ? PhyViewUnion.create(phyOps) : phyOps.get(0),
+                        executionPlan.getCursorMeta());
+
                 }
             }
 
             return new ExecutionPlan(ast, PhyViewUnion.create(resulRel), executionPlan.getCursorMeta());
         } // end of else
+    }
+
+    private List<RelNode> buildPhyTableOpsByHintParams(ExecutionPlan executionPlan,
+                                                       SqlNode ast,
+                                                       Map<Integer, ParameterContext> param,
+                                                       List<String> finalGroups,
+                                                       String schemaName,
+                                                       ExecutionContext ec) {
+        SqlNode clonedAst = ast.clone(SqlParserPos.ZERO);
+        ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor visitor =
+            new ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor(
+                schemaName, ec);
+        clonedAst = clonedAst.accept(visitor);
+        Map<String, String> logTblToPhyTblMapping = visitor.getLogTblToPhyTblMapping();
+        boolean onlyContainsBroTbl = visitor.isOnlyContainBroadcastTbl();
+        String singlePhyGrp = visitor.getSingleTblGroup();
+
+        List<String> logTbls = new ArrayList<>();
+        logTbls.addAll(logTblToPhyTblMapping.keySet());
+        List<List<String>> phyTblsList = new ArrayList<>();
+        List<String> phyTbls = new ArrayList<>();
+        for (int i = 0; i < logTbls.size(); i++) {
+            String logTb = logTbls.get(i);
+            phyTbls.add(logTblToPhyTblMapping.get(logTb));
+        }
+        if (!phyTbls.isEmpty()) {
+            phyTblsList.add(phyTbls);
+        }
+        RelNode logPlan = executionPlan.getPlan();
+        CursorMeta cursorMeta = executionPlan.getCursorMeta();
+
+        List<String> logTables = logTbls;
+        BytesSql sql = RelUtils.toNativeBytesSql(clonedAst, DbType.MYSQL);
+
+        List<RelNode> phyTbOps = new ArrayList<>();
+        PhyTableOpBuildParams buildParams =
+            new PhyTableOpBuildParams();
+
+        for (int i = 0; i < finalGroups.size(); i++) {
+            String targetDb = finalGroups.get(i);
+
+            if (!onlyContainsBroTbl && singlePhyGrp != null) {
+                if (!targetDb.equals(singlePhyGrp)) {
+                    continue;
+                }
+            }
+
+            buildParams.setSchemaName(schemaName);
+            buildParams.setLogTables(logTables);
+            buildParams.setGroupName(targetDb);
+            buildParams.setPhyTables(phyTblsList);
+            buildParams.setSqlKind(clonedAst.getKind());
+
+            buildParams.setLogicalPlan(logPlan);
+            buildParams.setCluster(logPlan.getCluster());
+            buildParams.setTraitSet(logPlan.getTraitSet());
+            buildParams.setRowType(logPlan.getRowType());
+            buildParams.setCursorMeta(cursorMeta);
+
+            buildParams.setBytesSql(sql);
+            buildParams.setDbType(DbType.MYSQL);
+            buildParams.setDynamicParams(param);
+            buildParams.setBatchParameters(null);
+
+            PhyTableOperation phyTableOperation =
+                PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
+            phyTbOps.add(phyTableOperation);
+        }
+        return phyTbOps;
     }
 
     private List<String> handleRuleRouteCondition(String schemaName, List<String> tableNames,
@@ -1243,24 +1521,24 @@ public class HintPlanner extends TddlSqlToRelConverter {
         return finalGroups;
     }
 
-    private PhyTableOperation buildPhyTableOperation(ExecutionPlan executionPlan, SqlNode ast,
-                                                     Map<Integer, ParameterContext> param, String group) {
-        RelNode plan = executionPlan.getPlan();
-        PhyTableOperation phyTableOperation =
-            new PhyTableOperation(plan.getCluster(), plan.getTraitSet(), plan.getRowType(), null, plan);
-        phyTableOperation.setDbIndex(group);
-        phyTableOperation.setParam(param);
-        String sql = RelUtils.toNativeSql(ast, DbType.MYSQL);
-        phyTableOperation.setSqlTemplate(sql);
-        return phyTableOperation;
-    }
-
-    private RelNode handlePushdown(RelNode originPlan, Map<RelNode, RelNode> relRootMap,
-                                   Map<Integer, ParameterContext> param, ExecutionContext ec) {
-        PushdownHandlerVisitor pushdownHandler = new PushdownHandlerVisitor(MapUtils.invertMap(relRootMap), param, ec);
-
-        return originPlan.accept(pushdownHandler);
-    }
+//    private PhyTableOperation buildPhyTableOperation(ExecutionPlan executionPlan,
+//                                                     SqlNode ast,
+//                                                     Map<Integer, ParameterContext> param,
+//                                                     String group) {
+//        RelNode plan = executionPlan.getPlan();
+//        PhyTableOperation phyTableOperation =
+//            new PhyTableOperation(plan.getCluster(), plan.getTraitSet(), plan.getRowType(), null, plan);
+//        phyTableOperation.setDbIndex(group);
+//        phyTableOperation.setParam(param);
+//        BytesSql sql = RelUtils.toNativeBytesSql(ast, DbType.MYSQL);
+//        phyTableOperation.setBytesSql(sql);
+//        return phyTableOperation;
+//    }
+//    private RelNode handlePushdown(RelNode originPlan, Map<RelNode, RelNode> relRootMap,
+//                                   Map<Integer, ParameterContext> param, ExecutionContext ec) {
+//        PushdownHandlerVisitor pushdownHandler = new PushdownHandlerVisitor(MapUtils.invertMap(relRootMap), param, ec);
+//        return originPlan.accept(pushdownHandler);
+//    }
 
     private ExecutionPlan buildLogicalPlan(SqlNode ast, RelNode relResult, ExecutionPlan defaultRel) {
         if (null == relResult) {

@@ -36,16 +36,19 @@ public class RepartitionCutOverTask extends BaseGmsTask {
     final String targetTableName;
     final boolean single;
     final boolean broadcast;
+    final boolean auto;
 
     public RepartitionCutOverTask(final String schemaName,
                                   final String logicalTableName,
                                   final String targetTableName,
                                   final boolean single,
-                                  final boolean broadcast) {
+                                  final boolean broadcast,
+                                  final boolean auto) {
         super(schemaName, logicalTableName);
         this.targetTableName = targetTableName;
         this.single = single;
         this.broadcast = broadcast;
+        this.auto = auto;
         onExceptionTryRollback();
     }
 
@@ -68,7 +71,9 @@ public class RepartitionCutOverTask extends BaseGmsTask {
             logicalTableName,
             targetTableName,
             single,
-            broadcast
+            broadcast,
+            auto,
+            false
         );
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);

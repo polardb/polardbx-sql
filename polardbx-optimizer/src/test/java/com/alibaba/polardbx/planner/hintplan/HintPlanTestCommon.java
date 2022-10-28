@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.planner.hintplan;
 
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -44,7 +45,7 @@ public abstract class HintPlanTestCommon extends PlanTestCommon {
 
     @Override
     protected String getPlan(String testSql) {
-        ExecutionContext executionContext = new ExecutionContext();
+        ExecutionContext executionContext = new ExecutionContext(appName);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_SCALE_OUT_FEATURE,
             false);
         final SqlNodeList astList = new FastsqlParser().parse(testSql, executionContext);
@@ -60,10 +61,10 @@ public abstract class HintPlanTestCommon extends PlanTestCommon {
 
         ExecutionPlan executionPlan;
 
-        PlannerContext plannerContext = new PlannerContext();
+        PlannerContext plannerContext = new PlannerContext(executionContext);
         plannerContext.setExtraCmds(executionContext.getExtraCmds());
         plannerContext.setExecutionContext(executionContext);
-
+        plannerContext.setParams(new Parameters());
         if (hintCollection.cmdOnly()) {
             executionPlan = hintPlanner.pushdown(Planner.getInstance().getPlan(ast, plannerContext),
                 ast,

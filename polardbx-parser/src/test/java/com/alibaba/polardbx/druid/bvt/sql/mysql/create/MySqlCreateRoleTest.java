@@ -48,12 +48,12 @@ public class MySqlCreateRoleTest extends MysqlTest {
     private void doTest() {
         final MySqlStatementParser parser = new MySqlStatementParser(sql);
         List<SQLStatement> statements = parser.parseStatementList();
-        assertEquals("Statement list size should be 1!",1, statements.size());
+        assertEquals("Statement list size should be 1!", 1, statements.size());
 
         assertTrue("Not create role state!", statements.get(0) instanceof MySqlCreateRoleStatement);
 
         MySqlCreateRoleStatement stmt = (MySqlCreateRoleStatement) statements.get(0);
-        assertEquals("Role spec list size should be 1!",expectedRoleSpecs, stmt.getRoleSpecs().size());
+        assertEquals("Role spec list size should be 1!", expectedRoleSpecs, stmt.getRoleSpecs().size());
         assertEquals("If not exists not equal!", ifNotExists, stmt.isIfNotExists());
 
         assertEquals(expectedDefaultOutputSql, SQLUtils.toMySqlString(stmt));
@@ -86,14 +86,14 @@ public class MySqlCreateRoleTest extends MysqlTest {
             {1, "CREATE ROLE 'abc'@'1.2.3.4';", "create role 'abc'@'1.2.3.4';", false},
             {1, "CREATE ROLE 'abc'@'127.0.0.1';", "create role 'abc'@'127.0.0.1';", false},
             {1, "CREATE ROLE 'abc'@'%';", "create role 'abc'@'%';", false},
-            {1, "CREATE ROLE '`abc`'@'`%`';", "create role '`abc`'@'`%`';", false},
+            {1, "CREATE ROLE 'abc'@'%';", "create role 'abc'@'%';", false},
             {1, "CREATE ROLE ''@'%';", "create role ''@'%';", false},
             {1, "CREATE ROLE IF NOT EXISTS 'abc'@'%';", "create role if not exists 'abc'@'%';", true},
             {2, "CREATE ROLE IF NOT EXISTS 'abc'@'%', 'abc';", "create role if not exists 'abc'@'%', 'abc';", true},
         };
 
         assertEquals("Input and output should have same length!", inputs.length, outputs.length);
-        for (int i=0; i< inputs.length; i++) {
+        for (int i = 0; i < inputs.length; i++) {
             // setup input
             sql = inputs[i];
 

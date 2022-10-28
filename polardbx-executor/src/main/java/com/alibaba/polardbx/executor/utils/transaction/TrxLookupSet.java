@@ -16,7 +16,8 @@
 
 package com.alibaba.polardbx.executor.utils.transaction;
 
-import com.alibaba.polardbx.common.utils.Pair;
+import org.apache.commons.lang3.tuple.ImmutableTriple;
+import org.apache.commons.lang3.tuple.Triple;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -113,11 +114,11 @@ public class TrxLookupSet {
      * Get waiting and blocking transaction information,
      * given a list of groups on the same DN, and the waiting and blocking connection id on that DN
      *
-     * @return Pair(Pair (waiting trx, blocking trx), in which group we found these transactions)
+     * @return Triple(waiting trx, blocking trx, in which group we found these transactions)
      */
-    public Pair<Pair<Transaction, Transaction>, String> getWaitingAndBlockingTrx(Collection<String> groupNameList,
-                                                                                 long waiting,
-                                                                                 long blocking) {
+    public Triple<Transaction, Transaction, String> getWaitingAndBlockingTrx(Collection<String> groupNameList,
+                                                                              long waiting,
+                                                                              long blocking) {
         for (final String group : groupNameList) {
             final Long waitingTrxId = groupConn2Tran.get(new GroupConnPair(group, waiting));
             final Long blockingTrxId = groupConn2Tran.get(new GroupConnPair(group, blocking));
@@ -127,17 +128,17 @@ public class TrxLookupSet {
                 if (null != waitingTrx && null != blockingTrx) {
                     // Both waiting and blocking trx are on the same group,
                     // they are global trx.
-                    return new Pair<>(new Pair<>(waitingTrx, blockingTrx), group);
+                    return new ImmutableTriple<>(waitingTrx, blockingTrx, group);
                 } else if (null != waitingTrx) {
                     // Only waiting trx is found, indicating that it is blocked by a DDL.
-                    return new Pair<>(new Pair<>(waitingTrx, null), group);
+                    return new ImmutableTriple<>(waitingTrx, null, group);
                 } else if (null != blockingTrx) {
                     // Only blocking trx is found, indicating that it is waited by a DDL.
-                    return new Pair<>(new Pair<>(null, blockingTrx), group);
+                    return new ImmutableTriple<>(null, blockingTrx, group);
                 }
             }
         }
-        return new Pair<>(new Pair<>(null, null), null);
+        return ImmutableTriple.nullTriple();
     }
 
     public Transaction getTransaction(Long transactionId) {
@@ -224,6 +225,21 @@ public class TrxLookupSet {
             }
             return transactionId.equals(((Transaction) o).transactionId);
         }
+
+        @Override
+        public String toString() {
+            return "Trx{" +
+                "transactionId=" + transactionId +
+                "localTransactions=" + localTransactions +
+                '}';
+        }
     }
 
+    @Override
+    public String toString() {
+        return "TrxLookupSet{" +
+            "groupConn2Tran=" + groupConn2Tran +
+            ", transactionMap=" + transactionMap +
+            '}';
+    }
 }

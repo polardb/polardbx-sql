@@ -46,10 +46,9 @@ public class RenamePartitionTablePhyDdlTask extends BasePhyDdlTask {
 
         PartitionInfo partitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
-        boolean isPartitioned = !(partitionInfo.isBroadcastTable() || partitionInfo.isSingleTable());
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        if (isPartitioned) {
+        if (partitionInfo.isRandomTableNamePatternEnabled()) {
             executionContext.setPhyTableRenamed(false);
         }
     }

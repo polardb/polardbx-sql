@@ -37,14 +37,10 @@ public class AlterTableGroupDropPartitionBuilder extends AlterTableGroupBaseBuil
 
     @Override
     public void buildTablesPhysicalPlans() {
-        TableGroupConfig tableGroupConfig =
-            OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
-                .getTableGroupConfigByName(preparedData.getTableGroupName());
+        List<String> allTables = getAllTableNames();
         List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getTargetGroupDetailInfoExRecords();
-        List<TablePartRecordInfoContext> allTables = tableGroupConfig.getAllTables();
         generateNewPhysicalTableNames(allTables);
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : allTables) {
-            String tableName = tablePartRecordInfoContext.getTableName();
+        for (String tableName : allTables) {
             AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
                 createAlterTableGroupItemPreparedData(tableName, groupDetailInfoExRecords);
             AlterTableGroupItemBuilder itemBuilder =

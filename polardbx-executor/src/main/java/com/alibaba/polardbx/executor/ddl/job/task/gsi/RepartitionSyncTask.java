@@ -62,7 +62,8 @@ public class RepartitionSyncTask extends BaseSyncTask {
                     (Long) executionContext.getConnId(),
                     executionContext.getTraceId()
                 ),
-                schemaName
+                schemaName,
+                true
             );
 
             LOGGER.info(

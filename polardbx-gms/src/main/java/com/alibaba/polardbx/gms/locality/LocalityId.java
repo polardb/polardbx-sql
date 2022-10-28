@@ -52,6 +52,10 @@ public class LocalityId {
         return from(LocalityInfoRecord.LOCALITY_TYPE_TABLEGROUP, tgId);
     }
 
+    public static LocalityId ofPartitionGroup(long tgId) {
+        return from(LocalityInfoRecord.LOCALITY_TYPE_PARTITIONGROUP, tgId);
+    }
+
     public static LocalityId defaultId() {
         return from(LocalityInfoRecord.LOCALITY_TYPE_DEFAULT, LocalityInfoRecord.LOCALITY_ID_DEFAULT);
     }

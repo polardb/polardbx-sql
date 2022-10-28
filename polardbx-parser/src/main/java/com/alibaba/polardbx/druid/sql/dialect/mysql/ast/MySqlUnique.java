@@ -16,12 +16,13 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlUnique extends MySqlKey {
 
-    public MySqlUnique(){
+    public MySqlUnique() {
 
     }
 
@@ -91,7 +92,15 @@ public class MySqlUnique extends MySqlKey {
         this.indexDefinition.setPartitioning(sqlPartitioning);
     }
 
-    public SQLPartitionBy getPartitioning () {
+    public SQLPartitionBy getPartitioning() {
         return this.indexDefinition.getPartitioning();
+    }
+
+    public SQLName getTableGroup() {
+        return this.indexDefinition.getTableGroup();
+    }
+
+    public void setTableGroup(SQLName tableGroup) {
+        this.indexDefinition.setTableGroup(tableGroup);
     }
 }

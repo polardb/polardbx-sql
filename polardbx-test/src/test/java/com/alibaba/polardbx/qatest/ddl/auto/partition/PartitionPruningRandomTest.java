@@ -104,6 +104,8 @@ public class PartitionPruningRandomTest extends PartitionTestBase {
         complexExprSampleList.add("c between 50000 and 60000");
         complexExprSampleList.add("300 between a and b");
         complexExprSampleList.add("b between e and 4000");
+        complexExprSampleList.add("b != 7500");
+        complexExprSampleList.add("c != 55000");
 
         /**
          * complex Expr for Comparison
@@ -118,6 +120,7 @@ public class PartitionPruningRandomTest extends PartitionTestBase {
          */
         complexExprSampleList.add("a is null");
         complexExprSampleList.add("d is null");
+        complexExprSampleList.add("c is not null");
     }
 
     protected static class GenRandomCtx {
@@ -166,7 +169,7 @@ public class PartitionPruningRandomTest extends PartitionTestBase {
 
     @Test
     public void runTest() {
-        int sqlCnt = 1000;
+        int sqlCnt = 2000;
         for (int i = 0; i < sqlCnt; i++) {
             String sql = genRandomSql();
 

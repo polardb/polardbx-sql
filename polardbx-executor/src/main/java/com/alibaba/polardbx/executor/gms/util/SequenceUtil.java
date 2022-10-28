@@ -22,7 +22,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceOptRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
@@ -41,249 +41,218 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.UPPER_LIMI
 
 public class SequenceUtil {
 
-    public static SystemTableRecord convert(SequenceBean sequenceBean, String tableSchema,
-                                            ExecutionContext executionContext) {
-        setSchemaName(sequenceBean, tableSchema, executionContext);
-        switch (sequenceBean.getKind()) {
+    public static SequenceBaseRecord convert(SequenceBean sequence, String tableSchema,
+                                             ExecutionContext executionContext) {
+        setSchemaName(sequence, tableSchema, executionContext);
+        switch (sequence.getKind()) {
         case CREATE_SEQUENCE:
-            return buildCreateRecord(sequenceBean);
+            return buildCreateRecord(sequence);
         case ALTER_SEQUENCE:
-            return buildAlterRecord(sequenceBean);
-        case DROP_SEQUENCE:
-            return buildDropRecord(sequenceBean);
+            return buildAlterRecord(sequence);
         case RENAME_SEQUENCE:
-            return buildRenameRecord(sequenceBean);
+            return buildRenameRecord(sequence);
+        case DROP_SEQUENCE:
+            return buildDropRecord(sequence);
         default:
-            throw new SequenceException("Unexpected Sequence operation: " + sequenceBean.getType());
+            throw new SequenceException("Unexpected operation: " + sequence.getKind());
         }
     }
 
-    public static Pair<SystemTableRecord, SystemTableRecord> change(SequenceBean sequenceBean, String tableSchema,
-                                                                    ExecutionContext executionContext) {
-        setSchemaName(sequenceBean, tableSchema, executionContext);
+    public static Pair<SequenceBaseRecord, SequenceBaseRecord> change(SequenceBean sequence, String tableSchema,
+                                                                      ExecutionContext executionContext) {
+        setSchemaName(sequence, tableSchema, executionContext);
 
         Type existingType =
-            SequenceManagerProxy.getInstance()
-                .checkIfExists(sequenceBean.getSchemaName(), sequenceBean.getSequenceName());
+            SequenceManagerProxy.getInstance().checkIfExists(sequence.getSchemaName(), sequence.getName());
 
-        Type targetType = sequenceBean.getToType();
+        Type targetType = sequence.getToType();
 
-        TddlRuntimeException badSwitch = new TddlRuntimeException(ErrorCode.ERR_GMS_UNSUPPORTED,
-            "the group type switch from " + existingType.getKeyword() + " to " + targetType.getKeyword()
-                + " isn't supported");
+        TddlRuntimeException badSwitch = new TddlRuntimeException(ErrorCode.ERR_SEQUENCE,
+            "the sequence type change from " + existingType + " to " + targetType + " isn't supported");
 
         if (existingType == targetType) {
             return null;
         }
 
         switch (existingType) {
+        case NEW:
+            switch (targetType) {
+            case GROUP:
+                return buildRecordPair(sequence, Type.NEW, Type.GROUP);
+            case SIMPLE:
+                return buildRecordPair(sequence, Type.NEW, Type.SIMPLE);
+            case TIME:
+                return buildRecordPair(sequence, Type.NEW, Type.TIME);
+            default:
+                throw badSwitch;
+            }
         case GROUP:
             switch (targetType) {
+            case NEW:
+                return buildRecordPair(sequence, Type.GROUP, Type.NEW);
             case SIMPLE:
-                return buildRecordPair(sequenceBean, Type.GROUP, Type.SIMPLE);
+                return buildRecordPair(sequence, Type.GROUP, Type.SIMPLE);
             case TIME:
-                return buildRecordPair(sequenceBean, Type.GROUP, Type.TIME);
+                return buildRecordPair(sequence, Type.GROUP, Type.TIME);
             default:
                 throw badSwitch;
             }
         case SIMPLE:
             switch (targetType) {
+            case NEW:
+                return buildRecordPair(sequence, Type.SIMPLE, Type.NEW);
             case GROUP:
-                return buildRecordPair(sequenceBean, Type.SIMPLE, Type.GROUP);
+                return buildRecordPair(sequence, Type.SIMPLE, Type.GROUP);
             case TIME:
-                return buildRecordPair(sequenceBean, Type.SIMPLE, Type.TIME);
+                return buildRecordPair(sequence, Type.SIMPLE, Type.TIME);
             default:
                 throw badSwitch;
             }
         case TIME:
             switch (targetType) {
+            case NEW:
+                return buildRecordPair(sequence, Type.TIME, Type.NEW);
             case GROUP:
-                return buildRecordPair(sequenceBean, Type.TIME, Type.GROUP);
+                return buildRecordPair(sequence, Type.TIME, Type.GROUP);
             case SIMPLE:
-                return buildRecordPair(sequenceBean, Type.TIME, Type.SIMPLE);
+                return buildRecordPair(sequence, Type.TIME, Type.SIMPLE);
             default:
                 throw badSwitch;
             }
         default:
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNSUPPORTED,
-                "Group Type " + existingType.getKeyword() + " isn't supported yet");
+            throw new TddlRuntimeException(ErrorCode.ERR_SEQUENCE,
+                "Sequence Type Change for " + existingType + " isn't supported yet");
         }
     }
 
-    private static Pair<SystemTableRecord, SystemTableRecord> buildRecordPair(SequenceBean sequenceBean,
-                                                                              Type deletedType, Type insertedType) {
-        sequenceBean.setType(deletedType);
-        SystemTableRecord deletedRecord = buildDropRecord(sequenceBean);
-        sequenceBean.setType(insertedType);
-        SystemTableRecord insertedRecord = buildCreateRecord(sequenceBean);
+    private static Pair<SequenceBaseRecord, SequenceBaseRecord> buildRecordPair(SequenceBean sequence,
+                                                                                Type deletedType, Type insertedType) {
+        sequence.setType(deletedType);
+        SequenceBaseRecord deletedRecord = buildDropRecord(sequence);
+        sequence.setType(insertedType);
+        SequenceBaseRecord insertedRecord = buildCreateRecord(sequence);
         return new Pair<>(deletedRecord, insertedRecord);
     }
 
-    private static void setSchemaName(SequenceBean sequenceBean, String tableSchema,
-                                      ExecutionContext executionContext) {
-        if (TStringUtil.isBlank(sequenceBean.getSchemaName())) {
-            if (TStringUtil.isNotBlank(tableSchema)) {
-                sequenceBean.setSchemaName(tableSchema);
-            } else {
-                sequenceBean.setSchemaName(executionContext.getSchemaName());
-            }
-        }
+    private static SequenceBaseRecord buildCreateRecord(SequenceBean sequence) {
+        return buildFullRecord(sequence, true);
     }
 
-    private static SystemTableRecord buildCreateRecord(SequenceBean sequenceBean) {
-        return buildFullRecord(sequenceBean, true);
+    private static SequenceBaseRecord buildAlterRecord(SequenceBean sequence) {
+        return buildFullRecord(sequence, false);
     }
 
-    private static SystemTableRecord buildAlterRecord(SequenceBean sequenceBean) {
-        return buildFullRecord(sequenceBean, false);
+    private static SequenceBaseRecord buildRenameRecord(SequenceBean sequence) {
+        return buildBasicRecord(sequence);
     }
 
-    private static SystemTableRecord buildDropRecord(SequenceBean sequenceBean) {
-        return buildBaseRecord(sequenceBean);
+    private static SequenceBaseRecord buildDropRecord(SequenceBean sequence) {
+        return buildBasicRecord(sequence);
     }
 
-    private static SystemTableRecord buildRenameRecord(SequenceBean sequenceBean) {
-        return buildBaseRecord(sequenceBean);
-    }
-
-    private static SystemTableRecord buildBaseRecord(SequenceBean sequenceBean) {
-        Pair<SequenceRecord, SequenceOptRecord> sequence = buildRecord(sequenceBean);
-
-        Type type = sequenceBean.getType();
+    private static SequenceBaseRecord buildBasicRecord(SequenceBean sequence) {
+        Type type = sequence.getType();
         if (type == null) {
-            type = SequenceManagerProxy.getInstance()
-                .checkIfExists(sequenceBean.getSchemaName(), sequenceBean.getSequenceName());
+            type = SequenceManagerProxy.getInstance().checkIfExists(sequence.getSchemaName(), sequence.getName());
         }
-
         switch (type) {
+        case NEW:
+            SequenceOptRecord newRecord = buildSequenceOptRecord(sequence);
+            newRecord.cycle = SequenceAttribute.NEW_SEQ;
+            return newRecord;
         case SIMPLE:
         case TIME:
-            return sequence.getValue();
+            return buildSequenceOptRecord(sequence);
         case GROUP:
         default:
-            return sequence.getKey();
+            return buildSequenceRecord(sequence);
         }
     }
 
-    private static SystemTableRecord buildFullRecord(SequenceBean sequenceBean, boolean isNew) {
-        SequenceOptRecord seqOptRecord;
-        Pair<SequenceRecord, SequenceOptRecord> sequence = buildRecord(sequenceBean);
-
-        Type type = sequenceBean.getType();
+    private static SequenceBaseRecord buildFullRecord(SequenceBean sequence, boolean isNew) {
+        Type type = sequence.getType();
         if (type == null) {
-            type = SequenceManagerProxy.getInstance()
-                .checkIfExists(sequenceBean.getSchemaName(), sequenceBean.getSequenceName());
+            type = SequenceManagerProxy.getInstance().checkIfExists(sequence.getSchemaName(), sequence.getName());
         }
-
         switch (type) {
-        case SIMPLE:
-            seqOptRecord = sequence.getValue();
-            if (isNew) {
-                seqOptRecord.cycle |= SequenceAttribute.CACHE_DISABLED;
-            } else {
-                if (sequenceBean.getStart() == null) {
-                    seqOptRecord.value = 0;
-                    seqOptRecord.startWith = 0;
-                }
-                if (sequenceBean.getIncrement() == null) {
-                    seqOptRecord.incrementBy = 0;
-                }
-                if (sequenceBean.getMaxValue() == null) {
-                    seqOptRecord.maxValue = 0;
-                }
-                if (sequenceBean.getCycle() == null) {
-                    seqOptRecord.cycle = NA;
+        case NEW:
+            SequenceOptRecord newRecord = buildSequenceOptRecord(sequence);
+            newRecord.cycle = SequenceAttribute.NEW_SEQ;
+            if (!isNew) {
+                if (sequence.getStart() == null) {
+                    newRecord.value = 0;
+                    newRecord.startWith = 0;
                 }
             }
-            return seqOptRecord;
+            return newRecord;
+        case SIMPLE:
+            SequenceOptRecord simpleRecord = buildSequenceOptRecord(sequence);
+            if (!isNew) {
+                if (sequence.getStart() == null) {
+                    simpleRecord.value = 0;
+                    simpleRecord.startWith = 0;
+                }
+                if (sequence.getIncrement() == null) {
+                    simpleRecord.incrementBy = 0;
+                }
+                if (sequence.getMaxValue() == null) {
+                    simpleRecord.maxValue = 0;
+                }
+                if (sequence.getCycle() == null) {
+                    simpleRecord.cycle = NA;
+                }
+            }
+            return simpleRecord;
         case TIME:
-            seqOptRecord = sequence.getValue();
-            seqOptRecord.value = 0;
-            seqOptRecord.incrementBy = 0;
-            seqOptRecord.startWith = 0;
-            seqOptRecord.maxValue = 0;
-            seqOptRecord.cycle = SequenceAttribute.TIME_BASED;
-            return seqOptRecord;
+            SequenceOptRecord timeRecord = buildSequenceOptRecord(sequence);
+            timeRecord.value = 0;
+            timeRecord.incrementBy = 0;
+            timeRecord.startWith = 0;
+            timeRecord.maxValue = 0;
+            timeRecord.cycle = SequenceAttribute.TIME_BASED;
+            return timeRecord;
         case GROUP:
         default:
-            return sequence.getKey();
+            return buildSequenceRecord(sequence);
         }
     }
 
-    private static Pair<SequenceRecord, SequenceOptRecord> buildRecord(SequenceBean sequenceBean) {
+    private static SequenceRecord buildSequenceRecord(SequenceBean sequence) {
         SequenceRecord seqRecord = new SequenceRecord();
-        SequenceOptRecord seqOptRecord = new SequenceOptRecord();
 
-        if (sequenceBean.getSchemaName() != null) {
-            seqRecord.schemaName = sequenceBean.getSchemaName();
-            seqOptRecord.schemaName = sequenceBean.getSchemaName();
-        }
+        buildCommonInfo(seqRecord, sequence);
 
-        if (sequenceBean.getSequenceName() != null) {
-            seqRecord.name = sequenceBean.getSequenceName();
-            seqOptRecord.name = sequenceBean.getSequenceName();
-        }
-
-        if (sequenceBean.getNewSequenceName() != null) {
-            seqRecord.newName = sequenceBean.getNewSequenceName();
-            seqOptRecord.newName = sequenceBean.getNewSequenceName();
-        }
-
-        if (sequenceBean.getUnitCount() != null) {
-            if (sequenceBean.getUnitCount() < DEFAULT_UNIT_COUNT
-                || sequenceBean.getUnitCount() > UPPER_LIMIT_UNIT_COUNT) {
+        if (sequence.getUnitCount() != null) {
+            if (sequence.getUnitCount() < DEFAULT_UNIT_COUNT
+                || sequence.getUnitCount() > UPPER_LIMIT_UNIT_COUNT) {
                 seqRecord.unitCount = DEFAULT_UNIT_COUNT;
             } else {
-                seqRecord.unitCount = sequenceBean.getUnitCount();
+                seqRecord.unitCount = sequence.getUnitCount();
             }
         }
 
-        if (sequenceBean.getUnitIndex() != null) {
-            if (sequenceBean.getUnitIndex() < DEFAULT_UNIT_INDEX
-                || sequenceBean.getUnitIndex() >= seqRecord.unitCount) {
+        if (sequence.getUnitIndex() != null) {
+            if (sequence.getUnitIndex() < DEFAULT_UNIT_INDEX
+                || sequence.getUnitIndex() >= seqRecord.unitCount) {
                 seqRecord.unitIndex = DEFAULT_UNIT_INDEX;
             } else {
-                seqRecord.unitIndex = sequenceBean.getUnitIndex();
+                seqRecord.unitIndex = sequence.getUnitIndex();
             }
         }
 
-        if (sequenceBean.getInnerStep() != null) {
-            if (sequenceBean.getInnerStep() < 1) {
+        if (sequence.getInnerStep() != null) {
+            if (sequence.getInnerStep() < 1) {
                 seqRecord.innerStep = DEFAULT_INNER_STEP;
             } else {
-                seqRecord.innerStep = sequenceBean.getInnerStep();
+                seqRecord.innerStep = sequence.getInnerStep();
             }
         }
 
-        if (sequenceBean.getIncrement() != null) {
-            if (sequenceBean.getIncrement() < DEFAULT_INCREMENT_BY || sequenceBean.getIncrement() > Integer.MAX_VALUE) {
-                seqOptRecord.incrementBy = DEFAULT_INCREMENT_BY;
-            } else {
-                seqOptRecord.incrementBy = sequenceBean.getIncrement();
-            }
-        }
-
-        if (sequenceBean.getMaxValue() != null) {
-            if (sequenceBean.getMaxValue() < 1 || sequenceBean.getMaxValue() > Long.MAX_VALUE) {
-                seqOptRecord.maxValue = Long.MAX_VALUE;
-            } else {
-                seqOptRecord.maxValue = sequenceBean.getMaxValue();
-            }
-        }
-
-        if (sequenceBean.getCycle() != null) {
-            seqOptRecord.cycle = sequenceBean.getCycle() ? SequenceAttribute.TRUE : SequenceAttribute.FALSE;
-        }
-
-        if (sequenceBean.getStart() != null) {
-            if (sequenceBean.getStart() < 1 || sequenceBean.getStart() > Long.MAX_VALUE) {
+        if (sequence.getStart() != null) {
+            if (sequence.getStart() < 1 || sequence.getStart() > Long.MAX_VALUE) {
                 seqRecord.value = DEFAULT_START_WITH;
-                seqOptRecord.value = DEFAULT_START_WITH;
-                seqOptRecord.startWith = DEFAULT_START_WITH;
             } else {
-                seqRecord.value = sequenceBean.getStart();
-                seqOptRecord.value = sequenceBean.getStart();
-                seqOptRecord.startWith = sequenceBean.getStart();
+                seqRecord.value = sequence.getStart();
             }
         }
 
@@ -293,9 +262,70 @@ public class SequenceUtil {
         }
 
         seqRecord.status = TableStatus.ABSENT.getValue();
+
+        return seqRecord;
+    }
+
+    private static SequenceOptRecord buildSequenceOptRecord(SequenceBean sequence) {
+        SequenceOptRecord seqOptRecord = new SequenceOptRecord();
+
+        buildCommonInfo(seqOptRecord, sequence);
+
+        if (sequence.getIncrement() != null) {
+            if (sequence.getIncrement() < DEFAULT_INCREMENT_BY || sequence.getIncrement() > Integer.MAX_VALUE) {
+                seqOptRecord.incrementBy = DEFAULT_INCREMENT_BY;
+            } else {
+                seqOptRecord.incrementBy = sequence.getIncrement();
+            }
+        }
+
+        if (sequence.getMaxValue() != null) {
+            if (sequence.getMaxValue() < 1 || sequence.getMaxValue() > Long.MAX_VALUE) {
+                seqOptRecord.maxValue = Long.MAX_VALUE;
+            } else {
+                seqOptRecord.maxValue = sequence.getMaxValue();
+            }
+        }
+
+        if (sequence.getCycle() != null) {
+            seqOptRecord.cycle = sequence.getCycle() ? SequenceAttribute.TRUE : SequenceAttribute.FALSE;
+        }
+
+        if (sequence.getStart() != null) {
+            if (sequence.getStart() < 1 || sequence.getStart() > Long.MAX_VALUE) {
+                seqOptRecord.value = DEFAULT_START_WITH;
+                seqOptRecord.startWith = DEFAULT_START_WITH;
+            } else {
+                seqOptRecord.value = sequence.getStart();
+                seqOptRecord.startWith = sequence.getStart();
+            }
+        }
+
         seqOptRecord.status = TableStatus.ABSENT.getValue();
 
-        return new Pair<>(seqRecord, seqOptRecord);
+        return seqOptRecord;
+    }
+
+    private static void buildCommonInfo(SequenceBaseRecord record, SequenceBean sequence) {
+        if (sequence.getSchemaName() != null) {
+            record.schemaName = sequence.getSchemaName();
+        }
+
+        if (sequence.getName() != null) {
+            record.name = sequence.getName();
+        }
+
+        if (sequence.getNewName() != null) {
+            record.newName = sequence.getNewName();
+        }
+    }
+
+    private static void setSchemaName(SequenceBean sequence, String tableSchema,
+                                      ExecutionContext executionContext) {
+        if (TStringUtil.isBlank(sequence.getSchemaName())) {
+            sequence.setSchemaName(
+                TStringUtil.isBlank(tableSchema) ? executionContext.getSchemaName() : tableSchema);
+        }
     }
 
 }

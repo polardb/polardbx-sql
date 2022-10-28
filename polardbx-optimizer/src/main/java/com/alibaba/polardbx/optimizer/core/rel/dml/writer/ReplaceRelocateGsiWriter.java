@@ -42,9 +42,9 @@ public class ReplaceRelocateGsiWriter extends ReplaceRelocateWriter implements G
                                     DistinctWriter insertWriter,
                                     DistinctWriter modifyWriter, Mapping skTargetMapping,
                                     Mapping skSourceMapping, List<ColumnMeta> skMetas, boolean containsAllUk,
-                                    TableMeta gsiMeta) {
+                                    boolean usePartFieldChecker, TableMeta gsiMeta) {
         super(parent, targetTable, deleteWriter, insertWriter, modifyWriter, skTargetMapping, skSourceMapping, skMetas,
-            containsAllUk);
+            containsAllUk, usePartFieldChecker);
         this.gsiMeta = gsiMeta;
     }
 

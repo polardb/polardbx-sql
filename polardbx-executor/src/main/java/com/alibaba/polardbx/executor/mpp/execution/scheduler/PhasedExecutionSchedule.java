@@ -193,8 +193,13 @@ public class PhasedExecutionSchedule
         }
 
         public Set<Integer> processFragment(Integer planFragmentId) {
-            return fragmentSources
-                .computeIfAbsent(planFragmentId, fragmentId -> processFragment(fragments.get(fragmentId)));
+            if (!fragmentSources.containsKey(planFragmentId)) {
+                Set<Integer> rets = processFragment(fragments.get(planFragmentId));
+                fragmentSources.put(planFragmentId, rets);
+                return rets;
+            } else {
+                return fragmentSources.get(planFragmentId);
+            }
         }
 
         private Set<Integer> processFragment(PlanFragment fragment) {

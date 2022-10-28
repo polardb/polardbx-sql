@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -63,9 +65,15 @@ public class Hex extends AbstractScalarFunction {
         if (FunctionUtils.isNull(args[0])) {
             return null;
         }
-
-        DataType type = DataTypeUtil.getTypeOfObject(args[0]);
-        if (DataTypeUtil.isStringType(type)) {
+        DataType operandType = operandTypes.get(0);
+        if (DataTypeUtil.equalsSemantically(DataTypes.BytesType, operandType)) {
+            byte[] bytes = DataTypes.BytesType.convertFrom(args[0]);
+            return octetToHex(bytes);
+        } else if (DataTypeUtil.equalsSemantically(DataTypes.VarcharType, operandType)
+            && operandType.getCharsetName() == CharsetName.BINARY) {
+            byte[] bytes = ((Slice) args[0]).getBytes();
+            return octetToHex(bytes);
+        } else if (DataTypeUtil.isStringType(operandType)) {
             Slice utf8Str = DataTypes.VarcharType.convertFrom(args[0]);
             return Optional.ofNullable(operandTypes)
                 .map(types -> types.get(0))
@@ -78,9 +86,6 @@ public class Hex extends AbstractScalarFunction {
                 .orElseGet(
                     () -> octetToHex((byte[]) utf8Str.getBase())
                 );
-        } else if (DataTypeUtil.equalsSemantically(DataTypes.BytesType, type)) {
-            byte[] bytes = DataTypes.BytesType.convertFrom(args[0]);
-            return octetToHex(bytes);
         } else {
             BigInteger intVal = (BigInteger) DataTypes.ULongType.convertJavaFrom(args[0]);
             return intVal.toString(16).toUpperCase();

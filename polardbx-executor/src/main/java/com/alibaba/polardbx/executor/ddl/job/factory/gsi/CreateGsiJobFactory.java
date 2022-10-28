@@ -77,6 +77,7 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     protected ExecutionContext executionContext;
     public boolean needOnlineSchemaChange = true;
     public boolean stayAtBackFill = false;
+    public boolean buildBroadCast = false;
 
     public CreateGsiJobFactory(CreateGlobalIndexPreparedData globalIndexPreparedData,
                                PhysicalPlanData physicalPlanData,

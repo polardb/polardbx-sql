@@ -21,6 +21,8 @@ import java.util.List;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
 
+import static org.apache.calcite.sql.SqlAlterTable.genSourceSqlWithOutAfter;
+
 /**
  * @author chenmo.cm
  * @date 2019/1/23 12:07 AM
@@ -123,6 +125,17 @@ public class SqlModifyColumn extends SqlAlterSpecification {
             first,
             afterColumn,
             sourceSql,
+            getParserPosition());
+    }
+
+    @Override
+    public SqlAlterSpecification removeAfterColumn() {
+        return new SqlModifyColumn((SqlIdentifier) tableName,
+            colName,
+            colDef,
+            first,
+            null,
+            genSourceSqlWithOutAfter(sourceSql),
             getParserPosition());
     }
 }

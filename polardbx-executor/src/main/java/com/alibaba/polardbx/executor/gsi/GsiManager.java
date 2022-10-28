@@ -64,5 +64,4 @@ public class GsiManager extends AbstractLifecycle {
         DataSource gsiMgrDs = MetaDbDataSource.getInstance().getDataSource();
         return new GsiMetaManager(gsiMgrDs, topologyHandler.getSchemaName());
     }
-
 }

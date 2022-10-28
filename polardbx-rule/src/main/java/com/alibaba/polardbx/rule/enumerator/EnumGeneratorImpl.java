@@ -20,8 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.alibaba.polardbx.rule.model.ShardMatchedRuleType;
-import com.alibaba.polardbx.rule.model.ShardPrepareResult;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.alibaba.polardbx.rule.MappingRule;
@@ -37,17 +35,12 @@ public class EnumGeneratorImpl implements Enumerator {
 
     private final Map<String, Set<MappingRule>> extMappingRules;
     private Enumerator enumeratorCommon;
-    private Enumerator enumeratorHot;
-
-    private ShardPrepareResult shardPrepareResult;
     private RuleType ruleType;
 
-    public EnumGeneratorImpl(ShardPrepareResult shardPrepareResult, RuleType ruleType,
+    public EnumGeneratorImpl(RuleType ruleType,
                              Map<String, Set<MappingRule>> extMappingRules, RuleColumn ruleColumnParams) {
-        this.shardPrepareResult = shardPrepareResult;
         this.ruleType = ruleType;
         this.extMappingRules = extMappingRules;
-        this.enumeratorHot = new HotspotEnumeratorImpl(extMappingRules, ruleColumnParams);
         this.enumeratorCommon = new RuleEnumeratorImpl(ruleColumnParams);
 
     }
@@ -57,35 +50,13 @@ public class EnumGeneratorImpl implements Enumerator {
                                           Comparable<?> atomicIncrementValue, boolean needMergeValueInCloseInterval) {
         Set<Object> enumeratedSet = Sets.newHashSet();
         List<Enumerator> enumerators = getEnumeratorList();
-        ShardMatchedRuleType matchedDBType = null;
-        ShardMatchedRuleType matchedTBType = null;
-        if (shardPrepareResult != null) {
-            matchedDBType = ShardMatchedRuleType.DB;
-            matchedTBType = ShardMatchedRuleType.TB;
-        }
-        if (matchedDBType == ShardMatchedRuleType.HOT_DB && matchedTBType == ShardMatchedRuleType.HOT_TB) {
-            if (shardPrepareResult.getMatchedMappingRule() != null) {
-                Set<Object> objects = Sets.newHashSet();
-                objects.add(shardPrepareResult.getMatchedMappingRule());
-                enumeratedSet.add(objects);
-            } else {
-                enumInner(condition,
-                    cumulativeTimes,
-                    atomicIncrementValue,
-                    extMappingRules,
-                    needMergeValueInCloseInterval,
-                    enumeratedSet,
-                    enumerators);
-            }
-        } else {
-            enumInner(condition,
-                cumulativeTimes,
-                atomicIncrementValue,
-                extMappingRules,
-                needMergeValueInCloseInterval,
-                enumeratedSet,
-                enumerators);
-        }
+        enumInner(condition,
+            cumulativeTimes,
+            atomicIncrementValue,
+            extMappingRules,
+            needMergeValueInCloseInterval,
+            enumeratedSet,
+            enumerators);
         return enumeratedSet;
     }
 
@@ -106,33 +77,7 @@ public class EnumGeneratorImpl implements Enumerator {
 
     public List<Enumerator> getEnumeratorList() {
         List<Enumerator> enumerators = Lists.newArrayList();
-
-        if (shardPrepareResult != null) {
-            final ShardMatchedRuleType matchedDBType = shardPrepareResult.getMatchedDBType();
-            final ShardMatchedRuleType matchedTBType = shardPrepareResult.getMatchedTBType();
-            if (ruleType == RuleType.DB_RULE_TYPE) {
-                if (matchedDBType == ShardMatchedRuleType.HOT_DB) {
-                    enumerators.add(enumeratorHot);
-                } else if (matchedDBType == ShardMatchedRuleType.DB) {
-                    enumerators.add(enumeratorCommon);
-                } else {
-                    enumerators.add(enumeratorCommon);
-                    enumerators.add(enumeratorHot);
-                }
-            } else {
-                if (matchedTBType == ShardMatchedRuleType.TB) {
-                    enumerators.add(enumeratorCommon);
-                } else if (matchedTBType == ShardMatchedRuleType.HOT_TB) {
-                    enumerators.add(enumeratorHot);
-                } else {
-                    enumerators.add(enumeratorCommon);
-                    enumerators.add(enumeratorHot);
-                }
-            }
-        } else {
-            enumerators.add(enumeratorCommon);
-            enumerators.add(enumeratorHot);
-        }
+        enumerators.add(enumeratorCommon);
         return enumerators;
     }
 

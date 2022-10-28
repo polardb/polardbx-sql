@@ -27,6 +27,7 @@ import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -281,7 +282,6 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void dropColumnConcurrentReadWriteTest() throws Throwable {
 
         final int concurrentNumber = 4;
@@ -336,7 +336,14 @@ public class AutoPartitionColumnTest extends BaseAutoPartitionNewPartition {
                             }
                         }
 
-                        JdbcUtil.executeUpdateSuccess(conn, insertSql);
+                        try (Statement statement = conn.createStatement()) {
+                            statement.executeUpdate(insertSql);
+                        } catch (SQLException e) {
+                            // just ignore missing column
+                            if (!e.getMessage().contains("Number of INSERT target")) {
+                                throw e;
+                            }
+                        }
 
                         // Select primary first.
                         try (Statement statement = conn.createStatement()) {

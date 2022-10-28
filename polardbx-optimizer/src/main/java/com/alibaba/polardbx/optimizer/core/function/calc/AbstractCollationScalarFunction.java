@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.expression.build.Rex2ExprUtil;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public abstract class AbstractCollationScalarFunction extends AbstractScalarFunction {
@@ -52,10 +53,17 @@ public abstract class AbstractCollationScalarFunction extends AbstractScalarFunc
                     break;
                 }
             }
-            if (hasNumericArg) {
-                type = calculateMathCompareType(operandTypes.get(0), operandTypes.get(1));
+            List<DataType> argTypes = new ArrayList<>();
+            if (operandTypes == null || operandTypes.isEmpty()) {
+                argTypes.add(DataTypeUtil.getTypeOfObject(args.get(0)));
+                argTypes.add(DataTypeUtil.getTypeOfObject(args.get(1)));
             } else {
-                type = calculateCompareType(operandTypes.get(0), operandTypes.get(1));
+                argTypes.addAll(operandTypes);
+            }
+            if (hasNumericArg) {
+                type = calculateMathCompareType(argTypes.get(0), argTypes.get(1));
+            } else {
+                type = calculateCompareType(argTypes.get(0), argTypes.get(1));
             }
             if (DataTypeUtil.isStringType(type)) {
                 CharsetName charsetName = CollationName.getCharsetOf(collation);

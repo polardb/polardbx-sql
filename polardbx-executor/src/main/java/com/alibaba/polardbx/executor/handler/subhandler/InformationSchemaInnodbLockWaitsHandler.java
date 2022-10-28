@@ -42,6 +42,23 @@ import java.util.stream.Collectors;
  */
 public class InformationSchemaInnodbLockWaitsHandler extends BaseVirtualViewSubClassHandler {
 
+    private static final String LOCK_WAIT_SQL =
+        "select requesting_trx_id,requested_lock_id,blocking_trx_id,blocking_lock_id,"
+            + "a.trx_mysql_thread_id as requesting_mysql_thread_id, "
+            + "b.trx_mysql_thread_id as blocking_mysql_thread_id "
+            + "from information_schema.innodb_lock_waits "
+            + "join information_schema.innodb_trx a on a.trx_id = requesting_trx_id "
+            + "join information_schema.innodb_trx b on b.trx_id = blocking_trx_id ";
+
+    private static final String LOCK_WAIT_SQL_80 =
+        "select requesting_engine_transaction_id, requesting_engine_lock_id, "
+            + "blocking_engine_transaction_id, blocking_engine_lock_id, "
+            + "a.trx_mysql_thread_id as requesting_mysql_thread_id, "
+            + "b.trx_mysql_thread_id as blocking_mysql_thread_id "
+            + "from performance_schema.DATA_LOCK_WAITS "
+            + "join information_schema.innodb_trx a on a.trx_id = requesting_engine_transaction_id "
+            + "join information_schema.innodb_trx b on b.trx_id = blocking_engine_transaction_id ";
+
     public InformationSchemaInnodbLockWaitsHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }
@@ -57,26 +74,31 @@ public class InformationSchemaInnodbLockWaitsHandler extends BaseVirtualViewSubC
         TrxLookupSet lookupSet = TransactionUtils.getTrxLookupSet(schemaNames);
         Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(schemaNames);
 
+        boolean isMySQL80 = ExecUtils.isMysql80Version();
+        String querySql = isMySQL80 ? LOCK_WAIT_SQL_80 : LOCK_WAIT_SQL;
         for (List<TGroupDataSource> groupDataSourceList : instId2GroupList.values()) {
 
             TGroupDataSource repGroupDataSource = groupDataSourceList.get(0);
 
             List<String> groupNameList =
                 groupDataSourceList.stream().map(x -> x.getDbGroupKey()).collect(Collectors.toList());
-            try (IConnection conn = repGroupDataSource.getConnection(); Statement stmt = conn.createStatement()) {
-                ResultSet rs = stmt.executeQuery(
-                    "select requesting_trx_id,requested_lock_id,blocking_trx_id,blocking_lock_id,"
-                        + "a.trx_mysql_thread_id as requesting_mysql_thread_id, "
-                        + "b.trx_mysql_thread_id as blocking_mysql_thread_id "
-                        + "from information_schema.innodb_lock_waits "
-                        + "join information_schema.innodb_trx a on a.trx_id = requesting_trx_id "
-                        + "join information_schema.innodb_trx b on b.trx_id = blocking_trx_id ");
+            try (IConnection conn = repGroupDataSource.getConnection();
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(querySql)) {
 
                 while (rs.next()) {
-                    String requesting_trx_id = rs.getString("requesting_trx_id");
-                    String requested_lock_id = rs.getString("requested_lock_id");
-                    String blocking_trx_id = rs.getString("blocking_trx_id");
-                    String blocking_lock_id = rs.getString("blocking_lock_id");
+                    String requesting_trx_id, requested_lock_id, blocking_trx_id, blocking_lock_id;
+                    if (isMySQL80) {
+                        requesting_trx_id = rs.getString("requesting_engine_transaction_id");
+                        requested_lock_id = rs.getString("requesting_engine_lock_id");
+                        blocking_trx_id = rs.getString("blocking_engine_transaction_id");
+                        blocking_lock_id = rs.getString("blocking_engine_lock_id");
+                    } else {
+                        requesting_trx_id = rs.getString("requesting_trx_id");
+                        requested_lock_id = rs.getString("requested_lock_id");
+                        blocking_trx_id = rs.getString("blocking_trx_id");
+                        blocking_lock_id = rs.getString("blocking_lock_id");
+                    }
                     Long requesting_mysql_thread_id = rs.getLong("requesting_mysql_thread_id");
                     Long blocking_mysql_thread_id = rs.getLong("blocking_mysql_thread_id");
 

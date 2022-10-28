@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.transaction;
 
+import com.alibaba.polardbx.rpc.XConfig;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.optimizer.utils.IMppTsoTransaction;
@@ -41,14 +42,18 @@ public interface ITsoTransaction extends IMppTsoTransaction {
         // do nothing
     }
 
-    default void useCtsTransaction(IConnection conn) throws SQLException {
+    default void useCtsTransaction(IConnection conn, boolean lizard1PC) throws SQLException {
         XConnection xConnection;
         if (conn.isWrapperFor(XConnection.class) &&
             (xConnection = conn.unwrap(XConnection.class)).supportSingleShardOptimization()) {
             conn.flushUnsent();
             xConnection.setLazyCtsTransaction();
         } else {
-            conn.executeLater("SET innodb_cts_transaction = ON");
+            if (lizard1PC) {
+                conn.executeLater("SET innodb_current_snapshot_seq = ON");
+            } else {
+                conn.executeLater("SET innodb_cts_transaction = ON");
+            }
         }
     }
 

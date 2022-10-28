@@ -47,7 +47,7 @@ import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.SUCCE
 /**
  * @author chenzilin
  */
-public class PurgeOssFileScheduledJob implements SchedulerExecutor {
+public class PurgeOssFileScheduledJob extends SchedulerExecutor {
     private static final Logger logger = LoggerFactory.getLogger(PurgeOssFileScheduledJob.class);
     private final ExecutableScheduledJob executableScheduledJob;
 

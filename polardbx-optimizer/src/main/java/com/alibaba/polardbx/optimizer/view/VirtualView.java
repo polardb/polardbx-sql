@@ -61,6 +61,24 @@ public class VirtualView extends AbstractRelNode {
         this(relInput.getCluster(), relInput.getTraitSet(),
             relInput.getEnum("virtualViewType", VirtualViewType.class));
         this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE);
+
+        int indexSize = relInput.getInteger("indexSize");
+        if (indexSize > 0) {
+            for (int i = 0; i < indexSize; i++) {
+                Integer keys = relInput.getInteger("key" + i);
+                List<Object> vals = relInput.getExpressionList("val" + i).stream().collect(Collectors.toList());
+                index.put(keys, vals);
+            }
+        }
+
+        int likeSize = relInput.getInteger("likeSize");
+        if (likeSize > 0) {
+            for (int i = 0; i < likeSize; i++) {
+                Integer key = relInput.getInteger("key#" + i);
+                RexNode val = relInput.getExpression("val#" + i);
+                like.put(key, val);
+            }
+        }
     }
 
     public static VirtualView create(RelOptCluster cluster, VirtualViewType type) {
@@ -69,6 +87,10 @@ public class VirtualView extends AbstractRelNode {
 
     public static VirtualView create(RelOptCluster cluster, RelTraitSet traitSet, VirtualViewType type) {
         switch (type) {
+        case MODULE_EVENT:
+            return new InformationSchemaModuleEvent(cluster, traitSet);
+        case MODULE:
+            return new InformationSchemaModule(cluster, traitSet);
         case VIRTUAL_STATISTIC:
             return new VirtualStatistic(cluster, traitSet);
         case INFORMATION_SCHEMA_TABLES:
@@ -127,6 +149,10 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaLocalPartitions(cluster, traitSet);
         case LOCAL_PARTITIONS_SCHEDULE:
             return new InformationSchemaLocalPartitionsSchedule(cluster, traitSet);
+        case AUTO_SPLIT_SCHEDULE:
+            return new InformationSchemaAutoSplitSchedule(cluster, traitSet);
+        case ARCHIVE:
+            return new InformationSchemaArchive(cluster, traitSet);
         case PLUGINS:
             return new InformationSchemaPlugins(cluster, traitSet);
         case PROCESSLIST:
@@ -205,6 +231,8 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaInnodbSysForeign(cluster, traitSet);
         case INNODB_SYS_TABLESTATS:
             return new InformationSchemaInnodbSysTablestats(cluster, traitSet);
+        case SEQUENCES:
+            return new InformationSchemaSequences(cluster, traitSet);
         case DRDS_PHYSICAL_PROCESS_IN_TRX:
             return new InformationSchemaDrdsPhysicalProcessInTrx(cluster, traitSet);
         case WORKLOAD:
@@ -253,6 +281,28 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaFileStorageFilesMeta(cluster, traitSet);
         case DDL_PLAN:
             return new InformationSchemaDdlPlan(cluster, traitSet);
+        case REBALANCE_BACKFILL:
+            return new InformationSchemaRebalanceBackFill(cluster, traitSet);
+        case STATEMENTS_SUMMARY:
+            return new InformationSchemaStatementSummary(cluster, traitSet);
+        case STATEMENTS_SUMMARY_HISTORY:
+            return new InformationSchemaStatementSummaryHistory(cluster, traitSet);
+        case JOIN_GROUP:
+            return new InformationSchemaJoinGroup(cluster, traitSet);
+        case SCHEDULE_JOBS:
+            return new InformationSchemaScheduleJobs(cluster, traitSet);
+        case AFFINITY_TABLES:
+            return new InformationSchemaAffinity(cluster, traitSet);
+        case PROCEDURE_CACHE:
+            return new InformationSchemaProcedureCache(cluster, traitSet);
+        case PROCEDURE_CACHE_CAPACITY:
+            return new InformationSchemaProcedureCacheCapacity(cluster, traitSet);
+        case FUNCTION_CACHE:
+            return new InformationSchemaFunctionCache(cluster, traitSet);
+        case FUNCTION_CACHE_CAPACITY:
+            return new InformationSchemaFunctionCacheCapacity(cluster, traitSet);
+        case PUSHED_FUNCTION:
+            return new InformationSchemaPushedFunction(cluster, traitSet);
         default:
             throw new AssertionError();
         }
@@ -276,12 +326,12 @@ public class VirtualView extends AbstractRelNode {
         pw.item(RelDrdsWriter.REL_NAME, "VirtualView");
         pw.item("virtualViewType", virtualViewType.toString());
         pw.itemIf("index", String.join(",",
-            index.keySet().stream()
-                .map(x -> getRowType().getFieldList().get(x).getName()).collect(Collectors.toList())),
+                index.keySet().stream()
+                    .map(x -> getRowType().getFieldList().get(x).getName()).collect(Collectors.toList())),
             !index.isEmpty());
         pw.itemIf("like", String.join(",",
-            like.keySet().stream()
-                .map(x -> getRowType().getFieldList().get(x).getName()).collect(Collectors.toList())),
+                like.keySet().stream()
+                    .map(x -> getRowType().getFieldList().get(x).getName()).collect(Collectors.toList())),
             !like.isEmpty());
         return pw;
     }
@@ -290,6 +340,49 @@ public class VirtualView extends AbstractRelNode {
     public RelWriter explainTerms(RelWriter pw) {
         pw.item(RelDrdsWriter.REL_NAME, "VirtualView");
         pw.item("virtualViewType", virtualViewType.toString());
+
+        Map<Integer, List<RexDynamicParam>> indexDynamicParam = new HashMap<>();
+        for (Map.Entry<Integer, List<Object>> iter : index.entrySet()) {
+            int index = iter.getKey();
+            for (Object val : iter.getValue()) {
+                if (val instanceof RexDynamicParam) {
+                    List<RexDynamicParam> dynamicParams = indexDynamicParam.get(index);
+                    if (dynamicParams == null) {
+                        dynamicParams = new ArrayList<>();
+                        indexDynamicParam.put(index, dynamicParams);
+                    }
+                    dynamicParams.add((RexDynamicParam) val);
+                }
+            }
+        }
+
+        Map<Integer, RexDynamicParam> likeDynamicParam = new HashMap<>();
+        for (Map.Entry<Integer, Object> iter : like.entrySet()) {
+            int index = iter.getKey();
+            if (iter.getValue() instanceof RexDynamicParam) {
+                likeDynamicParam.put(index, (RexDynamicParam) iter.getValue());
+            }
+        }
+
+        pw.item("indexSize", indexDynamicParam.size());
+        if (indexDynamicParam.size() > 0) {
+            int i = 0;
+            for (Map.Entry<Integer, List<RexDynamicParam>> dynamicParamList : indexDynamicParam.entrySet()) {
+                pw.item("key" + i, dynamicParamList.getKey());
+                pw.item("val" + i, dynamicParamList.getValue());
+                i++;
+            }
+        }
+
+        pw.item("likeSize", likeDynamicParam.size());
+        if (likeDynamicParam.size() > 0) {
+            int i = 0;
+            for (Map.Entry<Integer, RexDynamicParam> dynamicParamList : likeDynamicParam.entrySet()) {
+                pw.item("key#" + i, dynamicParamList.getKey());
+                pw.item("val#" + i, dynamicParamList.getValue());
+                i++;
+            }
+        }
         return pw;
     }
 
@@ -346,8 +439,6 @@ public class VirtualView extends AbstractRelNode {
                         int indexOp2 = ((RexInputRef) operand2).getIndex();
                         if (indexableColumn(indexOp2)) {
                             if (operand1 instanceof RexDynamicParam) {
-                                addIndexItem(indexOp2, operand1);
-                            } else if (operand1 instanceof RexLiteral) {
                                 addIndexItem(indexOp2, operand1);
                             }
                         }

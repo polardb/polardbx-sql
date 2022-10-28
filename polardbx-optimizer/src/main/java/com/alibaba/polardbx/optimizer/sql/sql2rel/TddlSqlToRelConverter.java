@@ -18,7 +18,10 @@ package com.alibaba.polardbx.optimizer.sql.sql2rel;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -49,7 +52,6 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
-import com.alibaba.polardbx.optimizer.utils.CheckGsiColumnLenUtils;
 import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -57,6 +59,7 @@ import com.alibaba.polardbx.optimizer.view.DrdsViewExpander;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.avatica.util.ByteString;
+import com.google.common.collect.Lists;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
@@ -71,11 +74,13 @@ import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableModify.TableInfo;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.logical.LogicalTableModify;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
@@ -149,6 +154,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
+import static com.alibaba.polardbx.common.TddlConstants.INFORMATION_SCHEMA;
 import static com.google.common.util.concurrent.Runnables.doNothing;
 import static org.apache.calcite.util.Static.RESOURCE;
 
@@ -185,9 +192,24 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             // on duplicate key update
             SqlNodeList updateList = (SqlNodeList) call.getOperandList().get(4);
             if (updateList.size() > 0) {
-                RelOptTable targetTable = getTargetTable(call);
+                RelOptTable targetTable = modify.getTable();
+
+                ExecutionContext ec = PlannerContext.getPlannerContext(relNode).getExecutionContext();
+
+                final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
+                final String schema = qn.left;
+                final String tableName = qn.right;
+                final OptimizerContext oc = OptimizerContext.getContext(schema);
+                assert oc != null;
+
+                final TableMeta tableMeta = ec.getSchemaManager(schema).getTable(tableName);
+
+                final TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
+                SqlNode sourceNode = null;
+
                 // put all columns to nameToNodeMap
                 RelDataType rowType = targetTable.getRowType();
+
                 final RexNode sourceRef = rexBuilder.makeRangeReference(rowType, 0, false);
                 final Map<String, RexNode> nameToNodeMap = new HashMap<>();
                 final List<ColumnStrategy> strategies = targetTable.getColumnStrategies();
@@ -204,26 +226,33 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
                 final Set<String> updateColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                 Blackboard bb = createBlackboard(null, nameToNodeMap, false);
+
+                //替换默认值需要的变量
+                final InitializerExpressionFactory initializerFactory =
+                    getInitializerFactory(validator.getNamespace(call).getTable());
+                final boolean sqlModeStrict =
+                    Optional.ofNullable(oc.getVariableManager()).map(vm -> vm.isSqlModeStrict(ec)).orElse(true);
+                final ReplaceDefaultOnDuplicateKeyUpdateList replaceDefaultExpr =
+                    new ReplaceDefaultOnDuplicateKeyUpdateList(targetFields,
+                        targetTable, bb, initializerFactory, tableMeta, call, sqlModeStrict, ec);
+
                 // convert SqlNode to RexNode
                 ImmutableList.Builder<RexNode> rexNodeSourceExpressionListBuilder = ImmutableList.builder();
                 for (SqlNode n : updateList) {
-                    RexNode rn = bb.convertExpression(n);
-                    rexNodeSourceExpressionListBuilder.add(rn);
+                    String updateTargetColumnName = null;
                     if (n instanceof SqlCall) {
                         final SqlNode updateTarget = ((SqlCall) n).getOperandList().get(0);
-                        updateColumns.add(RelUtils.stringValue(updateTarget));
+                        updateTargetColumnName = RelUtils.stringValue(updateTarget);
+                        updateColumns.add(updateTargetColumnName);
                     }
+                    RexNode rn = bb.convertExpression(n);
+                    if (updateTargetColumnName != null) {
+                        //替换default值
+                        rn = replaceDefaultExpr.replaceDefaultValue(rn, updateTargetColumnName, updateTargetColumnName);
+                    }
+                    rexNodeSourceExpressionListBuilder.add(rn);
                 }
 
-                ExecutionContext ec = PlannerContext.getPlannerContext(relNode).getExecutionContext();
-
-                final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
-                final String schema = qn.left;
-                final String tableName = qn.right;
-                final OptimizerContext oc = OptimizerContext.getContext(schema);
-                assert oc != null;
-
-                final TableMeta tableMeta = ec.getSchemaManager(schema).getTable(tableName);
                 final boolean isBroadcast = oc.getRuleManager().isBroadCast(tableName);
 
                 final List<TableMeta> gsiMetas = GlobalIndexMeta.getIndex(targetTable, ec);
@@ -249,35 +278,35 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
                 if (isBroadcast || modifyGsi || scaleOutCanWrite || replaceNonDeterministicFunction
                     || (!pushdownDuplicateCheck && !canPushDuplicateCheck)) {
+                    for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
+                        if (!updateColumns.contains(columnMeta.getName())) {
+                            if (TStringUtil.containsIgnoreCase(columnMeta.getField().getExtra(), "on update")) {
+                                final Field field = columnMeta.getField();
+                                String columnName = columnMeta.getName();
 
-                    tableMeta.getAllColumns()
-                        .stream()
-                        .filter(c -> !updateColumns.contains(c.getName()))
-                        .filter(c -> TStringUtil.containsIgnoreCase(c.getField().getExtra(), "on update"))
-                        .forEach(columnMeta -> {
-                            final Field field = columnMeta.getField();
+                                // Add SET for column ON UPDATE CURRENT_TIMESTAMP
+                                if (DataTypeUtil.anyMatchSemantically(field.getDataType(), DataTypes.TimestampType,
+                                    DataTypes.DatetimeType)) {
+                                    final SqlBasicCall currentTimestamp =
+                                        new SqlBasicCall(SqlStdOperatorTable.CURRENT_TIMESTAMP, SqlNode.EMPTY_ARRAY,
+                                            SqlParserPos.ZERO);
+                                    final SqlIdentifier targetColumnId =
+                                        new SqlIdentifier(columnName, SqlParserPos.ZERO);
+                                    final SqlBasicCall onUpdateCurrentTimestamp =
+                                        new SqlBasicCall(SqlStdOperatorTable.EQUALS,
+                                            ImmutableList.of(targetColumnId, currentTimestamp).toArray(new SqlNode[2]),
+                                            SqlParserPos.ZERO);
+                                    final RexNode rn = bb.convertExpression(onUpdateCurrentTimestamp);
+                                    rexNodeSourceExpressionListBuilder.add(rn);
 
-                            // Add SET for column ON UPDATE CURRENT_TIMESTAMP
-                            if (DataTypeUtil.anyMatchSemantically(field.getDataType(), DataTypes.TimestampType,
-                                DataTypes.DatetimeType)) {
-                                final SqlBasicCall currentTimestamp =
-                                    new SqlBasicCall(SqlStdOperatorTable.CURRENT_TIMESTAMP, SqlNode.EMPTY_ARRAY,
-                                        SqlParserPos.ZERO);
-                                final SqlIdentifier targetColumnId =
-                                    new SqlIdentifier(columnMeta.getName(), SqlParserPos.ZERO);
-                                final SqlBasicCall onUpdateCurrentTimestamp =
-                                    new SqlBasicCall(SqlStdOperatorTable.EQUALS,
-                                        ImmutableList.of(targetColumnId, currentTimestamp).toArray(new SqlNode[2]),
-                                        SqlParserPos.ZERO);
-                                final RexNode rn = bb.convertExpression(onUpdateCurrentTimestamp);
-                                rexNodeSourceExpressionListBuilder.add(rn);
-
-                                // Record append column index for generation of correct 'on update current_timestamp' values as MySQL does
-                                final RexCall rexCall = (RexCall) rn;
-                                final RexInputRef rexInputRef = (RexInputRef) rexCall.getOperands().get(0);
-                                modify.getAppendedColumnIndex().add(rexInputRef.getIndex());
+                                    // Record append column index for generation of correct 'on update current_timestamp' values as MySQL does
+                                    final RexCall rexCall = (RexCall) rn;
+                                    final RexInputRef rexInputRef = (RexInputRef) rexCall.getOperands().get(0);
+                                    modify.getAppendedColumnIndex().add(rexInputRef.getIndex());
+                                }
                             }
-                        });
+                        }
+                    }
                 }
 
                 modify.setDuplicateKeyUpdateList(rexNodeSourceExpressionListBuilder.build());
@@ -289,6 +318,148 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         return relNode;
     }
 
+    private class ReplaceDefaultOnDuplicateKeyUpdateList {
+        private final List<String> allColumnNames;
+        private final RelOptTable targetTable;
+        private final Blackboard bb;
+        private final InitializerExpressionFactory initializerFactory;
+        private final TableMeta tableMeta;
+        private final SqlNode sqlNode;
+        private final boolean sqlModeStrict;
+        private final ExecutionContext ec;
+
+        public ReplaceDefaultOnDuplicateKeyUpdateList(List<String> allColumnNames,
+                                                      RelOptTable targetTable, Blackboard bb,
+                                                      InitializerExpressionFactory initializerFactory,
+                                                      TableMeta tableMeta, SqlNode sqlNode, boolean sqlModeStrict,
+                                                      ExecutionContext ec) {
+            this.allColumnNames = allColumnNames;
+            this.targetTable = targetTable;
+            this.bb = bb;
+            this.initializerFactory = initializerFactory;
+            this.tableMeta = tableMeta;
+            this.sqlNode = sqlNode;
+            this.sqlModeStrict = sqlModeStrict;
+            this.ec = ec;
+        }
+
+        /**
+         * 替换OnDuplicateKeyUpdateList 中的default表达式
+         */
+        public RexNode replaceDefaultValue(RexNode relNode, String defaultFieldName, String targetFieldName) {
+            //OnDuplicateKey 不是 c1 = RexCall 形式，直接返回
+            if (!(relNode instanceof RexCall) || ((RexCall) relNode).getOperator().getKind() != SqlKind.EQUALS ||
+                !(((RexCall) relNode).getOperands().get(1) instanceof RexCall)) {
+                return relNode;
+            }
+            RexNode operandOne = ((RexCall) relNode).getOperands().get(0);
+            RexCall assignment = (RexCall) ((RexCall) relNode).getOperands().get(1);
+            RexNode newAssignment = null;
+            boolean modify = false;
+            // OnDuplicateKeyUpdateList是c1 = default,
+            if (assignment.getOperator().getKind() == SqlKind.DEFAULT && assignment.getOperands().isEmpty()) {
+                newAssignment =
+                    getFieldDefaultValueOnDuplicateKeyUpdateList(assignment, defaultFieldName, targetFieldName);
+                modify = true;
+            } else {
+                //否则，寻找 c1 = default(c2), c1 = 1 + default(c2) 等表达式替换default值
+                Pair<RexNode, Boolean> newOperandPair =
+                    findAndReplaceDefaultOnDuplicateKeyUpdateList(assignment, targetFieldName);
+                if (newOperandPair.getValue()) {
+                    modify = true;
+                    newAssignment = newOperandPair.getKey();
+                }
+            }
+
+            //替换了default值,修改RexNode
+            if (modify) {
+                relNode = bb.getRexBuilder()
+                    .makeCall(((RexCall) relNode).getOperator(), ImmutableList.of(operandOne, newAssignment));
+            }
+
+            return relNode;
+        }
+
+        /**
+         * 获取defaultFieldName列的默认值，赋值的目标列是targetFieldName
+         */
+        private RexNode getFieldDefaultValueOnDuplicateKeyUpdateList(RexNode node, String defaultFieldName,
+                                                                     String targetFieldName) {
+            RexNode newNode = null;
+            final int index = targetTable.getRowType().getFieldNames().indexOf(defaultFieldName);
+            if (index < 0) {
+                throw new SqlValidateException(
+                    validator.newValidationError(sqlNode, RESOURCE.unknownTargetColumn(defaultFieldName)));
+            }
+            final Field targetField = tableMeta.getColumn(targetFieldName).getField();
+            final String columnDefaultStr = tableMeta.getColumn(defaultFieldName).getField().getDefault();
+
+            if (null == columnDefaultStr && !targetField.isNullable()) {
+                //目标列不能为空，获取默认值的列没有默认值，但是需要使用默认值，检查是否用隐式获取默认值
+                if (!sqlModeStrict) {
+                    newNode = initializerFactory.newImplicitDefaultValue(targetTable, index, bb);
+                }
+                if (null == newNode) {
+                    // Columns not accept NULL but has no default value or AUTO_INCREMENT property
+                    throw new SqlValidateException(
+                        validator.newValidationError(sqlNode, RESOURCE.columnNotNullable(defaultFieldName)));
+                }
+            } else {
+                newNode = initializerFactory.newColumnDefaultValue(targetTable, index, bb);
+                newNode = convertDefaultValue(newNode, targetTable, index, tableMeta, ec);
+            }
+
+            if (null == newNode) {
+                // Update target data type for DEFAULT call not replaced
+                // 考虑下推执行
+                newNode = bb.getRexBuilder()
+                    .makeCall(new SqlDefaultOperator(node.getType().getSqlTypeName()),
+                        ((RexCall) node).getOperands());
+            } else {
+                newNode = castNullLiteralIfNeeded(newNode, node.getType());
+            }
+            return newNode;
+        }
+
+        private Pair<RexNode, Boolean> findAndReplaceDefaultOnDuplicateKeyUpdateList(RexNode node,
+                                                                                     String targetFieldName) {
+
+            if (node instanceof RexCall && node.getKind() == SqlKind.DEFAULT &&
+                !((RexCall) node).getOperands().isEmpty()) {
+                //default(c2) 表达式
+                RexNode field = ((RexCall) node).getOperands().get(0);
+                String defaultFieldName = null;
+                if (field instanceof RexInputRef) {
+                    defaultFieldName = allColumnNames.get(((RexInputRef) field).getIndex());
+                }
+                if (defaultFieldName == null) {
+                    throw new SqlValidateException(
+                        validator.newValidationError(sqlNode, RESOURCE.unknownField(node.toString())));
+                }
+                RexNode newNode = getFieldDefaultValueOnDuplicateKeyUpdateList(node, defaultFieldName, targetFieldName);
+                return Pair.of(newNode, true);
+            } else if (node instanceof RexCall && node.getKind().belongsTo(SqlKind.BINARY_ARITHMETIC)) {
+                //计算式，则遍历所有getOperands()
+                List<RexNode> operands = ((RexCall) node).getOperands();
+                List<RexNode> newOperands = new ArrayList<>(operands.size());
+                boolean modify = false;
+                for (RexNode operand : operands) {
+                    Pair<RexNode, Boolean> newOperandPair =
+                        findAndReplaceDefaultOnDuplicateKeyUpdateList(operand, targetFieldName);
+                    if (newOperandPair.getValue()) {
+                        modify = true;
+                    }
+                    newOperands.add(newOperandPair.getKey());
+                }
+                if (modify) {
+                    RexNode newNode = bb.getRexBuilder().makeCall(((RexCall) node).getOperator(), newOperands);
+                    return Pair.of(newNode, true);
+                }
+            }
+            return Pair.of(node, false);
+        }
+    }
+
     /**
      * <pre>
      * Add columns which are not specified in INSERT/REPLACE statement
@@ -296,6 +467,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
      *   2. Add partition key of primary and gsi table with the default value from table meta
      *   3. Add columns of which has property DEFAULT CURRENT_TIMESTAMP and included in gsi, with a value of RexCall CURRENT_TIMESTAMP
      *   4. Add columns of which is referenced in ON DUPLICATE KEY UPDATE
+     *   5. Add target column in multi-write
      *
      * Replace keyword DEFAULT with a literal of default value (or a RexCall if default value is a function)
      *
@@ -435,6 +607,12 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             }
         });
 
+        // Aad source column's default value in column multi-write, otherwise the default values of primary and gsi may
+        // differ
+        final TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
+        Pair<String, String> columnMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
+
+        // Append all column in target table for upsert with multi write
         final SqlNodeList duplicateKeyUpdateList = (SqlNodeList) call.getOperandList().get(4);
         // Whether UPSERT modify partition key
         final List<String> updateColumns = BuildPlanUtils.buildUpdateColumnList(duplicateKeyUpdateList, (sqlNode) -> {
@@ -447,7 +625,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final Boolean pushdownDuplicateCheck = isPushdownDuplicateCheck();
         final boolean appendAllColumnsForUpsert =
             duplicateKeyUpdateList.size() > 0 && (isBroadcast || withGsi || withScaleOutMultiWrite
-                || !pushdownDuplicateCheck || upsertModifyPartitionKey || hintEx == ExecutionStrategy.LOGICAL);
+                || !pushdownDuplicateCheck || upsertModifyPartitionKey || hintEx == ExecutionStrategy.LOGICAL
+                || columnMapping != null);
 
         // Walk the expression list and get default values for columns that were wanted and not supplied
         // in the statement. Get field names too.
@@ -461,9 +640,12 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             } else if (autoIncrementColumns.contains(targetFieldName)) {
                 // Add auto_increment column to insert with value of NULL;
                 node = bb.get().getRexBuilder().constantNull();
+            } else if (columnMapping != null && targetFieldName.equalsIgnoreCase(columnMapping.right)) {
+                // Do nothing, we will add it later in WriterFactory
             } else if (partitionKeys.contains(targetFieldName) || uniqueKeys.contains(targetFieldName)
                 || defaultCurrentTimestamp.contains(targetFieldName) || primaryKeys.contains(targetFieldName)
-                || appendAllColumnsForUpsert || autoFillDefaultColumns.contains(targetFieldName)) {
+                || appendAllColumnsForUpsert || autoFillDefaultColumns.contains(targetFieldName) || (
+                columnMapping != null && targetFieldName.equalsIgnoreCase(columnMapping.left))) {
                 // Add literal or function call as default value of column;
                 node =
                     convertDefaultValue(initializerFactory.newColumnDefaultValue(targetTable, i, bb.get()), targetTable,
@@ -578,43 +760,20 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final int index = targetColumnNames.indexOf(targetFieldName);
                 if (index >= 0) {
                     RexNode node = oriExps.get(index);
-                    if (node instanceof RexCall && ((RexCall) node).getOperator().getKind() == SqlKind.DEFAULT) {
-                        RelDataType oriType = node.getType();
-                        final RexCall oriCall = (RexCall) node;
-                        final Field field = tableMeta.getColumn(targetFieldName).getField();
-                        final String columnDefaultStr = field.getDefault();
-
-                        if (autoIncrementColumns.contains(targetFieldName)) {
-                            // Use NULL as default value of auto_increment column
-                            node = bb.get().getRexBuilder().constantNull();
-                            oriType = targetField.getType();
-                        } else if (null == columnDefaultStr && !field.isNullable()) {
-                            node = null;
-
-                            if (!sqlModeStrict) {
-                                node = initializerFactory.newImplicitDefaultValue(targetTable, i, bb.get());
-                            }
-
-                            if (null == node) {
-                                // Columns not accept NULL but has no default value or AUTO_INCREMENT property
-                                throw new SqlValidateException(
-                                    validator.newValidationError(sqlNode, RESOURCE.columnNotNullable(targetFieldName)));
-                            }
-                        } else {
-                            node =
-                                convertDefaultValue(initializerFactory.newColumnDefaultValue(targetTable, i, bb.get()),
-                                    targetTable, i, tableMeta, ec);
-                        }
-
-                        if (null == node) {
-                            // Update target data type for DEFAULT call not replaced
-                            node = bb.get().getRexBuilder()
-                                .makeCall(new SqlDefaultOperator(targetField.getType().getSqlTypeName()),
-                                    oriCall.getOperands());
-                        } else {
-                            node = castNullLiteralIfNeeded(node, oriType);
-                        }
+                    //关键字default替换值，例如values(default, c1, c1 + 1, default(c2), default(c2) + 1)
+                    //mysql：values(default + 1)不支持，所以不支持 default + 1 等计算式，
+                    if (node instanceof RexCall && ((RexCall) node).getOperator().getKind() == SqlKind.DEFAULT
+                        && ((RexCall) node).getOperands().isEmpty()) {
+                        // 简单的default关键字，例如：values(default);
+                        node = getFieldDefaultValue(node, targetField, targetFieldName, false);
                         defaultReplaced = true;
+                    } else {
+                        //递归替换所有values(c1 + 1, default(c2) + 1, c1 + 1 + 1)等形式的RexCall
+                        Pair<RexNode, Boolean> newNodePair = replaceDefaultValueSpecial(node, targetFieldName, false);
+                        if (newNodePair.getValue()) {
+                            node = newNodePair.getKey();
+                            defaultReplaced = true;
+                        }
                     }
 
                     sourceExps[index] = node;
@@ -631,6 +790,138 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 return visited;
             }
         }
+
+        /**
+         * 获取某个列（Field）的默认值，参数：
+         * <li>defaultField代表获取default值的列 </li>
+         * <li>targetFieldName要插入的列名</li>
+         * <li>isArithmetic父节点是否是计算式。</li>
+         * <br>
+         * 特殊：当某列 c1 是AUTO_INCREMENT：
+         * <li>例1：insert t1(c1) values(default),(c1),(default(c1)); 应该是获取sequence</li>
+         * <li>例2：insert t1(c1) values(c1 + 1), c1的default应该隐式转换0，而不是null去获取sequence</li>
+         * <li>例3：insert t1(c2) values(c1),(c1 + 1); c1的default应该隐式转换0，而不是null去获取sequence</li>
+         */
+        private RexNode getFieldDefaultValue(RexNode node, RelDataTypeField defaultField, String targetFieldName,
+                                             boolean isArithmetic) {
+            RelDataType type = node.getType();
+            RexNode newNode = null;
+            final String defaultFieldName = defaultField.getName();
+            final int index = targetFields.indexOf(defaultField);
+            if (index < 0) {
+                throw new SqlValidateException(
+                    validator.newValidationError(sqlNode, RESOURCE.unknownTargetColumn(defaultField.getName())));
+            }
+            final Field targetField = tableMeta.getColumn(targetFieldName).getField();
+            final String columnDefaultStr = tableMeta.getColumn(defaultFieldName).getField().getDefault();
+
+            if (!isArithmetic && autoIncrementColumns.contains(targetFieldName)
+                && autoIncrementColumns.contains(defaultFieldName)) {
+                //不是计算式，目标列是 AUTO_INCREMENT，要获取的default列也是AUTO_INCREMENT；用null，后续获取sequence
+                newNode = bb.get().getRexBuilder().constantNull();
+                type = defaultField.getType();
+
+            } else if (null == columnDefaultStr && !targetField.isNullable()) {
+                //目标列不能为空，获取默认值的列没有默认值，但是需要使用默认值，检查是否用隐式获取默认值
+                if (!sqlModeStrict) {
+                    newNode = initializerFactory.newImplicitDefaultValue(targetTable, index, bb.get());
+                }
+                if (null == newNode) {
+                    // Columns not accept NULL but has no default value or AUTO_INCREMENT property
+                    throw new SqlValidateException(
+                        validator.newValidationError(sqlNode, RESOURCE.columnNotNullable(defaultFieldName)));
+                }
+            } else {
+                newNode = initializerFactory.newColumnDefaultValue(targetTable, index, bb.get());
+                newNode = convertDefaultValue(newNode, targetTable, index, tableMeta, ec);
+            }
+
+            if (null == newNode) {
+                // Update target data type for DEFAULT call not replaced
+                // 考虑下推执行
+                if (node instanceof RexCall) {
+                    newNode = bb.get().getRexBuilder()
+                        .makeCall(new SqlDefaultOperator(defaultField.getType().getSqlTypeName()),
+                            ((RexCall) node).getOperands());
+                } else if (node instanceof RexFieldAccess) {
+                    //将列换成DEFAULT(c1)
+                    newNode = bb.get().getRexBuilder()
+                        .makeCall(new SqlDefaultOperator(defaultField.getType().getSqlTypeName()), node);
+                } else {
+                    newNode = bb.get().getRexBuilder()
+                        .makeCall(new SqlDefaultOperator(defaultField.getType().getSqlTypeName()));
+                }
+
+            } else {
+                newNode = castNullLiteralIfNeeded(newNode, type);
+            }
+            return newNode;
+        }
+
+        /**
+         * 遍历所有RexCall，替换特殊情况的default值.
+         * 例如：values(c1, c1 + 1, default(c2), default(c2) + 1);
+         * <br>
+         * 返回值 Boolean 表示是否进行了修改.
+         */
+        private Pair<RexNode, Boolean> replaceDefaultValueSpecial(RexNode node, String targetFieldName,
+                                                                  boolean isArithmetic) {
+            /*
+              三种情况：
+              1.values(c1)
+              2.values(c1 + 1), c1是别的类型，可能有一层CAST
+              3.values(default(c1) + 1);
+             */
+            if (node instanceof RexFieldAccess ||
+                (node instanceof RexCall && node.getKind() == SqlKind.CAST
+                    && ((RexCall) node).getOperands().size() == 1
+                    && ((RexCall) node).getOperands().get(0) instanceof RexFieldAccess) ||
+                (node instanceof RexCall && node.getKind() == SqlKind.DEFAULT &&
+                    !((RexCall) node).getOperands().isEmpty())) {
+                RelDataTypeField defaultField = null;
+                if (node instanceof RexFieldAccess) {
+                    //values(c1)情况
+                    defaultField = ((RexFieldAccess) node).getField();
+                } else {
+                    //values(default(c1))情况
+                    RexNode field = ((RexCall) node).getOperands().get(0);
+                    if (field instanceof RexFieldAccess) {
+                        defaultField = ((RexFieldAccess) field).getField();
+                    }
+                }
+                if (defaultField == null || !targetFields.contains(defaultField)) {
+                    throw new SqlValidateException(
+                        validator.newValidationError(sqlNode, RESOURCE.unknownTargetColumn(node.toString())));
+                }
+                RexNode newNode = getFieldDefaultValue(node, defaultField, targetFieldName, isArithmetic);
+                if (node instanceof RexCall && node.getKind() == SqlKind.CAST) {
+                    newNode = bb.get().getRexBuilder()
+                        .makeCall(node.getType(), ((RexCall) node).getOperator(), ImmutableList.of(newNode));
+                }
+                return Pair.of(newNode, true);
+
+            } else if (node instanceof RexCall && node.getKind().belongsTo(SqlKind.BINARY_ARITHMETIC)) {
+                //计算式RexCall，遍历每一个operand是否需要替换的default值
+                List<RexNode> operands = ((RexCall) node).getOperands();
+                List<RexNode> newOperands = new ArrayList<>(operands.size());
+                boolean modify = false;
+                for (RexNode operand : operands) {
+                    Pair<RexNode, Boolean> newOperandPair =
+                        replaceDefaultValueSpecial(operand, targetFieldName, true);
+                    if (newOperandPair.getValue()) {
+                        modify = true;
+                    }
+                    newOperands.add(newOperandPair.getKey());
+                }
+                if (modify) {
+                    RexNode newNode = bb.get().getRexBuilder().makeCall(((RexCall) node).getOperator(), newOperands);
+                    return Pair.of(newNode, true);
+                }
+
+            }
+            return Pair.of(node, false);
+        }
+
     }
 
     private class ValuesCallFinder extends SqlShuttle {
@@ -670,6 +961,24 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final int len = wrappedName.length();
         if (len > 6 && wrappedName.startsWith("_$", len - 6)) {
             return wrappedName.substring(0, len - 6);
+        }
+        return wrappedName;
+    }
+
+    public static String unwrapPhysicalTableName(String wrappedName) {
+        String ret = wrappedName;
+        int len = wrappedName.length();
+        while (len > 4 && ret.startsWith("_%", len - 4)) {
+            ret = ret.substring(0, len - 4);
+            len = ret.length();
+        }
+        return ret;
+    }
+
+    public static String unwrapLocalIndexName(String wrappedName) {
+        final int len = wrappedName.length();
+        if (len > 7 && wrappedName.startsWith(AUTO_LOCAL_INDEX_PREFIX)) {
+            return wrappedName.substring(7, len);
         }
         return wrappedName;
     }
@@ -1202,37 +1511,6 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         return show;
     }
 
-    @Override
-    protected void checkGsiColumnLen(SqlCreateTable create) {
-        if (plannerContext.isExplain()) {
-            return;
-        }
-        // Only check for global index
-        if (null == create.getGlobalKeys() && null == create.getGlobalUniqueKeys() &&
-            null == create.getClusteredKeys() && null == create.getClusteredUniqueKeys()) {
-            return;
-        }
-        CheckGsiColumnLenUtils
-            .checkGsiColumnLen(create, this.getPlannerContext().getExecutionContext(), validator);
-    }
-
-    @Override
-    protected void checkGsiColumnLen(SqlCreateIndex create) {
-        if (plannerContext.isExplain() || !create.createGsi()) {
-            return;
-        }
-        CheckGsiColumnLenUtils
-            .checkGsiColumnLen(create, this.getPlannerContext().getExecutionContext(), validator);
-    }
-
-    @Override
-    protected void checkGsiColumnLen(SqlAlterTable query) {
-        if (plannerContext.isExplain() || !query.createGsi()) {
-            return;
-        }
-        CheckGsiColumnLenUtils.checkGsiColumnLen(query, this.getPlannerContext().getExecutionContext(), validator);
-    }
-
     /**
      * Rewrite source select, add SET item for column with attribute ON UPDATE
      * CURRENT_TIMESTAMP. This method will update select list of
@@ -1262,39 +1540,16 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final boolean gsiHasAutoUpdateColumns =
             CheckModifyLimitation.checkGsiHasAutoUpdateColumns(srcTables, this.plannerContext.getExecutionContext());
 
-        final Set<Integer> targetTableIndexSet = new LinkedHashSet<>(targetTableIndexes);
-        final TreeSet<String> targetColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        targetColumnSet.addAll(targetColumns);
+        final Set<Integer> targetTableIndexSet = new TreeSet<>(targetTableIndexes);
 
         final SqlSelect sourceSelect = update.getSourceSelect();
         final List<SqlNode> selectList = sourceSelect.getSelectList().getList();
         final AtomicInteger ordinal = new AtomicInteger(selectList.size() - 1);
 
-        int offset = selectList.size() - targetColumns.size();
 
-        // Add (cast ... as binary) for blob type
-        for (int i = 0; i < targetColumns.size(); i++) {
-            final RelOptTable table = srcTables.get(targetTableIndexes.get(i)).getRefTable();
-            final Pair<String, String> qn = RelUtils.getQualifiedTableName(table);
-            final TableMeta tableMeta =
-                plannerContext.getExecutionContext().getSchemaManager(qn.left).getTable(qn.right);
-            final ColumnMeta columnMeta = tableMeta.getColumn(targetColumns.get(i));
-            if (DataTypeUtil.isBinaryType(columnMeta.getDataType())) {
-                SqlNode sqlNode = selectList.get(i + offset);
-                SqlNode newSqlNode = SqlStdOperatorTable.CAST.createCall(SqlParserPos.ZERO, sqlNode, new SqlDataTypeSpec(
-                    new SqlIdentifier("BINARY", SqlParserPos.ZERO),
-                    -1,
-                    -1,
-                    null,
-                    null,
-                    SqlParserPos.ZERO
-                ));
-                selectList.set(i + offset,
-                    SqlValidatorUtil.addAlias(newSqlNode, SqlUtil.deriveAliasFromOrdinal(ordinal.getAndIncrement())));
-            }
-        }
 
-        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning && !gsiHasAutoUpdateColumns) {
+        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning && !gsiHasAutoUpdateColumns
+            ) {
             sourceSelect.setSelectList(new SqlNodeList(selectList, SqlParserPos.ZERO));
             return update.getSourceSelect();
         }
@@ -1304,6 +1559,16 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             final Pair<String, String> qn = RelUtils.getQualifiedTableName(table);
             final TableMeta tableMeta =
                 plannerContext.getExecutionContext().getSchemaManager(qn.left).getTable(qn.right);
+            final TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
+            final Pair<String, String> columnMapping =
+                TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, plannerContext.getExecutionContext());
+
+            final TreeSet<String> targetColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            for (int i = 0; i < targetColumns.size(); i++) {
+                if (targetTableIndexes.get(i).equals(tableIndex)) {
+                    targetColumnSet.add(targetColumns.get(i));
+                }
+            }
 
             tableMeta.getAllColumns()
                 .stream()
@@ -1312,7 +1577,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     final Field field = columnMeta.getField();
 
                     // Add SET for column ON UPDATE CURRENT_TIMESTAMP
-                    if (TStringUtil.containsIgnoreCase(field.getExtra(), "on update")) {
+                    if (TStringUtil.containsIgnoreCase(field.getExtra(), "on update") &&
+                        !(columnMapping != null && columnMeta.getName().equalsIgnoreCase(columnMapping.right))) {
                         if (DataTypeUtil
                             .anyMatchSemantically(field.getDataType(), DataTypes.TimestampType,
                                 DataTypes.DatetimeType)) {
@@ -1337,7 +1603,6 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
     protected RelNode transformUpdateSourceRel(RelNode old, TableInfo tableInfo, List<String> targetColumns,
                                                List<Map<String, Integer>> sourceColumnIndexMap,
                                                List<String> outTargetColumns, List<Integer> outTargetTables) {
-
         final List<RelOptTable> targetTables = tableInfo.getTargetTables();
         final List<Integer> targetTableIndexes = tableInfo.getTargetTableIndexes();
         final boolean modifyBroadcast = CheckModifyLimitation.checkModifyBroadcast(targetTables, doNothing());
@@ -1348,8 +1613,12 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final boolean modifyPartitionKey =
             CheckModifyLimitation.checkModifyShardingColumnWithGsi(targetTables, targetColumns,
                 this.plannerContext.getExecutionContext());
+        final boolean modifyColumn = CheckModifyLimitation.checkOnlineModifyColumnDdl(targetTables,
+            this.plannerContext.getExecutionContext());
 
-        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning) {
+        final ExecutionStrategy hintEx = getExecutionStrategy();
+        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning && !modifyColumn
+            && hintEx != ExecutionStrategy.LOGICAL) {
             outTargetColumns.addAll(targetColumns);
             outTargetTables.addAll(targetTableIndexes);
             return old;
@@ -1565,7 +1834,8 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final List<String> qualifiedName = targetTable.getTable().getQualifiedName();
                 final String tableName = Util.last(qualifiedName);
                 final String schema = qualifiedName.get(qualifiedName.size() - 2);
-                TableMeta tableMeta = OptimizerContext.getContext(schema).getLatestSchemaManager().getTableWithNull(tableName);
+                TableMeta tableMeta =
+                    OptimizerContext.getContext(schema).getLatestSchemaManager().getTableWithNull(tableName);
                 if (tableMeta != null && tableMeta.getEngine() == Engine.OSS) {
                     return false;
                 }

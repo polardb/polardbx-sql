@@ -55,7 +55,7 @@ public class GmsAppLoader extends AppLoader {
      * 装载app
      */
     @Override
-    public void loadApp(final String dbName) {
+    public synchronized void loadApp(final String dbName) {
         try {
             Map<String, String> dbNameAndAppNameInfo = PolarPrivManager.getInstance().getAllDbNameAndAppNameMap();
             String appName = dbNameAndAppNameInfo.get(dbName);
@@ -78,7 +78,7 @@ public class GmsAppLoader extends AppLoader {
      * 卸载app
      */
     @Override
-    protected void unLoadApp(final String app) {
+    protected synchronized void unLoadApp(final String app) {
         try {
             logger.info("start unLoading app:" + app);
             this.unLoadSchema(app, app);

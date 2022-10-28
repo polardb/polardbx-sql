@@ -17,8 +17,9 @@
 package com.alibaba.polardbx.qatest.sequence;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.BaseSequenceTestCase;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.apache.commons.lang.StringUtils;
@@ -58,24 +59,30 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
     @Parameterized.Parameters(name = "{index}:seqType={0}, schema={1}")
     public static List<String[]> prepareData() {
         String[][] postFix = {
-            {"", ""}, {"simple", ""},
-            //F{"simple with cache", ""},
+            {"", ""},
+            {"new", ""},
             {"group", ""},
-            {"", PropertiesUtil.polardbXShardingDBName2()}, {"simple", PropertiesUtil.polardbXShardingDBName2()},
-            {"group", PropertiesUtil.polardbXShardingDBName2()}};
+            {"simple", ""},
+            {"time", ""},
+            {"", PropertiesUtil.polardbXAutoDBName2()},
+            {"new", PropertiesUtil.polardbXAutoDBName2()},
+            {"group", PropertiesUtil.polardbXAutoDBName2()},
+            {"simple", PropertiesUtil.polardbXAutoDBName2()},
+            {"time", PropertiesUtil.polardbXAutoDBName2()}
+        };
         return Arrays.asList(postFix);
     }
 
     @Before
     public void prepareSequence() {
-        dropSeqence(seqName);
+        dropSequence(seqName);
         String sql = String.format("create %s sequence %s ", seqType, seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
     @After
     public void deleteSequence() {
-        dropSeqence(seqName);
+        dropSequence(seqName);
     }
 
     @Rule
@@ -86,11 +93,14 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqMaxValue() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
 
         String sql = String.format("alter sequence %s maxvalue 100", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
 //        assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
@@ -109,12 +119,15 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqMaxValueExceed() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
         Long idBefore = getSequenceNextVal(seqName);
         String sql = String.format("alter sequence %s maxvalue 9223372036854775808", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Long idAfter = getSequenceNextVal(seqName);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
 //        assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
@@ -134,13 +147,16 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqMaxValue0() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
         Long idBefore = getSequenceNextVal(seqName);
         String sql = String.format("alter sequence %s maxvalue 0", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Long idAfter = getSequenceNextVal(seqName);
 
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
 //        assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
@@ -159,10 +175,10 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqMaxValueNeg() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s maxvalue -1", seqName);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Numeric value expected");
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
         assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
@@ -183,10 +199,10 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqStartWith() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s start with 100", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
 //        assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
@@ -205,7 +221,7 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqStartWithExceed() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s start with 9223372036854775808", seqName);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
     }
@@ -215,10 +231,10 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqStartWithMaxLong() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s start with 9223372036854775807", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
@@ -236,12 +252,15 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqStartWith0() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
         long idBefore = getSequenceNextVal(seqName);
         String sql = String.format("alter sequence %s start with 0", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         long idAfter = getSequenceNextVal(seqName);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
 //        assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
@@ -256,10 +275,10 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqStartWithNeg() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s start with -1", seqName);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Numeric value expected");
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
@@ -280,11 +299,14 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqIncrementBy() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
         long valueBefore = getSequenceNextVal(seqName);
         String sql = String.format("alter sequence %s increment by 10", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         long valueAfter = getSequenceNextVal(seqName);
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
@@ -302,10 +324,13 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqIncrementBy0() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s increment by 0", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
 //        assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
@@ -325,10 +350,10 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqIncrementByNeg() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s increment by -1", seqName);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Numeric value expected");
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
         assertThat(sequenceBefore.getCycle()).isEqualTo(sequenceAfter.getCycle());
@@ -348,10 +373,13 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqCycle() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
         String sql = String.format("alter sequence %s cycle", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
 //        assertThat(sequenceBefore.getValue()).isEqualTo(sequenceAfter.getValue());
         assertThat(sequenceBefore.getMaxValue()).isEqualTo(sequenceAfter.getMaxValue());
         assertThat(sequenceBefore.getStartWith()).isEqualTo(sequenceAfter.getStartWith());
@@ -375,6 +403,9 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqWithoutDuplicate() throws Exception {
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
         String[] testSqls = new String[] {
             String.format("alter sequence %s maxvalue 10", seqName),
             String.format("alter sequence %s increment by 2", seqName),
@@ -397,7 +428,7 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
             assertThat(firstValue).isLessThan(secondValue);
 
             if (!isSpecialSequence(seqType)) {
-                NewSequence sequence = showSequence(seqName);
+                TestSequence sequence = showSequence(seqName);
                 if (sequence.getMaxValue() == 2) {
                     if (sequence.getCycle().equalsIgnoreCase(SequenceAttribute.STR_YES)) {
                         assertThat(getSequenceNextVal(seqName)).isEqualTo(1);
@@ -417,13 +448,16 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqMaxValueLessThanStartWith() throws Exception {
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
 
         String sql = String.format("alter sequence %s maxvalue 2 start with 3", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         if (!isSpecialSequence(seqType)) {
             JdbcUtil.executeUpdateFailed(tddlConnection, String.format("select %s.nextval", seqName),
-                "maximum value allowed 2");
+                "maximum value allowed");
         }
 
     }
@@ -433,13 +467,17 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testNormalGroupAdjust() throws Exception {
-        Long[] oldValues = {199999L, 188888L, 17777777L, 5992999L};
+        if (seqType.toLowerCase().contains("time")) {
+            return;
+        }
+
+        Long[] oldValues = {188888L, 199999L, 5992999L, 17777777L};
 
         for (long oldValue : oldValues) {
             long expectValue = oldValue;
 
             //只有group sequence才会adjust
-            if (isSpecialSequence(seqType)) {
+            if (isSpecialSequencePart(seqType)) {
                 expectValue = getNewValueAfterAdjust(oldValue);
             }
 
@@ -448,8 +486,9 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
 
             log.info(String.format("old value is : %d  ------> new value is : %d", oldValue, expectValue));
             assertThat(showSequence(seqName).getValue()).isEqualTo(oldValue);
+
             //group sequence取出来的值需要+1
-            if (isSpecialSequence(seqType)) {
+            if (isSpecialSequencePart(seqType)) {
                 assertThat(getSequenceNextVal(seqName)).isEqualTo(expectValue + 1);
                 assertThat(showSequence(seqName).getValue()).isEqualTo(expectValue);
             } else {
@@ -468,11 +507,14 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
      */
     @Test
     public void testAlterSeqMaxValueCycleWithoutDuplicate() throws Exception {
-        NewSequence sequenceBefore = showSequence(seqName);
+        if (TStringUtil.isBlank(seqType) || TStringUtil.equalsIgnoreCase(seqType, "new")) {
+            return;
+        }
+        TestSequence sequenceBefore = showSequence(seqName);
         //先更改最大值到2
         String sql = String.format("alter sequence %s maxvalue 2 cycle", seqName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        NewSequence sequenceAfter = showSequence(seqName);
+        TestSequence sequenceAfter = showSequence(seqName);
         assertThat(sequenceBefore.getValue()).isAnyOf(sequenceAfter.getValue(), 100001L);
         assertThat(sequenceBefore.getIncrementBy()).isEqualTo(sequenceAfter.getIncrementBy());
         assertThat(sequenceBefore.getStartWith()).isEqualTo(sequenceAfter.getStartWith());
@@ -516,7 +558,13 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
             // Time-based Sequence doesn't rely on database.
             return;
         }
-        if (seqType.toLowerCase().contains("simple")) {
+        if (seqType.equals("") || seqType.toLowerCase().contains("new")) {
+            Timestamp t1 = getSeqGmtModified(true);
+            Thread.sleep(1000);
+            getSequenceNextVal(seqName);
+            Timestamp t2 = getSeqGmtModified(true);
+            assertThat(t2.equals(t1)).isTrue();
+        } else if (seqType.toLowerCase().contains("simple")) {
             Timestamp t1 = getSeqGmtModified(true);
             Thread.sleep(1000);
             getSequenceNextVal(seqName);
@@ -540,7 +588,7 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
         if (schemaPrefix != null && schemaPrefix.length() >= 2) {
             schemaName = schemaPrefix.substring(0, schemaPrefix.length() - 1);
         } else {
-            schemaName = PropertiesUtil.polardbXShardingDBName1();
+            schemaName = PropertiesUtil.polardbXAutoDBName1();
         }
         String realSeqName = getSimpleTableName(seqName);
         String querySeqSql = String.format("select gmt_modified from %s where name='%s' and schema_name='%s'",
@@ -558,4 +606,8 @@ public class AlterSequenceTest extends BaseSequenceTestCase {
         }
     }
 
+    @Override
+    public boolean usingNewPartDb() {
+        return true;
+    }
 }

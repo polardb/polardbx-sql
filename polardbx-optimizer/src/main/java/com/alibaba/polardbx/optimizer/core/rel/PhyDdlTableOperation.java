@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.DDL;
@@ -125,6 +126,11 @@ public class PhyDdlTableOperation extends BaseTableOperation {
         this.param = param;
     }
 
+    @Override
+    public List<String> getLogicalTableNames() {
+        return ImmutableList.of(logicalTableName);
+    }
+
     public String getLogicalTableName() {
         return logicalTableName;
     }
@@ -212,7 +218,7 @@ public class PhyDdlTableOperation extends BaseTableOperation {
 
     @Override
     public String getNativeSql() {
-        return sqlTemplate;
+        return bytesSql.toString();
     }
 
     public void setExplain(boolean explain) {

@@ -18,7 +18,7 @@ package com.alibaba.polardbx.qatest.sequence;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.BaseSequenceTestCase;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.apache.commons.lang.StringUtils;
@@ -89,7 +89,7 @@ public class CustomUnitGroupSequenceTest extends BaseSequenceTestCase {
 
     @After
     public void clean() {
-        dropSeqence(seqName);
+        dropSequence(seqName);
     }
 
     @Test
@@ -122,7 +122,7 @@ public class CustomUnitGroupSequenceTest extends BaseSequenceTestCase {
             assertThat(String.valueOf(valueAfterCreating)).isEqualTo(expectedValue1);
 
             // Inner step is as expected.
-            NewSequence seqBefore = showSequence(seqName);
+            TestSequence seqBefore = showSequence(seqName);
             assertThat(String.valueOf(seqBefore.getInnerStep())).isEqualTo(innerStep);
 
             String alterStartWithOnly = "alter sequence " + seqName + " start with 100000000";
@@ -130,14 +130,14 @@ public class CustomUnitGroupSequenceTest extends BaseSequenceTestCase {
 
             // Inner step isn't changed accidentally after altering the
             // sequence.
-            NewSequence seqAfter = showSequence(seqName);
+            TestSequence seqAfter = showSequence(seqName);
             assertThat(String.valueOf(seqAfter.getInnerStep())).isEqualTo(innerStep);
         }
     }
 
     private void createSequence() {
         StringBuilder sb = new StringBuilder();
-        sb.append("create sequence ").append(seqName);
+        sb.append("create group sequence ").append(seqName);
         if (TStringUtil.isNotEmpty(unitCount)) {
             sb.append(" unit count ").append(unitCount);
             if (TStringUtil.isNotEmpty(unitIndex)) {

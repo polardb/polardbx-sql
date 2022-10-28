@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.sql.SqlAlterTable;
 
 public class AlterPartitionTableBuilder extends AlterTableBuilder {
 
@@ -40,6 +41,17 @@ public class AlterPartitionTableBuilder extends AlterTableBuilder {
         partitionInfo = OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
             .getPartitionInfo(preparedData.getTableName());
         tableTopology = PartitionInfoUtil.buildTargetTablesFromPartitionInfo(partitionInfo);
+    }
+
+    @Override
+    public void buildPhysicalPlans() {
+        if (preparedData.getIsGsi()) {
+            relDdl.setSqlNode(((SqlAlterTable) relDdl.getSqlNode()).removeAfterColumns());
+        }
+
+        buildSqlTemplate();
+        buildPhysicalPlans(preparedData.getTableName());
+        handleInstantAddColumn();
     }
 
 }

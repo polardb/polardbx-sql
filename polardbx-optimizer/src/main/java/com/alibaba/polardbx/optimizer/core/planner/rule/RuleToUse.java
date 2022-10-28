@@ -87,6 +87,8 @@ import java.util.List;
 public class RuleToUse {
 
     public static final ImmutableList<RelOptRule> PRE_PUSH_TRANSFORMER_RULE = ImmutableList.of(
+        SetOpToSemiJoinRule.INTERSECT,
+        SetOpToSemiJoinRule.MINUS,
         PushJoinRule.INSTANCE,
         PushProjectRule.INSTANCE,
 //        PushCorrelateRule.INSTANCE,
@@ -116,7 +118,8 @@ public class RuleToUse {
         PruneEmptyRules.JOIN_RIGHT_INSTANCE,
         PruneEmptyRules.MINUS_INSTANCE,
         PruneEmptyRules.UNION_INSTANCE,
-        PruneEmptyRules.INTERSECT_INSTANCE,
+//        PruneEmptyRules.MINUS_INSTANCE,
+//        PruneEmptyRules.INTERSECT_INSTANCE,
         LogicalSemiJoinRule.PROJECT,
         LogicalSemiJoinRule.JOIN,
         PruneEmptyRules.INTERSECT_INSTANCE,

@@ -394,4 +394,8 @@ public class DeferredStatement implements TStatement {
     public String getAppName() {
         return ((IStatement) stmt).getAppName();
     }
+
+    public boolean isBytesSqlSupported() throws SQLException {
+        return conn.isBytesSqlSupported();
+    }
 }

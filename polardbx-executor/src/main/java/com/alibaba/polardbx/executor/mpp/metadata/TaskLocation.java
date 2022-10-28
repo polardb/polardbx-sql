@@ -24,13 +24,14 @@ import com.alibaba.polardbx.executor.mpp.execution.TaskId;
 import com.alibaba.polardbx.gms.node.NodeServer;
 import com.alibaba.polardbx.util.MoreObjects;
 
+import java.io.Serializable;
 import java.net.URI;
 
 import static com.alibaba.polardbx.executor.mpp.execution.TaskId.getEmptyTask;
 import static com.alibaba.polardbx.gms.node.NodeServer.EMPTY_NODE_SERVER;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 
-public class TaskLocation {
+public class TaskLocation implements Serializable {
     private final static TaskLocation EMPTY_TASK_LOCATION = new TaskLocation(EMPTY_NODE_SERVER, getEmptyTask(), -1);
 
     public static TaskLocation getEmptyTaskLocation() {

@@ -23,12 +23,10 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.planmanagement.BaselineSyncController;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.executor.sync.BaselineClearSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselineLoadSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselinePersistSyncAction;
-import com.alibaba.polardbx.executor.sync.BaselineValidateSyncAction;
+import com.alibaba.polardbx.executor.sync.BaselineUpdateSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -42,6 +40,8 @@ import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
+import com.clearspring.analytics.util.Lists;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.rel.RelNode;
@@ -55,7 +55,6 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_BASELINE;
-import static com.alibaba.polardbx.executor.mpp.util.MoreExecutors.directExecutor;
 
 public class LogicalBaselineHandler extends HandlerCommon {
 
@@ -95,6 +94,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
         LogicalBaseline logicalBaseline = (LogicalBaseline) logicalPlan;
         SqlBaseline sqlBaseline = logicalBaseline.getSqlBaseline();
         List<Long> baselineIds = sqlBaseline.getBaselineIds();
+        String schema = executionContext.getSchemaName();
         switch (sqlBaseline.getOperation().toUpperCase()) {
         case "LIST": {
             return baselineList(baselineIds, executionContext, logicalPlan.getCluster());
@@ -102,8 +102,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
 
         case "SELECT": {
             String parameterizedSql = sqlBaseline.getParameterizedSql();
-            PlanManager planManager = OptimizerContext.getContext(executionContext.getSchemaName()).getPlanManager();
-            Map<String, BaselineInfo> baselineInfoMap = planManager.getBaselineMap();
+            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap().get(schema);
             BaselineInfo baselineInfo = baselineInfoMap.get(parameterizedSql);
             baselineIds = new ArrayList<>();
             if (baselineInfo != null) {
@@ -128,14 +127,13 @@ public class LogicalBaselineHandler extends HandlerCommon {
             } else if (workloadType == WorkloadType.TP) {
                 feedBackWorkload = WorkloadType.AP;
             }
-            PlanManager planManager = OptimizerContext.getContext(executionContext.getSchemaName()).getPlanManager();
-            Map<String, BaselineInfo> baselineInfoMap = planManager.getBaselineMap();
+            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap().get(schema);
             BaselineInfo baselineInfo = baselineInfoMap.get(parameterizedSql);
 
             if (feedBackWorkload != null && baselineInfo != null && plannerContext.getPlanInfo() != null) {
-                planManager.notifyUpdatePlanAsync(
-                    originExecutionPlan, baselineInfo, plannerContext.getPlanInfo(), feedBackWorkload, newContext,
-                    directExecutor());
+                PlanManager.getInstance()
+                    .notifyUpdatePlanSync(originExecutionPlan, baselineInfo, plannerContext.getPlanInfo(),
+                        feedBackWorkload, newContext);
                 baselineIds = new ArrayList<>();
                 baselineInfo = baselineInfoMap.get(parameterizedSql);
                 if (baselineInfo != null) {
@@ -204,18 +202,18 @@ public class LogicalBaselineHandler extends HandlerCommon {
         planExecutor.init();
 
         ExecutionPlan executionPlan = Planner.getInstance().plan(hint + " " + parameterizedSql, executionContext);
-        PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-        Map<String, BaselineInfo> baselineInfoMap = planManager.getBaselineMap();
+        Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap().get(schemaName);
         BaselineInfo baselineInfo = baselineInfoMap.get(parameterizedSql);
         RelNode plan = executionPlan.getPlan();
         SqlNode ast = executionPlan.getAst();
         if (baselineInfo == null) {
-            baselineInfo = planManager.createBaselineInfo(parameterizedSql, ast, executionContext);
+            baselineInfo = PlanManager.getInstance().createBaselineInfo(parameterizedSql, ast, executionContext);
         }
         String planJsonString = PlanManagerUtil.relNodeToJson(plan);
         PlanInfo planInfo =
-            planManager.createPlanInfo(planJsonString, plan, baselineInfo.getId(), executionContext.getTraceId(),
-                PlanManagerUtil.getPlanOrigin(plan), ast, executionContext);
+            PlanManager.getInstance()
+                .createPlanInfo(schemaName, planJsonString, plan, baselineInfo.getId(), executionContext.getTraceId(),
+                    PlanManagerUtil.getPlanOrigin(plan), ast, executionContext);
         planInfo.setFixed(fix);
         planInfo.setFixHint(hint);
 
@@ -236,9 +234,8 @@ public class LogicalBaselineHandler extends HandlerCommon {
         }
         baselineInfo.addAcceptedPlan(planInfo);
         baselineInfoMap.put(parameterizedSql, baselineInfo);
-        SyncManagerHelper.sync(new BaselinePersistSyncAction(schemaName, baselineInfo.getId()), schemaName);
         BaselineSyncController baselineSyncController = new BaselineSyncController();
-        baselineSyncController.updateBaseline(schemaName, baselineInfo);
+        baselineSyncController.updateBaselineSync(schemaName, baselineInfo);
         result.addRow(new Object[] {baselineInfo.getId(), "OK"});
         return result;
     }
@@ -249,21 +246,15 @@ public class LogicalBaselineHandler extends HandlerCommon {
             for (Long id : idList) {
                 switch (operation.toUpperCase()) {
                 case "LOAD":
-                    SyncManagerHelper.sync(new BaselineLoadSyncAction(schemaName, id.intValue()), schemaName);
+                    SyncManagerHelper.sync(new BaselineLoadSyncAction(), schemaName);
                     break;
                 case "PERSIST":
-                    SyncManagerHelper.sync(new BaselinePersistSyncAction(schemaName, id.intValue()), schemaName);
-                    break;
-                case "CLEAR":
-                    SyncManagerHelper.sync(new BaselineClearSyncAction(schemaName, id.intValue()), schemaName);
-                    break;
-                case "VALIDATE":
-                    SyncManagerHelper.sync(new BaselineValidateSyncAction(schemaName, id.intValue()), schemaName);
+                    SyncManagerHelper.sync(new BaselinePersistSyncAction(), schemaName);
                     break;
                 case "DELETE": {
                     BaselineSyncController baselineSyncController = new BaselineSyncController();
-                    PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-                    for (BaselineInfo baselineInfo : planManager.getBaselineMap().values()) {
+                    for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName)
+                        .values()) {
                         if (baselineInfo.getId() == id) {
                             baselineSyncController.deleteBaseline(schemaName, baselineInfo);
                         }
@@ -272,8 +263,8 @@ public class LogicalBaselineHandler extends HandlerCommon {
                 }
                 case "DELETE_PLAN": {
                     BaselineSyncController baselineSyncController = new BaselineSyncController();
-                    PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-                    for (BaselineInfo baselineInfo : planManager.getBaselineMap().values()) {
+                    for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName)
+                        .values()) {
                         for (PlanInfo planInfo : baselineInfo.getAcceptedPlans().values()) {
                             if (planInfo.getId() == id) {
                                 baselineSyncController.deletePlan(schemaName, baselineInfo, planInfo);
@@ -292,21 +283,14 @@ public class LogicalBaselineHandler extends HandlerCommon {
         } else {
             switch (operation.toUpperCase()) {
             case "LOAD":
-                SyncManagerHelper.sync(new BaselineLoadSyncAction(schemaName, null), schemaName);
+                SyncManagerHelper.sync(new BaselineLoadSyncAction(), schemaName);
                 break;
             case "PERSIST":
-                SyncManagerHelper.sync(new BaselinePersistSyncAction(schemaName, null), schemaName);
-                break;
-            case "CLEAR":
-                SyncManagerHelper.sync(new BaselineClearSyncAction(schemaName, null), schemaName);
-                break;
-            case "VALIDATE":
-                SyncManagerHelper.sync(new BaselineValidateSyncAction(schemaName, null), schemaName);
+                SyncManagerHelper.sync(new BaselinePersistSyncAction(), schemaName);
                 break;
             case "DELETE_ALL": {
                 BaselineSyncController baselineSyncController = new BaselineSyncController();
-                PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-                for (BaselineInfo baselineInfo : planManager.getBaselineMap().values()) {
+                for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName).values()) {
                     baselineSyncController.deleteBaseline(schemaName, baselineInfo);
                 }
                 break;
@@ -331,7 +315,6 @@ public class LogicalBaselineHandler extends HandlerCommon {
         RelOptSchema relOptSchema =
             SqlConverter.getInstance(executionContext.getSchemaName(), executionContext).getCatalog();
         String schemaName = executionContext.getSchemaName();
-        PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
 
         Set<Integer> baselineIdSet = new HashSet<>();
         if (baselineIds != null && !baselineIds.isEmpty()) {
@@ -348,7 +331,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
         result.addColumn("FIXED", DataTypes.TinyIntType);
         result.addColumn("ACCEPTED", DataTypes.TinyIntType);
         result.addColumn("ORIGIN", DataTypes.StringType);
-        for (BaselineInfo baselineInfo : planManager.getBaselineMap().values()) {
+        for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName).values()) {
             if (!baselineIdSet.isEmpty() && !baselineIdSet.contains(baselineInfo.getId())) {
                 continue;
             }

@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.extension.Activate;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -37,11 +38,17 @@ import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransactionManagerUtil;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import com.alibaba.polardbx.transaction.async.DeadlockDetectionTaskWrapper;
+import com.alibaba.polardbx.transaction.async.RotateGlobalTxLogTaskWrapper;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.tso.ClusterTimestampOracle;
 
 import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +56,10 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_DEADLOCK_DETECTION_PARAM;
+import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_PURGE_TRANS_PARAM;
+import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
 /**
  * Transaction Manager
@@ -75,8 +86,11 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
 
     private TimerTask xaRecoverTask;
     private TimerTask bestEffortRecoverTask;
-    private TimerTask cleanTask;
-    private TimerTask deadlockDetectionTask;
+
+    private RotateGlobalTxLogTaskWrapper cleanTask;
+
+    private static DeadlockDetectionTaskWrapper deadlockDetectionTask;
+
     private TimerTask mdlDeadlockDetectionTask;
     private TimerTask killTimeoutTransactionTask;
 
@@ -107,7 +121,6 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
 
         schemaMap.put(schemaName.toLowerCase(), this);
 
-        enableDeadlockDetection();
         enableMdlDeadlockDetection();
 
         // Enable TSO heartbeat for PolarDB-X master instances
@@ -117,6 +130,9 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         if (ConfigDataMode.isMasterMode() && storageManager.supportPurgeTso()) {
             enableTsoPurge();
         }
+
+        // Schedule timer tasks.
+        scheduleDeadlockDetectionTask();
     }
 
     public static TransactionManager getInstance(String schema) {
@@ -159,10 +175,6 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             bestEffortRecoverTask.cancel();
             bestEffortRecoverTask = null;
         }
-        if (deadlockDetectionTask != null) {
-            deadlockDetectionTask.cancel();
-            deadlockDetectionTask = null;
-        }
         if (mdlDeadlockDetectionTask != null) {
             mdlDeadlockDetectionTask.cancel();
             mdlDeadlockDetectionTask = null;
@@ -202,8 +214,9 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             boolean enableTrxSingleShardOptimization =
                 executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_TRX_SINGLE_SHARD_OPTIMIZATION);
             if (enableTrxSingleShardOptimization) {
-                boolean omitTso = storageManager.supportCtsTransaction();
-                trx = new AutoCommitSingleShardTsoTransaction(executionContext, this, omitTso);
+                final boolean lizard1PC = storageManager.supportLizard1PCTransaction();
+                final boolean omitTso = storageManager.supportCtsTransaction() || lizard1PC;
+                trx = new AutoCommitSingleShardTsoTransaction(executionContext, this, omitTso, lizard1PC);
                 break;
             }
         case TSO_READONLY:
@@ -219,12 +232,11 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             trx = new MppReadOnlyTransaction(executionContext, this);
             break;
         default:
-            throw new AssertionError("TransactionType: " + trxConfig.name() + " not supproted");
+            throw new AssertionError("TransactionType: " + trxConfig.name() + " not supported");
         }
-
-        // Schedule tasks to clean transaction logs
-        enableAutoCleanTrans();
         enableKillTimeoutTransaction();
+        // Schedule log cleaning task.
+        enableLogCleanTask();
 
         // 配置会在执行器里设置
         return trx;
@@ -251,27 +263,43 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         return schemaName;
     }
 
-    private void enableAutoCleanTrans() {
-        // stop xa schedule work
+    public void enableLogCleanTask() {
         if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
-        if (cleanTask == null) {
+        if (null == cleanTask) {
             synchronized (this) {
-                if (cleanTask == null) {
-                    AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
-
-                    ParamManager paramManager = new ParamManager(properties);
-                    int purgeInterval = paramManager.getInt(ConnectionParams.PURGE_TRANS_INTERVAL);
-                    int purgeBefore = paramManager.getInt(ConnectionParams.PURGE_TRANS_BEFORE);
-
-                    cleanTask = asyncQueue.scheduleAutoCleanTask(executor, purgeInterval, purgeBefore);
+                if (null == cleanTask) {
+                    try {
+                        cleanTask = new RotateGlobalTxLogTaskWrapper(properties, schemaName, executor.getAsyncQueue(),
+                            executor);
+                    } catch (Throwable t) {
+                        cleanTask = null;
+                        TransactionLogger.warn("Failed to init log clean task.");
+                    }
                 }
             }
         }
     }
 
-    void enableXaRecoverScan() {
+    private void scheduleDeadlockDetectionTask() {
+        // Schedule deadlock detection task if it is null.
+        if (null == deadlockDetectionTask) {
+            synchronized (TransactionManager.class) {
+                if (null == deadlockDetectionTask) {
+                    try {
+                        deadlockDetectionTask =
+                            new DeadlockDetectionTaskWrapper(properties, schemaMap.keySet(), executor.getAsyncQueue());
+                    } catch (Throwable t) {
+                        deadlockDetectionTask = null;
+                        TransactionLogger.warn("Failed to init deadlock detection task.");
+                    }
+                }
+            }
+        }
+    }
+
+    public void enableXaRecoverScan() {
         // stop xa schedule work
         if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
@@ -288,32 +316,6 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
                     int xaRecoverInterval = paramManager.getInt(ConnectionParams.XA_RECOVER_INTERVAL);
 
                     xaRecoverTask = asyncQueue.scheduleXARecoverTask(executor, xaRecoverInterval);
-                }
-            }
-        }
-    }
-
-    void enableDeadlockDetection() {
-        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
-            return;
-        }
-        ParamManager paramManager = new ParamManager(properties);
-        if (!paramManager.getBoolean(ConnectionParams.ENABLE_DEADLOCK_DETECTION)) {
-            return;
-        }
-        if (!storageManager.supportDeadlockDetection()) {
-            return;
-        }
-        if (deadlockDetectionTask == null) {
-            synchronized (this) {
-                if (deadlockDetectionTask == null) {
-                    AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
-
-                    int interval =
-                        paramManager.getInt(ConnectionParams.DEADLOCK_DETECTION_INTERVAL); // reuse this variable
-
-                    deadlockDetectionTask =
-                        asyncQueue.scheduleDeadlockDetectionTask(executor, interval);
                 }
             }
         }
@@ -343,7 +345,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         }
     }
 
-    void enableKillTimeoutTransaction() {
+    public void enableKillTimeoutTransaction() {
         if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
@@ -470,5 +472,76 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             }
         }
         return minSnapshotTime;
+    }
+
+    /**
+     * @return All parameters of currently running timer tasks
+     */
+    public Map<String, String> getCurrentTimerTaskParams() {
+        final Map<String, String> allCurrentParams = new HashMap<>(2);
+
+        if (null != cleanTask) {
+            final Map<String, String> actualParam = cleanTask.getCurrentParam();
+            if (null != actualParam) {
+                for (String paramName : MODIFIABLE_PURGE_TRANS_PARAM) {
+                    allCurrentParams.put(paramName, actualParam.get(paramName));
+                }
+            }
+        }
+
+        if (null != deadlockDetectionTask) {
+            final Map<String, String> actualParam = deadlockDetectionTask.getCurrentParam();
+            if (null != actualParam) {
+                for (String paramName : MODIFIABLE_DEADLOCK_DETECTION_PARAM) {
+                    allCurrentParams.put(paramName, actualParam.get(paramName));
+                }
+            }
+        }
+
+        return allCurrentParams;
+    }
+
+    public void resetAllTimerTasks() {
+        if (null == cleanTask) {
+            cleanTask = new RotateGlobalTxLogTaskWrapper(properties, schemaName, executor.getAsyncQueue(), executor);
+        } else {
+            cleanTask.resetTask();
+        }
+        // Try to reset deadlock task in polardbx schema.
+        if (DEFAULT_DB_NAME.equalsIgnoreCase(schemaName) || !schemaMap.containsKey(DEFAULT_DB_NAME)) {
+            if (null == deadlockDetectionTask) {
+                synchronized (TransactionManager.class) {
+                    if (null == deadlockDetectionTask) {
+                        try {
+                            deadlockDetectionTask =
+                                new DeadlockDetectionTaskWrapper(properties, schemaMap.keySet(),
+                                    executor.getAsyncQueue());
+                        } catch (Throwable t) {
+                            deadlockDetectionTask = null;
+                            TransactionLogger.warn("Failed to init deadlock detection task.");
+                        }
+                    }
+                }
+            } else {
+                deadlockDetectionTask.resetTask();
+            }
+        }
+    }
+
+    /**
+     * @return All active transactions in this schema, or in all schemas if schema is null.
+     */
+    public static Collection<ITransaction> getTransactions(String schema) {
+        if (null != schema) {
+            TransactionManager tm = TransactionManager.getInstance(schema);
+            return tm == null ? new ArrayList<>() : tm.getTransactions().values();
+        }
+
+        // If schema is null, return all transactions in all schemas.
+        final List<ITransaction> allTransactions = new ArrayList<>();
+        for (TransactionManager tm : schemaMap.values()) {
+            allTransactions.addAll(tm.getTransactions().values());
+        }
+        return allTransactions;
     }
 }

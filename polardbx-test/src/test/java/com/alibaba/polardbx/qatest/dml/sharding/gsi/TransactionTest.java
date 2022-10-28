@@ -186,9 +186,11 @@ public class TransactionTest extends GsiDMLTest {
     }
 
     /**
-     * Forbid continue to executeSuccess any sql after writing gsi failed
+     * Forbid continue to executeSuccess any sql after writing gsi failed.
+     * Since auto-savepoint is supported, transaction can still continue after writing GSI failed.
+     * So we ignore this case.
      */
-    @Test
+    @Ignore
     public void forbidContinueTest() throws Exception {
         tddlConnection.setAutoCommit(false);
 
@@ -218,8 +220,10 @@ public class TransactionTest extends GsiDMLTest {
 
     /**
      * Forbid commit transaction after writing gsi failed
+     * Since auto-savepoint is supported, transaction can still continue after writing GSI failed.
+     * So we ignore this case.
      */
-    @Test
+    @Ignore
     public void forbidCommitTest() throws Exception {
         tddlConnection.setAutoCommit(false);
 

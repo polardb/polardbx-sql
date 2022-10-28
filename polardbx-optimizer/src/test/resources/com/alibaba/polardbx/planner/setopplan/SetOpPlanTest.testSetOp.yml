@@ -1,0 +1,189 @@
+- sql: |
+    # test intersect not push down
+    (
+      select a.int_test
+      from test_single_tb1 a
+    )
+    intersect
+    (
+      select b.int_test
+      from test_single_tb2 b
+    );
+  plan: |
+    semihashjoin(condition="int_test <=> int_test", type="semi")
+      logicalview(tables="optest_0000.test_single_tb1", sql="select `int_test` from `test_single_tb1` as `test_single_tb1` group by `int_test`")
+      logicalview(tables="optest_0000.test_single_tb2", sql="select `int_test` from `test_single_tb2` as `test_single_tb2`")
+
+- sql: |
+    # test minus not push down
+    (
+      select a.int_test
+      from test_single_tb1 a
+    )
+    minus
+    (
+      select b.int_test
+      from test_single_tb2 b
+    );
+
+  plan: |
+    semihashjoin(condition="int_test <=> int_test", type="anti")
+      logicalview(tables="optest_0000.test_single_tb1", sql="select `int_test` from `test_single_tb1` as `test_single_tb1` group by `int_test`")
+      logicalview(tables="optest_0000.test_single_tb2", sql="select `int_test` from `test_single_tb2` as `test_single_tb2`")
+
+- sql: |
+    # test intersect wtih two subquery
+    (
+      select a.int_test
+      from test_hash_tb1 a
+    )
+    intersect
+    (
+      select b.int_test
+      from test_hash_tb2 b
+    );
+
+  plan: |
+    semihashjoin(condition="int_test <=> int_test", type="semi")
+      hashagg(group="int_test")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_test` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    # test minus wtih two subquery
+    (
+      select a.int_test
+      from test_hash_tb1 a
+    )
+    minus
+    (
+      select b.int_test
+      from test_hash_tb2 b
+    );
+
+  plan: |
+    semihashjoin(condition="int_test <=> int_test", type="anti")
+      hashagg(group="int_test")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_test` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    # test intersect wtih differentType
+    (
+      select a.int_test
+      from test_hash_tb1 a
+    )
+    intersect
+    (
+      select b.double_test
+      from test_hash_tb2 b
+    );
+
+  plan: |
+    semihashjoin(condition="int_test <=> double_test", type="semi")
+      project(int_test="cast(int_test)")
+        hashagg(group="int_test")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `double_test` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    # test minus wtih wtih differentType
+    (
+      select a.int_test
+      from test_hash_tb1 a
+    )
+    minus
+    (
+      select b.double_test
+      from test_hash_tb2 b
+    );
+
+  plan: |
+    semihashjoin(condition="int_test <=> double_test", type="anti")
+      project(int_test="cast(int_test)")
+        hashagg(group="int_test")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `double_test` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    # test intersect wtih wtih differentType
+    (
+      select a.double_test
+      from test_hash_tb1 a
+    )
+    intersect
+    (
+      select b.int_test
+      from test_hash_tb2 b
+    );
+
+  plan: |
+    semihashjoin(condition="double_test <=> int_test", type="semi")
+      hashagg(group="double_test")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `double_test` from `test_hash_tb1` as `test_hash_tb1` group by `double_test`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_test` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    # test minus wtih wtih differentType
+    (
+      select a.double_test
+      from test_hash_tb1 a
+    )
+    minus
+    (
+      select b.int_test
+      from test_hash_tb2 b
+    );
+
+  plan: |
+    semihashjoin(condition="double_test <=> int_test", type="anti")
+      hashagg(group="double_test")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `double_test` from `test_hash_tb1` as `test_hash_tb1` group by `double_test`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_test` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    # test intersect wtih two subquery
+      select a.int_test
+      from test_hash_tb1 a
+    intersect
+      select b.int_test
+      from test_hash_tb2 b
+    order by int_test;
+
+  plan: |
+    memsort(sort="int_test asc")
+      semihashjoin(condition="int_test <=> int_test", type="semi")
+        hashagg(group="int_test")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_test` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    # test minus wtih two subquery
+      select a.int_test
+      from test_hash_tb1 a
+    minus
+      select b.int_test
+      from test_hash_tb2 b
+    order by int_test;
+
+  plan: |
+    semihashjoin(condition="int_test <=> int_test", type="anti")
+      sortagg(group="int_test")
+        mergesort(sort="int_test asc")
+          logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test` order by `int_test`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_test` from `test_hash_tb2` as `test_hash_tb2`")

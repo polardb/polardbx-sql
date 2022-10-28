@@ -17,8 +17,11 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObjectImpl;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 import java.util.ArrayList;
@@ -115,6 +118,15 @@ public class MySqlCreateUserStatement extends MySqlStatementImpl implements SQLC
             visitor.endVisit(this);
         }
 
-
+        public String getIdentifiedBy() {
+            if (user instanceof MySqlUserName && ((MySqlUserName) user).getIdentifiedBy() != null) {
+                return ((MySqlUserName) user).getIdentifiedBy();
+            }
+            if (password instanceof SQLCharExpr) {
+                return ((SQLCharExpr) password).getText();
+            } else {
+                return null;
+            }
+        }
     }
 }

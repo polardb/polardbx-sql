@@ -92,7 +92,6 @@ public class MainModule extends BaseModule {
         binder.bind(LocationFactory.class).to(HttpLocationFactory.class).in(Scopes.SINGLETON);
         // handle resolver
         binder.install(new HandleJsonModule());
-
         // splits
         jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
         jsonCodecBinder(binder).bindJsonCodec(ConnectorSplit.class);

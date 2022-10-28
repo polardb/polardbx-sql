@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.executor.partitionmanagement;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -28,12 +31,14 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.partitionmanagement.backfill.AlterTableGroupExtractor;
 import com.alibaba.polardbx.executor.partitionmanagement.backfill.AlterTableGroupLoader;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
@@ -50,8 +55,12 @@ public class BackfillExecutor {
         this.executeFunc = executeFunc;
     }
 
-    public int backfill(String schemaName, String tableName, ExecutionContext baseEc,
-                        Map<String, Set<String>> sourcePhyTables) {
+    public int backfill(String schemaName,
+                        String tableName,
+                        ExecutionContext baseEc,
+                        Map<String, Set<String>> sourcePhyTables,
+                        Map<String, Set<String>> targetPhyTables,
+                        boolean movePartitions) {
         final long batchSize = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_BATCH_SIZE);
         final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_MIN);
         final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_LIMITATION);
@@ -61,6 +70,20 @@ public class BackfillExecutor {
             baseEc.setServerVariables(new HashMap<>());
         }
 
+        //key: physicalTableName,
+        //val: pair<sourceGroup,targetGroup>
+        Map<String, Pair<String, String>> physicalTableGroupMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        if (movePartitions) {
+            for (Map.Entry<String, Set<String>> sourceEntry : sourcePhyTables.entrySet()) {
+                for (String sourcePhyTb : GeneralUtil.emptyIfNull(sourceEntry.getValue())) {
+                    for (Map.Entry<String, Set<String>> targetEntry : targetPhyTables.entrySet()) {
+                        if (targetEntry.getValue().contains(sourcePhyTb)) {
+                            physicalTableGroupMap.put(sourcePhyTb, Pair.of(sourceEntry.getKey(), targetEntry.getKey()));
+                        }
+                    }
+                }
+            }
+        }
         // Init extractor and loader
         final Extractor extractor =
             AlterTableGroupExtractor
@@ -68,29 +91,41 @@ public class BackfillExecutor {
                     baseEc);
         final Loader loader =
             AlterTableGroupLoader
-                .create(schemaName, tableName, tableName, this.executeFunc, baseEc.isUseHint(), baseEc);
+                .create(schemaName, tableName, tableName, this.executeFunc, baseEc.isUseHint(), baseEc,
+                    physicalTableGroupMap, movePartitions);
 
-        // Load latest extractor position mark
-        extractor.loadBackfillMeta(baseEc);
-
+        boolean finished;
         // Foreach row: lock batch -> fill into index -> release lock
         final AtomicInteger affectRows = new AtomicInteger();
-        extractor.foreachBatch(baseEc, new BatchConsumer() {
-            @Override
-            public void consume(List<Map<Integer, ParameterContext>> batch,
-                                Pair<ExecutionContext, String> extractEcAndIndexPair) {
-                loader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
-                    try {
-                        // Commit and close extract statement
-                        extractEcAndIndexPair.getKey().getTransaction().commit();
-                        return true;
-                    } catch (Exception e) {
-                        logger.error("Close extract statement failed!", e);
-                        return false;
+        do {
+            finished = true;
+            // Load latest extractor position mark
+            extractor.loadBackfillMeta(baseEc);
+            try {
+                extractor.foreachBatch(baseEc, new BatchConsumer() {
+                    @Override
+                    public void consume(List<Map<Integer, ParameterContext>> batch,
+                                        Pair<ExecutionContext, Pair<String, String>> extractEcAndIndexPair) {
+                        loader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
+                            try {
+                                // Commit and close extract statement
+                                extractEcAndIndexPair.getKey().getTransaction().commit();
+                                return true;
+                            } catch (Exception e) {
+                                logger.error("Close extract statement failed!", e);
+                                return false;
+                            }
+                        });
                     }
                 });
+            } catch (TddlNestableRuntimeException e) {
+                if (e.getMessage().contains("need to be split into smaller batches")) {
+                    finished = false;
+                } else {
+                    throw e;
+                }
             }
-        });
+        } while (!finished);
 
         return affectRows.get();
     }

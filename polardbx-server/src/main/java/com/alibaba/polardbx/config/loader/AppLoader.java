@@ -32,6 +32,9 @@ import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
 
+import java.util.Set;
+import java.util.TreeSet;
+
 /**
  * 加载一个appname对应的资源,比如用户密码/tddl数据源等
  *
@@ -39,6 +42,8 @@ import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
  * @since 5.1.0
  */
 public abstract class AppLoader extends BaseAppLoader {
+
+    private static final Set<String> loadingSchemas = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
     protected static final Logger logger = LoggerFactory.getLogger(AppLoader.class);
 

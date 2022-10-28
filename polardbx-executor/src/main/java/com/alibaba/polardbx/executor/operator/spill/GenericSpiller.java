@@ -85,6 +85,18 @@ public class GenericSpiller implements Spiller {
     }
 
     @Override
+    public List<Iterator<Chunk>> getSpills(long maxChunkNum) {
+        return singleStreamSpillers.stream()
+            .map( spiller -> spiller.getSpilledChunks(maxChunkNum))
+            .collect(toList());
+    }
+
+    @Override
+    public void flush() {
+        singleStreamSpillers.forEach(SingleStreamSpiller::flush);
+    }
+
+    @Override
     public void close() {
         try {
             closer.close();

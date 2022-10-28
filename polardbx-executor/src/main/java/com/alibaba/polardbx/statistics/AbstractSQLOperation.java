@@ -38,6 +38,8 @@ public abstract class AbstractSQLOperation implements SQLOperation {
     private float getConnectionTimeCost;
     private Long rowsCount = 0L;
     private Long timestamp = 0L;
+    private Long grpConnId = 0L;
+    private String traceId = "";
 
     public AbstractSQLOperation(String groupName, String dbKeyName, Long timestamp) {
         this.groupName = groupName;
@@ -168,5 +170,23 @@ public abstract class AbstractSQLOperation implements SQLOperation {
 
     public void setTotalTimeCost(long totalTimeCost) {
         this.totalTimeCost = totalTimeCost;
+    }
+
+    @Override
+    public Long getGrpConnId() {
+        return grpConnId;
+    }
+
+    public void setGrpConnId(Long grpConnId) {
+        this.grpConnId = grpConnId;
+    }
+
+    @Override
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
     }
 }

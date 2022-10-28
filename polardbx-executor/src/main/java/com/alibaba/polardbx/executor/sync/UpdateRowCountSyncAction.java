@@ -61,10 +61,8 @@ public class UpdateRowCountSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        StatisticManager statisticManager =
-            (StatisticManager) OptimizerContext.getContext(schemaName).getStatisticManager();
         for (String logicalTableName : rowCountMap.keySet()) {
-            statisticManager.setRowCount(logicalTableName, rowCountMap.get(logicalTableName));
+            StatisticManager.getInstance().setRowCount(schemaName, logicalTableName, rowCountMap.get(logicalTableName));
         }
 
         return null;

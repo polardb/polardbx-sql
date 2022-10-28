@@ -30,6 +30,8 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sampleTable;
+
 public class CollectStatistic {
     public static void response(ServerConnection c) {
         SchemaConfig schema = c.getSchemaConfig();
@@ -53,11 +55,12 @@ public class CollectStatistic {
                 return;
             }
         }
-        StatisticManager statisticManager = ds.getConfigHolder().getStatisticManager();
-        statisticManager.startCollectOnceSync();
+
         Map<String, Long> rowCountMap = new HashMap<>();
-        for (String logicalTableName : statisticManager.getStatisticCache().keySet()) {
-            rowCountMap.put(logicalTableName, statisticManager.getCacheLine(logicalTableName).getRowCount());
+        for (String logicalTableName : StatisticManager.getInstance().getStatisticCache().keySet()) {
+            sampleTable(schema.getName(), logicalTableName);
+            rowCountMap.put(logicalTableName,
+                StatisticManager.getInstance().getCacheLine(schema.getName(), logicalTableName).getRowCount());
         }
         SyncManagerHelper.sync(new UpdateRowCountSyncAction(c.getSchema(), rowCountMap), c.getSchema());
         PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);

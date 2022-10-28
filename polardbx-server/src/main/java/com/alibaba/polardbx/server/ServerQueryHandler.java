@@ -18,6 +18,9 @@ package com.alibaba.polardbx.server;
 
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.handler.QueryHandler;
 import com.alibaba.polardbx.server.handler.BalanceHandler;
@@ -32,9 +35,11 @@ import com.alibaba.polardbx.server.handler.PrepareHandler;
 import com.alibaba.polardbx.server.handler.ResizeHandler;
 import com.alibaba.polardbx.server.handler.SelectHandler;
 import com.alibaba.polardbx.server.handler.SetHandler;
+import com.alibaba.polardbx.server.handler.ShardingAdvisorHandler;
 import com.alibaba.polardbx.server.handler.ShowHandler;
 import com.alibaba.polardbx.server.handler.StartHandler;
 import com.alibaba.polardbx.server.handler.UseHandler;
+import com.alibaba.polardbx.server.handler.pl.PlCommandHandlers;
 import com.alibaba.polardbx.server.handler.privileges.polar.PrivilegeCommandHandlers;
 import com.alibaba.polardbx.server.parser.ServerParse;
 import com.alibaba.polardbx.server.response.KillHandler;
@@ -108,12 +113,6 @@ public class ServerQueryHandler implements QueryHandler {
             return;
         }
 
-        String sqlString = sql.toString().toLowerCase();
-        if (sqlString.contains("create") && sqlString.contains("function")) {
-            executeStatement(c, sql, false);
-            return;
-        }
-
         for (int i = 0; i < statements.size(); i++) {
             executeStatement(c, statements.get(i), i < statements.size() - 1);
         }
@@ -123,7 +122,7 @@ public class ServerQueryHandler implements QueryHandler {
         c.genTraceId();
 
         boolean recordSql = true;
-        Throwable sqlEx = null;
+        boolean success = true;
         try {
             int rs = ServerParse.parse(sql);
             int commandCode = rs & 0xff;
@@ -134,6 +133,19 @@ public class ServerQueryHandler implements QueryHandler {
                 rs = ServerParse.parse(sql);
                 commandCode = rs & 0xff;
             }
+
+            // In cursor mode, only the following requests can be handled:
+            // COM_STMT_FETCH, COM_STMT_CLOSE, begin/commit/set autocommit
+            if (c.isCursorFetchMode()
+                && commandCode != ServerParse.SET
+                && commandCode != ServerParse.BEGIN
+                && commandCode != ServerParse.COMMIT
+                && commandCode != ServerParse.ROLLBACK) {
+                c.writeErrMessage(ErrorCode.ER_NOT_ALLOWED_COMMAND,
+                    "Not allow to execute commands except for: begin, commit, rollback, set autocommit");
+                return;
+            }
+
             switch (commandCode) {
             case ServerParse.SET:
                 SetHandler.handleV2(sql, c, rs >>> 8, hasMore);
@@ -151,7 +163,7 @@ public class ServerQueryHandler implements QueryHandler {
                 recordSql = false;
                 break;
             case ServerParse.START:
-                StartHandler.handle(sql, c, rs >>> 8, hasMore);
+                StartHandler.handle(sql, c, rs >>> 8, hasMore, false);
                 recordSql = false;
                 break;
             case ServerParse.BEGIN:
@@ -161,7 +173,7 @@ public class ServerQueryHandler implements QueryHandler {
                 UseHandler.handle(sql, c, rs >>> 8, hasMore);
                 break;
             case ServerParse.COMMIT:
-                c.commit(hasMore);
+                success = c.commit(hasMore);
                 break;
             case ServerParse.KILL:
                 KillHandler.response(sql, rs >>> 8, false, c, hasMore);
@@ -170,38 +182,28 @@ public class ServerQueryHandler implements QueryHandler {
                 KillHandler.response(sql, rs >>> 8, true, c, hasMore);
                 break;
             case ServerParse.ROLLBACK:
-                c.rollback(hasMore);
+                success = c.rollback(hasMore);
                 break;
             case ServerParse.PREPARE:
-                PrepareHandler.handle(sql, c, hasMore);
+                PrepareHandler.handle(sql, c, hasMore, false);
                 break;
             case ServerParse.EXECUTE:
-                ExecuteHandler.handle(sql, c, rs, hasMore);
+                ExecuteHandler.handle(sql, c, rs, hasMore, null);
                 break;
             case ServerParse.DEALLOCATE:
-                DeallocateHandler.handle(sql, c, hasMore);
+                DeallocateHandler.handle(sql, c, hasMore, false);
                 break;
             case ServerParse.HELP:
                 ShowHelp.execute(c);
                 break;
             case ServerParse.GRANT:
-                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
-                break;
             case ServerParse.REVOKE:
-                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
-                break;
             case ServerParse.CREATE_USER:
-                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
-                break;
             case ServerParse.DROP_USER:
-                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
-                break;
             case ServerParse.CREATE_ROLE:
             case ServerParse.DROP_ROLE:
-                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
-                break;
             case ServerParse.SET_PASSWORD:
-                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore);
+                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore, false);
                 break;
             case ServerParse.PURGE_TRANS:
                 new PurgeTransHandler(sql.toString(), rs >>> 8, c).execute();
@@ -226,9 +228,16 @@ public class ServerQueryHandler implements QueryHandler {
                 ResizeHandler.handle(sql, c, rs >>> 8, hasMore);
                 recordSql = false;
                 break;
+            case ServerParse.SHARDING_ADVISE:
+                ShardingAdvisorHandler.handle(sql, c, hasMore);
+                break;
             case ServerParse.FLUSH:
                 FlushHandler.handle(sql, c, rs >>> 8, hasMore);
                 recordSql = false;
+                break;
+            case ServerParse.CALL:
+                PlCommandHandlers.handle(commandCode, c, sql, hasMore);
+                recordSql = true;
                 break;
             default:
                 c.execute(sql, hasMore);
@@ -236,11 +245,67 @@ public class ServerQueryHandler implements QueryHandler {
             }
 
         } catch (Throwable ex) {
-            sqlEx = ex;
+            success = false;
             throw ex;
         } finally {
             if (recordSql) {
-                LogUtils.recordSql(c, sql, sqlEx);
+                LogUtils.recordSql(c, sql, success);
+            }
+        }
+    }
+
+    public static void executeSqlInProcedure(ServerConnection c, ByteString sql,
+                                             List<Pair<Integer, ParameterContext>> params,
+                                             boolean hasMore, QueryResultHandler handler) {
+        c.genTraceId();
+
+        boolean recordSql = true;
+        boolean success = true;
+        try {
+            int rs = ServerParse.parse(sql);
+            int commandCode = rs & 0xff;
+
+            switch (commandCode) {
+            case ServerParse.START:
+                StartHandler.handle(sql, c, rs >>> 8, hasMore, true);
+                recordSql = false;
+                break;
+            case ServerParse.COMMIT:
+                c.innerCommit();
+                break;
+            case ServerParse.ROLLBACK:
+                c.innerRollback();
+                break;
+            case ServerParse.PREPARE:
+                PrepareHandler.handle(sql, c, hasMore, true);
+                break;
+            case ServerParse.EXECUTE:
+                ExecuteHandler.handle(sql, c, rs, hasMore, handler);
+                break;
+            case ServerParse.DEALLOCATE:
+                DeallocateHandler.handle(sql, c, hasMore, true);
+                break;
+            case ServerParse.GRANT:
+            case ServerParse.REVOKE:
+            case ServerParse.CREATE_USER:
+            case ServerParse.DROP_USER:
+            case ServerParse.CREATE_ROLE:
+            case ServerParse.DROP_ROLE:
+            case ServerParse.SET_PASSWORD:
+                PrivilegeCommandHandlers.handle(commandCode, c, sql, hasMore, true);
+                break;
+            default:
+                c.execute(sql, params, hasMore, handler);
+                recordSql = false;
+            }
+
+        } catch (Throwable ex) {
+            success = false;
+            throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PROCEDURE_EXECUTE,
+                ex);
+        } finally {
+            if (recordSql) {
+                LogUtils.recordSql(c, sql, success);
             }
         }
     }

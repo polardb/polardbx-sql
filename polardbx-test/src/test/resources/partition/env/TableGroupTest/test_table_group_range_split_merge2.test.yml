@@ -1,5 +1,5 @@
 ## DISABLE_FAST_SQL_PARSER
-create tablegroup tg2;
+create tablegroup mytg23;
 CREATE TABLE `rng_t2` (
 `a` varchar(32) DEFAULT NULL,
 `b` int(11) DEFAULT NULL
@@ -9,7 +9,7 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t2;
 
 CREATE TABLE `rng_t3` (
@@ -22,7 +22,7 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t3;
 
 CREATE TABLE `rng_t4` (
@@ -36,7 +36,7 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t4;
 
 CREATE TABLE `rng_t5` (
@@ -51,109 +51,109 @@ PARTITION p1 VALUES LESS THAN ('abc', maxvalue,maxvalue,maxvalue,maxvalue),
 PARTITION p2 VALUES LESS THAN ('efg', maxvalue,maxvalue,maxvalue,maxvalue),
 PARTITION p3 VALUES LESS THAN ('hij', maxvalue,maxvalue,maxvalue,maxvalue)
 )
-tablegroup = tg2;
+tablegroup = mytg23;
 show full create table rng_t5;
 
 
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc'),
 PARTITION p2_2 VALUES LESS THAN ('efg')
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-alter tablegroup tg2 merge partitions p2_1,p2_2 to p2;
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
 
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue)
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-alter tablegroup tg2 merge partitions p2_1,p2_2 to p2;
-
-## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
+  
+  ## error_msg: $# not all the tables in tablegroup #$
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
 );
 
-alter tablegroup tg2 split partition p3 into
+alter tablegroup mytg23 split partition p3 into
 (
 PARTITION p3_1 VALUES LESS THAN ('hhh'),
 PARTITION p3_2 VALUES LESS THAN ('hij')
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-alter tablegroup tg2 merge partitions p3_1,p3_2 to p3;
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
 
-alter tablegroup tg2 split partition p3 into
+alter tablegroup mytg23 split partition p3 into
 (
 PARTITION p3_1 VALUES LESS THAN ('hhh',100),
 PARTITION p3_2 VALUES LESS THAN ('hij',maxvalue)
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-alter tablegroup tg2 merge partitions p3_1,p3_2 to p3;
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
 
 drop table rng_t2;
-alter tablegroup tg2 split partition p2 into
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue)
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
 
-alter tablegroup tg2 split partition p3 into
+alter tablegroup mytg23 split partition p3 into
 (
 PARTITION p3_1 VALUES LESS THAN ('hhh'),
 PARTITION p3_2 VALUES LESS THAN ('hij')
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
 
-alter tablegroup tg2 merge partitions p3_1,p3_2 to p3;
-alter tablegroup tg2 merge partitions p2_1,p2_2 to p2;
+alter tablegroup mytg23 merge partitions p3_1,p3_2 to p3;
+alter tablegroup mytg23 merge partitions p2_1,p2_2 to p2;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-
-## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 split partition p2 into
+  
+  ## error_msg: $# not all the tables in tablegroup #$
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue)
 );
-
-## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 split partition p2 into
+  
+  ## error_msg: $# not all the tables in tablegroup #$
+alter tablegroup mytg23 split partition p2 into
 (
 PARTITION p2_1 VALUES LESS THAN ('adc',100,100,100,100,100),
 PARTITION p2_2 VALUES LESS THAN ('efg',maxvalue,maxvalue,maxvalue,maxvalue,maxvalue)
 );
 
-alter tablegroup tg2 add partition (
+alter tablegroup mytg23 add partition (
 PARTITION p4 VALUES LESS THAN ('lmn'),
 PARTITION p5 VALUES LESS THAN ('oqp')
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-alter tablegroup tg2 drop partition p4;
-alter tablegroup tg2 drop partition p5;
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
 
-alter tablegroup tg2 add partition (
+alter tablegroup mytg23 add partition (
 PARTITION p4 VALUES LESS THAN ('lmn',100),
 PARTITION p5 VALUES LESS THAN ('oqp',maxvalue)
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-alter tablegroup tg2 drop partition p4;
-alter tablegroup tg2 drop partition p5;
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
 
-alter tablegroup tg2 add partition (
+alter tablegroup mytg23 add partition (
 PARTITION p4 VALUES LESS THAN ('lmn',100,100),
 PARTITION p5 VALUES LESS THAN ('oqp',maxvalue,maxvalue)
 );
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-alter tablegroup tg2 drop partition p4;
-alter tablegroup tg2 drop partition p5;
+alter tablegroup mytg23 drop partition p4;
+alter tablegroup mytg23 drop partition p5;
 /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rng_t5;
-
-## error_msg: $# not all the tables in tablegroup #$
-alter tablegroup tg2 add partition (
+  
+  ## error_msg: $# not all the tables in tablegroup #$
+alter tablegroup mytg23 add partition (
 PARTITION p6 VALUES LESS THAN ('rst',100,100,100)
 );

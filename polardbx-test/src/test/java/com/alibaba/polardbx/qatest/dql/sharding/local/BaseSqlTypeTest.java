@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.qatest.dql.sharding.local;
 
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelOptCostImpl;
 import com.alibaba.polardbx.optimizer.config.schema.RootSchemaFactory;
 import com.alibaba.polardbx.optimizer.config.schema.TddlCalciteSchema;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.core.TddlJavaTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
@@ -51,7 +53,9 @@ import org.apache.calcite.sql2rel.SqlToRelConverter;
 import org.apache.calcite.sql2rel.StandardConvertletTable;
 import org.junit.Test;
 
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Type system basic class
@@ -75,9 +79,9 @@ abstract class BaseSqlTypeTest {
             String.valueOf(parserConfig.caseSensitive()));
         CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
         String schemaName = "test";
-
         SchemaPlus rootSchema =
-            new TddlCalciteSchema(schemaName, null, null, new RootSchemaFactory.RootSchema(), "mock").plus();
+            new TddlCalciteSchema(schemaName, null, null,
+                new RootSchemaFactory.RootSchema(), "mock").plus();
         CalciteSchema calciteSchema = CalciteSchema.from(rootSchema);
         final CalciteCatalogReader catalog = new CalciteCatalogReader(calciteSchema,
             calciteSchema.path(schemaName),

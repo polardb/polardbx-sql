@@ -28,10 +28,9 @@ public interface IGmsSyncManager extends Lifecycle {
      *
      * @param action A specific sync action.
      * @param schemaName A specific schema.
+     * @param throwExceptions Throw exceptions to caller or not
      * @return sync result
      */
-    List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName);
-
     List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, boolean throwExceptions);
 
     /**
@@ -40,10 +39,9 @@ public interface IGmsSyncManager extends Lifecycle {
      * @param action A specific sync action.
      * @param schemaName A specific schema.
      * @param scope sync scope
+     * @param throwExceptions Throw exceptions to caller or not
      * @return sync result
      */
-    List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope);
-
     List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope,
                                          boolean throwExceptions);
 
@@ -53,9 +51,8 @@ public interface IGmsSyncManager extends Lifecycle {
      * @param action A specific sync action.
      * @param schemaName A specific schema.
      * @param handler sync result handler
+     * @param throwExceptions Throw exceptions to caller or not
      */
-    void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler);
-
     void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler, boolean throwExceptions);
 
     /**
@@ -65,9 +62,8 @@ public interface IGmsSyncManager extends Lifecycle {
      * @param schemaName A specific schema.
      * @param scope sync scope
      * @param handler sync result handler
+     * @param throwExceptions Throw exceptions to caller or not
      */
-    void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler);
-
     void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler,
               boolean throwExceptions);
 

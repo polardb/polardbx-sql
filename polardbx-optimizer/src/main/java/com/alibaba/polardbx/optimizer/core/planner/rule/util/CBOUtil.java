@@ -16,8 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OrcTableScanRule;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
@@ -60,7 +64,6 @@ import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCost;
-import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTrait;
@@ -233,6 +236,7 @@ public class CBOUtil {
         if (condition instanceof RexCall) {
             final RexCall currentCondition = (RexCall) condition;
             switch (currentCondition.getKind()) {
+            case IS_NOT_DISTINCT_FROM:
             case EQUALS: {
                 if (currentCondition.getOperands().size() == 2) {
                     RexNode operand1 = currentCondition.getOperands().get(0);
@@ -623,6 +627,9 @@ public class CBOUtil {
     public static long getRexParam(RexNode rex, Map<Integer, ParameterContext> params) {
         long rs = 0L;
         if (rex instanceof RexDynamicParam) {
+            if (params.size() == 0) {
+                return rs;
+            }
             rs =
                 Long.valueOf(String.valueOf(params.get(((RexDynamicParam) rex).getIndex() + 1).getValue())).longValue();
         } else if (rex instanceof RexCall) {
@@ -892,6 +899,16 @@ public class CBOUtil {
         return agg.getGroupSets().size() > 1;
     }
 
+    public static boolean isCheckSum(LogicalAggregate agg) {
+        for (AggregateCall aggCall : agg.getAggCallList()) {
+            SqlKind sqlKind = aggCall.getAggregation().getKind();
+            if (sqlKind == SqlKind.CHECK_SUM) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static org.apache.calcite.util.Pair<RelTraitSet, List<RelTraitSet>> passThroughTraitsForJoin(
         RelTraitSet required, Join join, JoinRelType joinType,
         int leftInputFieldCount, RelTraitSet joinTraitSet) {
@@ -1109,6 +1126,11 @@ public class CBOUtil {
         }
     };
 
+    public static boolean isOss(ExecutionContext ec, String table) {
+        TableMeta tm = ec.getSchemaManager().getTable(table);
+        return tm != null && Engine.isFileStore(tm.getEngine());
+    }
+
     /**
      * check whether the agg can be pushed down or not
      *
@@ -1122,6 +1144,29 @@ public class CBOUtil {
         // can't deal with group by
         if (!aggregate.getGroupSet().isEmpty()) {
             return false;
+        }
+
+        // if agg has only one check_sum, check whether contains all the columns in given order
+        if (aggregate.getAggCallList().size() == 1) {
+            AggregateCall aggCall = aggregate.getAggCallList().get(0);
+            if (aggCall.getAggregation().getKind() == SqlKind.CHECK_SUM) {
+                if (aggCall.getArgList().size() == 0) {
+                    return false;
+                }
+                int cnt = 0;
+                for (int i = 0; i < aggCall.getArgList().size(); i++) {
+                    RelColumnOrigin columnOrigin = ossTableScan.getCluster().getMetadataQuery().getColumnOrigin(
+                        ossTableScan.getPushedRelNode(), aggCall.getArgList().get(i));
+                    if (columnOrigin == null) {
+                        return false;
+                    }
+                    if (columnOrigin.getOriginColumnOrdinal() != cnt) {
+                        return false;
+                    }
+                    cnt++;
+                }
+                return CBOUtil.getTableMeta(ossTableScan.getTable()).getAllColumns().size() == cnt;
+            }
         }
         for (AggregateCall aggCall : aggregate.getAggCallList()) {
             SqlKind kind = aggCall.getAggregation().getKind();

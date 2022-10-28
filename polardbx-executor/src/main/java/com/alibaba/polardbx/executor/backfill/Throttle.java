@@ -20,10 +20,7 @@ import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.commons.collections.set.SynchronizedSet;
 
-import java.util.ArrayDeque;
-import java.util.HashSet;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +35,7 @@ public class Throttle {
     private double rate;
     private Queue<FeedbackStats> statsQueue;
     ReentrantLock lock = new ReentrantLock();
+    private volatile Long backFillId;
 
     private ScheduledThreadPoolExecutor timerTaskExecutor = new
         ScheduledThreadPoolExecutor(1, new ThreadFactory() {
@@ -91,99 +89,101 @@ public class Throttle {
     private int cyclePeriod = 3;
 
     public Throttle(long minRate, long maxRate, String schema) {
-        THROTTLE_INSTANCES.add(this);
-        this.minRate = minRate;
-        this.maxRate = maxRate;
-        reset();
-        this.statsQueue = new ArrayDeque<>();
-        this.timerTaskExecutor
-            .scheduleWithFixedDelay(new Runnable() {
-                @Override
-                public void run() {
-                    LoggerUtil.buildMDC(schema);
-                    long totalTimeCost = 0;
-                    lock.lock();
-                    try {
-                        if (state == State.INIT) {
-                            return;
+        synchronized (THROTTLE_INSTANCES){
+            THROTTLE_INSTANCES.add(this);
+            this.minRate = minRate;
+            this.maxRate = maxRate;
+            reset();
+            this.statsQueue = new ArrayDeque<>();
+            this.timerTaskExecutor
+                    .scheduleWithFixedDelay(new Runnable() {
+                        @Override
+                        public void run() {
+                            LoggerUtil.buildMDC(schema);
+                            long totalTimeCost = 0;
+                            lock.lock();
+                            try {
+                                if (state == State.INIT) {
+                                    return;
+                                }
+
+                                if (statsQueue.isEmpty()) {
+                                    reset();
+                                    return;
+                                }
+
+                                if (statsQueue.size() < 3) {
+                                    return;
+                                }
+
+                                long period = System.currentTimeMillis() - startTimeLastCycle;
+
+                                if (period < cyclePeriod * 1000) {
+                                    return;
+                                }
+
+                                actualRateLastCycle = rowsLastCycle / (period / 1000);
+                                startTimeLastCycle = System.currentTimeMillis();
+                                rowsLastCycle = 0;
+
+                                for (FeedbackStats stats : statsQueue) {
+                                    totalTimeCost += stats.timeCost;
+                                }
+
+                                double avgTimeCost = totalTimeCost / statsQueue.size();
+
+                                statsQueue = new ArrayDeque<>();
+
+                                if (baseTimeCost > avgTimeCost) {
+                                    baseTimeCost = avgTimeCost;
+                                }
+
+                                double aimTimeCost = baseTimeCost * 2;
+
+                                if (avgTimeCost <= (aimTimeCost * 0.75) && actualRateLastCycle >= rate * 0.9) {
+                                    growthFactor++;
+                                    rate = rate + rate * 0.05 * (1 - avgTimeCost / aimTimeCost) * (Math.log(growthFactor) / Math
+                                            .log(2));
+                                    degrowthFactor = 0;
+                                } else if (avgTimeCost > aimTimeCost) {
+                                    degrowthFactor++;
+                                    rate =
+                                            rate - rate * 0.1 * (1 - aimTimeCost / avgTimeCost) * (Math.log(degrowthFactor) / Math
+                                                    .log(2));
+                                    growthFactor = 0;
+                                } else if (actualRateLastCycle <= rate * 0.7) {
+                                    degrowthFactor++;
+                                    rate =
+                                            rate - rate * 0.1 * (Math.log(degrowthFactor) / Math
+                                                    .log(2));
+                                    growthFactor = 0;
+                                } else {
+                                    growthFactor = 0;
+                                    degrowthFactor = 0;
+                                }
+
+                                if (rate > Throttle.this.maxRate) {
+                                    rate = Throttle.this.maxRate;
+                                } else if (rate < Throttle.this.minRate) {
+                                    rate = Throttle.this.minRate;
+                                    baseTimeCost = Long.MAX_VALUE;
+                                }
+
+                                SQLRecorderLogger.ddlLogger.info(
+                                        "speed: " + (long) actualRateLastCycle + " rows/s, avg cost: " + (long) avgTimeCost
+                                                + ", baseTimeCost: "
+                                                + (long) baseTimeCost + ", rate: " + (long) rate
+                                                + " rows/s");
+
+                            } catch (Throwable t) {
+                                SQLRecorderLogger.ddlLogger.error(t);
+                            } finally {
+                                lock.unlock();
+                            }
+
                         }
-
-                        if (statsQueue.isEmpty()) {
-                            reset();
-                            return;
-                        }
-
-                        if (statsQueue.size() < 3) {
-                            return;
-                        }
-
-                        long period = System.currentTimeMillis() - startTimeLastCycle;
-
-                        if (period < cyclePeriod * 1000) {
-                            return;
-                        }
-
-                        actualRateLastCycle = rowsLastCycle / (period / 1000);
-                        startTimeLastCycle = System.currentTimeMillis();
-                        rowsLastCycle = 0;
-
-                        for (FeedbackStats stats : statsQueue) {
-                            totalTimeCost += stats.timeCost;
-                        }
-
-                        double avgTimeCost = totalTimeCost / statsQueue.size();
-
-                        statsQueue = new ArrayDeque<>();
-
-                        if (baseTimeCost > avgTimeCost) {
-                            baseTimeCost = avgTimeCost;
-                        }
-
-                        double aimTimeCost = baseTimeCost * 2;
-
-                        if (avgTimeCost <= (aimTimeCost * 0.75) && actualRateLastCycle >= rate * 0.9) {
-                            growthFactor++;
-                            rate = rate + rate * 0.05 * (1 - avgTimeCost / aimTimeCost) * (Math.log(growthFactor) / Math
-                                .log(2));
-                            degrowthFactor = 0;
-                        } else if (avgTimeCost > aimTimeCost) {
-                            degrowthFactor++;
-                            rate =
-                                rate - rate * 0.1 * (1 - aimTimeCost / avgTimeCost) * (Math.log(degrowthFactor) / Math
-                                    .log(2));
-                            growthFactor = 0;
-                        } else if (actualRateLastCycle <= rate * 0.7) {
-                            degrowthFactor++;
-                            rate =
-                                rate - rate * 0.1 * (Math.log(degrowthFactor) / Math
-                                    .log(2));
-                            growthFactor = 0;
-                        } else {
-                            growthFactor = 0;
-                            degrowthFactor = 0;
-                        }
-
-                        if (rate > Throttle.this.maxRate) {
-                            rate = Throttle.this.maxRate;
-                        } else if (rate < Throttle.this.minRate) {
-                            rate = Throttle.this.minRate;
-                            baseTimeCost = Long.MAX_VALUE;
-                        }
-
-                        SQLRecorderLogger.ddlLogger.info(
-                            "speed: " + (long) actualRateLastCycle + " rows/s, avg cost: " + (long) avgTimeCost
-                                + ", baseTimeCost: "
-                                + (long) baseTimeCost + ", rate: " + (long) rate
-                                + " rows/s");
-
-                    } catch (Throwable t) {
-                        SQLRecorderLogger.ddlLogger.error(t);
-                    } finally {
-                        lock.unlock();
-                    }
-
-                }
-            }, 0, cyclePeriod, TimeUnit.SECONDS);
+                    }, 0, cyclePeriod, TimeUnit.SECONDS);
+        }
     }
 
     /**
@@ -200,7 +200,9 @@ public class Throttle {
     public void stop() {
         timerTaskExecutor.shutdown();
         reset();
-        THROTTLE_INSTANCES.remove(this);
+        synchronized (THROTTLE_INSTANCES){
+            THROTTLE_INSTANCES.remove(this);
+        }
     }
 
     public double getActualRateLastCycle() {
@@ -265,6 +267,29 @@ public class Throttle {
      */
     public double getNewRate() {
         return rate;
+    }
+
+    public Long getBackFillId() {
+        return backFillId;
+    }
+
+    public void setBackFillId(Long backFillId) {
+        this.backFillId = backFillId;
+    }
+
+    public static List<ThrottleInfo> getThrottleInfoList(){
+        synchronized (THROTTLE_INSTANCES){
+            List<ThrottleInfo> result = new ArrayList<>(THROTTLE_INSTANCES.size());
+            for(Throttle throttle: THROTTLE_INSTANCES){
+                if(throttle.backFillId == null){
+                    //checkers do not have backFillId
+                    continue;
+                }
+                ThrottleInfo row = new ThrottleInfo(throttle.backFillId, throttle.actualRateLastCycle, throttle.totalRows);
+                result.add(row);
+            }
+            return result;
+        }
     }
 }
 

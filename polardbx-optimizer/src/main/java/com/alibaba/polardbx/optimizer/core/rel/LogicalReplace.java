@@ -102,23 +102,25 @@ public class LogicalReplace extends LogicalInsertIgnore {
                              List<Integer> beforePkMapping, List<Integer> afterPkMapping,
                              Set<String> allUkSet, Map<String, Map<String, Set<String>>> tableUkMap,
                              Map<String, List<List<String>>> ukGroupByTable,
-                             List<ColumnMeta> rowColumnMetas, List<ColumnMeta> tableColumnMetas,
-                             List<String> selectListForDuplicateCheck, ReplaceRelocateWriter primaryRelocateWriter,
+                             Map<String, List<String>> localIndexPhyName, List<ColumnMeta> rowColumnMetas,
+                             List<ColumnMeta> tableColumnMetas, List<String> selectListForDuplicateCheck,
+                             ReplaceRelocateWriter primaryRelocateWriter,
                              List<ReplaceRelocateWriter> gsiRelocateWriters,
                              BroadCastReplaceScaleOutWriter broadCastReplaceScaleOutWriter,
                              boolean targetTableIsWritable, boolean targetTableIsReadyToPublish,
                              boolean sourceTablesIsReadyToPublish, LogicalDynamicValues logicalDynamicValues,
                              List<RexNode> unOpitimizedDuplicateKeyUpdateList, InsertWriter pushDownInsertWriter,
                              List<InsertWriter> gsiInsertIgnoreWriter, DistinctWriter primaryDeleteWriter,
-                             List<DistinctWriter> gsiDeleteWriters) {
+                             List<DistinctWriter> gsiDeleteWriters, boolean usePartFieldChecker,
+                             Map<String, ColumnMeta> columnMetaMap) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping,
             selectInsertRowMapping, pkColumnNames, beforePkMapping, afterPkMapping, allUkSet, tableUkMap,
-            ukGroupByTable, rowColumnMetas, tableColumnMetas, selectListForDuplicateCheck, targetTableIsWritable,
-            targetTableIsReadyToPublish, sourceTablesIsReadyToPublish, logicalDynamicValues,
+            ukGroupByTable, localIndexPhyName, rowColumnMetas, tableColumnMetas, selectListForDuplicateCheck,
+            targetTableIsWritable, targetTableIsReadyToPublish, sourceTablesIsReadyToPublish, logicalDynamicValues,
             unOpitimizedDuplicateKeyUpdateList, pushDownInsertWriter, gsiInsertIgnoreWriter, primaryDeleteWriter,
-            gsiDeleteWriters);
+            gsiDeleteWriters, usePartFieldChecker, columnMetaMap);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.broadCastReplaceScaleOutWriter = broadCastReplaceScaleOutWriter;
@@ -153,6 +155,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
             getAllUkSet(),
             getTableUkMap(),
             getUkGroupByTable(),
+            getLocalIndexPhyName(),
             getRowColumnMetaList(),
             getTableColumnMetaList(),
             getSelectListForDuplicateCheck(),
@@ -167,7 +170,9 @@ public class LogicalReplace extends LogicalInsertIgnore {
             getPushDownInsertWriter(),
             getGsiInsertIgnoreWriters(),
             getPrimaryDeleteWriter(),
-            getGsiDeleteWriters());
+            getGsiDeleteWriters(),
+            isUsePartFieldChecker(),
+            getColumnMetaMap());
         return newLogicalReplace;
     }
 

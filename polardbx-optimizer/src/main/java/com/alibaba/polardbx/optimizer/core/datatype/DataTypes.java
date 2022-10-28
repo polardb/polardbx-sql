@@ -45,7 +45,7 @@ public abstract class DataTypes {
     public static final DataType<Integer> BooleanType = new BooleanType();
     public static final DataType<Decimal> DecimalType = new DecimalType();
 
-    public static final DataType<Short> TinyIntType = new TinyIntType();
+    public static final DataType<Byte> TinyIntType = new TinyIntType();
     public static final DataType<Short> UTinyIntType = new UTinyIntType();
     public static final DataType<Short> SmallIntType = new SmallIntType();
     public static final DataType<Integer> USmallIntType = new USmallIntType();

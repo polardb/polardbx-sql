@@ -883,9 +883,9 @@ public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoke
             for (int chunkId = 0; chunkId < innerChunks.getChunkCount(); ++chunkId) {
                 Chunk keyChunk = innerKeyChunks.getChunk(chunkId);
                 if (alreadyBuild) {
-                    buildOneChunk(keyChunk, position, hashTable, positionLinks, null);
+                    buildOneChunk(keyChunk, position, hashTable, positionLinks, null, getIgnoreNullsInJoinKey());
                 } else {
-                    buildOneChunk(keyChunk, position, hashTable, positionLinks, bloomFilter);
+                    buildOneChunk(keyChunk, position, hashTable, positionLinks, bloomFilter, getIgnoreNullsInJoinKey());
                 }
 
                 position += keyChunk.getPositionCount();

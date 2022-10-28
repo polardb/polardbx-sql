@@ -63,6 +63,7 @@ public class BroadcastTableModify extends AbstractRelNode {
         return directTableOperation;
     }
 
+    @Override
     public String getSchemaName() {
         return directTableOperation.getSchemaName();
     }

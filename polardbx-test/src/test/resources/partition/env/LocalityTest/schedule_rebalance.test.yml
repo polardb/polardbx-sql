@@ -1,0 +1,58 @@
+storageList: [$dn1, $dn2]
+dbName: "test_db1"
+testCases:
+  - prepareDDls:
+      - "drop database if exists test_db1"
+      - "create database test_db1 mode = auto locality = 'dn=$dn1,$dn2'"
+      - "use test_db1;"
+      - ""
+
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_db1;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table $dn2
+        - t3 table $dn1
+        - t4 table ""
+        - c0 table ""
+        - c1 table ""
+        - c2 table ""
+        - c3 table ""
+        - c4 table ""
+        - test_db1 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1,t3 $tg1 $dn1
+        - t2 $tg2 $dn2
+        - t4 $tg3 ""
+        - c0,c1 $tg4 ""
+        - c2,c3 $tg5 ""
+        - c4 $tg6 "";
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg4.p1 $dn1
+        - $tg4.p2 $dn1
+        - $tg4.p3 $dn2
+        - $tg4.p4 $dn2
+        - $tg6.p1 $dn1
+        - $tg6.p2 $dn1
+        - $tg6.p3 $dn1
+        - $tg6.p4 $dn2
+      topologyCheck:
+        - c0.p1 partition $dn1
+        - c0.p2 partition $dn1
+        - c0.p3 partition $dn2
+        - c0.p4 partition $dn2
+        - c1.p1 partition $dn1
+        - c1.p2 partition $dn1
+        - c1.p3 partition $dn2
+        - c1.p4 partition $dn2
+        - c4.p1 partition $dn1
+        - c4.p2 partition $dn1
+        - c4.p3 partition $dn1
+        - c4.p4 partition $dn2
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+

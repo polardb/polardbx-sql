@@ -49,8 +49,8 @@ import com.alibaba.polardbx.net.util.MySQLMessage;
  * @author xianmao.hexm 2010-7-22 下午05:43:34
  */
 public class FieldPacket extends MySQLPacket {
-
-    private static final byte[] DEFAULT_CATALOG = "def".getBytes();
+    public static final String DEFAULT_CATALOG_STR = "def";
+    private static final byte[] DEFAULT_CATALOG = DEFAULT_CATALOG_STR.getBytes();
     private static final byte[] FILLER = new byte[] {0, 0};
 
     public byte[] catalog = DEFAULT_CATALOG;

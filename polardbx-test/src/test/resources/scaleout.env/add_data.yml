@@ -1,0 +1,32 @@
+1:
+  insert ignore into `test_table_a` ( pk, varchar_test_p255 ) values (null,'1'), (null,'2'),(null,'3'),(null,'4'),(null,'5'),(null,'6'),(null,'7'),(null,'8'),(null,'9'),(null,'10');
+
+2:
+  insert ignore into `test_table_b` ( pk, varchar_test_p255 ) values (null,'1'), (null,'2'),(null,'3'),(null,'4'),(null,'5'),(null,'6'),(null,'7'),(null,'8'),(null,'9'),(null,'10');
+
+3:
+  insert ignore into `test_table_c` ( pk, varchar_test_p255, timestamp_test ) values (null,'1', now()), (null,'2',now()),(null,'3',now()),(null,'4',now()),(null,'5',now()),(null,'6',now()),(null,'7',now()),(null,'8',now()),(null,'9',now()),(null,'10',now());
+
+4:
+  insert ignore into `test_tb_bro1` ( pk, integer_test ) values (null, 1),(null, 2),(null, 3),(null, 4),(null, 5),(null, 6),(null, 7),(null, 8),(null, 9),(null, 10), (null,10);
+  insert ignore into `test_tb_bro1` ( pk, integer_test ) values ( 100001, 10 );
+
+5:
+  insert ignore into `test_tb_bro2` ( pk, integer_test ) values (null, 1),(null, 2),(null, 3),(null, 4),(null, 5),(null, 6),(null, 7),(null, 8),(null, 9),(null, 10);
+
+6:
+  insert ignore into `test_tb_bro3` ( pk, integer_test ) values (null, 1),(null, 2),(null, 3),(null, 4),(null, 5),(null, 6),(null, 7),(null, 8),(null, 9),(null, 10);
+
+7:
+  insert ignore into `mdb_mtb1` ( pk, integer_test ) values ( 300000, 10 );
+
+8:
+  insert ignore into `mdb_mtb2` ( pk, integer_test ) values ( 300000, 10 );
+
+
+9:
+  insert ignore into `mdb_mtb3` ( pk, integer_test ) values ( 300000, 10 ), ( 300001, 10 ), ( 300002, 10 );
+
+10:
+  insert ignore into `mdb_mtb4` ( pk, integer_test ) values ( 300000, 10 ), ( 300001, 10 ), ( 300002, 10 );
+

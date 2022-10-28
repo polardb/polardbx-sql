@@ -17,11 +17,13 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
@@ -59,6 +61,9 @@ public enum ExecutionStrategy {
     LOGICAL;
 
     public static ExecutionStrategy fromValue(String value) {
+        if (StringUtils.isEmpty(value)) {
+            return null;
+        }
         try {
             return ExecutionStrategy.valueOf(value.toUpperCase());
         } catch (Exception e) {
@@ -93,6 +98,8 @@ public enum ExecutionStrategy {
         final List<TableMeta> gsiMetas = GlobalIndexMeta.getIndex(primaryTable, ec);
         final boolean withGsi = !gsiMetas.isEmpty();
         final boolean allGsiPublished = GlobalIndexMeta.isAllGsiPublished(gsiMetas, context);
+
+        final boolean onlineModifyColumn = TableColumnUtils.isModifying(primaryTable, ec);
 
         // Unique key detail
         final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(targetTable, schema, true, tm -> true, ec);
@@ -154,6 +161,8 @@ public enum ExecutionStrategy {
         }
 
         final boolean doMultiWrite = isBroadcast || withGsi || multiWriteForReplication;
+        // Do not push down when modify column for now
+        canPush = canPush && !onlineModifyColumn;
 
         result.pushDuplicateCheckByHintParams = pushDuplicateCheck;
         result.canPushDuplicateIgnoreScaleOutCheck = canPushDuplicateIgnoreScaleOutCheck;

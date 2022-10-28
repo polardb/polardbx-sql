@@ -27,7 +27,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReOrganizeParti
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.ddl.job.builder.LocalPartitionPhysicalSqlBuilder;
+import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -150,7 +150,7 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
 
     private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql){
         ddl.sqlNode = SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
-        LocalPartitionPhysicalSqlBuilder builder = new LocalPartitionPhysicalSqlBuilder(
+        DirectPhysicalSqlPlanBuilder builder = new DirectPhysicalSqlPlanBuilder(
             ddl, new ReorganizeLocalPartitionPreparedData(schemaName, tableName), executionContext
         );
         builder.build();

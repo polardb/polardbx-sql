@@ -1,0 +1,39 @@
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+     sum(id3) over (partition by id1 order by id3 desc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2
+    from test_simple_table;
+
+  plan: |
+
+    SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0SUM($2)", Reference Windows="window#0=window(partition {0} order by [2 DESC-nulls-last] rows between $4 PRECEDING and $4 FOLLOWING aggs [SUM($2)])", constants="[1]")
+      MemSort(sort="id1 ASC,id3 DESC")
+        SortWindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0SUM($1)", Reference Windows="window#0=window(partition {0} order by [1 ASC-nulls-first] rows between $3 PRECEDING and $3 FOLLOWING aggs [SUM($1)])", constants="[1]")
+          LogicalView(tables="optest_0000.test_simple_table", sql="SELECT `id1`, `id2`, `id3` FROM `test_simple_table` AS `test_simple_table` ORDER BY `id1`, `id2`")
+
+- sql: |
+    select * from (
+      select
+        sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1
+        from test_simple_table
+      ) T;
+
+  plan: |
+
+    project(ow1="f2w0$o0")
+      sortwindow(id1="id1", id2="id2", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between $2 preceding and $2 following aggs [sum($1)])", constants="[1]")
+        logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2` from `test_simple_table` as `test_simple_table` order by `id1`, `id2`")
+
+- sql: |
+    select *,
+     sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) + 1 ow1,
+     sum(id3) over (partition by id1 order by id3 desc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2
+    from test_simple_table;
+
+  plan: |
+
+    project(id1="id1", id2="id2", id3="id3", ow1="f3w0$o0 + 1", ow2="f4w1$o0")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0sum($2)", reference windows="window#0=window(partition {0} order by [2 desc-nulls-last] rows between $4 preceding and $4 following aggs [sum($2)])", constants="[1]")
+        memsort(sort="id1 asc,id3 desc")
+          sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between $3 preceding and $3 following aggs [sum($1)])", constants="[1]")
+            logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` order by `id1`, `id2`")

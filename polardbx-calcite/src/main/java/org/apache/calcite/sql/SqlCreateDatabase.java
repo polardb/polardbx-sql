@@ -16,8 +16,8 @@
 
 package org.apache.calcite.sql;
 
-import java.util.List;
-
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -27,8 +27,7 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 
-import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.common.utils.TStringUtil;
+import java.util.List;
 
 /**
  * @author chenmo.cm
@@ -50,13 +49,31 @@ public class SqlCreateDatabase extends SqlDdl {
         super(OPERATOR, pos);
         this.ifNotExists = ifNotExists;
         this.dbName = dbName;
-        this.charSet = charSet;
-        this.collate = collate;
+        this.charSet = trim(charSet);
+        this.collate = trim((collate));
         this.locality = locality;
         this.partitionMode = partitionMode;
     }
 
-    @Override
+    private String trim(String str) {
+        if (str == null) {
+            return str;
+        }
+        if (str.charAt(0) == '`' || str.charAt(str.length() - 1) == '`') {
+            // trim
+            StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < str.length(); i++) {
+                if (str.charAt(i) == '`') {
+                    continue;
+                }
+                builder.append(str.charAt(i));
+            }
+            str = builder.toString();
+        }
+        return str;
+    }
+
+        @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         writer.keyword("CREATE DATABASE");
 

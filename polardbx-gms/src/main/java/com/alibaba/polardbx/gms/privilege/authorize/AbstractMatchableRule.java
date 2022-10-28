@@ -19,6 +19,8 @@ package com.alibaba.polardbx.gms.privilege.authorize;
 import com.alibaba.polardbx.gms.privilege.Permission;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 
+import java.util.Optional;
+
 /**
  * If input matches, the check result is determined by itself, otherwise by next rule.
  *
@@ -56,7 +58,10 @@ public abstract class AbstractMatchableRule extends AbstractRule {
     }
 
     private boolean doCheckByNextRule(PolarAccountInfo accountInfo, Permission permission) {
-        return getNext().map(rule -> rule.check(accountInfo, permission))
-            .orElse(false);
+        Optional<Rule> rule = getNext();
+        if (rule.isPresent()) {
+            return rule.get().check(accountInfo, permission);
+        }
+        return false;
     }
 }

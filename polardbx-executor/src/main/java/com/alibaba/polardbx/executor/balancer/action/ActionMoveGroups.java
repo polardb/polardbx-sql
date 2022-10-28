@@ -16,14 +16,22 @@
 
 package com.alibaba.polardbx.executor.balancer.action;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 /**
  * Action that move multiple groups concurrently
@@ -72,17 +80,20 @@ public class ActionMoveGroups implements BalanceAction, Comparable<ActionMoveGro
     public ExecutableDdlJob toDdlJob(ExecutionContext ec) {
         ExecutableDdlJob job = new ExecutableDdlJob();
         job.setMaxParallelism(ScaleOutUtils.getScaleoutTaskParallelism(ec));
-        //todo guxu refactor this
         EmptyTask head = new EmptyTask(schema);
-        job.addTask(head);
-        job.labelAsHead(head);
+        Map<String, Long> tablesVersion = getTableVersions(ec);
+        MoveDatabaseValidateTask moveDatabaseValidateTask = new MoveDatabaseValidateTask(schema, schema, tablesVersion);
         EmptyTask tail = new EmptyTask(schema);
+
+        job.addSequentialTasks(Lists.newArrayList(head,
+            moveDatabaseValidateTask));
         job.addTask(tail);
+        job.labelAsHead(head);
         job.labelAsTail(tail);
 
         for (ActionMoveGroup move : actions) {
             ExecutableDdlJob subJob = move.toDdlJob(ec);
-            job.appendJobAfter(head, subJob);
+            job.appendJobAfter(moveDatabaseValidateTask, subJob);
             job.addTaskRelationship(subJob.getTail(), tail);
         }
 
@@ -127,5 +138,28 @@ public class ActionMoveGroups implements BalanceAction, Comparable<ActionMoveGro
             }
         }
         return Integer.compare(actions.size(), o.actions.size());
+    }
+
+    private Map<String, Long> getTableVersions(ExecutionContext executionContext) {
+        List<String> gsiTables = new ArrayList<>();
+        List<String> logicTableNames =
+            ScaleOutPlanUtil.getLogicalTables(schema, gsiTables, executionContext);
+        if (GeneralUtil.isNotEmpty(gsiTables)) {
+            for (String gsi : gsiTables) {
+                TableMeta tableMeta = executionContext.getSchemaManager(schema).getTable(gsi);
+                assert tableMeta.isGsi();
+                String primaryTblName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+                logicTableNames.add(primaryTblName);
+            }
+        }
+        
+        Map<String, Long> tablesVersion = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (String primaryTblName : logicTableNames) {
+            TableMeta primaryTblMeta = executionContext.getSchemaManager(schema).getTable(primaryTblName);
+            Long primaryTblVersion = primaryTblMeta.getVersion();
+            tablesVersion.putIfAbsent(primaryTblName, primaryTblVersion);
+        }
+        return tablesVersion;
+
     }
 }

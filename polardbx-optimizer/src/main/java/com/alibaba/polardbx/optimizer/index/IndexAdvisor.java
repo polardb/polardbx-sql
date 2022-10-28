@@ -57,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -474,10 +475,9 @@ public class IndexAdvisor {
             if (infoCtx != null) {
                 PartitionInfoManager.PartInfoCtx ctx = oldSchemaManager.
                     getTddlRuleManager().getPartitionInfoManager().getPartInfoCtx(tableName);
-                schemaManager.getTable(tableName).setPartitionInfo(ctx.getPartInfo());
                 schemaManager.getTddlRuleManager().getPartitionInfoManager().putPartInfoCtx(
                     tableName, ctx);
-                tableMeta.setPartitionInfo(infoCtx.getPartInfo());
+                tableMeta.setPartitionInfo(ctx.getPartInfo());
             } else {
                 // rollback old table
                 if (schemaManager.getTddlRuleManager().isBroadCast(tableName)) {
@@ -499,6 +499,24 @@ public class IndexAdvisor {
         }
     }
 
+    /**
+     * find all candidate broadcast tables which are small enough
+     *
+     * @param schemaManager read schemaManager
+     * @param tables tables to be test
+     * @return tables small enough
+     */
+    public Set<String> candidateBroadCastTable(SchemaManager schemaManager, Set<String> tables) {
+        Set<String> candidateBroadCastTables = new TreeSet<>();
+        for (String table : tables) {
+            if (schemaManager.getTable(table).getRowCount() < executionContext.getParamManager().getInt(
+                ConnectionParams.INDEX_ADVISOR_BROADCAST_THRESHOLD)) {
+                candidateBroadCastTables.add(table);
+            }
+        }
+        return candidateBroadCastTables;
+    }
+
     public BroadcastInfo prepareInfo(String schemaName, String tableName,
                                      SchemaManager schemaManager,
                                      SchemaManager oldSchemaManager,
@@ -511,7 +529,7 @@ public class IndexAdvisor {
 
                 PartitionInfo partitionInfo = PartitionInfoBuilder
                     .buildPartitionInfoByPartDefAst(schemaName, tableName, null, null,
-                        null,
+                        null, null,
                         new ArrayList<>(whatIfTableMeta.getPrimaryKey()),
                         whatIfTableMeta.getAllColumns(),
                         PartitionTableType.BROADCAST_TABLE,
@@ -547,6 +565,7 @@ public class IndexAdvisor {
         Map<String, Map<String, List<TableScan>>> tableScanClass = tableScanFinder.getMappedResult(
             executionContext.getSchemaName());
 
+        Map<String, Set<String>> candidateBroadCastTables = new TreeMap<>();
         Set<String> schemaNames = tableScanClass.keySet();
 
         Map<String, SchemaManager> oldSchemaManagers = executionContext.getSchemaManagers();
@@ -554,11 +573,17 @@ public class IndexAdvisor {
         executionContext.setSchemaManagers(whatIfSchemaManagers);
         for (String schemaName : schemaNames) {
             SchemaManager oldSchemaManager = oldSchemaManagers.get(schemaName);
+            // build candidate table meta
+            Set<String> tables = candidateBroadCastTable(oldSchemaManager, tableScanClass.get(schemaName).keySet());
+
+            candidateBroadCastTables.put(schemaName, tables);
+
             WhatIfSchemaManager whatIfSchemaManager =
-                new WhatIfSchemaManager(oldSchemaManager, new HashSet<>(), executionContext);
+                new WhatIfSchemaManager(oldSchemaManager, new HashSet<>(), tables, executionContext);
             whatIfSchemaManager.init();
             executionContext.getSchemaManagers().put(schemaName, whatIfSchemaManager);
         }
+
 
         Map<String, Map<String, BroadcastInfo>> broadcastTableInfo = new HashMap<>(schemaNames.size());
         for (String schemaName : schemaNames) {
@@ -576,6 +601,9 @@ public class IndexAdvisor {
             //try all tables
             for (Map.Entry<String, List<TableScan>> entry : pair.getValue().entrySet()) {
                 String tableName = entry.getKey();
+                if (!candidateBroadCastTables.get(schemaName).contains(tableName)) {
+                    continue;
+                }
                 List<TableScan> tableScans = entry.getValue();
                 BroadcastInfo broadcastInfo = null;
 

@@ -36,6 +36,7 @@ import java.util.List;
  * index is recorded as soon as the parameter is encountered.
  */
 public class SqlDynamicParam extends SqlNode {
+
   //~ Instance fields --------------------------------------------------------
 
   //~ Enum
@@ -45,7 +46,8 @@ public class SqlDynamicParam extends SqlNode {
   
   protected final int index;
   protected final SqlTypeName typeName;
-  protected  Object value;
+  protected Object value;
+  protected int dynamicKey = -1;
   protected Enum dynamicType = RexDynamicParam.DYNAMIC_TYPE_VALUE.DEFAULT;
   protected Charset charset;
   protected SqlCollation collation;
@@ -103,7 +105,9 @@ public class SqlDynamicParam extends SqlNode {
   //~ Methods ----------------------------------------------------------------
 
   public SqlNode clone(SqlParserPos pos) {
-    return new SqlDynamicParam(index, typeName, pos, value);
+    SqlDynamicParam sqlDynamicParam = new SqlDynamicParam(index, typeName, pos, value);
+    sqlDynamicParam.setDynamicKey(dynamicKey);
+    return sqlDynamicParam;
   }
 
   public SqlKind getKind() {
@@ -151,7 +155,7 @@ public class SqlDynamicParam extends SqlNode {
         getTypeName().createLiteral(realValue, pos).unparse(writer, leftPrec, rightPrec);
       }
     } else {
-      writer.print("?");
+      writer.dynamicParam();
       writer.setNeedWhitespace(true);
     }
 
@@ -210,6 +214,14 @@ public class SqlDynamicParam extends SqlNode {
 
   public SqlCollation getCollation() {
     return collation;
+  }
+
+  public int getDynamicKey() {
+    return dynamicKey;
+  }
+
+  public void setDynamicKey(int dynamicKey) {
+    this.dynamicKey = dynamicKey;
   }
 }
 

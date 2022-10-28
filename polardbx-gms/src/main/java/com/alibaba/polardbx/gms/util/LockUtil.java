@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.gms.util;
 
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.topology.ConfigListenerAccessor;
 
 import java.sql.Connection;
@@ -46,6 +48,24 @@ public class LockUtil {
         }
         metaDbConn.commit();
         return true;
+    }
+
+    /**
+     * A read lock forbids a db to be dropped
+     *
+     * @param name the name of a database
+     * @return resource name of the lock
+     */
+    public static String genForbidDropResourceName(String name) {
+        return "forbid_" + TStringUtil.backQuote(name);
+    }
+
+    public static String genRebalanceResourceName(RebalanceTarget target, String name) {
+        return "rebalance_" + target.toString() + "_" + TStringUtil.backQuote(name);
+    }
+
+    public static String genRebalanceClusterName() {
+        return "rebalance_" + RebalanceTarget.CLUSTER;
     }
 
 }

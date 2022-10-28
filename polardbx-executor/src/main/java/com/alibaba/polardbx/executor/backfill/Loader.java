@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.rel.PhyOperationBuilderCommon;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlInsert;
@@ -49,7 +50,7 @@ import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DUP_ENTRY;
 /**
  * Fill batch data into index table with duplication check
  */
-public abstract class Loader {
+public abstract class Loader extends PhyOperationBuilderCommon {
 
     private final String schemaName;
     private final String tableName;
@@ -69,12 +70,13 @@ public abstract class Loader {
     private final int[] checkerParamMapping;
     private final int[] checkerPkMapping;
     private final ITransactionManager tm;
+    protected final boolean mirrorCopy;
 
     protected final BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc;
 
     protected Loader(String schemaName, String tableName, SqlInsert insert, SqlInsert insertIgnore,
                      ExecutionPlan checkerPlan, int[] checkerPkMapping, int[] checkerParamMapping,
-                     BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc) {
+                     BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc, boolean mirrorCopy) {
         this.schemaName = schemaName;
         this.tableName = tableName;
         this.sqlInsert = insert;
@@ -84,13 +86,14 @@ public abstract class Loader {
         this.checkerParamMapping = checkerParamMapping;
         this.executeFunc = executeFunc;
         this.tm = ExecutorContext.getContext(schemaName).getTransactionManager();
+        this.mirrorCopy = mirrorCopy;
     }
 
     /**
      * Insert into index table
      */
     public int fillIntoIndex(List<Map<Integer, ParameterContext>> batchParams,
-                             Pair<ExecutionContext, String> baseEcAndIndexPair,
+                             Pair<ExecutionContext, Pair<String,String>> baseEcAndIndexPair,
                              Supplier<Boolean> checker) {
         if (batchParams.isEmpty()) {
             return 0;
@@ -102,7 +105,7 @@ public abstract class Loader {
                 int result = -1;
                 try {
                     // Batch insert
-                    result = applyBatch(batchParams, insertEc.copy(), baseEcAndIndexPair.getValue());
+                    result = applyBatch(batchParams, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(), baseEcAndIndexPair.getValue().getValue());
 
                     // Batch insert success, check lock exists
                     return checkBeforeCommit(checker, insertEc, result);
@@ -133,7 +136,7 @@ public abstract class Loader {
                 int result = 0;
 
                 for (Map<Integer, ParameterContext> param : batchParams) {
-                    int single = applyRow(param, insertEc.copy(), baseEcAndIndexPair.getValue(), true);
+                    int single = applyRow(param, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(), baseEcAndIndexPair.getValue().getValue(), true);
 
                     if (single < 1) {
                         // Compare row
@@ -224,14 +227,14 @@ public abstract class Loader {
      * @return Affected rows
      */
     private int applyBatch(List<Map<Integer, ParameterContext>> batchParams, ExecutionContext newEc,
-                           String sourceDbIndex) {
+                           String sourceDbIndex, String phyTableName) {
         // Construct params for each batch
         Parameters parameters = new Parameters();
         parameters.setBatchParams(batchParams);
 
         newEc.setParams(parameters);
 
-        return executeInsert(sqlInsert, schemaName, tableName, newEc, sourceDbIndex);
+        return executeInsert(sqlInsert, schemaName, tableName, newEc, sourceDbIndex, phyTableName);
     }
 
     /**
@@ -244,15 +247,16 @@ public abstract class Loader {
      * @return Affected rows
      */
     private int applyRow(Map<Integer, ParameterContext> param, ExecutionContext newEc, String sourceDbIndex,
+                         String phyTableName,
                          boolean ignore) {
         Parameters parameters = new Parameters();
         parameters.setParams(param);
 
         newEc.setParams(parameters);
 
-        return executeInsert(ignore ? sqlInsertIgnore : sqlInsert, schemaName, tableName, newEc, sourceDbIndex);
+        return executeInsert(ignore ? sqlInsertIgnore : sqlInsert, schemaName, tableName, newEc, sourceDbIndex, phyTableName);
     }
 
     public abstract int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
-                                      ExecutionContext executionContext, String sourceDbIndex);
+                                      ExecutionContext executionContext, String sourceDbIndex, String phyTableName);
 }

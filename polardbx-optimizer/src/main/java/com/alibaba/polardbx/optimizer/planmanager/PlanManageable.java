@@ -43,6 +43,6 @@ public interface PlanManageable extends Lifecycle {
     /**
      * 演化执行计划的执行情况
      */
-    void doEvolution(BaselineInfo baselineInfo, PlanInfo planInfo, long lastExecuteUnixTime,
-                     double executionTimeInSeconds, Throwable ex);
+    void doEvolution(String schema, BaselineInfo baselineInfo, PlanInfo planInfo, long lastExecuteUnixTime,
+                     double executionTimeInSeconds, ExecutionContext executionContext, Throwable ex);
 }

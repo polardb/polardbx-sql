@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
-import com.alibaba.polardbx.optimizer.config.table.statistic.AutoAnalyzeTask;
-import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticLogInfo;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
@@ -27,40 +24,32 @@ import java.util.List;
 import java.util.Set;
 
 public interface StatisticService {
-    StatisticResult getRowCount(String logicalTableName);
+    StatisticResult getRowCount(String schema, String logicalTableName);
 
-    void setRowCount(String logicalTableName, long rowCount);
+    void setRowCount(String schema, String logicalTableName, long rowCount);
 
-    StatisticResult getCardinality(String logicalTableName, String columnName);
+    StatisticResult getCardinality(String schema, String logicalTableName, String columnName, boolean fromOptimzer);
 
-    StatisticResult getFrequency(String logicalTableName, String columnName, String value);
+    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, String value);
 
     /**
      * get frequency with row value.
      */
-    StatisticResult getFrequency(String logicalTableName, String columnName, Row.RowValue value);
+    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, Row.RowValue value);
 
-    StatisticResult getNullCount(String logicalTableName, String columnName);
+    StatisticResult getNullCount(String schema, String logicalTableName, String columnName);
 
-    StatisticResult getRangeCount(String logicalTableName, String columnName, Object lower,
-                                         boolean lowerInclusive,
-                                         Object upper, boolean upperInclusive);
+    StatisticResult getRangeCount(String schema, String logicalTableName, String columnName, Object lower,
+                                  boolean lowerInclusive,
+                                  Object upper, boolean upperInclusive);
 
-    void addUpdateRowCount(String logicalTableName, long affectRow);
+    void addUpdateRowCount(String schema, String logicalTableName, long affectRow);
 
-    DataType getDataType(String tableName, String columnName);
+    DataType getDataType(String schema, String tableName, String columnName);
 
-    @Deprecated
-    StatisticLogInfo getStatisticLogInfo();
+    void renameTable(String schema, String oldLogicalTableName, String newLogicalTableName);
 
-    @Deprecated
-    AutoAnalyzeTask getAutoAnalyzeTask();
+    void removeLogicalColumnList(String schema, String logicalTableName, List<String> columnNameList);
 
-    void renameTable(String oldLogicalTableName, String newLogicalTableName);
-
-    void removeLogicalColumnList(String logicalTableName, List<String> columnNameList);
-
-    Set<String> getTableNamesCollected();
-
-    void sampleTable(String logicalTableName);
+    Set<String> getTableNamesCollected(String schema);
 }

@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.qatest.dql.auto.join;
 
 import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
+import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.CommonCaseRunner;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;

@@ -26,7 +26,6 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.rpc.XConfig;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.transaction.jdbc.SavePoint;
 
@@ -90,8 +89,7 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
         if (snapshotTimestamp < 0) {
             snapshotTimestamp = nextTimestamp();
         }
-        this.shareReadView = executionContext.isShareReadView();
-        String xid = getXid(group, conn, shareReadView);
+        String xid = getXid(group, conn);
         try {
             final XConnection xConnection;
             if (conn.isWrapperFor(XConnection.class) &&
@@ -165,52 +163,35 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
     @Override
     protected void prepareConnections() {
         forEachHeldConnection((group, conn, participated) -> {
-            if (!participated) {
-                commitNonParticipantSync(group, conn);
-                return;
-            }
-            String xid = getXid(group, conn, shareReadView);
-            // XA transaction must be 'ACTIVE' state here.
-            try (Statement stmt = conn.createStatement()) {
-                if (XConfig.GALAXY_X_PROTOCOL) {
-                    stmt.execute("XA END " + xid +
-                        "; SET innodb_prepare_seq = " + snapshotTimestamp +
-                        "; XA PREPARE " + xid);
-                } else {
-                    stmt.execute("XA END " + xid + ';' + " XA PREPARE " + xid);
-                }
-            } catch (Throwable e) {
-                throw new TddlRuntimeException(ErrorCode.ERR_TRANS_COMMIT, e, "XA PREPARE failed: " + xid);
+            switch (participated) {
+            case NONE:
+                rollbackNonParticipantSync(group, conn);
+                break;
+            case SHARE_READVIEW_READ:
+                rollbackNonParticipantShareReadViewSync(group, conn);
+                break;
+            case WRITTEN:
+                prepareParticipatedConn(group, conn);
+                break;
             }
         });
+    }
+
+    private void prepareParticipatedConn(String group, IConnection conn) {
+        String xid = getXid(group, conn);
+        // XA transaction must be 'ACTIVE' state here.
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("XA END " + xid + ';' + " XA PREPARE " + xid);
+        } catch (Throwable e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_COMMIT, e, "XA PREPARE failed: " + xid);
+        }
     }
 
     @Override
     protected void innerCommitOneShardTrx(String group, IConnection conn) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
-            String xid = getXid(group, conn, shareReadView);
-            if (XConfig.GALAXY_X_PROTOCOL) {
-                try {
-                    // Back to two phase XA with TSO.
-                    stmt.execute("XA END " + xid +
-                        "; SET innodb_prepare_seq = " + snapshotTimestamp +
-                        "; XA PREPARE " + xid);
-                    if (commitTimestamp != -1L) {
-                        throw new AssertionError("Commit TSO inited.");
-                    }
-                    commitTimestamp = nextTimestamp();
-                    stmt.execute("SET innodb_commit_seq = " + commitTimestamp + "; XA COMMIT " + xid +
-                        (shareReadView ? "; " + TURN_OFF_TXN_GROUP_SQL : ""));
-                } catch (Throwable t) {
-                    try {
-                        stmt.execute("XA ROLLBACK " + xid);
-                    } catch (Throwable ignore) {
-                    }
-                    throw t;
-                }
-            } else {
-                stmt.execute(getXACommitOnePhaseSqls(xid));
-            }
+            String xid = getXid(group, conn);
+            stmt.execute(getXACommitOnePhaseSqls(xid));
         }
     }
 
@@ -285,7 +266,6 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
         }
 
         connectionHolder.closeAllConnections();
-
         if (exception != null) {
             throw exception;
         }
@@ -298,15 +278,17 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
     protected void commitConnections() {
         forEachHeldConnection(new TransactionConnectionHolder.Action() {
             @Override
-            public boolean condition(String group, IConnection conn, boolean participated) {
+            public boolean condition(String group, IConnection conn,
+                                     TransactionConnectionHolder.ParticipatedState participated) {
                 // Ignore non-participant connections. They were committed during prepare phase.
-                return participated;
+                return participated.participatedTrx();
             }
 
             @Override
-            public void execute(String group, IConnection conn, boolean participated) {
+            public void execute(String group, IConnection conn,
+                                TransactionConnectionHolder.ParticipatedState participated) {
                 // XA transaction must be 'PREPARED' state here.
-                String xid = getXid(group, conn, shareReadView);
+                String xid = getXid(group, conn);
                 try (Statement stmt = conn.createStatement()) {
                     try {
                         final XConnection xConnection;
@@ -315,16 +297,8 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
                             conn.flushUnsent();
                             xConnection.setLazyCommitSeq(commitTimestamp);
                             xConnection.execUpdate("XA COMMIT " + xid);
-                            if (shareReadView) {
-                                xConnection.execUpdate(TURN_OFF_TXN_GROUP_SQL, null, true);
-                            }
                         } else {
-                            if (shareReadView) {
-                                stmt.execute("SET innodb_commit_seq = " + commitTimestamp + "; XA COMMIT " + xid +
-                                    "; " + TURN_OFF_TXN_GROUP_SQL);
-                            } else {
-                                stmt.execute("SET innodb_commit_seq = " + commitTimestamp + "; XA COMMIT " + xid);
-                            }
+                            stmt.execute(getXACommitWithTsoSql(xid));
                         }
                     } catch (SQLException ex) {
                         if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_XAER_NOTA) {
@@ -339,6 +313,15 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
                 }
             }
         });
+    }
+
+    private String getXACommitWithTsoSql(String xid) {
+        if (shareReadView) {
+            return String
+                .format("SET innodb_commit_seq = %d; XA COMMIT %s;" + TURN_OFF_TXN_GROUP_SQL, commitTimestamp, xid);
+        } else {
+            return String.format("SET innodb_commit_seq = %d; XA COMMIT %s;", commitTimestamp, xid);
+        }
     }
 
     @Override

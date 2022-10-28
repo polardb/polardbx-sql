@@ -41,6 +41,7 @@ import static com.alibaba.polardbx.qatest.util.PropertiesUtil.dnCount;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.shardDbCountEachDn;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertShardCount;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 /**
  * @author chenmo.cm

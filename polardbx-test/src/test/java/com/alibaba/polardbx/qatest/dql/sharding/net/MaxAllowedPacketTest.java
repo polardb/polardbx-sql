@@ -38,7 +38,6 @@ import static com.google.common.truth.Truth.assertWithMessage;
  * 前置要求：MySQL 上的 max_allowed_packet 设置大于 16777215
  */
 
-@Ignore("fix by ???")
 public class MaxAllowedPacketTest extends ReadBaseTestCase {
     private static final String AB = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 

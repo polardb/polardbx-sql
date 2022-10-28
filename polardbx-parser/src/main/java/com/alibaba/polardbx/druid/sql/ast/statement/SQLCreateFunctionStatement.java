@@ -21,6 +21,8 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObjectWithDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -33,31 +35,34 @@ import java.util.List;
 public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLCreateStatement, SQLObjectWithDataType {
     protected SQLName definer;
 
-    protected boolean            create     = true;
-    protected boolean            orReplace;
-    protected SQLName            name;
-    protected SQLStatement       block;
+    protected boolean create = true;
+    protected boolean orReplace;
+    protected SQLName name;
+    protected SQLStatement block;
     protected List<SQLParameter> parameters = new ArrayList<SQLParameter>();
 
     // for oracle
-    private String             javaCallSpec;
+    private String javaCallSpec;
 
-    private SQLName            authid;
+    private SqlSecurity sqlSecurity = SqlSecurity.DEFINER;
 
-    SQLDataType                returnDataType;
+    private SQLName authid;
+
+    SQLDataType returnDataType;
 
     // for mysql
 
-    private String             comment;
-    private boolean            deterministic  = false;
-    private boolean            parallelEnable;
-    private boolean            aggregate;
-    private SQLName            using;
-    private boolean            pipelined;
-    private boolean            resultCache;
-    private String             wrappedSource;
-    private String             language;
-    private boolean            temporary;
+    private SQLCharExpr comment;
+    private boolean deterministic = false;
+    private SqlDataAccess sqlDataAccess = SqlDataAccess.CONTAINS_SQL;
+    private boolean parallelEnable;
+    private boolean aggregate;
+    private SQLName using;
+    private boolean pipelined;
+    private boolean resultCache;
+    private String wrappedSource;
+    private String language;
+    private boolean temporary;
 
     public SQLCreateFunctionStatement() {
 
@@ -83,6 +88,7 @@ public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLC
             x.parameters.add(p2);
         }
         x.javaCallSpec = javaCallSpec;
+        x.sqlSecurity = sqlSecurity;
         if (authid != null) {
             x.setAuthid(authid.clone());
         }
@@ -93,6 +99,7 @@ public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLC
         x.deterministic = deterministic;
         x.pipelined = pipelined;
         x.language = language;
+        x.sqlDataAccess = sqlDataAccess;
 
         return x;
     }
@@ -138,6 +145,15 @@ public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLC
         }
         this.block = block;
     }
+
+    public SqlSecurity getSqlSecurity() {
+        return sqlSecurity;
+    }
+
+    public void setSqlSecurity(SqlSecurity sqlSecurity) {
+        this.sqlSecurity = sqlSecurity;
+    }
+
 
     public SQLName getAuthid() {
         return authid;
@@ -201,11 +217,14 @@ public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLC
         this.returnDataType = returnDataType;
     }
 
-    public String getComment() {
+    public SQLCharExpr getComment() {
         return comment;
     }
 
-    public void setComment(String comment) {
+    public void setComment(SQLCharExpr comment) {
+        if (comment != null) {
+            comment.setParent(this);
+        }
         this.comment = comment;
     }
 
@@ -239,7 +258,6 @@ public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLC
     public void setDataType(SQLDataType dataType) {
         this.setReturnDataType(dataType);
     }
-
 
     public boolean isParallelEnable() {
         return parallelEnable;
@@ -295,5 +313,13 @@ public class SQLCreateFunctionStatement extends SQLStatementImpl implements SQLC
 
     public void setTemporary(boolean temporary) {
         this.temporary = temporary;
+    }
+
+    public SqlDataAccess getSqlDataAccess() {
+        return sqlDataAccess;
+    }
+
+    public void setSqlDataAccess(SqlDataAccess sqlDataAccess) {
+        this.sqlDataAccess = sqlDataAccess;
     }
 }

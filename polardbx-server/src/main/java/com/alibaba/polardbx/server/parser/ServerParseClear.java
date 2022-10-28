@@ -29,6 +29,10 @@ public final class ServerParseClear {
     public static final int PLANCACHE = 2;
     public static final int OSSCACHE = 3;
 
+    public static final int HEATMAP_CACHE = 4;
+    public static final int PROCEDURE_CACHE = 5;
+    public static final int FUNCTION_CACHE = 6;
+
     public static int parse(ByteString stmt, int offset) {
         int i = offset;
         for (; i < stmt.length(); i++) {
@@ -44,12 +48,28 @@ public final class ServerParseClear {
                 return slowCheck(stmt, i);
             case 'P':
             case 'p':
-                return planCacheCheck(stmt, i);
+                return pCheck(stmt, i);
+            case 'H':
+            case 'h':
+                return partitionsHeatmapCacheCheck(stmt, i);
             case 'O':
             case 'o':
                 return ossCacheCheck(stmt, i);
+            case 'F':
+            case 'f':
+                return functionCheck(stmt, i);
             default:
                 return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int functionCheck(ByteString stmt, int offset) {
+        final String expect = "FUNCTION CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return FUNCTION_CACHE;
             }
         }
         return OTHER;
@@ -69,6 +89,16 @@ public final class ServerParseClear {
         return OTHER;
     }
 
+    private static int pCheck(ByteString stmt, int offset) {
+        final String expect = "PROCEDURE CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return PROCEDURE_CACHE;
+            }
+        }
+        return planCacheCheck(stmt, offset);
+    }
+
     // CLEAR PLANCACHE
     private static int planCacheCheck(ByteString stmt, int offset) {
         final String expect = "PLANCACHE";
@@ -80,11 +110,22 @@ public final class ServerParseClear {
         return OTHER;
     }
 
+
     private static int ossCacheCheck(ByteString stmt, int offset) {
         final String expect = "OSS CACHE";
         if (stmt.length() >= offset + expect.length()) {
             if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
                 return OSSCACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int partitionsHeatmapCacheCheck(ByteString stmt, int offset) {
+        final String expect = "HEATMAP_CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return HEATMAP_CACHE;
             }
         }
         return OTHER;

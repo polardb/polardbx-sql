@@ -44,8 +44,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
-
 /**
  * @author chenghui.lch
  */
@@ -72,6 +70,7 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
         public boolean supportAutoPart = false;
         public int defaultPartitions = 0;
         public String tcName;
+        public String testDbName;
         public Class testClass;
 
         public AutoLoadSqlTestCaseParams(String tcName,
@@ -82,6 +81,11 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
             this.defaultPartitions = defaultPartitions;
             this.supportAutoPart = supportAutoPart;
             this.testClass = testClass;
+            this.testDbName = tcName.toLowerCase();
+            if (testDbName.length() >= 16) {
+                this.testDbName = testDbName.substring(0, 16);
+            }
+            this.testDbName = testDbName + "_" + String.valueOf(Math.abs((testClass.getName() + tcName).hashCode()));
         }
 
         @Override
@@ -122,18 +126,38 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
 
     protected void runOneTestCaseInner(AutoLoadSqlTestCaseParams params) {
         String tcName = params.tcName;
+        String dbName = params.testDbName;
         String testClassName = params.testClass.getSimpleName();
         boolean supportAutoPart = params.supportAutoPart;
         Class testClass = params.testClass;
         String exceptedResult = null;
         String testResult = null;
+        Connection conn = null;
         try {
             exceptedResult = loadTestResultByTestName(tcName.toLowerCase(), testClass);
             exceptedResult = exceptedResult.trim();
-            testResult = runTestBySourceSql(tcName.toLowerCase(), supportAutoPart, testClass, tddlDatabase1);
+            try {
+                conn = ConnectionManager.getInstance().newPolarDBXConnection();
+                JdbcUtil.dropDatabase(conn, dbName);
+                if ("PartitionTablePartRouteTest".equalsIgnoreCase(testClassName)
+                || "TableReorgTest".equalsIgnoreCase(testClassName)) {
+                    JdbcUtil.createPartDatabaseUsingUtf8(conn, dbName);
+                } else {
+                    JdbcUtil.createPartDatabase(conn, dbName);
+                }
+                testResult = runTestBySourceSql(tcName.toLowerCase(), supportAutoPart, testClass, dbName, conn);
+                JdbcUtil.dropDatabase(conn, dbName);
+            } catch (Throwable ex) {
+                throw ex;
+            }
+
             testResult = testResult.trim();
             exceptedResult = exceptedResult.replaceAll("\\s+\n", "\n");
             testResult = testResult.replaceAll("\\s+\n", "\n");
+
+            testResult = testResult.replaceAll("PARTITION `", "PARTITION ");
+            testResult = testResult.replaceAll("` VAL", " VAL");
+
             // Remove the random suffix of GSI.
             // Remove table group
             testResult = (params.supportAutoPart ?
@@ -142,7 +166,7 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
             exceptedResult =
                 params.supportAutoPart ? exceptedResult.replaceAll("#@#", "" + params.defaultPartitions) :
                     exceptedResult;
-            exceptedResult = exceptedResult.replaceAll("part_mtr", tddlDatabase1);
+            exceptedResult = exceptedResult.replaceAll("part_mtr", params.testDbName);
             if (isMySQL80()) {
                 testResult = testResult.replace(" DEFAULT COLLATE = utf8mb4_0900_ai_ci", "");
             }
@@ -154,8 +178,16 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
             PrintWriter pw = new PrintWriter(baos);
             ex.printStackTrace(pw);
             log.error(baos.toString());
+            System.out.println(ex.getMessage());
             Assert.fail(String.format("TestCase(%s/%s) failed, error is ", testClassName, tcName) + ex.getMessage());
+        } finally {
+            try {
+                if (conn != null) {
+                    conn.close();
+                }
+            } catch (Throwable ex) {
 
+            }
         }
     }
 
@@ -307,7 +339,8 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
     protected static String runTestBySourceSql(String testCaseName,
                                                boolean isSupportAutoPart,
                                                Class testClass,
-                                               String db) throws Exception {
+                                               String db,
+                                               Connection testConn) throws Exception {
         try {
             String stmtResult = "";
             String testClassName = testClass.getSimpleName();
@@ -345,9 +378,12 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                     sqlList.add(hintSql + sqlText);
                 }
             }
-            try (Connection conn = ConnectionManager.getInstance().newPolarDBXConnection()) {
+            try {
+                Connection conn = testConn;
                 StringBuilder sb = new StringBuilder("");
                 JdbcUtil.useDb(conn, db);
+                JdbcUtil.executeUpdate(conn, "clear plancache");
+                JdbcUtil.executeUpdate(conn, "set ENABLE_MPP=false");
                 if (!isSupportAutoPart) {
                     execSqlAndPrintResult(DISABLE_AUTO_PART, false, conn, false);
                 }
@@ -458,6 +494,11 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
         return sb.toString();
     }
 
+    @After
+    public void afterLoadCaseTestCase() {
+        cleanDataBase();
+    }
+
     protected static List<List<String>> ignoreTemplateIdInfoForExplainResults(List<List<String>> rsInfo) {
         if (rsInfo.size() > 2) {
 
@@ -476,11 +517,23 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                 rsInfo.remove(lastIdx);
             }
         }
-        return rsInfo;
-    }
 
-    @After
-    public void afterLoadCaseTestCase() {
-        cleanDataBase();
+        for (int i = 0; i < rsInfo.size(); i++) {
+            String explainContext = rsInfo.get(i).get(0);
+            if (explainContext.toLowerCase().contains("relocate")) {
+                explainContext = explainContext.replaceAll("_\\$[0-9a-f]{4}", Matcher.quoteReplacement("_$"));
+            }
+            if (explainContext.toLowerCase().contains("=logicalview#")) {
+                explainContext =
+                    explainContext.replaceAll("=LogicalView#[0-9a-f]+,", Matcher.quoteReplacement("=LogicalView#"));
+            }
+
+            if (explainContext.toLowerCase().contains(">> individual scalar subquery")) {
+                explainContext = ">> individual scalar subquery";
+            }
+
+            rsInfo.get(i).set(0, explainContext);
+        }
+        return rsInfo;
     }
 }

@@ -1,7 +1,7 @@
 ## DISABLE_FAST_SQL_PARSER
 create tablegroup tg11111;
 CREATE TABLE t_order (
-id bigint NOT NULL AUTO_INCREMENT,
+id bigint NOT NULL AUTO_INCREMENT BY GROUP,
 gmt_modified DATETIME NOT NULL,
 PRIMARY KEY (id, gmt_modified)
 )

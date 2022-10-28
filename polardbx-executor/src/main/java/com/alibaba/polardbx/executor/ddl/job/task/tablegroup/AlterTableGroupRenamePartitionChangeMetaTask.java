@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
@@ -36,6 +37,7 @@ import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
@@ -66,14 +68,36 @@ public class AlterTableGroupRenamePartitionChangeMetaTask extends BaseDdlTask {
         partitionGroupAccessor.setConnection(metaDbConnection);
         tablePartitionAccessor.setConnection(metaDbConnection);
         List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
+        List<TablePartitionRecord> tablePartitionRecords = new ArrayList<>();
         for (Pair<String, String> pair : changePartitionsPair) {
             PartitionGroupRecord partitionGroupRecord =
                 partitionGroupRecords.stream().filter(o -> o.partition_name.equalsIgnoreCase(pair.getKey())).findFirst()
                     .orElse(null);
-            partitionGroupAccessor.updatePartitioNameById(partitionGroupRecord.id, pair.getValue());
-            tablePartitionAccessor
-                .updatePartitionNameByGroupId(partitionGroupRecord.id, pair.getKey(), pair.getValue());
+            partitionGroupAccessor.deletePartitionGroupById(partitionGroupRecord.id);
+            List<TablePartitionRecord> tbps =
+                tablePartitionAccessor.getTablePartitionsByDbNamePartGroupId(schemaName, partitionGroupRecord.id);
+            if (GeneralUtil.isNotEmpty(tbps)) {
+                for (TablePartitionRecord tb : tbps) {
+                    tb.partName = pair.getValue();
+                }
+                tablePartitionRecords.addAll(tbps);
+            }
+            tablePartitionAccessor.deleteTablePartitions(schemaName, partitionGroupRecord.id);
+            //partitionGroupAccessor.updatePartitioNameById(partitionGroupRecord.id, pair.getValue());
+            //tablePartitionAccessor
+            //    .updatePartitionNameByGroupId(partitionGroupRecord.id, pair.getKey(), pair.getValue());
         }
+
+        for (Pair<String, String> pair : changePartitionsPair) {
+            PartitionGroupRecord partitionGroupRecord =
+                partitionGroupRecords.stream().filter(o -> o.partition_name.equalsIgnoreCase(pair.getKey())).findFirst()
+                    .orElse(null);
+            PartitionGroupRecord copy = partitionGroupRecord.copy();
+            copy.setPartition_name(pair.getValue());
+            partitionGroupAccessor.addNewPartitionGroupWithId(copy);
+        }
+
+        tablePartitionAccessor.addNewTablePartitionsWithId(tablePartitionRecords);
 
         SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
         if (!GeneralUtil.isEmpty(tableGroupConfig.getAllTables())) {
@@ -84,7 +108,8 @@ public class AlterTableGroupRenamePartitionChangeMetaTask extends BaseDdlTask {
                     if (tableMeta.isGsi()) {
                         //all the gsi table version change will be behavior by primary table
                         assert
-                            tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
+                            tableMeta.getGsiTableMetaBean() != null
+                                && tableMeta.getGsiTableMetaBean().gsiMetaBean != null;
                         tableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
                     }
                     TableInfoManager.updateTableVersion(schemaName, tableName, metaDbConnection);

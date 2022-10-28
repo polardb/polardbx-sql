@@ -16,11 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.config.server;
 
+import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author chenghui.lch 2018年5月22日 下午3:22:32
@@ -50,12 +53,19 @@ public class DefaultServerConfigManager implements IServerConfigManager {
     }
 
     @Override
+    public void remoteExecuteDdlTask(String schemaName, Long jobId, Long taskId) {
+        throw new UnsupportedOperationException("Unexpected DDL execution in " + schemaName);
+    }
+
+    @Override
     public long submitRebalanceDDL(String schemaName, String sql) {
         throw new UnsupportedOperationException("Unexpected DDL execution in " + schemaName);
     }
 
     @Override
-    public long submitSubDDL(String schemaName, long parentJobId, long parentTaskId, boolean forRollback, String sql) {
+    public long submitSubDDL(String schemaName, DdlContext parentDdlContext, long parentJobId, long parentTaskId,
+                             boolean forRollback,
+                             String sql, ParamManager paramManager) {
         throw new UnsupportedOperationException("Unexpected DDL execution in " + schemaName);
     }
 

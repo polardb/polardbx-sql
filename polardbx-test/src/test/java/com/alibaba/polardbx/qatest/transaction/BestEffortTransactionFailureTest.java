@@ -22,6 +22,7 @@ import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
+import org.junit.Ignore;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.util.ArrayList;
@@ -37,7 +38,6 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  */
 
 @Ignore
-
 public class BestEffortTransactionFailureTest extends CrudBasedLockTestCase {
 
     private static final int MAX_DATA_SIZE = 20;

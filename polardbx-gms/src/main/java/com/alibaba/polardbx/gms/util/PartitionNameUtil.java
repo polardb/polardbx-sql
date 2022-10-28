@@ -57,6 +57,12 @@ public class PartitionNameUtil {
         return toLowerCase(partName);
     }
 
+
+    public static String getPartitionPhysicalTableNamePattern(String phyTablePrefixStr) {
+        String tbNamePattern = phyTablePrefixStr + "_{00000}";// xxx_%05d
+        return tbNamePattern.toLowerCase();
+    }
+
     public static boolean isDefaultPartNamePattern(String prefix) {
         if (StringUtils.isNotEmpty(prefix)) {
             prefix = prefix + "%s";

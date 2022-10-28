@@ -51,6 +51,7 @@ import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -102,6 +103,9 @@ public class DataTypeUtil {
         } else if (fromType instanceof SliceType
             && toType instanceof BytesType
             && value instanceof Slice) {
+            if (fromType.getCharsetName() == CharsetName.BINARY) {
+                return (T) ((Slice) value).getBytes();
+            }
             return (T) ((SliceType) fromType).getCharsetHandler().encodeFromUtf8((Slice) value).getBytes();
         }
 
@@ -817,6 +821,7 @@ public class DataTypeUtil {
     public static DataType aggResultTypeOf(DataType dataType, SqlKind sqlKind) {
         switch (sqlKind) {
         case COUNT:
+        case CHECK_SUM:
             return DataTypes.LongType;
         case MIN:
         case MAX:
@@ -837,5 +842,17 @@ public class DataTypeUtil {
             }
         }
         throw new UnsupportedOperationException();
+    }
+
+    public static SqlTypeName typeNameOfParam(Object param) {
+        if (param instanceof Integer || param instanceof Long) {
+            return SqlTypeName.BIGINT;
+        } else if (param instanceof BigInteger) {
+            return SqlTypeName.BIGINT_UNSIGNED;
+        } else if (param instanceof BigDecimal) {
+            return SqlTypeName.DECIMAL;
+        } else {
+            return SqlTypeName.CHAR;
+        }
     }
 }

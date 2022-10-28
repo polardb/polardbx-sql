@@ -227,4 +227,15 @@ public interface FailPointKey {
      */
     String FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP = "FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP";
 
+    /**
+     * set @FP_INJECT_INTERRUPTED_TO_SCHEDULE_JOB='true';
+     */
+    String FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB =
+        "FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB";
+
+    /**
+     * set @FP_TTL_PAUSE='20'
+     * 调整expire local partition的超时时间，单位是秒
+     */
+    String FP_TTL_PAUSE = "FP_TTL_PAUSE";
 }

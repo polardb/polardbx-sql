@@ -59,10 +59,12 @@ public class OSSInputStream extends FSInputStream {
 
     private final FetchPolicy fetchPolicy;
 
+    private FileSystemRateLimiter rateLimiter;
+
     public OSSInputStream(Configuration conf,
                           ExecutorService readAheadExecutorService, int maxReadAheadPartNumber,
                           OSSFileSystemStore store, String key, Long contentLength,
-                          FileSystem.Statistics statistics) throws IOException {
+                          FileSystem.Statistics statistics, FileSystemRateLimiter rateLimiter) throws IOException {
         this.readAheadExecutorService =
             MoreExecutors.listeningDecorator(readAheadExecutorService);
         this.store = store;
@@ -81,6 +83,7 @@ public class OSSInputStream extends FSInputStream {
 
         this.closed = false;
         this.fetchPolicy = FetchPolicy.valueOf(conf.get(OSS_FETCH_POLICY, FetchPolicy.REQUESTED.name()));
+        this.rateLimiter = rateLimiter;
     }
 
     private synchronized void reopen(long pos, long downloadPartSize) throws IOException {
@@ -249,6 +252,8 @@ public class OSSInputStream extends FSInputStream {
         } else if (len == 0) {
             return 0;
         }
+
+        rateLimiter.acquireRead(len);
 
         int bytesRead = 0;
         // Not EOF, and read not done

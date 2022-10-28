@@ -25,7 +25,6 @@ import java.util.List;
  * @author chenghui.lch
  */
 
-@Ignore("fix by ???")
 public class PartitionTablePartRouteTest extends PartitionAutoLoadSqlTestBase {
 
     public PartitionTablePartRouteTest(AutoLoadSqlTestCaseParams parameter) {

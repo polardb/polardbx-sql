@@ -16,7 +16,16 @@
 
 package com.alibaba.polardbx.server.handler;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
+import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
+import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.optimizer.planmanager.Statement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
@@ -56,11 +65,15 @@ public final class PrepareHandler {
      * Process the statement like prepare stmt1 from 'select * from table_0
      * where id = ?'
      */
-    public static void handle(ByteString stmt, ServerConnection c, boolean hasMore) {
+    public static void handle(ByteString stmt, ServerConnection c, boolean hasMore,
+                              boolean inProcedureCall) {
         long lastActiveTime = System.nanoTime();
         try {
+            c.checkPreparedStmtCount();
             parseAndSaveStmt(stmt, c);
-            c.write(c.writeToBuffer(hasMore ? PREPARE_OK_WITH_MORE : PREPARE_OK, c.allocate()));
+            if (!inProcedureCall) {
+                response(c, hasMore);
+            }
         } catch (SQLException e) {
             c.writeErrMessage(e.getErrorCode(), e.getMessage());
         }
@@ -69,12 +82,19 @@ public final class PrepareHandler {
         MatrixStatistics.requestAllDB.incrementAndGet();
     }
 
+    private static void response(ServerConnection c, boolean hasMore) {
+        IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, c.allocate());
+        proxy.packetBegin();
+        proxy.write(hasMore ? PREPARE_OK_WITH_MORE : PREPARE_OK);
+        proxy.packetEnd();
+    }
+
     private static void parseAndSaveStmt(ByteString sql, ServerConnection c) throws SQLException {
         try {
             MySqlPrepareStatement mySqlPrepareStatement = (MySqlPrepareStatement) FastsqlUtils.parseSql(sql).get(0);
 
             String name = mySqlPrepareStatement.getName().getSimpleName();
-            String prepareSql = ((SQLCharExpr) mySqlPrepareStatement.getFrom()).getText();
+            String prepareSql = getPrepareSql(c, mySqlPrepareStatement.getFrom());
 
             TConnection conn = c.getTddlConnection();
             if (conn != null) {
@@ -86,7 +106,7 @@ public final class PrepareHandler {
              * need to do precompile stmt_define to know the params
              * types, so that laterbindValueVisitor execute can create parameters
              */
-            SQLStatement sqlStatement = c.parseSqlTableNode(prepareSql);
+            SQLStatement sqlStatement = c.parsePrepareSqlTableNode(prepareSql);
 
             ParamCountVisitor paramCountVisitor = new ParamCountVisitor();
             sqlStatement.accept(paramCountVisitor);
@@ -95,9 +115,28 @@ public final class PrepareHandler {
             Statement mystmt = new Statement(name, ByteString.from(prepareSql));
             // store prepare param count
             mystmt.setPrepareParamCount(parameterCount);
-            c.savePrepare(mystmt, false);
+            PreparedStmtCache preparedStmtCache = new PreparedStmtCache(mystmt);
+            c.savePrepareStmtCache(preparedStmtCache, false);
         } catch (Exception e) {
             throw new SQLSyntaxErrorException("prepare statement error");
+        }
+    }
+
+    private static String getPrepareSql(ServerConnection c, SQLExpr from) {
+        if (from instanceof SQLCharExpr) {
+            return ((SQLCharExpr) from).getText();
+        } else if (from instanceof SQLVariantRefExpr && ((SQLVariantRefExpr) from).getName().startsWith("@")) {
+            String name = getUserDefVarName(((SQLVariantRefExpr) from).getName()).toLowerCase();
+            return DataTypes.StringType.convertFrom(c.getUserDefVariables().get(name));
+        }
+        throw new RuntimeException(String.format("SQLExpr: %s not support yet", from.toString()));
+    }
+
+    private static String getUserDefVarName(String name) {
+        if (name.startsWith("@")) {
+            return name.substring(1);
+        } else {
+            return name;
         }
     }
 }

@@ -1109,4 +1109,13 @@ public class SelectSubQueryTest extends ReadBaseTestCase {
                 + " where pk<100 AND PK >98 limit 1) ORDER BY PK LIMIT 1)";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
+
+    @Test
+    public void applyNoCacheTest() throws Exception {
+        String sql =
+            "/*TDDL:forbid_apply_cache=true*/select * from " + baseOneTableName + " a where pk in (select pk from "
+                + baseTwoTableName
+                + " where varchar_test=a.varchar_test ) or varchar_test IN ('1')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
 }

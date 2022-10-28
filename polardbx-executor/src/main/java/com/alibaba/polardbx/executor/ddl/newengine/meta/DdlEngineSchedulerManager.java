@@ -153,9 +153,6 @@ public class DdlEngineSchedulerManager {
         }.execute();
     }
 
-    /**
-     * todo guxu refactor this
-     */
     protected List<SubJobTask> fetchSubJobsRecursive(long jobId, DdlEngineTaskAccessor accessor) {
         List<DdlEngineTaskRecord> records = accessor.query(jobId, SubJobTask.getTaskName());
         List<SubJobTask> subjobs = new ArrayList<>();
@@ -169,6 +166,33 @@ public class DdlEngineSchedulerManager {
         }
 
         return subjobs;
+    }
+
+    public List<DdlEngineTaskRecord> fetchAllSuccessiveTaskByJobId(long jobId) {
+        return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
+            @Override
+            protected List<DdlEngineTaskRecord> invoke() {
+                return fetchAllSuccessiveTaskByJobId(jobId, false, engineTaskAccessor);
+            }
+        }.execute();
+    }
+
+    public List<DdlEngineTaskRecord> fetchAllSuccessiveTaskByJobIdInArchive(long jobId) {
+        return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
+            @Override
+            protected List<DdlEngineTaskRecord> invoke() {
+                return fetchAllSuccessiveTaskByJobId(jobId, true, engineTaskAccessor);
+            }
+        }.execute();
+    }
+
+    /**
+     * fetch all the tasks of this job, including subJob's tasks
+     * @param jobId
+     * @return
+     */
+    protected List<DdlEngineTaskRecord> fetchAllSuccessiveTaskByJobId(long jobId, boolean archive, DdlEngineTaskAccessor accessor){
+        return accessor.queryTaskSimpleInfoByJobId(jobId, archive);
     }
 
     public int countAll(String schemaName) {

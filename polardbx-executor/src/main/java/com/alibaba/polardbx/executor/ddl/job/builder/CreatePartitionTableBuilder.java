@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.builder;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -66,16 +67,20 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
         List<ColumnMeta> pkColMetas = null;
         String tableGroupName = preparedData.getTableGroupName() == null ? null :
             ((SqlIdentifier) preparedData.getTableGroupName()).getLastName();
+        String joinGroupName = preparedData.getJoinGroupName() == null ? null :
+            ((SqlIdentifier) preparedData.getJoinGroupName()).getLastName();
         PartitionInfo partitionInfo = null;
         tableMeta = preparedData.getTableMeta();
         tbName = preparedData.getTableName();
         allColMetas = tableMeta.getAllColumns();
         pkColMetas = new ArrayList<>(tableMeta.getPrimaryKey());
+        LocalityDesc localityDesc = preparedData.getLocality();
 
-        if (preparedData.getLocality() != null && tblType != PartitionTableType.SINGLE_TABLE) {
-            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-                String.format("%s with locality", tblType.getTableTypeName()));
-        }
+
+//        if (localityDesc != null && tblType == PartitionTableType.SINGLE_TABLE) {
+//            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+//                String.format("%s with locality", tblType.getTableTypeName()));
+//        }
 
         PartitionTableType partitionTableType = tblType;
         if (preparedData.isGsi() && preparedData.isBroadcast()) {
@@ -85,8 +90,8 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
         }
         partitionInfo =
             PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
-                (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(), pkColMetas,
-                allColMetas, partitionTableType, executionContext);
+                joinGroupName, (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(),
+                pkColMetas, allColMetas, partitionTableType, executionContext, localityDesc);
         partitionInfo.setTableType(partitionTableType);
 
         // Set auto partition flag only on primary table.

@@ -22,7 +22,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
  * Equi-Join Key Tuple
  *
  */
-public final class EquiJoinKey {
+public class EquiJoinKey {
 
     private final int outerIndex;
     private final int innerIndex;
@@ -33,18 +33,11 @@ public final class EquiJoinKey {
      */
     private final boolean nullSafeEqual;
 
-    /**
-     * canFindOriginalColumn = (meta data query originalColumn != null)
-     */
-    private final boolean canFindOriginalColumn;
-
-    public EquiJoinKey(int outerIndex, int innerIndex, DataType unifiedType, boolean nullSafeEqual,
-                       boolean canFindOriginalColumn) {
+    public EquiJoinKey(int outerIndex, int innerIndex, DataType unifiedType, boolean nullSafeEqual) {
         this.outerIndex = outerIndex;
         this.innerIndex = innerIndex;
         this.unifiedType = unifiedType;
         this.nullSafeEqual = nullSafeEqual;
-        this.canFindOriginalColumn = canFindOriginalColumn;
     }
 
     public int getOuterIndex() {
@@ -61,9 +54,5 @@ public final class EquiJoinKey {
 
     public boolean isNullSafeEqual() {
         return nullSafeEqual;
-    }
-
-    public boolean isCanFindOriginalColumn() {
-        return canFindOriginalColumn;
     }
 }

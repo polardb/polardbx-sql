@@ -1,0 +1,44 @@
+test_single_tb1:
+  CREATE TABLE `test_single_tb1` (
+  `id` int(11) NOT NULL,
+  `int_test` int(11),
+  `double_test` double,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+test_single_tb2:
+  CREATE TABLE `test_single_tb2` (
+  `id` int(11) NOT NULL,
+  `int_test` int(11),
+  `double_test` double,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+test_hash_tb1:
+  CREATE TABLE `test_hash_tb1` (
+  `id` int(11) NOT NULL,
+  `int_test` int(11),
+  `double_test` double,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+test_hash_tb2:
+  CREATE TABLE `test_hash_tb2` (
+  `id` int(11) NOT NULL,
+  `int_test` int(11),
+  `double_test` double,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+test_hash_tb3:
+  CREATE TABLE `test_hash_tb3` (
+  `id` int(11) NOT NULL,
+  `int_test` int(11),
+  `double_test` double,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+

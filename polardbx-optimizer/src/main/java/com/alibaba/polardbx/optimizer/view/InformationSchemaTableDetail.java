@@ -34,8 +34,7 @@ import java.util.List;
  */
 public class InformationSchemaTableDetail extends VirtualView {
 
-    protected InformationSchemaTableDetail(RelOptCluster cluster,
-                                           RelTraitSet traitSet) {
+    protected InformationSchemaTableDetail(RelOptCluster cluster, RelTraitSet traitSet) {
         super(cluster, traitSet, VirtualViewType.TABLE_DETAIL);
     }
 
@@ -52,28 +51,29 @@ public class InformationSchemaTableDetail extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("TABLE_SCHEMA", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_GROUP_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("INDEX_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PHYSICAL_TABLE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PARTITION_SEQ", i++,
-            typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("PARTITION_SEQ", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("PARTITION_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns
-            .add(new RelDataTypeFieldImpl("TABLE_ROWS", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
-        columns
-            .add(new RelDataTypeFieldImpl("DATA_LENGTH", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
-        columns
-            .add(new RelDataTypeFieldImpl("INDEX_LENGTH", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("TABLE_ROWS", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("DATA_LENGTH", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("INDEX_LENGTH", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("BOUND_VALUE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PERCENT", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-
+        columns.add(new RelDataTypeFieldImpl("STORAGE_INST_ID", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("GROUP_NAME", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         // QPS statistics
-        columns.add(new RelDataTypeFieldImpl("ROWS_READ", i++,
-            typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
-        columns.add(new RelDataTypeFieldImpl("ROWS_INSERTED", i++,
-            typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
-        columns.add(new RelDataTypeFieldImpl("ROWS_UPDATED", i++,
-            typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
-        columns.add(new RelDataTypeFieldImpl("ROWS_DELETED", i++,
-            typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(new RelDataTypeFieldImpl("ROWS_READ", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("ROWS_INSERTED", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("ROWS_UPDATED", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("ROWS_DELETED", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
 
         return typeFactory.createStructType(columns);
     }

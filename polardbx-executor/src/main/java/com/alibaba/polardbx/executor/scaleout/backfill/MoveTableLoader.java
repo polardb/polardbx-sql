@@ -62,7 +62,7 @@ public class MoveTableLoader extends com.alibaba.polardbx.executor.backfill.Load
                               BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                               Map<String, String> sourceTargetGroupMap) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc);
+            executeFunc, true);
         this.sourceTargetGroupMap = sourceTargetGroupMap;
     }
 
@@ -161,12 +161,13 @@ public class MoveTableLoader extends com.alibaba.polardbx.executor.backfill.Load
 
     @Override
     public int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
-                             ExecutionContext executionContext, String sourceDbIndex) {
+                             ExecutionContext executionContext, String sourceDbIndex, String phyTableName) {
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
         String targetGroup = sourceTargetGroupMap.get(sourceDbIndex);
         assert targetGroup != null;
         return InsertIndexExecutor
-            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, schemaName, executionContext, executeFunc,
+            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName, executionContext,
+                executeFunc,
                 false,
                 false);
     }

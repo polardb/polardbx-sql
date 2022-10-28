@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaSchemata;
@@ -49,9 +50,11 @@ public class InformationSchemaSchemataHandler extends BaseVirtualViewSubClassHan
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         List<SchemataRecord> allSchemata = SchemataAccessor.getAllSchemata();
         for (SchemataRecord schemata : allSchemata) {
+            boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemata.schemaName);
+            String mode = isNewPart ? "auto" : "drds";
             cursor.addRow(new Object[] {
                 "def", schemata.schemaName, schemata.defaultCharSetName, schemata.defaultCollationName,
-                null, "NO"});
+                null, "NO", mode});
         }
         return cursor;
     }

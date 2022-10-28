@@ -192,6 +192,7 @@ public abstract class AbstractConnection implements NIOConnection {
         int got = channel.read(buffer.getBuffer());
         lastReadTime = TimeUtil.currentTimeMillis();
         if (got < 0) {
+            logout();
             throw new EOFException();
         }
         buffer.writerIndex(buffer.writerIndex() + got);
@@ -203,6 +204,10 @@ public abstract class AbstractConnection implements NIOConnection {
             doRead(buffer);
         }
         // 处理数据
+    }
+
+    protected void logout() {
+
     }
 
     private void doReadSsl(ByteBufferHolder buffer) throws SSLException {
@@ -324,7 +329,8 @@ public abstract class AbstractConnection implements NIOConnection {
                     data = ZlibUtil.decompress(data);
 
                     if (data == null) {
-                        throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_READ,
+                        throw new TddlRuntimeException(
+                            com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_READ,
                             "beforeCompressPayloadLen: " + beforeCompressPayloadLen);
                     }
                 }
@@ -478,7 +484,8 @@ public abstract class AbstractConnection implements NIOConnection {
                 this.sslHandler.write(buffer);
                 this.sslHandler.flush();
             } catch (Exception e) {
-                throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_SSL_SEND, e);
+                throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PACKET_SSL_SEND,
+                    e);
             }
         } else {
             doWrite(buffer);

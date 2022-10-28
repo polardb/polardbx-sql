@@ -156,6 +156,20 @@ public class SqlBinaryOperator extends SqlOperator {
     return litmus.succeed();
   }
 
+  @Override
+  public boolean canPushDown() {
+    // assignment operator
+    if (":=".equalsIgnoreCase(this.getName())) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public boolean canPushDown(boolean withScaleOut) {
+    return canPushDown();
+  }
+
   public void accept(RexVisitor visitor, RexCall call) {
     visitor.visit(this, call);
   }

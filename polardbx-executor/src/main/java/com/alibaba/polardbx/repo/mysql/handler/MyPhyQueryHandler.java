@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyQueryCursor;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
@@ -38,6 +39,7 @@ public class MyPhyQueryHandler extends HandlerCommon {
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         final PhyQueryOperation phyQueryOperation = (PhyQueryOperation) logicalPlan;
         final Cursor repoCursor = repo.getCursorFactory().repoCursor(executionContext, phyQueryOperation);
+        PhyTableOperationUtil.enableIntraGroupParallelism(phyQueryOperation.getSchemaName(), executionContext);
         if (useUpdate(phyQueryOperation) && repoCursor instanceof MyPhyQueryCursor) {
 
             int[] affectRows = new int[1];

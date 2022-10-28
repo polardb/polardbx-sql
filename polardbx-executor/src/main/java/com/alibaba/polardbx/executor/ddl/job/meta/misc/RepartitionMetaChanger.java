@@ -17,19 +17,18 @@
 package com.alibaba.polardbx.executor.ddl.job.meta.misc;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableType.BROADCAST;
@@ -51,7 +50,9 @@ public class RepartitionMetaChanger {
                                final String sourceTableName,
                                final String targetTableName,
                                final boolean isSingle,
-                               final boolean isBroadcast) {
+                               final boolean isBroadcast,
+                               final boolean isAuto,
+                               final boolean isGsi) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
 
@@ -61,12 +62,20 @@ public class RepartitionMetaChanger {
                 primaryTableType = SINGLE;
             } else if (isBroadcast) {
                 primaryTableType = BROADCAST;
+            } else if (isGsi) {
+                primaryTableType = GSI;
             } else {
                 primaryTableType = SHARDING;
             }
             if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                // do cut over
                 doPartitionTableCutOver(schemaName, sourceTableName, targetTableName, tableInfoManager,
                     primaryTableType);
+                if (isAuto) {
+                    // recover AutoPartition Flag
+                    tableInfoManager.changeTablePartitionsPartFlag(schemaName, sourceTableName,
+                        TablePartitionRecord.FLAG_AUTO_PARTITION);
+                }
             } else {
                 doCutOver(schemaName, sourceTableName, targetTableName, tableInfoManager, primaryTableType);
             }
@@ -141,6 +150,7 @@ public class RepartitionMetaChanger {
         final TableInfoManager tableInfoManager,
         final GsiMetaManager.TableType primaryTableType) {
 
+
         String random = UUID.randomUUID().toString();
 
         List<TablePartitionRecord> sourceTablePartition =
@@ -159,31 +169,32 @@ public class RepartitionMetaChanger {
         long newVersion =
             Math.max(sourceTablePartition.get(0).metaVersion, targetTablePartition.get(0).metaVersion) + 1;
 
-        tableInfoManager.alterTablePartitionsCurOver(schemaName, sourceTableName, random,
+        tableInfoManager.repartitionCutOver(schemaName, sourceTableName, random,
             PartitionTableType.GSI_TABLE.getTableTypeIntValue());
 
+        Long tableId = tableInfoManager.queryTable(schemaName, sourceTableName, false).id;
         switch (primaryTableType) {
         case SINGLE:
-            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+            tableInfoManager.repartitionCutOver(schemaName, targetTableName, sourceTableName,
                 PartitionTableType.SINGLE_TABLE.getTableTypeIntValue());
             break;
         case BROADCAST:
-            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+            tableInfoManager.repartitionCutOver(schemaName, targetTableName, sourceTableName,
                 PartitionTableType.BROADCAST_TABLE.getTableTypeIntValue());
             break;
         case GSI:
-            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+            tableInfoManager.repartitionCutOver(schemaName, targetTableName, sourceTableName,
                 PartitionTableType.GSI_TABLE.getTableTypeIntValue());
             break;
         case SHARDING:
-            tableInfoManager.alterTablePartitionsCurOver(schemaName, targetTableName, sourceTableName,
+            tableInfoManager.repartitionCutOver(schemaName, targetTableName, sourceTableName,
                 PartitionTableType.PARTITION_TABLE.getTableTypeIntValue());
             break;
         default:
             throw new TddlNestableRuntimeException("unknown primary table type");
         }
 
-        tableInfoManager.alterTablePartitionsCurOver(schemaName, random, targetTableName,
+        tableInfoManager.repartitionCutOver(schemaName, random, targetTableName,
             PartitionTableType.GSI_TABLE.getTableTypeIntValue());
 
         tableInfoManager.updateTablePartitionsVersion(schemaName, sourceTableName, newVersion);
@@ -206,5 +217,72 @@ public class RepartitionMetaChanger {
 
         tableInfoManager.addShardColumns4RepartitionKey(schemaName, tableName, changeShardColumns);
         tableInfoManager.updateTablePartitionsVersion(schemaName, tableName, tablePartition.get(0).metaVersion + 1);
+    }
+
+    /**
+     * for alter table partitions count
+     */
+    public static void alterPartitionCountCutOver(Connection metaDbConn,
+                                                  final String schemaName,
+                                                  final String logicalTableName,
+                                                  Map<String, String> tableNameMap) {
+        // 1. cut over table_partitions meta and local indexes meta
+        // 2. cut over global indexes meta
+        // 3. recover primary table auto_partition flag
+        tableNameMap.forEach((tableName, newTableName) -> {
+            if (!StringUtils.equalsIgnoreCase(tableName, logicalTableName)) {
+                // index table
+                cutOver(metaDbConn, schemaName, tableName, newTableName, false, false, false, true);
+                cutOverIndexes(metaDbConn, schemaName, logicalTableName, tableName, newTableName);
+            } else {
+                // primary table
+                cutOver(metaDbConn, schemaName, tableName, newTableName, false, false, true,false);
+            }
+        });
+    }
+
+    public static void cutOverIndexes(Connection metaDbConn,
+                                      final String schemaName,
+                                      final String logicalTableName,
+                                      final String sourceIndexName,
+                                      final String targetIndexName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+
+        try {
+            String random = UUID.randomUUID().toString();
+
+            // validate
+            List<IndexesRecord> sourceTableIndex =
+                tableInfoManager.queryIndexes(schemaName, logicalTableName, sourceIndexName);
+            if (sourceTableIndex == null || sourceTableIndex.isEmpty()) {
+                String msgContent = String.format("Table'%s.%s' doesn't exist index '%s'", schemaName, logicalTableName,
+                    sourceIndexName);
+                throw new TddlNestableRuntimeException(msgContent);
+            }
+
+            List<IndexesRecord> targetTableIndex =
+                tableInfoManager.queryIndexes(schemaName, logicalTableName, targetIndexName);
+            if (targetTableIndex == null || targetTableIndex.isEmpty()) {
+                String msgContent = String.format("Table'%s.%s' doesn't exist index '%s'", schemaName, logicalTableName,
+                    targetIndexName);
+                throw new TddlNestableRuntimeException(msgContent);
+            }
+
+            // cut over
+            tableInfoManager.alterPartitionCountCutOver(schemaName, sourceIndexName, random);
+            tableInfoManager.alterPartitionCountCutOver(schemaName, targetIndexName, sourceIndexName);
+            tableInfoManager.alterPartitionCountCutOver(schemaName, random, targetIndexName);
+
+            // update version
+            long newVersion =
+                Math.max(sourceTableIndex.get(0).version, targetTableIndex.get(0).version) + 1;
+
+            tableInfoManager.updateIndexesVersion(schemaName, sourceIndexName, newVersion);
+            tableInfoManager.updateIndexesVersion(schemaName, targetIndexName, newVersion);
+
+        } finally {
+            tableInfoManager.setConnection(null);
+        }
     }
 }

@@ -5,7 +5,7 @@
     <artifactId>polardbx</artifactId>
     <packaging>pom</packaging>
     <name>root module for polardbx ${project.version}</name>
-    <version>5.4.13-SNAPSHOT</version>
+    <version>5.4.15-SNAPSHOT</version>
     <!-- <parent> <groupId>org.sonatype.oss</groupId> <artifactId>oss-parent</artifactId>
         <version>7</version> </parent> -->
     <developers>
@@ -77,15 +77,15 @@
 
         <!-- mpp -->
         <jgrapht.version>0.9.0</jgrapht.version>
-        <airlift.units.version>1.0</airlift.units.version>
-        <google.guice.version>4.0</google.guice.version>
-        <validation.api.version>1.1.0.Final</validation.api.version>
+        <validation.api.version>2.0.1.Final</validation.api.version>
+        <airlift.units.version>1.6</airlift.units.version>
+        <google.guice.version>5.1.0</google.guice.version>
         <javax.inject.version>1</javax.inject.version>
         <joda-to-java-time-bridge.version>3</joda-to-java-time-bridge.version>
-        <aircompressor.version>0.4</aircompressor.version>
-        <resolver.version>1.3</resolver.version>
+        <aircompressor.version>0.16</aircompressor.version>
+        <resolver.version>1.6</resolver.version>
         <airline.version>0.7</airline.version>
-        <discovery.version>1.29</discovery.version>
+        <discovery.version>1.30</discovery.version>
         <drill.freemarker.maven.plugin.version>1.17.0</drill.freemarker.maven.plugin.version>
         <codegen.compile.skip>false</codegen.compile.skip>
         <codegen.clean.skip>false</codegen.clean.skip>
@@ -127,6 +127,7 @@
         <xml-apis.version>1.4.01</xml-apis.version>
         <spring_version>2.5.6.SEC03</spring_version>
         <mockito.verison>2.23.4</mockito.verison>
+        <powermock.version>2.0.2</powermock.version>
         <ibatis-sqlmap.version>2.3.4.726</ibatis-sqlmap.version>
 
         <!-- for common -->
@@ -136,7 +137,11 @@
         <commons-pool.version>1.6</commons-pool.version>
         <guava.version>30.1.1-jre</guava.version>
         <fastjson.version>1.2.67</fastjson.version>
-        <druid.version>1.2.4</druid.version>
+        <druid.version>1.2.8</druid.version>
+        <cglib-nodep.version>3.1</cglib-nodep.version>
+        <jdom.version>2.0.2</jdom.version>
+        <ibatis-sqlmap.version>2.3.4.726</ibatis-sqlmap.version>
+        <ajdk-api.version>8.8.13-0-0</ajdk-api.version>
         <netty.version>4.1.44.Final</netty.version>
         <protobuf.version>3.11.1</protobuf.version>
         <protobuf-java-format.version>1.4</protobuf-java-format.version>

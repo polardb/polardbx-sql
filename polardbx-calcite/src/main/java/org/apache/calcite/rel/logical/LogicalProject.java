@@ -252,7 +252,7 @@ public class LogicalProject extends Project {
   @Override
   public RelWriter explainTermsForDisplay(RelWriter pw) {
     pw.item(RelDrdsWriter.REL_NAME, "Project");
-    for (Ord<RelDataTypeField> field : Ord.zip(rowType.getFieldList())) {
+    for (Ord<RelDataTypeField> field : Ord.zip(getRowType().getFieldList())) {
       String fieldName = field.e.getName();
       if (fieldName == null) {
         fieldName = "field#" + field.i;

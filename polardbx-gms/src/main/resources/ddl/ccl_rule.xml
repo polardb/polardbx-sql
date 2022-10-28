@@ -21,7 +21,7 @@
                 `query` text,
                 `params` text,
                 `query_template_id` char(8) DEFAULT NULL,
-                `inst_id` char(35) NOT NULL,
+                `inst_id` varchar(128) NOT NULL,
                 `gmt_updated` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                  PRIMARY KEY (`priority`),
@@ -69,6 +69,10 @@
            alter table `concurrency_control_rule` modify column `user_name` char(32) COLLATE utf8_unicode_ci
         ]]></Change>
 
+        <Change><![CDATA[
+           alter table `concurrency_control_rule` modify column `inst_id` varchar(128) NOT NULL
+        ]]></Change>
+
     </SystemTable>
 
     <SystemTable name="concurrency_control_trigger">
@@ -85,11 +89,15 @@
                   `max_sql_size`  int(11) NOT NULL DEFAULT '4096',
                   `gmt_updated` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                   `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                  `inst_id` char(35) NOT NULL,
+                  `inst_id` char(128) NOT NULL,
                   PRIMARY KEY (`priority`),
                   UNIQUE KEY `id` (`inst_id`,`id`)
                 ) DEFAULT CHARSET=utf8mb4
         ]]></Create>
+
+        <Change><![CDATA[
+           alter table `concurrency_control_trigger` modify column `inst_id` varchar(128) NOT NULL
+        ]]></Change>
 
 
     </SystemTable>

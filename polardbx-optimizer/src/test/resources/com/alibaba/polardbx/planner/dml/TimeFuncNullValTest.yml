@@ -2,52 +2,45 @@
     select * from week_tbl where k=2 and c is null;
 
   plan: |
-  
-    LogicalView(tables="optest_0002.week_tbl_0", sql="SELECT `id`, `k`, `c` FROM `week_tbl` AS `week_tbl` WHERE ((`k` = 2) AND (`c` IS NULL))")
+    logicalview(tables="optest_0002.week_tbl_0", sql="select `id`, `k`, `c` from `week_tbl` as `week_tbl` where ((`c` is null) and (`k` = 2))")
 
 - sql: |
 
     select * from mm_tbl where k=2 and c is null;
 
   plan: |
-  
-    LogicalView(tables="optest_0002.mm_tbl_00", sql="SELECT `id`, `k`, `c` FROM `mm_tbl` AS `mm_tbl` WHERE ((`k` = 2) AND (`c` IS NULL))")
+    logicalview(tables="optest_0002.mm_tbl_00", sql="select `id`, `k`, `c` from `mm_tbl` as `mm_tbl` where ((`c` is null) and (`k` = 2))")
 
 - sql: |
     select * from dd_tbl where k=2 and c is null;
 
   plan: |
-  
-    LogicalView(tables="optest_0002.dd_tbl_00", sql="SELECT `id`, `k`, `c` FROM `dd_tbl` AS `dd_tbl` WHERE ((`k` = 2) AND (`c` IS NULL))")
+    logicalview(tables="optest_0002.dd_tbl_00", sql="select `id`, `k`, `c` from `dd_tbl` as `dd_tbl` where ((`c` is null) and (`k` = 2))")
 
 - sql: |
     select * from mmdd_tbl where k=2 and c is null;
 
   plan: |
-
-    LogicalView(tables="optest_0002.mmdd_tbl_000", sql="SELECT `id`, `k`, `c` FROM `mmdd_tbl` AS `mmdd_tbl` WHERE ((`k` = 2) AND (`c` IS NULL))")
+    logicalview(tables="optest_0002.mmdd_tbl_000", sql="select `id`, `k`, `c` from `mmdd_tbl` as `mmdd_tbl` where ((`c` is null) and (`k` = 2))")
 
 - sql: |
     select * from yyyydd_tbl where k=2 and c is null;
 
   plan: |
-
-    LogicalView(tables="optest_0002.yyyydd_tbl_0", sql="SELECT `id`, `k`, `c` FROM `yyyydd_tbl` AS `yyyydd_tbl` WHERE ((`k` = 2) AND (`c` IS NULL))")
+    logicalview(tables="optest_0002.yyyydd_tbl_0", sql="select `id`, `k`, `c` from `yyyydd_tbl` as `yyyydd_tbl` where ((`c` is null) and (`k` = 2))")
 
 - sql: |
    select * from yyyyweek_tbl where k=2 and c is null;
 
   plan: |
-  
-    LogicalView(tables="optest_0002.yyyyweek_tbl_0", sql="SELECT `id`, `k`, `c` FROM `yyyyweek_tbl` AS `yyyyweek_tbl` WHERE ((`k` = 2) AND (`c` IS NULL))")
+    logicalview(tables="optest_0002.yyyyweek_tbl_0", sql="select `id`, `k`, `c` from `yyyyweek_tbl` as `yyyyweek_tbl` where ((`c` is null) and (`k` = 2))")
 
 - sql: |
    select * from yyyymm_tbl where k=2 and c is null;
 
   plan: |
+    logicalview(tables="optest_0002.yyyymm_tbl_0", sql="select `id`, `k`, `c` from `yyyymm_tbl` as `yyyymm_tbl` where ((`c` is null) and (`k` = 2))")
   
-    LogicalView(tables="optest_0002.yyyymm_tbl_0", sql="SELECT `id`, `k`, `c` FROM `yyyymm_tbl` AS `yyyymm_tbl` WHERE ((`k` = 2) AND (`c` IS NULL))")
-
 
 
 - sql: |

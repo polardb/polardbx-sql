@@ -67,7 +67,7 @@ public class ExecuteTableName {
 
     public static String NO_PRIMARY_KEY = "no_primary_key_";
 
-    public static String COMPOSIT_PRIMARY_KEY = "composite_primary_key_";
+    public static String COMPOSITE_PRIMARY_KEY = "composite_primary_key_";
 
     public static String UNIQUE_KEY = "unique_key";
 
@@ -108,7 +108,8 @@ public class ExecuteTableName {
             // 分库分表
             {tablePrefix + MUlTI_DB_MUTIL_TB_SUFFIX},
             // 广播表
-            {tablePrefix + BROADCAST_TB_SUFFIX},};
+            {tablePrefix + BROADCAST_TB_SUFFIX},
+        };
 
         return object;
 
@@ -167,6 +168,8 @@ public class ExecuteTableName {
         String[][] object = {
             // 不分库不分表
             {tablePrefix + ONE_DB_ONE_TB_SUFFIX},
+            {tablePrefix + MUlTI_DB_MUTIL_TB_SUFFIX},
+
             // 不分库分表
             {tablePrefix + ONE_DB_MUTIL_TB_SUFFIX},
 
@@ -180,7 +183,8 @@ public class ExecuteTableName {
             // 分库分表键为string 规则
             {tablePrefix + HASH_BY_VARCHAR + MUlTI_DB_MUTIL_TB_SUFFIX},
             // 广播表
-            {tablePrefix + BROADCAST_TB_SUFFIX},};
+            {tablePrefix + BROADCAST_TB_SUFFIX},
+        };
 
         return object;
 

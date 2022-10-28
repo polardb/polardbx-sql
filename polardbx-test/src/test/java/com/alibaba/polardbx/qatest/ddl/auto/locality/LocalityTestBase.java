@@ -30,13 +30,7 @@ import org.springframework.util.StringUtils;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -148,6 +142,7 @@ public abstract class LocalityTestBase extends BaseTestCase {
         List<StorageNodeBean> dnList = getStorageInfo();
         return dnList.stream()
             .filter(x -> "MASTER".equals(x.instKind))
+            .sorted(Comparator.comparing(o->o.deletable))
             .map(x -> x.instance)
             .collect(Collectors.toList());
     }
@@ -160,29 +155,70 @@ public abstract class LocalityTestBase extends BaseTestCase {
             .collect(Collectors.toList());
     }
 
+    public static class LocalityBean {
+        public String objectType;
+        public String objectName;
+        public String groupElement;
+        public String locality;
+
+        public LocalityBean(String objectType, String objectName, String groupElement, String locality) {
+            this.objectName = objectName;
+            this.objectType = objectType;
+            this.groupElement = groupElement;
+            this.locality = locality;
+        }
+
+        @Override
+        public String toString() {
+            return "LocalityBean{" +
+                "objectType='" + objectType + '\'' +
+                ", objectName='" + objectName + '\'' +
+                ", locality='" + locality + '\'' +
+                ", groupElements='" + groupElement + '\'' +
+                '}';
+        }
+    }
+
     /**
      * Choose a random datanode from cluster
      */
-    public String chooseDatanode() {
+
+    public String chooseDatanode(){
+        return chooseDatanode(false);
+    }
+
+    public String chooseDatanode(Boolean firstDn) {
         List<String> dnList = getDatanodes();
         if (dnList.isEmpty()) {
             throw new RuntimeException("datanode is empty");
         }
         Random random = new Random();
-        return dnList.get(random.nextInt(dnList.size()));
+        return firstDn?dnList.get(0):dnList.get(random.nextInt(dnList.size()));
     }
 
     public List<LocalityBean> getLocalityBeanInfos() {
         return getLocalityInfo();
     }
 
-    /**
-     * | ID | OBJECT_TYPE | OBJECT_NAME | LOCALITY                     | CREATED             | MODIFIED            |
-     * +----+-------------+-------------+------------------------------+---------------------+---------------------+
-     * | 14 | database    | hehe        | dn=polardbx-storage-0-master | 2021-03-11 03:20:44 | 2021-03-11 03:20:44 |
-     */
+
+//    +-----------+--------------+-------------+--------------------------------------------------------+----------------------+
+//    | OBJECT_ID | OBJECT_NAME  | OBJECT_TYPE | LOCALITY                                               | OBJECT_GROUP_ELEMENT |
+//    +-----------+--------------+-------------+--------------------------------------------------------+----------------------+
+//    | 127       | db1          | database    |                                                        |                      |
+//    | 40739     | c0           | table       |                                                        |                      |
+//    | 40741     | c1           | table       |                                                        |                      |
+//    | 40735     | s1           | table       | dn=polardbx-storage-1-master                           |                      |
+//    | 40736     | t1           | table       | dn=polardbx-storage-0-master,polardbx-storage-1-master |                      |
+//    | 40737     | t2           | table       | dn=polardbx-storage-0-master,polardbx-storage-1-master |                      |
+//    | 40738     | t3           | table       | dn=polardbx-storage-0-master                           |                      |
+//    | 224       | single_tg    | tablegroup  |                                                        | c0                   |
+//    | 226       | broadcast_tg | tablegroup  |                                                        | c1                   |
+//    | 220       | single_tg220 | tablegroup  | dn=polardbx-storage-1-master                           | s1                   |
+//    | 221       | tg221        | tablegroup  | dn=polardbx-storage-0-master,polardbx-storage-1-master | t1,t2                |
+//    | 222       | tg222        | tablegroup  | dn=polardbx-storage-0-master                           | t3                   |
+//    +-----------+--------------+-------------+--------------------------------------------------------+----------------------+
     public List<LocalityBean> getLocalityInfo() {
-        final String sql = "select * from information_schema.locality_info where locality <> ''";
+        final String sql = "show locality";
 
         List<LocalityBean> res = new ArrayList<>();
         try (ResultSet result = JdbcUtil.executeQuerySuccess(tddlConnection, sql)) {
@@ -190,8 +226,9 @@ public abstract class LocalityTestBase extends BaseTestCase {
                 String objectType = result.getString("OBJECT_TYPE");
                 String objectName = result.getString("OBJECT_NAME");
                 String locality = result.getString("LOCALITY");
+                String groupElement = result.getString("OBJECT_GROUP_ELEMENT");
                 LocalityBean
-                    bean = new LocalityBean(objectType, objectName, locality);
+                    bean = new LocalityBean(objectType, objectName, groupElement, locality);
                 res.add(bean);
             }
             LOG.info("getLocalityInfo" + res);
@@ -298,26 +335,7 @@ public abstract class LocalityTestBase extends BaseTestCase {
 
     }
 
-    public static class LocalityBean {
-        public String objectType;
-        public String objectName;
-        public String locality;
 
-        public LocalityBean(String type, String name, String locality) {
-            this.objectType = type;
-            this.objectName = name;
-            this.locality = locality;
-        }
-
-        @Override
-        public String toString() {
-            return "LocalityBean{" +
-                "objectType='" + objectType + '\'' +
-                ", objectName='" + objectName + '\'' +
-                ", locality='" + locality + '\'' +
-                '}';
-        }
-    }
 
     public static class PartitionDetail {
         public String partitionName;
@@ -360,8 +378,8 @@ public abstract class LocalityTestBase extends BaseTestCase {
         @Override
         public String toString() {
             return "TableDetails{" +
-                "tableGroup='" + tableGroup + "\'" +
-                ", tableName='" + tableName + '\'' +
+                "tableGroup='" + tableGroup + "'" +
+                ", tableName='" + tableName + "'" +
                 ", dataLength=" + dataLength +
                 ", indexLength=" + indexLength +
                 ", tableRows=" + tableRows +

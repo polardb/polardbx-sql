@@ -85,6 +85,8 @@ public class SearchDatumComparator implements Comparator<SearchDatumInfo> {
                     return -1;
                 } else if (bndValKind == PartitionBoundValueKind.DATUM_MAX_VALUE) {
                     return 1;
+                } else if (bndValKind == PartitionBoundValueKind.DATUM_DEFAULT_VALUE) {
+                    return 1;
                 }
 
                 retVal = doCompareDatumVal(
@@ -105,6 +107,12 @@ public class SearchDatumComparator implements Comparator<SearchDatumInfo> {
                 }
                 if (bndValKind == PartitionBoundValueKind.DATUM_MAX_VALUE) {
                     retVal = 0;
+                }
+            } else if (queryValKind == PartitionBoundValueKind.DATUM_DEFAULT_VALUE) {
+                if (bndValKind == PartitionBoundValueKind.DATUM_DEFAULT_VALUE) {
+                    retVal = 0;
+                } else {
+                    retVal = 1;
                 }
             } else {
                 // queryValKind == PartitionBoundValueKind.DATUM_MIN_VALUE

@@ -28,7 +28,6 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropIndexWithGsiPreparedData;
@@ -71,6 +70,7 @@ public class LogicalDropIndexHandler extends LogicalCommonDdlHandler {
 
         final String indexName = sqlDropIndex.getIndexName().getLastName();
         IndexValidator.validateIndexExistence(logicalDdlPlan.getSchemaName(), tableName, indexName);
+        IndexValidator.validateDropLocalIndex(logicalDdlPlan.getSchemaName(), tableName, indexName);
         IndexValidator.validateDropPrimaryKey(indexName);
         TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
         return super.validatePlan(logicalDdlPlan, executionContext);

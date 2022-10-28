@@ -81,7 +81,7 @@ public class DropTableWithGsiTest extends DDLBaseNewDBTestCase {
     @Before
     public void before() {
 
-//
+        //
         dropTableWithGsi(createTablePrimary, ImmutableList.of(createTableIndex));
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, HINT + createTable);

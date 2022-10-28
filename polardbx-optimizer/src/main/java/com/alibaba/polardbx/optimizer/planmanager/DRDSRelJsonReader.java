@@ -1,12 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to you under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Copyright [2013-2021], Alibaba Group Holding Limited
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -264,7 +263,7 @@ public class DRDSRelJsonReader {
                 List<RexNode> operands = Lists.newArrayList();
                 for (Map<String, Object> operand : args) {
                     int index = Integer.valueOf(operand.get("input").toString());
-                    operands.add(new RexInputRef(index, getInput().getRowType().getFieldList().get(index).getType()));
+                    operands.add(new RexInputRef(index, relJson.toType(cluster.getTypeFactory(), operand.get("type"))));
                 }
 
                 final RelDataType type =
@@ -387,6 +386,9 @@ public class DRDSRelJsonReader {
 
             public List<RexNode> getExpressionList(String tag) {
                 @SuppressWarnings("unchecked") final List<Object> jsonNodes = (List) jsonRel.get(tag);
+                if (jsonNodes == null) {
+                    return null;
+                }
                 final List<RexNode> nodes = new ArrayList<>();
                 for (Object jsonNode : jsonNodes) {
                     nodes.add(relJson.toRex(this, jsonNode));

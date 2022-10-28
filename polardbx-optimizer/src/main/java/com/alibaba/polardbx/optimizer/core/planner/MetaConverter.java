@@ -16,13 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
+import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
-import com.alibaba.polardbx.optimizer.planmanager.Statement;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -30,36 +27,19 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.Field;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.parse.bean.FieldMetaData;
 import com.alibaba.polardbx.optimizer.parse.bean.PreStmtMetaData;
-import com.alibaba.polardbx.optimizer.parse.bean.TableMetaData;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameterKey;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
-import org.apache.calcite.sql.SqlBasicCall;
-import org.apache.calcite.sql.SqlCall;
-import org.apache.calcite.sql.SqlFunction;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlJoin;
 import org.apache.calcite.sql.SqlKind;
-import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.SqlSelect;
-import org.apache.calcite.sql.TDDLSqlSelect;
-import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.calcite.sql.util.SqlShuttle;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 从SqlNode中得到Meta信息
@@ -69,6 +49,10 @@ import java.util.Map;
 public class MetaConverter {
 
     protected final static Logger logger = LoggerFactory.getLogger(MetaConverter.class);
+    /**
+     * prepare参数个数用2字节表示
+     */
+    private static final int MAX_PREPARED_PARAM_COUNT = 0xFFFF;
 
     public static PreStmtMetaData getMetaData(PreparedStmtCache preparedStmtCache, List<?> params,
                                               ExecutionContext executionContext) throws SQLException {
@@ -78,22 +62,32 @@ public class MetaConverter {
         contextParameters.setPrepareMode(true);
         FastsqlParser fastsqlParser = new FastsqlParser();
         SqlNodeList sqlNodeList = fastsqlParser.parse(sql, params, contextParameters, executionContext);
-        Integer parameter = contextParameters.getParameter(ContextParameterKey.ORIGIN_PARAMETER_COUNT);
-        if (parameter != null && parameter > Short.MAX_VALUE) {
-            throw new SQLException("Prepare parameter count is exceeded and the maximum is " + Short.MAX_VALUE);
+        Integer parameterCnt = contextParameters.getParameter(ContextParameterKey.ORIGIN_PARAMETER_COUNT);
+        if (parameterCnt != null && parameterCnt > MAX_PREPARED_PARAM_COUNT) {
+            throw new SQLException(
+                "Prepared statement contains too many placeholders. The maximum is " + MAX_PREPARED_PARAM_COUNT);
+        }
+        if (sqlNodeList.size() > 1) {
+            // should not be here, since it's handled in earlier steps
+            throw new SQLException("You have an error in your SQL syntax", "42000", ErrorCode.ER_PARSE_ERROR);
         }
 
         // 从计划获得字段元信息
-        if (null == executionContext.getParams()) {
-            executionContext.setParams(new Parameters());
-        }
+        // 并保存参数化sql到prepare缓存中
+        executionContext.setParams(new Parameters());
         ExecutionPlan plan = getPlanInPrepare(sql, sqlNodeList, preparedStmtCache, executionContext);
         if (plan == null) {
             throw new SQLException("Unable to prepare sql: " + sql);
         }
 
+        SqlNode ast = sqlNodeList.get(0);
+        if (ast.getKind() != SqlKind.UNION && ast.getKind() != SqlKind.SELECT) {
+            // 只有DQL才返回字段元信息
+            return new PreStmtMetaData(parameterCnt, new ArrayList<>());
+        }
+
         List<FieldMetaData> selectItems = convertFromPlan(plan);
-        return new PreStmtMetaData(parameter, selectItems);
+        return new PreStmtMetaData(parameterCnt, selectItems);
     }
 
     /**
@@ -111,7 +105,7 @@ public class MetaConverter {
         pm.getProps().put(ConnectionProperties.ENABLE_POST_PLANNER, Boolean.FALSE.toString());
 
         try {
-            return Planner.getInstance().planForPrepare(sql, sqlNodeList, preparedStmtCache, executionContext);
+            return Planner.getInstance().planForPrepare(sql, preparedStmtCache, executionContext);
         } finally {
             pm.getProps().put(ConnectionProperties.PREPARE_OPTIMIZE, Boolean.FALSE.toString());
             pm.getProps().put(ConnectionProperties.ENABLE_POST_PLANNER, String.valueOf(enablePostPlanner));
@@ -121,7 +115,9 @@ public class MetaConverter {
     private static List<FieldMetaData> convertFromPlan(ExecutionPlan plan) {
         List<FieldMetaData> selectItems = new ArrayList<>();
         CursorMeta cursorMeta = plan.getCursorMeta();
-        assert cursorMeta != null;
+        if (cursorMeta == null) {
+            return selectItems;
+        }
         final List<ColumnMeta> columns = cursorMeta.getColumns();
         for (ColumnMeta columnMeta : columns) {
             final FieldMetaData fieldMetaData = FieldMetaData.copyFrom(columnMeta);

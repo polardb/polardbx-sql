@@ -16,50 +16,26 @@
 
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
+/**
+ * @author fangwu
+ */
 public class BaselinePersistSyncAction implements ISyncAction {
-
-    private String schemaName = null;
-
-    private Integer baselineId = null;
 
     public BaselinePersistSyncAction() {
     }
 
-    public BaselinePersistSyncAction(String schemaName, Integer baselineId) {
-        this.schemaName = schemaName;
-        this.baselineId = baselineId;
-    }
-
-    public String getSchemaName() {
-        return schemaName;
-    }
-
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
-    }
-
-    public Integer getBaselineId() {
-        return baselineId;
-    }
-
-    public void setBaselineId(Integer baselineId) {
-        this.baselineId = baselineId;
-    }
-
     @Override
     public ResultCursor sync() {
-        PlanManager planManager = OptimizerContext.getContext(schemaName).getPlanManager();
-        ;
-        if (baselineId != null) {
-            planManager.forcePersist(baselineId);
-        } else {
-            planManager.forcePersistAll();
+        if (ConfigDataMode.isMasterMode() && LeaderStatusBridge.getInstance().hasLeadership()) {
+            PlanManager.getInstance().persistBaseline();
         }
         return null;
     }
+
 }
 

@@ -149,12 +149,22 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                 ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG.getValue(),
                 taskType.getValue(), 0);
 
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(
-            /*the parent job of rebalance will acquire the Xlock of current schemaName before exec*/
-            moveDataBaseValidateTask,
-            initNewStorageInstTask,
-            addMetaTask
-        ));
+        boolean skipValidator = executionContext.getParamManager().getBoolean(ConnectionParams.SKIP_MOVE_DATABASE_VALIDATOR);
+        if (!skipValidator) {
+            executableDdlJob.addSequentialTasks(Lists.newArrayList(
+                /*the parent job of rebalance will acquire the Xlock of current schemaName before exec*/
+                moveDataBaseValidateTask,
+                initNewStorageInstTask,
+                addMetaTask
+            ));
+        } else {
+            executableDdlJob.addSequentialTasks(Lists.newArrayList(
+                /*the parent job of rebalance will acquire the Xlock of current schemaName before exec*/
+                initNewStorageInstTask,
+                addMetaTask
+            ));
+        }
+
         executableDdlJob.labelAsTail(addMetaTask);
 
         final String finalStatus =
@@ -180,7 +190,11 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
         if (GeneralUtil.isEmpty(tablesTopologyMap.entrySet())) {
             executableDdlJob.addTaskRelationship(addMetaTask, bringUpMoveDatabase.get(0));
         }
-        executableDdlJob.labelAsHead(initNewStorageInstTask);
+        if (skipValidator) {
+            executableDdlJob.labelAsHead(initNewStorageInstTask);
+        } else {
+            executableDdlJob.labelAsHead(moveDataBaseValidateTask);
+        }
         return executableDdlJob;
     }
 

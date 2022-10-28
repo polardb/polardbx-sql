@@ -67,27 +67,27 @@ import java.util.List;
 
 public class MySqlSelectParser extends SQLSelectParser {
 
-    protected boolean              returningFlag = false;
+    protected boolean returningFlag = false;
     protected MySqlUpdateStatement updateStmt;
 
-    public MySqlSelectParser(SQLExprParser exprParser){
+    public MySqlSelectParser(SQLExprParser exprParser) {
         super(exprParser);
     }
 
-    public MySqlSelectParser(SQLExprParser exprParser, SQLSelectListCache selectListCache){
+    public MySqlSelectParser(SQLExprParser exprParser, SQLSelectListCache selectListCache) {
         super(exprParser, selectListCache);
     }
 
-    public MySqlSelectParser(ByteString sql){
+    public MySqlSelectParser(ByteString sql) {
         this(new MySqlExprParser(sql));
     }
-    
+
     public void parseFrom(SQLSelectQueryBlock queryBlock) {
         if (lexer.token() == Token.EOF
-                || lexer.token() == Token.SEMI
-                || lexer.token() == Token.ORDER
-                || lexer.token() == Token.RPAREN
-                || lexer.token() == Token.UNION
+            || lexer.token() == Token.SEMI
+            || lexer.token() == Token.ORDER
+            || lexer.token() == Token.RPAREN
+            || lexer.token() == Token.UNION
         ) {
             return;
         }
@@ -96,12 +96,13 @@ public class MySqlSelectParser extends SQLSelectParser {
             for (SQLSelectItem item : queryBlock.getSelectList()) {
                 SQLExpr expr = item.getExpr();
                 if (expr instanceof SQLAggregateExpr) {
-                    throw new ParserException("syntax error, expect " + Token.FROM + ", actual " + lexer.token() + ", " + lexer.info());
+                    throw new ParserException(
+                        "syntax error, expect " + Token.FROM + ", actual " + lexer.token() + ", " + lexer.info());
                 }
             }
             return;
         }
-        
+
         lexer.nextTokenIdent();
 
         while (lexer.token() == Token.HINT) {
@@ -160,10 +161,10 @@ public class MySqlSelectParser extends SQLSelectParser {
             @Override
             public boolean handle(Token lastToken, String comment) {
                 if (lexer.isEnabled(SQLParserFeature.TDDLHint)
-                        && (comment.startsWith("+ TDDL")
-                        || comment.startsWith("+TDDL")
-                        || comment.startsWith("!TDDL")
-                        || comment.startsWith("TDDL"))) {
+                    && (comment.startsWith("+ TDDL")
+                    || comment.startsWith("+TDDL")
+                    || comment.startsWith("!TDDL")
+                    || comment.startsWith("TDDL"))) {
                     SQLCommentHint hint = new TDDLHint(comment);
 
                     if (lexer.getCommentCount() > 0) {
@@ -193,7 +194,7 @@ public class MySqlSelectParser extends SQLSelectParser {
         if (lexer.token() == Token.SELECT) {
             lexer.nextTokenValue();
 
-            for(;;) {
+            for (; ; ) {
                 if (lexer.token() == Token.HINT) {
                     this.exprParser.parseHints(queryBlock.getHints());
                 } else {
@@ -261,7 +262,7 @@ public class MySqlSelectParser extends SQLSelectParser {
                 SQLName partition = this.exprParser.name();
                 queryBlock.setForcePartition(partition);
             }
-            
+
             parseInto(queryBlock);
         }
 
@@ -294,7 +295,7 @@ public class MySqlSelectParser extends SQLSelectParser {
                 lexer.nextToken();
                 SQLExpr rows = this.exprParser.primary();
                 queryBlock.setLimit(
-                        new SQLLimit(rows));
+                    new SQLLimit(rows));
                 acceptIdentifier("ROWS");
                 acceptIdentifier("ONLY");
             } else if (lexer.isEnabled(SQLParserFeature.DrdsMisc) && lexer.identifierEquals(FnvHash.Constants.FIRST)) {
@@ -361,7 +362,7 @@ public class MySqlSelectParser extends SQLSelectParser {
     public SQLTableSource parseTableSource() {
         return parseTableSource(null);
     }
-    
+
     public SQLTableSource parseTableSource(SQLObject parent) {
         if (lexer.token() == Token.LPAREN) {
             lexer.nextToken();
@@ -381,13 +382,13 @@ public class MySqlSelectParser extends SQLSelectParser {
                 SQLSelectQueryBlock innerQuery = select.getQueryBlock();
 
                 boolean noOrderByAndLimit = innerQuery instanceof SQLSelectQueryBlock
-                        && ((SQLSelectQueryBlock) innerQuery).getOrderBy() == null
-                        && ((SQLSelectQueryBlock) select.getQuery()).getLimit() == null;
+                    && ((SQLSelectQueryBlock) innerQuery).getOrderBy() == null
+                    && ((SQLSelectQueryBlock) select.getQuery()).getLimit() == null;
 
                 if (lexer.token() == Token.LIMIT) {
                     SQLLimit limit = this.exprParser.parseLimit();
                     if (parent != null && parent instanceof SQLSelectQueryBlock) {
-                       ((SQLSelectQueryBlock) parent).setLimit(limit);
+                        ((SQLSelectQueryBlock) parent).setLimit(limit);
                     }
                     if (parent == null && noOrderByAndLimit) {
                         innerQuery.setLimit(limit);
@@ -413,7 +414,7 @@ public class MySqlSelectParser extends SQLSelectParser {
                 if (hints != null) {
                     tableSource.getHints().addAll(hints);
                 }
-                
+
             } else if (lexer.token() == Token.LPAREN) {
                 tableSource = parseTableSource();
                 if (lexer.token() != Token.RPAREN && tableSource instanceof SQLSubqueryTableSource) {
@@ -473,7 +474,7 @@ public class MySqlSelectParser extends SQLSelectParser {
                 tableSource = parseTableSource();
                 accept(Token.RPAREN);
                 if (lexer.token() == Token.AS
-                        && tableSource instanceof SQLValuesTableSource) {
+                    && tableSource instanceof SQLValuesTableSource) {
                     lexer.nextToken();
                     String alias = lexer.stringVal();
                     lexer.nextToken();
@@ -506,8 +507,8 @@ public class MySqlSelectParser extends SQLSelectParser {
         if (lexer.token() == Token.VALUES) {
             return parseValues();
         }
-        
-        if(lexer.token() == Token.UPDATE) {
+
+        if (lexer.token() == Token.UPDATE) {
             SQLTableSource tableSource = new MySqlUpdateTableSource(parseUpdateStatment());
             return parseTableSourceRest(tableSource);
         }
@@ -520,7 +521,7 @@ public class MySqlSelectParser extends SQLSelectParser {
             Lexer.SavePoint mark = lexer.mark();
             lexer.nextToken();
 
-            if (lexer.token() == Token.LPAREN){
+            if (lexer.token() == Token.LPAREN) {
                 lexer.nextToken();
                 SQLUnnestTableSource unnest = new SQLUnnestTableSource();
                 this.exprParser.exprList(unnest.getItems(), unnest);
@@ -553,11 +554,11 @@ public class MySqlSelectParser extends SQLSelectParser {
         parseTableSourceQueryTableExpr(tableReference);
 
         SQLTableSource tableSrc = parseTableSourceRest(tableReference);
-        
+
         if (lexer.hasComment() && lexer.isKeepComments()) {
             tableSrc.addAfterComment(lexer.readAndResetComments());
         }
-        
+
         return tableSrc;
     }
 
@@ -575,22 +576,22 @@ public class MySqlSelectParser extends SQLSelectParser {
             lexer.nextToken();
             update.setIgnore(true);
         }
-        
+
         if (lexer.identifierEquals(FnvHash.Constants.COMMIT_ON_SUCCESS)) {
             lexer.nextToken();
             update.setCommitOnSuccess(true);
         }
-        
+
         if (lexer.identifierEquals(FnvHash.Constants.ROLLBACK_ON_FAIL)) {
             lexer.nextToken();
             update.setRollBackOnFail(true);
         }
-        
+
         if (lexer.identifierEquals(FnvHash.Constants.QUEUE_ON_PK)) {
             lexer.nextToken();
             update.setQueryOnPk(true);
         }
-        
+
         if (lexer.identifierEquals(FnvHash.Constants.TARGET_AFFECT_ROW)) {
             lexer.nextToken();
             SQLExpr targetAffectRow = this.exprParser.expr();
@@ -604,7 +605,7 @@ public class MySqlSelectParser extends SQLSelectParser {
                 lexer.nextToken();
                 acceptIdentifier("PARTITIONS");
                 update.setForceAllPartitions(true);
-            } else if (lexer.identifierEquals(FnvHash.Constants.PARTITIONS)){
+            } else if (lexer.identifierEquals(FnvHash.Constants.PARTITIONS)) {
                 lexer.nextToken();
                 update.setForceAllPartitions(true);
             } else if (lexer.token() == Token.PARTITION) {
@@ -626,7 +627,7 @@ public class MySqlSelectParser extends SQLSelectParser {
 
         accept(Token.SET);
 
-        for (;;) {
+        for (; ; ) {
             SQLUpdateSetItem item = this.exprParser.parseUpdateSetItem();
             update.addItem(item);
 
@@ -644,10 +645,10 @@ public class MySqlSelectParser extends SQLSelectParser {
 
         update.setOrderBy(this.exprParser.parseOrderBy());
         update.setLimit(this.exprParser.parseLimit());
-        
+
         return update;
     }
-    
+
     protected void parseInto(SQLSelectQueryBlock queryBlock) {
         if (lexer.token() != Token.INTO) {
             return;
@@ -709,6 +710,12 @@ public class MySqlSelectParser extends SQLSelectParser {
                 }
             }
         } else {
+            // Why we need this?
+            // output of select a, b into @x, @y from test; is select a, b into (@x, @y) from test
+            // TODO maybe modify output visitor is better
+            if (lexer.token() == Token.LPAREN) {
+                lexer.nextToken();
+            }
             SQLExpr intoExpr = this.exprParser.name();
             if (lexer.token() == Token.COMMA) {
                 SQLListExpr list = new SQLListExpr();
@@ -721,6 +728,9 @@ public class MySqlSelectParser extends SQLSelectParser {
                 }
 
                 intoExpr = list;
+            }
+            if (lexer.token() == Token.RPAREN) {
+                lexer.nextToken();
             }
             queryBlock.setInto(intoExpr);
         }
@@ -796,16 +806,16 @@ public class MySqlSelectParser extends SQLSelectParser {
                     boolean match = false;
                     if ((first == '.' || (first >= '0' && first <= '9'))) {
                         switch (last) {
-                            case 'B':
-                            case 'K':
-                            case 'M':
-                            case 'G':
-                            case 'T':
-                            case 'P':
-                                match = true;
-                                break;
-                            default:
-                                break;
+                        case 'B':
+                        case 'K':
+                        case 'M':
+                        case 'G':
+                        case 'T':
+                        case 'P':
+                            match = true;
+                            break;
+                        default:
+                            break;
                         }
                     }
                     SQLSizeExpr size = new SQLSizeExpr(strVal.substring(0, strVal.length() - 2), last);
@@ -897,7 +907,8 @@ public class MySqlSelectParser extends SQLSelectParser {
             } else {
                 if (lexer.token() == Token.LITERAL_CHARS) {
                     // Use literal char is not support in MySQL.
-                    throw new ParserException("syntax error, not support string literal in index hint, " + lexer.info());
+                    throw new ParserException(
+                        "syntax error, not support string literal in index hint, " + lexer.info());
                 }
                 SQLName name = this.exprParser.name();
                 name.setParent(hint);

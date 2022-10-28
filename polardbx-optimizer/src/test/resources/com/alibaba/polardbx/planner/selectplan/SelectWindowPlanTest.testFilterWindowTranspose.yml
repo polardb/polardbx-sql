@@ -1,0 +1,118 @@
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+    row_number() over () ow2
+    from test_simple_table
+    ) T
+    where id3 = 1;
+
+  plan: |
+
+    filter(condition="id3 = 1")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0row_number()", reference windows="window#0=window(partition {} order by [] rows between unbounded preceding and current row aggs [row_number()])")
+        sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number()])")
+          logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` order by `id1`, `id2`")
+
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1
+    from test_simple_table
+    ) T
+    where id1 = 1;
+
+  plan: |
+
+    sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number()])")
+      logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` where (`id1` = 1) order by `id1`, `id2`")
+
+
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1
+    from test_simple_table
+    ) T
+    where id2 = 1;
+
+  plan: |
+
+    filter(condition="id2 = 1")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number()])")
+        logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` order by `id1`, `id2`")
+
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1
+    from test_simple_table
+    ) T
+    where id1 = 1 and id2 = 1 and id3 = 1;
+
+  plan: |
+
+    filter(condition="id2 = 1 and id3 = 1")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number()])")
+        logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` where (`id1` = 1) order by `id1`, `id2`")
+
+
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1, id2) ow1
+    from test_simple_table
+    ) T
+    where id1 = 1 and id3 = 1;
+
+  plan: |
+
+    filter(condition="id3 = 1")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", reference windows="window#0=window(partition {0, 1} order by [] rows between unbounded preceding and current row aggs [row_number()])")
+        logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` where (`id1` = 1) order by `id1`, `id2`")
+
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1, id2) ow1
+    from test_simple_table
+    ) T
+    where (id1 = 1 or id3 = 1) and (id2 = 1);
+
+  plan: |
+
+    filter(condition="id1 = 1 or id3 = 1")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", reference windows="window#0=window(partition {0, 1} order by [] rows between unbounded preceding and current row aggs [row_number()])")
+        logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` where (`id2` = 1) order by `id1`, `id2`")
+
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1) ow1,
+      row_number() over (partition by id2) ow2
+    from test_simple_table
+    ) T
+    where id1 = 1;
+
+  plan: |
+
+    filter(condition="id1 = 1")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0row_number()", reference windows="window#0=window(partition {1} order by [] rows between unbounded preceding and current row aggs [row_number()])")
+        memsort(sort="id2 asc")
+          sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", reference windows="window#0=window(partition {0} order by [] rows between unbounded preceding and current row aggs [row_number()])")
+            logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` order by `id1`")
+
+
+- sql: |
+    select * from (
+     select *,
+     row_number() over (partition by id1 order by id2) ow1,
+      rank() over (partition by id1 order by id2) ow2
+    from test_simple_table
+    ) T
+    where id1 = 1;
+
+  plan: |
+
+    sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0row_number()", f4w0$o1="window#0rank($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between unbounded preceding and current row aggs [row_number(), rank($1)])")
+      logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` where (`id1` = 1) order by `id1`, `id2`")

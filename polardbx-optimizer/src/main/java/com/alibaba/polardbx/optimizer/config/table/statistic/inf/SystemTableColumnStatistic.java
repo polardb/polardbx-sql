@@ -17,52 +17,34 @@
 package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
-import com.clearspring.analytics.stream.frequency.CountMinSketch;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 
 import java.sql.Connection;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author dylan
  */
 public interface SystemTableColumnStatistic {
 
-    /**
-     * check system table exists
-     */
-    Cache<String, Boolean> APPNAME_TABLE_COLUMN_ENABLED = CacheBuilder.newBuilder()
-        .expireAfterWrite(1, TimeUnit.HOURS)
-        .build();
-
-    static void invalidateCache(String schemaName) {
-        APPNAME_TABLE_COLUMN_ENABLED.invalidate(schemaName);
-    }
-
-    static void invalidateAll() {
-        APPNAME_TABLE_COLUMN_ENABLED.invalidateAll();
-    }
-
     void createTableIfNotExist();
 
-    void renameTable(String oldLogicalTableName, String newLogicalTableName);
+    void renameTable(String schema, String oldLogicalTableName, String newLogicalTableName);
 
-    void removeLogicalTableColumnList(String logicalTableName, List<String> columnNameList);
+    void removeLogicalTableColumnList(String schema, String logicalTableName, List<String> columnNameList);
 
-    void removeLogicalTableList(List<String> logicalTableNameList);
+    void removeLogicalTableList(String schema, List<String> logicalTableNameList);
 
-    boolean deleteAll(Connection conn);
+    boolean deleteAll(String schema, Connection conn);
 
     Collection<Row> selectAll(long sinceTime);
 
     void batchReplace(final List<SystemTableColumnStatistic.Row> rowList);
 
     class Row {
+
+        private String schema;
 
         /**
          * logical table name
@@ -78,11 +60,6 @@ public interface SystemTableColumnStatistic {
          * cardinality of column
          */
         private long cardinality;
-
-        /**
-         * count-min-sketch of column
-         */
-        private CountMinSketch countMinSketch;
 
         /**
          * histogram of column
@@ -106,20 +83,20 @@ public interface SystemTableColumnStatistic {
          */
         private long unixTime;
 
-        public Row(String tableName, String columnName, long unixTime) {
+        public Row(String schemaName, String tableName, String columnName, long unixTime) {
+            this.schema = schemaName;
             this.tableName = tableName;
             this.columnName = columnName;
-            this.countMinSketch = null;
             this.sampleRate = 1F;
             this.unixTime = unixTime;
         }
 
-        public Row(String tableName, String columnName, long cardinality, CountMinSketch countMinSketch,
+        public Row(String schema, String tableName, String columnName, long cardinality,
                    Histogram histogram, TopN topN, long nullCount, float sampleRate, long unixTime) {
+            this.schema = schema;
             this.tableName = tableName;
             this.columnName = columnName;
             this.cardinality = cardinality;
-            this.countMinSketch = countMinSketch;
             this.histogram = histogram;
             this.setTopN(topN);
             this.nullCount = nullCount;
@@ -149,14 +126,6 @@ public interface SystemTableColumnStatistic {
 
         public void setCardinality(long cardinality) {
             this.cardinality = cardinality;
-        }
-
-        public CountMinSketch getCountMinSketch() {
-            return countMinSketch;
-        }
-
-        public void setCountMinSketch(CountMinSketch countMinSketch) {
-            this.countMinSketch = countMinSketch;
         }
 
         public Histogram getHistogram() {
@@ -196,6 +165,17 @@ public interface SystemTableColumnStatistic {
 
         public void setTopN(TopN topN) {
             this.topN = topN;
+        }
+
+        /**
+         * schema name
+         */
+        public String getSchema() {
+            return schema;
+        }
+
+        public void setSchema(String schema) {
+            this.schema = schema;
         }
     }
 }

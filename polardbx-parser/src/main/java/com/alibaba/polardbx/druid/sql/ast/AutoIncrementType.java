@@ -17,8 +17,10 @@
 package com.alibaba.polardbx.druid.sql.ast;
 
 public enum AutoIncrementType {
-    GROUP("GROUP"), SIMPLE("SIMPLE"),
-    SIMPLE_CACHE("SIMPLE WITH CACHE"), TIME("TIME");
+    NEW("NEW"),
+    GROUP("GROUP"),
+    SIMPLE("SIMPLE"),
+    TIME("TIME");
 
     private final String keyword;
 
@@ -26,9 +28,8 @@ public enum AutoIncrementType {
         return this.keyword;
     }
 
-    private AutoIncrementType(String keyword){
+    private AutoIncrementType(String keyword) {
         this.keyword = keyword;
     }
-
 
 }

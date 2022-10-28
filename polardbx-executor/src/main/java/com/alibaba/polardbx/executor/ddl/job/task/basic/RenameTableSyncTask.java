@@ -40,7 +40,7 @@ public class RenameTableSyncTask extends BaseSyncTask {
 
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new RenameTableSyncAction(schemaName, logicalTableName, newLogicalTableName));
+        SyncManagerHelper.sync(new RenameTableSyncAction(schemaName, logicalTableName, newLogicalTableName), true);
     }
 
 }

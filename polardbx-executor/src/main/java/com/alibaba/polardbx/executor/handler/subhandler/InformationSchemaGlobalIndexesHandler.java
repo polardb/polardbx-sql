@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.handler.subhandler;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -252,8 +253,16 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
         if (CollectionUtils.isNotEmpty(tableIndexList)) {
             for (Object obj : tableIndexList) {
                 if (obj instanceof RexDynamicParam) {
-                    String tableName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                    tableNames.add(tableName.toLowerCase());
+                    if (params.get(((RexDynamicParam) obj).getIndex() + 1).getValue() instanceof RawString) {
+                        RawString rawString = (RawString) params.get(((RexDynamicParam) obj).getIndex() + 1).getValue();
+                        for (Object o : rawString.getObjList()) {
+                            tableNames.add(String.valueOf(o).toLowerCase());
+                        }
+                    } else {
+                        String tableName =
+                            String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
+                        tableNames.add(tableName.toLowerCase());
+                    }
                 } else if (obj instanceof RexLiteral) {
                     String tableName = ((RexLiteral) obj).getValueAs(String.class);
                     tableNames.add(tableName.toLowerCase());

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import com.alibaba.polardbx.optimizer.partition.util.StepExplainItem;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -48,6 +49,48 @@ public class PartPruneStepPruningContext {
      */
     private long maxEnumerableIntervalLength = PartitionPruneStepBuilder.DEFAULT_MAX_ENUMERABLE_INTERVAL_LENGTH;
 
+    /**
+     * The max size of in value from the InSubQuery pruning
+     */
+    private long maxInSubQueryPruningSize = PartitionPruneStepBuilder.DEFAULT_MAX_IN_SUBQUERY_PRUNING_SIZE;
+
+    /**
+     * Label if do the pruning by tuple info
+     */
+    private boolean pruningByTuple = false;
+
+    /**
+     * Enable log pruning result
+     */
+    private boolean enableLogPruning = false;
+
+    /**
+     * The root prune step, used to log the explainInfo of its sub-prune step
+     */
+    private PartitionPruneStep rootStep;
+
+    /**
+     * The explainInfo for each prune step,
+     * <pre>
+     *     key: PartitionPruneStep or PartTupleDispatchInfo
+     * </pre>
+     */
+    private Map<Object, StepExplainItem> stepExplainInfo = new HashMap<>();
+
+    /**
+     * The root of tuple route info
+     */
+    private PartitionTupleRouteInfo rootTuple;
+
+    /**
+     * The eval result cache of expression of partition predicate
+     * <pre>
+     *     key : the const expr id of partition predicate expression
+     *     val: the cache result
+     * </pre>
+     */
+    protected Map<Integer, ExprEvalResult> partClauseEvalResultCache = new HashMap<>();
+
     protected static class ExprEvalResult {
         protected Object rawVal;
         protected PartitionField valFld;
@@ -60,8 +103,6 @@ public class PartPruneStepPruningContext {
         }
     }
 
-    protected Map<Integer, ExprEvalResult> partClauseEvalResultCache = new HashMap<>();
-
     public static PartPruneStepPruningContext initPruningContext(ExecutionContext ec) {
         PartPruneStepPruningContext pruningContext = new PartPruneStepPruningContext();
         pruningContext.setEnableAutoMergeIntervals(
@@ -72,6 +113,10 @@ public class PartPruneStepPruningContext {
             ec.getParamManager().getBoolean(ConnectionParams.ENABLE_CONST_EXPR_EVAL_CACHE));
         pruningContext.setMaxEnumerableIntervalLength(
             ec.getParamManager().getLong(ConnectionParams.MAX_ENUMERABLE_INTERVAL_LENGTH));
+        pruningContext.setMaxInSubQueryPruningSize(
+            ec.getParamManager().getLong(ConnectionParams.MAX_IN_SUBQUERY_PRUNING_SIZE));
+        pruningContext.setEnableLogPruning(
+            ec.getParamManager().getBoolean(ConnectionParams.ENABLE_LOG_PART_PRUNING));
         return pruningContext;
     }
 
@@ -116,6 +161,50 @@ public class PartPruneStepPruningContext {
 
     public void setMaxEnumerableIntervalLength(long maxEnumerableIntervalLength) {
         this.maxEnumerableIntervalLength = maxEnumerableIntervalLength;
+    }
+
+    public PartitionTupleRouteInfo getRootTuple() {
+        return rootTuple;
+    }
+
+    public void setRootTuple(PartitionTupleRouteInfo rootTuple) {
+        this.rootTuple = rootTuple;
+    }
+
+    public Map<Object, StepExplainItem> getStepExplainInfo() {
+        return stepExplainInfo;
+    }
+
+    public PartitionPruneStep getRootStep() {
+        return rootStep;
+    }
+
+    public void setRootStep(PartitionPruneStep rootStep) {
+        this.rootStep = rootStep;
+    }
+
+    public boolean isEnableLogPruning() {
+        return enableLogPruning;
+    }
+
+    public void setEnableLogPruning(boolean enableLogPruning) {
+        this.enableLogPruning = enableLogPruning;
+    }
+
+    public boolean isPruningByTuple() {
+        return pruningByTuple;
+    }
+
+    public void setPruningByTuple(boolean pruningByTuple) {
+        this.pruningByTuple = pruningByTuple;
+    }
+
+    public long getMaxInSubQueryPruningSize() {
+        return maxInSubQueryPruningSize;
+    }
+
+    public void setMaxInSubQueryPruningSize(long maxInSubQueryPruningSize) {
+        this.maxInSubQueryPruningSize = maxInSubQueryPruningSize;
     }
 
 }

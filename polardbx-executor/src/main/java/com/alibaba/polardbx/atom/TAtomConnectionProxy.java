@@ -95,8 +95,6 @@ public class TAtomConnectionProxy extends ConnectionProxyImpl {
                     serverVariablesNeedToRemove.add(key);
                 }
             }
-        } else {
-            this.currentGlobalServerVariables = new HashMap<>(currentGlobalServerVariables);
         }
         if (serverVariables == null) {
             serverVariables = newVariables; // 已经全部小写
@@ -232,6 +230,10 @@ public class TAtomConnectionProxy extends ConnectionProxyImpl {
                         sessionVariablesChanged.put(e.getKey(), e.getValue());
                     }
                 } else {
+                    if (!tmpVariablesChanged.isEmpty()) {
+                        // copy on write
+                        this.currentGlobalServerVariables = new HashMap<>(currentGlobalServerVariables);
+                    }
                     for (Entry<String, Object> e : tmpVariablesChanged.entrySet()) {
                         currentGlobalServerVariables.put(e.getKey(), e.getValue());
                     }

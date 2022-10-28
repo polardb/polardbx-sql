@@ -45,4 +45,4 @@ WHERE (a = 200
 	AND c IN (9999);
 Logical ExecutionPlan
 Gather(concurrent=true)
-  LogicalView(tables="rng_cols[p3,p5,p6]", shardCount=3, sql="SELECT `a`, `b`, `c` FROM `rng_cols` AS `rng_cols` WHERE ((((`a` = ?) OR (`a` >= ?)) AND ((`b` <= ?) OR (`b` >= ?))) AND (`c` IN(?)))")
+  LogicalView(tables="rng_cols[p3,p5,p6]", shardCount=3, sql="SELECT `a`, `b`, `c` FROM `rng_cols` AS `rng_cols` WHERE (((`c` IN(?)) AND ((`a` = ?) OR (`a` >= ?))) AND ((`b` <= ?) OR (`b` >= ?)))", isDynamicParam="true")

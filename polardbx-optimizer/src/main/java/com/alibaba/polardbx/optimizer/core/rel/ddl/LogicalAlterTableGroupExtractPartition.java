@@ -18,16 +18,14 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupExtractPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
@@ -37,45 +35,51 @@ import org.apache.calcite.rel.ddl.AlterTableGroupExtractPartition;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlAlterTableGroupExtractPartition;
-import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlPartition;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class LogicalAlterTableGroupExtractPartition extends BaseDdlOperation {
-
-    private AlterTableGroupExtractPartitionPreparedData preparedData;
-    private AlterTableGroupExtractPartition alterTableGroupExtractPartition;
+public class LogicalAlterTableGroupExtractPartition extends LogicalAlterTableExtractPartition {
 
     public LogicalAlterTableGroupExtractPartition(DDL ddl) {
-        super(ddl);
+        super(ddl, true);
     }
 
     public void preparedData(ExecutionContext executionContext) {
-        alterTableGroupExtractPartition = (AlterTableGroupExtractPartition) relDdl;
+        AlterTableGroupExtractPartition alterTableGroupExtractPartition = (AlterTableGroupExtractPartition) relDdl;
         String tableGroupName = alterTableGroupExtractPartition.getTableGroupName();
         Map<SqlNode, RexNode> partBoundExprInfo = alterTableGroupExtractPartition.getPartBoundExprInfo();
         SqlAlterTableGroup sqlAlterTableGroup = (SqlAlterTableGroup) alterTableGroupExtractPartition.getAst();
         assert sqlAlterTableGroup.getAlters().size() == 1;
 
+        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
+            .getTableGroupConfigByName(tableGroupName);
+        if (tableGroupConfig == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_EXISTS,
+                "tablegroup:" + tableGroupName + " doesn't exists");
+        }
+        if (tableGroupConfig.getTableCount() == 0) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                "can't modify the tablegroup:" + tableGroupName + " when it's empty");
+        }
+        String firstTableInTableGroup = tableGroupConfig.getTables().get(0).getTableName();
+
         assert sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupExtractPartition;
         SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition =
             (SqlAlterTableGroupExtractPartition) sqlAlterTableGroup.getAlters().get(0);
+
         List<Long[]> splitPoints =
-            normalizeSqlExtractPartition(sqlAlterTableGroupExtractPartition, tableGroupName, executionContext);
+            normalizeSqlExtractPartition(sqlAlterTableGroupExtractPartition, firstTableInTableGroup,
+                alterTableGroupExtractPartition.getPartBoundExprInfo(), executionContext);
 
         String extractPartitionName = sqlAlterTableGroupExtractPartition.getExtractPartitionName();
         List<String> splitPartitions = new ArrayList<>();
         splitPartitions.add(extractPartitionName);
 
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
-            TableGroupLocation.getOrderedGroupList(schemaName);
-
+            LocalityInfoUtils.getAllowedGroupInfoOfTableGroup(schemaName, tableGroupName);
         preparedData = new AlterTableGroupExtractPartitionPreparedData();
 
         preparedData.setSchemaName(schemaName);
@@ -90,138 +94,6 @@ public class LogicalAlterTableGroupExtractPartition extends BaseDdlOperation {
         preparedData.prepareInvisiblePartitionGroup();
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.EXTRACT_PARTITION);
         preparedData.setSplitPoints(splitPoints);
-    }
-
-    private List<Long[]> normalizeSqlExtractPartition(
-        SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition,
-        String tableGroupName,
-        ExecutionContext executionContext) {
-        TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
-            .getTableGroupConfigByName(tableGroupName);
-        List<RexNode> rexNodes = new ArrayList<>();
-        sqlAlterTableGroupExtractPartition.getHotKeys()
-            .forEach(o -> rexNodes.add(alterTableGroupExtractPartition.getPartBoundExprInfo()
-                .get(o)));
-
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
-        PartitionInfo partitionInfo =
-            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableInCurrentGroup);
-
-        if (sqlAlterTableGroupExtractPartition.getHotKeys().size() != partitionInfo.getPartitionColumns().size()) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                "the size of hot key list should equal to the size of sharding key list");
-        }
-
-        PartitionSpec partitionSpec = PartitionTupleRouteInfoBuilder
-            .getPartitionSpecByExprValues(partitionInfo, rexNodes, executionContext);
-        assert partitionSpec != null;
-        PartitionSpec prevPartitionSpec = partitionInfo.getPartitionBy().getPartitions().stream()
-            .filter(o -> o.getPosition().longValue() == partitionSpec.getPosition().longValue() - 1).findFirst()
-            .orElse(null);
-        PartitionGroupRecord splitPartitionGroupRecord = tableGroupConfig.getPartitionGroupRecords().stream()
-            .filter(o -> o.id.longValue() == partitionSpec.getLocation().getPartitionGroupId().longValue()).findFirst()
-            .orElse(null);
-        assert splitPartitionGroupRecord != null;
-
-        sqlAlterTableGroupExtractPartition.setExtractPartitionName(splitPartitionGroupRecord.partition_name);
-        Long[] atVal = PartitionTupleRouteInfoBuilder
-            .computeExprValuesHashCode(partitionInfo, rexNodes, executionContext);
-        int flag = PartitionPrunerUtils.getExtractPosition(partitionSpec, prevPartitionSpec, atVal);
-        if (flag == -2) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                "the hot key:" + sqlAlterTableGroupExtractPartition.getHotKeys().toString()
-                    + " is already in a exclusive partition");
-        }
-        String hotKeyPartitioName = StringUtils.EMPTY;
-        if (sqlAlterTableGroupExtractPartition.getHotKeyPartitionName() != null) {
-            hotKeyPartitioName = SQLUtils.normalizeNoTrim(sqlAlterTableGroupExtractPartition.getHotKeyPartitionName().toString());
-            for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
-                if (record.partition_name.equalsIgnoreCase(hotKeyPartitioName)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                        String.format("duplicate partition name:[%s]", hotKeyPartitioName));
-                }
-            }
-        }
-
-        if (StringUtils.isEmpty(hotKeyPartitioName)) {
-            List<String> newPartNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 3);
-            SqlIdentifier name1 = new SqlIdentifier(newPartNames.get(0), SqlParserPos.ZERO);
-            SqlPartition sqlPartition1 = new SqlPartition(name1, null, SqlParserPos.ZERO);
-            sqlAlterTableGroupExtractPartition.getNewPartitions().add(sqlPartition1);
-
-            SqlIdentifier name2 = new SqlIdentifier(newPartNames.get(1), SqlParserPos.ZERO);
-            SqlPartition sqlPartition2 = new SqlPartition(name2, null, SqlParserPos.ZERO);
-            sqlAlterTableGroupExtractPartition.getNewPartitions().add(sqlPartition2);
-            if (flag == 0) {
-                SqlIdentifier name3 = new SqlIdentifier(newPartNames.get(2), SqlParserPos.ZERO);
-                SqlPartition sqlPartition3 = new SqlPartition(name3, null, SqlParserPos.ZERO);
-                sqlAlterTableGroupExtractPartition.getNewPartitions().add(sqlPartition3);
-            }
-        } else {
-            List<String> newPartNames = new ArrayList<>();
-            if (flag == -1) {
-                newPartNames.add(hotKeyPartitioName);
-                newPartNames.addAll(PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1));
-            } else if (flag == 0) {
-                List<String> boundPartNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 2);
-                newPartNames.add(boundPartNames.get(0));
-                newPartNames.add(hotKeyPartitioName);
-                newPartNames.add(boundPartNames.get(1));
-            } else if (flag == 1) {
-                newPartNames.addAll(PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1));
-                newPartNames.add(hotKeyPartitioName);
-            } else {
-                assert false;
-            }
-            for (String partName : newPartNames) {
-                SqlIdentifier name = new SqlIdentifier(partName, SqlParserPos.ZERO);
-                SqlPartition sqlPartition = new SqlPartition(name, null, SqlParserPos.ZERO);
-                sqlAlterTableGroupExtractPartition.getNewPartitions().add(sqlPartition);
-            }
-        }
-        return getSplitPointsForHotValue(atVal, flag);
-    }
-
-    /**
-     * i.e. p=[1,9), if atVal=1, extractPosition = -1, [1,2),[2,9)
-     * if atval=3, extractPosition = 0, [1,3),[3,4),[4,9)
-     * if atVal=8, extractPosition = 1, [1,8),[8,9)
-     * if p=[1,2) atVal=1, extractPosition=-2 not need to split any more
-     */
-    private List<Long[]> getSplitPointsForHotValue(Long[] atValHashCode,
-                                                   int extractPosition) {
-        List<Long[]> splitPoints = new ArrayList<>();
-        if (extractPosition == -1) {
-            splitPoints.add(getThexNextHashPoint(atValHashCode));
-        } else if (extractPosition == 0) {
-            splitPoints.add(atValHashCode);
-            splitPoints.add(getThexNextHashPoint(atValHashCode));
-        } else if (extractPosition == 1) {
-            splitPoints.add(atValHashCode);
-        }
-        return splitPoints;
-    }
-
-    private Long[] getThexNextHashPoint(Long[] hashVals) {
-        Long[] nextPoint = new Long[hashVals.length];
-        boolean plusOne = true;
-        for (int i = hashVals.length - 1; i >= 0; i--) {
-            if (plusOne) {
-                if (hashVals[i] == Long.MAX_VALUE) {
-                    nextPoint[i] = Long.MIN_VALUE;
-                } else {
-                    nextPoint[i] = hashVals[i] + 1;
-                    plusOne = false;
-                }
-            } else {
-                nextPoint[i] = hashVals[i];
-            }
-        }
-        return nextPoint;
-    }
-
-    public AlterTableGroupExtractPartitionPreparedData getPreparedData() {
-        return preparedData;
     }
 
     public static LogicalAlterTableGroupExtractPartition create(DDL ddl) {

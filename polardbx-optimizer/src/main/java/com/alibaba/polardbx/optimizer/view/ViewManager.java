@@ -58,13 +58,17 @@ public class ViewManager extends AbstractLifecycle {
         predefineViews = TreeMaps.caseInsensitiveMap();
 
         defineVirtualView(VirtualViewType.VIRTUAL_STATISTIC, new String[] {
+            "SCHEMA_NAME",
             "TABLE_NAME",
             "TABLE_ROWS",
             "COLUMN_NAME",
             "CARDINALITY",
             "NDV_SOURCE",
             "TOPN",
-            "HISTOGRAM"});
+            "HISTOGRAM",
+            "LAST_MODIFY_TIME",
+            "LAST_ACCESS_TIME"
+        });
     }
 
     private static void defineView(String name, String[] columns, String definition) {
@@ -132,6 +136,10 @@ public class ViewManager extends AbstractLifecycle {
             logger.debug(e);
             return null;
         }
+    }
+
+    public List<String> selectAllViewName() {
+        return systemTableView.selectAllViewName();
     }
 
     private SystemTableView.Row innerSelect(String viewName) {

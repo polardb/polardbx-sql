@@ -30,12 +30,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 
 public abstract class AbstractDdlJob implements DdlJob {
 
     protected final DirectedAcyclicGraph taskGraph = DirectedAcyclicGraph.create();
-    protected final Set<String> excludeResources = new HashSet<>();
-    protected final Set<String> sharedResources = new HashSet<>();
+    protected final Set<String> excludeResources = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    protected final Set<String> sharedResources = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     protected int maxParallelism = 1;
 
     @Override
@@ -45,6 +46,20 @@ public abstract class AbstractDdlJob implements DdlJob {
             taskGraph.addVertex(task);
         }
         return this;
+    }
+
+    @Override
+    public DdlTask getTaskById(long taskId) {
+        Set<DirectedAcyclicGraph.Vertex> vertexSet = taskGraph.getVertexes();
+        if (CollectionUtils.isEmpty(vertexSet)) {
+            return null;
+        }
+        for (DirectedAcyclicGraph.Vertex v : vertexSet) {
+            if (v.object.getTaskId() == taskId) {
+                return v.object;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -62,6 +77,14 @@ public abstract class AbstractDdlJob implements DdlJob {
     public DdlJob removeTaskRelationship(DdlTask source, DdlTask target) {
         synchronized (taskGraph) {
             taskGraph.removeEdge(source, target);
+        }
+        return this;
+    }
+
+    @Override
+    public DdlJob removeRedundancyRelations() {
+        synchronized (taskGraph) {
+            taskGraph.removeRedundancyRelations();
         }
         return this;
     }
@@ -87,6 +110,17 @@ public abstract class AbstractDdlJob implements DdlJob {
                 if (v.object.getClass().equals(taskType)) {
                     result.add(v.object);
                 }
+            }
+            return result;
+        }
+    }
+
+    @Override
+    public List<DdlTask> getAllTasks() {
+        synchronized (taskGraph) {
+            List<DdlTask> result = new ArrayList<>();
+            for (DirectedAcyclicGraph.Vertex v : taskGraph.getVertexes()) {
+                result.add(v.object);
             }
             return result;
         }

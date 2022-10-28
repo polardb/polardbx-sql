@@ -39,7 +39,7 @@ EXPLAIN SELECT *
 FROM t_ubigint
 WHERE a BETWEEN 9223372036854775809 AND 9223372036854775809;
 Logical ExecutionPlan
-PhyTableOperation(tables="t_ubigint[p1]", sql="SELECT `t_ubigint`.`a` FROM ? AS `t_ubigint` WHERE (`t_ubigint`.`a` BETWEEN ? AND ?)")
+PhyTableOperation(tables="t_ubigint[p1]", sql="SELECT `t_ubigint`.`a` FROM ? AS `t_ubigint` WHERE (`t_ubigint`.`a` BETWEEN ? AND ?)", params="9223372036854775809,9223372036854775809")
 EXPLAIN SELECT *
 FROM t_ubigint
 WHERE a = 9223372036854775809;

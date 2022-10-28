@@ -126,12 +126,8 @@
     select * from lineitem_index_reverse where l_linenumber = 1 and l_orderkey in (1,2,3);
 
   plan: |
-    project(l_orderkey="l_orderkey", l_partkey="l_partkey", l_suppkey="l_suppkey", l_linenumber="l_linenumber", l_quantity="l_quantity", l_extendedprice="l_extendedprice", l_discount="l_discount", l_tax="l_tax", l_returnflag="l_returnflag", l_linestatus="l_linestatus", l_shipdate="l_shipdate", l_commitdate="l_commitdate", l_receiptdate="l_receiptdate", l_shipinstruct="l_shipinstruct", l_shipmode="l_shipmode", l_comment="l_comment")
-      bkajoin(condition="expr$0 = l_orderkey", type="inner")
-        hashagg(group="expr$0")
-          dynamicvalues(tuples=[{ 1 }, { 2 }, { 3 }])
-        gather(concurrent=true)
-          logicalview(tables="[0000-0003].lineitem_index_reverse", shardcount=4, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem_index_reverse` as `lineitem_index_reverse` where ((`l_linenumber` = 1) and (`l_orderkey` in (...)))")
+    gather(concurrent=true)
+      logicalview(tables="[0001-0003].lineitem_index_reverse", shardcount=3, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem_index_reverse` as `lineitem_index_reverse` where ((`l_orderkey` in(1, 2, 3)) and (`l_linenumber` = 1))")
 
 - sql: |
     /*+TDDL:cmd_extra(enable_push_join=false,enable_cbo_push_join=false)*/ select * from orders join lineitem_index_reverse on l_orderkey = o_orderkey where l_linenumber in (1,2) and o_custkey = 1;
@@ -214,11 +210,10 @@
     SELECT pad FROM sbtest1 force index(g_i_g) WHERE g=79733308 and id = 1;
 
   plan: |
-    Project(pad="pad")
-      BKAJoin(condition="id = id", type="inner")
-        IndexScan(tables="optest_0000.g_i_g_04", sql="SELECT `id` FROM `g_i_g` AS `g_i_g` WHERE ((`g` = 79733308) AND (`id` = 1))")
-        LogicalView(tables="optest_0000.sbtest1_1", sql="SELECT `id`, `pad` FROM `sbtest1` AS `sbtest1` WHERE (((`g` = 79733308) AND (`id` = 1)) AND (`id` IN (...)))")
-
+    project(pad="pad")
+      bkajoin(condition="id = id", type="inner")
+        indexscan(tables="optest_0000.g_i_g_04", sql="select `id` from `g_i_g` as `g_i_g` where ((`id` = 1) and (`g` = 79733308))")
+        logicalview(tables="optest_0000.sbtest1_1", sql="select `id`, `pad` from `sbtest1` as `sbtest1` where (((`id` = 1) and (`g` = 79733308)) and (`id` in (...)))")
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_PUSH_JOIN=false,ENABLE_CBO_PUSH_JOIN=false)*/
     select l_orderkey from lineitem join orders on l_orderkey = o_orderkey limit 10;

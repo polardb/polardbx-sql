@@ -31,6 +31,8 @@ import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
 
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+
 /**
  * created by ziyang.lb
  **/
@@ -62,6 +64,6 @@ public class CdcMoveDatabaseDdlMarkTask extends BaseDdlTask {
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, "", sqlKind.name(), ddlStmt, DdlType.MOVE_DATABASE,
                 ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
-                executionContext.getExtraCmds(), false, null);
+                buildExtendParameter(executionContext), false, null);
     }
 }

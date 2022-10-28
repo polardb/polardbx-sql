@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -60,7 +61,7 @@ public abstract class BaseDalOperation extends BaseQueryOperation {
                             String dbIndex, String phyTable, String schemaName) {
         this(cluster,
             traitSet,
-            RelUtils.toNativeSqlLine(nativeSqlNode),
+            RelUtils.toNativeBytesSql(nativeSqlNode),
             nativeSqlNode,
             DbType.MYSQL,
             rowType,
@@ -75,7 +76,7 @@ public abstract class BaseDalOperation extends BaseQueryOperation {
                             Map<String, List<List<String>>> targetTable, List<String> tableNames, String schemaName) {
         this(cluster,
             traitSet,
-            RelUtils.toNativeSqlLine(nativeSqlNode),
+            RelUtils.toNativeBytesSql(nativeSqlNode),
             nativeSqlNode,
             DbType.MYSQL,
             rowType,
@@ -86,7 +87,7 @@ public abstract class BaseDalOperation extends BaseQueryOperation {
             schemaName);
     }
 
-    public BaseDalOperation(RelOptCluster cluster, RelTraitSet traitSet, String sqlTemplate, SqlNode nativeSqlNode,
+    public BaseDalOperation(RelOptCluster cluster, RelTraitSet traitSet, BytesSql sqlTemplate, SqlNode nativeSqlNode,
                             DbType dbType, RelDataType rowType, Map<String, List<List<String>>> targetTable,
                             List<String> tableNames, String dbIndex, String phyTable, String schemaName) {
         super(cluster, traitSet, sqlTemplate, nativeSqlNode, dbType);
@@ -112,7 +113,7 @@ public abstract class BaseDalOperation extends BaseQueryOperation {
         } else {
             pw.item(RelDrdsWriter.REL_NAME, getExplainName());
             pw.item("node", ExplainUtils.compressName(targetTable.keySet()));
-            pw.item("sql", this.sqlTemplate);
+            pw.item("sql", this.bytesSql.display());
             return pw;
         }
     }
@@ -126,7 +127,7 @@ public abstract class BaseDalOperation extends BaseQueryOperation {
         final SqlNode tableName = dal.getTableName();
         if (null != tableName && TStringUtil.isNotBlank(phyTable)) {
             dal.setTableName(phyTable);
-            this.sqlTemplate = RelUtils.toNativeSqlLine(dal);
+            this.bytesSql = RelUtils.toNativeBytesSql(dal);
         }
         return ImmutableList.of(PhyDal.create(this, dbIndex, phyTable));
     }

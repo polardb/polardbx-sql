@@ -18,6 +18,9 @@ package com.alibaba.polardbx.executor.scaleout;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.LongConfigParam;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -164,7 +167,8 @@ public class ScaleOutUtils {
         for (String groupName : groupNameList) {
             if (beforeGroupType >= 0) {
                 DbGroupInfoRecord
-                    dbGroupInfoRecord = dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(schemaName, groupName, false);
+                    dbGroupInfoRecord =
+                    dbGroupInfoAccessor.getDbGroupInfoByDbNameAndGroupName(schemaName, groupName, false);
                 if (dbGroupInfoRecord.groupType != beforeGroupType) {
                     continue;
                 }

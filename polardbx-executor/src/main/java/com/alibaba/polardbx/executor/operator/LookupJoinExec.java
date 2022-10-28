@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -29,9 +28,9 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
-import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.Arrays;
@@ -48,7 +47,6 @@ import static com.alibaba.polardbx.executor.utils.ExecUtils.buildOneChunk;
 public class LookupJoinExec extends AbstractBufferedJoinExec implements ResumeExec {
 
     int batchSize;
-    final LookupPredicate predicates;
     boolean innerIsOpen;
     LookupTableExec lookupTableExec;
     ResumeExec outerResumeExec;
@@ -69,21 +67,23 @@ public class LookupJoinExec extends AbstractBufferedJoinExec implements ResumeEx
 
     boolean outerNoMoreData;
 
-    boolean shareReadView;
+    /**
+     * 允许多条读连接流式执行
+     */
+    boolean allowMultiReadConnStreaming;
 
     public LookupJoinExec(Executor outerInput, Executor innerInput,
                           JoinRelType joinType, boolean maxOneRow,
                           List<EquiJoinKey> joinKeys, List<EquiJoinKey> allJoinKeys, IExpression otherCondition,
-                          LookupPredicate predicates,
                           ExecutionContext context,
                           int shardCount,
-                          int parallelism) {
+                          int parallelism,
+                          boolean allowMultiReadConnStreaming) {
         super(outerInput, innerInput, joinType, maxOneRow, joinKeys, otherCondition, null, null, context);
         getInnerLookupTableExec();
         getOuterExec();
         initBatchSize(shardCount, parallelism);
 
-        this.predicates = predicates;
         this.blocked = ProducerExecutor.NOT_BLOCKED;
 
         DataType[] keyColumnTypes = allJoinKeys.stream().map(t -> t.getUnifiedType()).toArray(DataType[]::new);
@@ -93,7 +93,7 @@ public class LookupJoinExec extends AbstractBufferedJoinExec implements ResumeEx
                 outerInput.getDataTypes(), outerKeyColumns, keyColumnTypes, context);
 
         this.streamJoin = true;
-        this.shareReadView = context.isShareReadView();
+        this.allowMultiReadConnStreaming = allowMultiReadConnStreaming;
     }
 
     /**
@@ -181,7 +181,7 @@ public class LookupJoinExec extends AbstractBufferedJoinExec implements ResumeEx
             Chunk outerChunk = outerInput.nextChunk();
             if (outerChunk != null) {
                 batchQueue.addChunk(outerChunk);
-                if (shareReadView && batchQueue.getTotalRowCount().get() > batchSize) {
+                if (allowMultiReadConnStreaming && batchQueue.getTotalRowCount().get() > batchSize) {
                     // 流式情况下攒够一批数据就去lookup
                     beingConsumeOuter = false;
                     blocked = ProducerExecutor.NOT_BLOCKED;
@@ -272,7 +272,7 @@ public class LookupJoinExec extends AbstractBufferedJoinExec implements ResumeEx
                 }
             } else {
                 // 再尝试拉取outer数据
-                if (shareReadView && !beingConsumeOuter && !outerInput.produceIsFinished()) {
+                if (allowMultiReadConnStreaming && !beingConsumeOuter && !outerInput.produceIsFinished()) {
                     beingConsumeOuter = true;
                     return null;
                 }
@@ -316,7 +316,7 @@ public class LookupJoinExec extends AbstractBufferedJoinExec implements ResumeEx
         int position = 0;
         for (int chunkId = 0; chunkId < buildKeyChunks.getChunkCount(); ++chunkId) {
             final Chunk keyChunk = buildKeyChunks.getChunk(chunkId);
-            buildOneChunk(keyChunk, position, hashTable, positionLinks, null);
+            buildOneChunk(keyChunk, position, hashTable, positionLinks, null, getIgnoreNullsInJoinKey());
             position += keyChunk.getPositionCount();
         }
         assert position == size;

@@ -24,8 +24,13 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.sharding.result.PlanShardInfo;
+import com.google.common.collect.Maps;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlReplace;
+import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.SqlShow;
+import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.BitSets;
 
 import java.util.ArrayList;
@@ -64,8 +69,8 @@ public class ExecutionPlan {
     }
 
     private RelNode plan;
-    private CursorMeta cursorMeta;
-    private SqlNode ast;
+    private final CursorMeta cursorMeta;
+    private final SqlNode ast;
     private boolean hitCache;
     private boolean isExplain;
     private BitSet planProperties = new BitSet();
@@ -98,7 +103,7 @@ public class ExecutionPlan {
     /**
      * all shard info of plan
      */
-    private PlanShardInfo planShardInfo;
+    private Map<String, PlanShardInfo> planShardInfo = Maps.newConcurrentMap();
 
     // the cache mem pool of current plan
     private MemoryPool planMemCachePool = null;
@@ -115,9 +120,7 @@ public class ExecutionPlan {
     private Pair<String, String> dbIndexAndTableName = null;
 
     public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta, BitSet planProperties) {
-        this.ast = ast;
-        this.plan = plan;
-        this.cursorMeta = columnMeta;
+        this(ast, plan, columnMeta);
         this.planProperties = planProperties;
     }
 
@@ -302,12 +305,15 @@ public class ExecutionPlan {
         this.schemaNames = schemaNames;
     }
 
-    public PlanShardInfo getPlanShardInfo() {
-        return planShardInfo;
+    public PlanShardInfo getPlanShardInfo(String key) {
+        if (!planShardInfo.containsKey(key)) {
+
+        }
+        return planShardInfo.get(key);
     }
 
-    public void setPlanShardInfo(PlanShardInfo planShardInfo) {
-        this.planShardInfo = planShardInfo;
+    public void setPlanShardInfo(String key, PlanShardInfo planShardInfo) {
+        this.planShardInfo.put(key, planShardInfo);
     }
 
     public AtomicLong getHitCount() {

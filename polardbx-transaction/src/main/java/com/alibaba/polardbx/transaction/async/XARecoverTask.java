@@ -97,7 +97,8 @@ public class XARecoverTask implements Runnable {
 
         try {
             final List<String> groupList = executor.getGroupList();
-            final Set<String> groupSet = new HashSet<>(groupList);
+            final Set<String> groupSet = new HashSet<>(groupList.size());
+            groupList.stream().map(XAUtils::uniqueGroupForBqual).forEach(groupSet::add);
 
             // Instance id (IP:PORT) -> DataSource (one of its group data sources)
             Map<String, IDataSource> instanceDataSources = new HashMap<>();
@@ -277,7 +278,7 @@ public class XARecoverTask implements Runnable {
             } else if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_XAER_NOTA) {
                 return true; // Transaction lost or recovered by others
             }
-            TransactionLogger.getLogger().error("XA ROLLBACK error", ex);
+            TransactionLogger.error("XA ROLLBACK error", ex);
             return false;
         }
     }
@@ -310,7 +311,7 @@ public class XARecoverTask implements Runnable {
             } else if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_XAER_NOTA) {
                 return true; // Transaction lost or recovered by others
             }
-            TransactionLogger.getLogger().error("XA COMMIT error", ex);
+            TransactionLogger.error("XA COMMIT error", ex);
             return false;
         }
     }

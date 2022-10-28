@@ -164,7 +164,6 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCrea
         return null;
     }
 
-
     public SQLCreateIndexStatement clone() {
         SQLCreateIndexStatement x = new SQLCreateIndexStatement();
         indexDefinition.cloneTo(x.indexDefinition);
@@ -321,6 +320,14 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCrea
 
     public void setTablePartitionBy(SQLExpr x) {
         indexDefinition.setTbPartitionBy(x);
+    }
+
+    public SQLName getTableGroup() {
+        return this.indexDefinition.getTableGroup();
+    }
+
+    public void setTableGroup(SQLName tableGroup) {
+        this.indexDefinition.setTableGroup(tableGroup);
     }
 
     public boolean isStoring() {

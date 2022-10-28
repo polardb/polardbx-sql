@@ -12,7 +12,7 @@ public class SqlAlterTableRepartitionLocalPartition extends SqlAlterTable {
     protected SqlPartitionByRange localPartition;
 
     public SqlAlterTableRepartitionLocalPartition(SqlIdentifier tableName, SqlPartitionByRange localPartition) {
-        super(tableName, null, "", null, new ArrayList<>(), SqlParserPos.ZERO);
+        super(null, tableName, null, "", null, new ArrayList<>(), SqlParserPos.ZERO);
         this.name = tableName;
         this.localPartition = localPartition;
     }

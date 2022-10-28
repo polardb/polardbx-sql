@@ -16,17 +16,22 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -38,16 +43,28 @@ import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.SqlValuesOperator;
+import org.apache.calcite.sql.fun.SqlRowOperator;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFamily;
+import org.apache.calcite.util.Pair;
 
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
@@ -94,7 +111,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         /**
          * 如果仅下发至单库单表,替换为 SingleTableOperation
          */
-        if (tableNames.size() == 1) {
+        if (tableNames.size() == 1 && !lv.hasDynamicPruning()) {
             newNode = buildSingleTableScan(oc, lv, or, false);
         } else if (tableNames.size() > 1) {
             // ignore
@@ -107,6 +124,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
 
     private RelNode buildSingleTableScan(OptimizerContext oc, LogicalView lv, TddlRuleManager or,
                                          boolean removeSchema) {
+
         if (removeSchema) {
             RemoveSchemaNameVisitor visitor = new RemoveSchemaNameVisitor(lv.getSchemaName());
             this.sqlTemplate = this.sqlTemplate.accept(visitor);
@@ -135,14 +153,24 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
                 comparatives,
                 dataTypeMap);
         } else {
+            if (lv.useSelectPartitions()) {
+                /**
+                 * when select with partition selection, should not build simple plan
+                 */
+                return null;
+            }
+
             // table is in new part db
             /**
              * lv may be LogicalView or LogicalModifyView
              */
-            if (PartitionPrunerUtils.checkIfPointSelect(lv.getRelShardInfo().getPartPruneStepInfo())) {
+            if (!lv.getPushDownOpt().couldDynamicPruning() && PartitionPrunerUtils.checkIfPointSelect(
+                lv.getRelShardInfo(pc.getExecutionContext()).getPartPruneStepInfo(), pc.getExecutionContext())) {
                 processor = ShardProcessor
-                    .createPartTblShardProcessor(schemaName, tableName, lv.getRelShardInfo().getPartPruneStepInfo(), null,
-                        true);  
+                    .createPartTblShardProcessor(schemaName, tableName,
+                        lv.getRelShardInfo(pc.getExecutionContext()).getPartPruneStepInfo(),
+                        null,
+                        true);
             } else {
                 return null;
             }
@@ -167,7 +195,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         SingleTableOperation singleTableOperation = new SingleTableOperation(lv,
             processor,
             tableName,
-            RelUtils.toNativeSql(sqlTemplate),
+            RelUtils.toNativeBytesSql(sqlTemplate),
             paramIndex, SingleTableOperation.NO_AUTO_INC);
 
         singleTableOperation.setLockMode(lv.lockMode);
@@ -176,10 +204,13 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         singleTableOperation.setNativeSqlNode(sqlTemplate);
         singleTableOperation.setXTemplate(lv.getXPlan());
         singleTableOperation.setHintContext(lv.getHintContext());
+        final BytesSql bytesSql = singleTableOperation.getBytesSql();
+        singleTableOperation.setGalaxyPrepareDigest(lv.getGalaxyPrepareDigest(pc.getExecutionContext(), bytesSql));
+        singleTableOperation.setSupportGalaxyPrepare(
+            lv.isSupportGalaxyPrepare() && singleTableOperation.getGalaxyPrepareDigest() != null);
         // Init sql digest.
         try {
-            singleTableOperation.setSqlDigest(com.google.protobuf.ByteString
-                .copyFrom(MessageDigest.getInstance("md5").digest(singleTableOperation.getNativeSql().getBytes())));
+            singleTableOperation.setSqlDigest(bytesSql.digest());
         } catch (Exception ignore) {
         }
 
@@ -213,6 +244,15 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             return buildLogicalModify(logicalInsert);
         }
 
+        // insert select?
+        if (logicalInsert.isSourceSelect()) {
+            // Some part of select node may not be able to convert to SqlNode
+            // Like LogicalExpand or SemiJoin
+            logicalInsert.initLiteralColumnIndex(this.buildPlanForScaleOut);
+            logicalInsert.initAutoIncrementColumn();
+            return logicalInsert;
+        }
+
         TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
         // broadcast? single table?
         if (or.isTableInSingleDb(tableName) || or.isBroadCast(tableName)) {
@@ -222,15 +262,6 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         // hot key?
         if (or.containExtPartitions(tableName)) {
             return buildLogicalModify(logicalInsert);
-        }
-
-        // insert select?
-        if (logicalInsert.isSourceSelect()) {
-            // Some part of select node may not be able to convert to SqlNode
-            // Like LogicalExpand or SemiJoin
-            logicalInsert.initLiteralColumnIndex(this.buildPlanForScaleOut);
-            logicalInsert.initAutoIncrementColumn();
-            return logicalInsert;
         }
 
         LogicalDynamicValues values = (LogicalDynamicValues) logicalInsert.getInput();
@@ -287,15 +318,19 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         // We only rewrites INSERT / UPSERT here, so we only need to check whether UPSERT will modify partition key.
         // If UPSERT does modify partition key, then we need to use LogicalInsert, which has converted this UPSERT to
         // SELECT + DELETE + INSERT.
+        // However, If all sharding columns in update list referencing same column in after value, we can pushdown this
+        // upsert since even if it does upsert, it will still be in the same shard
         if (logicalInsert instanceof LogicalUpsert) {
             LogicalUpsert logicalUpsert = (LogicalUpsert) logicalInsert;
-            if (logicalUpsert.isModifyPartitionKey()) {
+            if (logicalUpsert.isModifyPartitionKey() && !logicalUpsert.isAllUpdatedSkRefValue()) {
                 return buildLogicalModify(logicalInsert);
             }
         }
 
-        if (!buildPlanForScaleOut && (ComplexTaskPlanUtils.isDeleteOnly(tableMeta) && !logicalInsert.isInsertIgnore() ||
-            !ComplexTaskPlanUtils.canWrite(tableMeta))) {
+        boolean isColumnMultiWrite = TableColumnUtils.isModifying(schemaName, tableName, ec);
+        // Insert source must be value here
+        if (!buildPlanForScaleOut && (ComplexTaskPlanUtils.isDeleteOnly(tableMeta) && !logicalInsert.isInsertIgnore()
+            || !ComplexTaskPlanUtils.canWrite(tableMeta)) && !isColumnMultiWrite) {
             RelNode singleTableInsert = buildSingleTableInsert(logicalInsert, ec);
             if (singleTableInsert != null) {
                 return singleTableInsert;
@@ -352,7 +387,8 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             return logicalModifyView;
         }
 
-        if (logicalModifyView.isSingleGroup() && !buildPlanForScaleOut) {
+        boolean isColumnMultiWrite = TableColumnUtils.isModifying(schemaName, tableName, ec);
+        if (logicalModifyView.isSingleGroup() && !buildPlanForScaleOut && !isColumnMultiWrite) {
             OptimizerContext context = OptimizerContext.getContext(schemaName);
             TddlRuleManager or = context.getRuleManager();
             RelNode tableScan = buildSingleTableScan(context, logicalModifyView, or, true);
@@ -404,22 +440,36 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             return null;
         }
 
-        // If this table's logical column order is different from physical column order, then we can not use input's
-        // sqlTemplate since it may not contain column names
+        // If this table's logical column order is different from physical column order and user does not specify
+        // columns, then we can not use input's sqlTemplate since it may not contain column names
         TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
-        if (tableMeta.requireLogicalColumnOrder()) {
-            sqlTemplate = logicalInsert.getSqlTemplate();
+        SqlNodeList columnList = ((SqlInsert) sqlTemplate).getTargetColumnList();
+
+        // We must add column names if we are doing column multi-write
+        boolean isColumnMultiWrite = TableColumnUtils.isModifying(schemaName, tableName, ec);
+        if ((tableMeta.requireLogicalColumnOrder() || isColumnMultiWrite) && (columnList == null || GeneralUtil.isEmpty(
+            columnList.getList()))) {
+            SqlNodeList sqlNodeList = ((SqlInsert) logicalInsert.getSqlTemplate()).getTargetColumnList();
+            ((SqlInsert) sqlTemplate).setOperand(3, sqlNodeList);
+        }
+
+        TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
+        Pair<String, String> columnMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
+        if (columnMapping != null) {
+            TableColumnUtils.rewriteSqlTemplate((SqlInsert) sqlTemplate, columnMapping);
         }
 
         SingleTableOperation singleTableOperation = new SingleTableOperation(logicalInsert,
             processor,
             tableName,
-            RelUtils.toNativeSql(sqlTemplate),
+            RelUtils.toNativeBytesSql(sqlTemplate),
             paramIndex,
             autoIncParamIndex);
         singleTableOperation.setSchemaName(schemaName);
         singleTableOperation.setKind(sqlTemplate.getKind());
         singleTableOperation.setNativeSqlNode(sqlTemplate);
+        // set galaxy digest
+        Planner.setGalaxyPrepareDigest(singleTableOperation, ImmutableList.of(tableName), ec, logicalInsert);
 
         return singleTableOperation;
     }

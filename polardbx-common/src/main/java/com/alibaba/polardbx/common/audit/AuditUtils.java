@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.audit;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
@@ -23,6 +24,10 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class AuditUtils {
+
+    private static volatile boolean enableLogAudit = Boolean.parseBoolean(
+        ConnectionParams.ENABLE_LOGIN_AUDIT_CONFIG.getDefault());
+
     protected final static Logger auditLogger = LoggerFactory.getLogger("audit");
 
     public static void logAuditInfo(String message, AuditAction action) {
@@ -32,5 +37,13 @@ public class AuditUtils {
             auditLogger.info(
                 f.format(new Date()) + ',' + message + ',' + action);
         }
+    }
+
+    public static void setEnableLogAudit(boolean enableLogAudit) {
+        AuditUtils.enableLogAudit = enableLogAudit;
+    }
+
+    public static boolean isEnableLogAudit() {
+        return enableLogAudit;
     }
 }

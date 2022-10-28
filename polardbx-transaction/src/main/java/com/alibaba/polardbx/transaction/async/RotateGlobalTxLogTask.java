@@ -18,6 +18,7 @@ package com.alibaba.polardbx.transaction.async;
 
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -28,6 +29,7 @@ import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,6 +37,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class RotateGlobalTxLogTask implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(RotateGlobalTxLogTask.class);
+
+    private final Calendar startTime;
+    private final Calendar endTime;
 
     private final int beforeSeconds;
     private final int nextSeconds;
@@ -47,8 +52,10 @@ public class RotateGlobalTxLogTask implements Runnable {
     /**
      * RotateGlobalTxLogTask will keep the global tx log in [now() - beforeSeconds, now() + nextSeconds].
      */
-    public RotateGlobalTxLogTask(TransactionExecutor executor, int beforeSeconds, int nextSeconds,
-                                 AsyncTaskQueue asyncQueue) {
+    public RotateGlobalTxLogTask(TransactionExecutor executor, Calendar startTime, Calendar endTime,
+                                 int beforeSeconds, int nextSeconds, AsyncTaskQueue asyncQueue) {
+        this.startTime = startTime;
+        this.endTime = endTime;
         this.beforeSeconds = beforeSeconds;
         this.asyncQueue = asyncQueue;
         this.executor = executor;
@@ -68,22 +75,40 @@ public class RotateGlobalTxLogTask implements Runnable {
         boolean hasLeadership = ExecUtils.hasLeadership(asyncQueue.getSchema());
 
         if (!hasLeadership) {
-            TransactionLogger.getLogger().info("Skip rotate task since I am not the leader");
+            TransactionLogger.info("Skip rotate task since I am not the leader");
             return;
         }
 
-        TransactionLogger.getLogger().info("Rotate task starts");
-        long startTime = System.nanoTime();
+        if (!isInAllowedInterval()) {
+            return;
+        }
+
+        TransactionLogger.info(asyncQueue.getSchema() + ": Rotate task starts");
+        long begin = System.nanoTime();
 
         try {
             purgedCount = doRotate();
         } catch (Exception ex) {
-            logger.error("Rotate global tx log failed", ex);
+            logger.error(asyncQueue.getSchema() + ": Rotate global tx log failed", ex);
         }
 
-        double duration = (System.nanoTime() - startTime) / 1e9;
-        TransactionLogger.getLogger()
-            .info("Rotate tx log task completed. " + purgedCount + " trans purged. Cost " + duration + " secs");
+        double duration = (System.nanoTime() - begin) / 1e9;
+        TransactionLogger
+            .info(asyncQueue.getSchema() + ": Rotate tx log task completed. "
+                + purgedCount + " trans purged. Cost " + duration + " secs");
+    }
+
+    private boolean isInAllowedInterval() {
+        final Calendar currentTime = Calendar.getInstance();
+        final Calendar start = (Calendar) currentTime.clone();
+        final Calendar end = (Calendar) currentTime.clone();
+        start.set(Calendar.HOUR_OF_DAY, startTime.get(Calendar.HOUR_OF_DAY));
+        start.set(Calendar.MINUTE, startTime.get(Calendar.MINUTE));
+        start.set(Calendar.SECOND, startTime.get(Calendar.SECOND));
+        end.set(Calendar.HOUR_OF_DAY, endTime.get(Calendar.HOUR_OF_DAY));
+        end.set(Calendar.MINUTE, endTime.get(Calendar.MINUTE));
+        end.set(Calendar.SECOND, endTime.get(Calendar.SECOND));
+        return (currentTime.after(start) && currentTime.before(end));
     }
 
     private int doRotate() {

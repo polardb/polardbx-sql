@@ -31,7 +31,8 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
  */
 public final class StartHandler {
 
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
+    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore,
+                              boolean inProcedureCall) {
         Throwable sqlEx = null;
         try {
             SQLStartTransactionStatement startStmt =
@@ -41,8 +42,10 @@ public final class StartHandler {
                 level = IsolationLevel.REPEATABLE_READ;
             }
             c.begin(startStmt.isReadOnly(), level);
-            PacketOutputProxyFactory.getInstance().createProxy(c)
-                .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+            if (!inProcedureCall) {
+                PacketOutputProxyFactory.getInstance().createProxy(c)
+                    .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+            }
         } catch (Throwable ex) {
             sqlEx = ex;
             throw ex;

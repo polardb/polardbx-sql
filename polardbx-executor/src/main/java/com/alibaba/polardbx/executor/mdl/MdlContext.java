@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.mdl;
 
 import com.google.common.base.Preconditions;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;

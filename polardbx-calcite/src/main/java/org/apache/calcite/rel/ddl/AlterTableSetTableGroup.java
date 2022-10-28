@@ -16,6 +16,7 @@
 
 package org.apache.calcite.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -38,32 +39,46 @@ import java.util.Map;
  */
 public class AlterTableSetTableGroup extends DDL {
     final String tableGroupName;
+    final List<SqlIdentifier> objectNames;
+    final boolean force;
 
     protected AlterTableSetTableGroup(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                       RelDataType rowType,
+                                      List<SqlIdentifier> objectNames,
                                       SqlNode tableName,
-                                      String tableGroupName) {
+                                      String tableGroupName,
+                                      boolean force) {
         super(cluster, traits, ddl, rowType);
         this.tableGroupName = tableGroupName;
         this.sqlNode = ddl;
+        this.objectNames = objectNames;
         this.setTableName(tableName);
+        this.force = force;
     }
 
     public static AlterTableSetTableGroup create(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
-                                                 RelDataType rowType, SqlNode tableName,
-                                                 String tableGroupName) {
+                                                 RelDataType rowType, List<SqlIdentifier> objectNames, SqlNode tableName,
+                                                 String tableGroupName, boolean force) {
 
-        return new AlterTableSetTableGroup(cluster, traits, ddl, rowType, tableName, tableGroupName);
+        return new AlterTableSetTableGroup(cluster, traits, ddl, rowType, objectNames, tableName, tableGroupName, force);
     }
 
     @Override
     public AlterTableSetTableGroup copy(
         RelTraitSet traitSet, List<RelNode> inputs) {
         assert traitSet.containsIfApplicable(Convention.NONE);
-        return new AlterTableSetTableGroup(this.getCluster(), traitSet, this.ddl, rowType, getTableName(), tableGroupName);
+        return new AlterTableSetTableGroup(this.getCluster(), traitSet, this.ddl, rowType, this.objectNames, getTableName(), tableGroupName, force);
     }
 
     public String getTableGroupName() {
         return tableGroupName;
+    }
+
+    public List<SqlIdentifier> getObjectNames() {
+        return objectNames;
+    }
+
+    public boolean isForce() {
+        return force;
     }
 }

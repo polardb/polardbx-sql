@@ -38,7 +38,7 @@ public class TruncateTableValidateTask extends BaseValidateTask {
     public TruncateTableValidateTask(String schemaName, String logicalTableName, TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
-        this.tableGroupConfig = tableGroupConfig;
+        this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
     }
 
     @Override

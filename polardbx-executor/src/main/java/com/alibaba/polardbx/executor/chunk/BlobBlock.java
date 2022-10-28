@@ -20,6 +20,9 @@ import com.alibaba.polardbx.optimizer.core.datatype.BlobType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import java.sql.Blob;
+import java.sql.SQLException;
+
+import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
 
 /**
  * Blob Block
@@ -63,5 +66,22 @@ public class BlobBlock extends ReferenceBlock<Blob> {
             return 0;
         }
         return ((BlobType) DataTypes.BlobType).hashcode(getBlob(position));
+    }
+
+    @Override
+    public int checksum(int position) {
+        if (isNull(position)) {
+            return NULL_TAG;
+        }
+
+        Blob blob = getBlob(position);
+        int size;
+        try {
+            size = (int) blob.length();
+            byte[] rawBytes = blob.getBytes(1, size);
+            return ChunkUtil.hashCode(rawBytes, 0, rawBytes.length);
+        } catch (SQLException e) {
+            return NULL_TAG;
+        }
     }
 }

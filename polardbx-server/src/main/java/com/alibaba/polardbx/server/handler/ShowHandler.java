@@ -23,6 +23,7 @@ import com.alibaba.polardbx.server.response.ShowCacheStats;
 import com.alibaba.polardbx.server.response.ShowConnection;
 import com.alibaba.polardbx.server.response.ShowDatabases;
 import com.alibaba.polardbx.server.response.ShowErrors;
+import com.alibaba.polardbx.server.response.ShowFullDatabases;
 import com.alibaba.polardbx.server.response.ShowFileStorage;
 import com.alibaba.polardbx.server.response.ShowGitCommit;
 import com.alibaba.polardbx.server.response.ShowHelp;
@@ -84,6 +85,7 @@ public final class ShowHandler {
                 break;
             case ServerParseShow.MDL_DEADLOCK_DETECTION:
                 ShowMdlDeadlockDetectionStatus.response(c);
+                break;
             case ServerParseShow.MPP:
                 ShowMpp.execute(c);
                 break;
@@ -101,6 +103,9 @@ public final class ShowHandler {
                 break;
             case ServerParseShow.FILE_STORAGE:
                 ShowFileStorage.execute(c);
+                break;
+            case ServerParseShow.FULL_DATABASES:
+                ShowFullDatabases.response(c, hasMore);
                 break;
             default:
                 c.execute(stmt, hasMore);

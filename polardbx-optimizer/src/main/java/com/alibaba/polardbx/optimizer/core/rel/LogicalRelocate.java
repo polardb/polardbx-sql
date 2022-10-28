@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.RelocateWriter;
 import com.google.common.base.Preconditions;
@@ -31,8 +32,11 @@ import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Util;
+import org.apache.calcite.util.mapping.Mapping;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -45,17 +49,31 @@ import java.util.stream.Stream;
 public class LogicalRelocate extends TableModify {
 
     private final String schemaName;
-    private final List<RelocateWriter> primaryRelocateWriters;
-    private final List<DistinctWriter> primaryUpdateWriters;
-    private final List<RelocateWriter> gsiRelocateWriters;
-    private final List<DistinctWriter> gsiUpdateWriters;
 
     // Positions of auto_increment columns update columns
     private final List<Integer> autoIncColumns;
 
-    protected LogicalRelocate(LogicalModify update, List<RelocateWriter> primaryRelocateWriters,
-                              List<DistinctWriter> primaryUpdateWriters, List<RelocateWriter> gsiRelocateWriters,
-                              List<DistinctWriter> gsiUpdateWriters, List<Integer> autoIncColumns) {
+    // Writers group by target table
+    private final Map<Integer, List<RelocateWriter>> relocateWriterMap;
+    private final Map<Integer, List<DistinctWriter>> modifyWriterMap;
+
+    // Source columns and target columns group by target table
+    private final Map<Integer, Mapping> setColumnTargetMappings;
+    private final Map<Integer, Mapping> setColumnSourceMappings;
+    private final Map<Integer, List<ColumnMeta>> setColumnMetas;
+
+    // Primary writer
+    private final Map<Integer, DistinctWriter> primaryDistinctWriter;
+    private final Map<Integer, RelocateWriter> primaryRelocateWriter;
+
+    protected LogicalRelocate(LogicalModify update, List<Integer> autoIncColumns,
+                              Map<Integer, List<RelocateWriter>> relocateWriterMap,
+                              Map<Integer, List<DistinctWriter>> modifyWriterMap,
+                              Map<Integer, Mapping> setColumnTargetMappings,
+                              Map<Integer, Mapping> setColumnSourceMappings,
+                              Map<Integer, List<ColumnMeta>> setColumnMetas,
+                              Map<Integer, DistinctWriter> primaryDistinctWriter,
+                              Map<Integer, RelocateWriter> primaryRelocateWriter) {
         super(update.getCluster(),
             update.getTraitSet(),
             update.getTable(),
@@ -70,21 +88,27 @@ public class LogicalRelocate extends TableModify {
             update.getAppendedColumnIndex(),
             update.getHints(),
             update.getTableInfo());
-        this.primaryRelocateWriters = primaryRelocateWriters;
-        this.primaryUpdateWriters = primaryUpdateWriters;
-        this.gsiRelocateWriters = gsiRelocateWriters;
-        this.gsiUpdateWriters = gsiUpdateWriters;
         this.schemaName = update.getSchemaName();
         this.autoIncColumns = autoIncColumns;
+        this.relocateWriterMap = relocateWriterMap;
+        this.modifyWriterMap = modifyWriterMap;
+        this.setColumnTargetMappings = setColumnTargetMappings;
+        this.setColumnSourceMappings = setColumnSourceMappings;
+        this.setColumnMetas = setColumnMetas;
+        this.primaryDistinctWriter = primaryDistinctWriter;
+        this.primaryRelocateWriter = primaryRelocateWriter;
     }
 
     public LogicalRelocate(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table, CatalogReader catalogReader,
                            RelNode input, Operation operation, List<String> updateColumnList,
                            List<RexNode> sourceExpressionList, boolean flattened, List<String> keywords, int batchSize,
                            Set<Integer> appendedColumnIndex, SqlNodeList hints, TableInfo tableInfos, String schemaName,
-                           List<RelocateWriter> primaryRelocateWriters, List<DistinctWriter> primaryUpdateWriters,
-                           List<RelocateWriter> gsiRelocateWriters, List<DistinctWriter> gsiUpdateWriters,
-                           List<Integer> autoIncColumns) {
+                           List<Integer> autoIncColumns, Map<Integer, List<RelocateWriter>> relocateWriterMap,
+                           Map<Integer, List<DistinctWriter>> modifyWriterMap,
+                           Map<Integer, Mapping> setColumnTargetMappings, Map<Integer, Mapping> setColumnSourceMappings,
+                           Map<Integer, List<ColumnMeta>> setColumnMetas,
+                           Map<Integer, DistinctWriter> primaryDistinctWriter,
+                           Map<Integer, RelocateWriter> primaryRelocateWriter) {
         super(cluster,
             traitSet,
             table,
@@ -99,44 +123,57 @@ public class LogicalRelocate extends TableModify {
             appendedColumnIndex,
             hints,
             tableInfos);
-        this.primaryRelocateWriters = primaryRelocateWriters;
-        this.primaryUpdateWriters = primaryUpdateWriters;
-        this.gsiRelocateWriters = gsiRelocateWriters;
-        this.gsiUpdateWriters = gsiUpdateWriters;
         this.schemaName = schemaName;
         this.autoIncColumns = autoIncColumns;
+        this.relocateWriterMap = relocateWriterMap;
+        this.modifyWriterMap = modifyWriterMap;
+        this.setColumnTargetMappings = setColumnTargetMappings;
+        this.setColumnSourceMappings = setColumnSourceMappings;
+        this.setColumnMetas = setColumnMetas;
+        this.primaryDistinctWriter = primaryDistinctWriter;
+        this.primaryRelocateWriter = primaryRelocateWriter;
     }
 
     /**
      * Create LogicalRelocate for modifying sharding column of single primary table only
      *
      * @param update Base LogicalModify
-     * @param relocateWriters Relocate writers
      * @return LogicalRelocate
      */
     public static LogicalRelocate singleTargetWithoutGsi(LogicalModify update,
-                                                         List<RelocateWriter> relocateWriters,
-                                                         List<Integer> autoIncColumns) {
+                                                         List<Integer> autoIncColumns,
+                                                         Map<Integer, List<RelocateWriter>> relocateWriterMap,
+                                                         Map<Integer, List<DistinctWriter>> modifyWriterMap,
+                                                         Map<Integer, Mapping> setColumnTargetMappings,
+                                                         Map<Integer, Mapping> setColumnSourceMappings,
+                                                         Map<Integer, List<ColumnMeta>> setColumnMetas,
+                                                         Map<Integer, DistinctWriter> primaryDistinctWriter,
+                                                         Map<Integer, RelocateWriter> primaryRelocateWriter) {
         Preconditions.checkNotNull(update);
         Preconditions.checkArgument(update.isUpdate());
 
         // Single-table update
         Preconditions.checkArgument(update.getTableInfo().isSingleTarget());
 
-        return new LogicalRelocate(update, relocateWriters, ImmutableList.of(), ImmutableList.of(), ImmutableList.of(),
-            autoIncColumns);
+        return new LogicalRelocate(update, autoIncColumns, relocateWriterMap, modifyWriterMap, setColumnTargetMappings,
+            setColumnSourceMappings, setColumnMetas, primaryDistinctWriter, primaryRelocateWriter);
     }
 
-    public static LogicalRelocate create(LogicalModify update, List<RelocateWriter> primaryRelocateWriters,
-                                         List<DistinctWriter> primaryUpdateWriters,
-                                         List<RelocateWriter> gsiRelocateWriters,
-                                         List<DistinctWriter> gsiUpdateWriters,
-                                         List<Integer> autoIncColumns) {
+    public static LogicalRelocate create(LogicalModify update,
+                                         List<Integer> autoIncColumns,
+                                         Map<Integer, List<RelocateWriter>> relocateWriterMap,
+                                         Map<Integer, List<DistinctWriter>> modifyWriterMap,
+                                         Map<Integer, Mapping> setColumnTargetMappings,
+                                         Map<Integer, Mapping> setColumnSourceMappings,
+                                         Map<Integer, List<ColumnMeta>> setColumnMetas,
+                                         Map<Integer, DistinctWriter> primaryDistinctWriter,
+                                         Map<Integer, RelocateWriter> primaryRelocateWriter) {
         Preconditions.checkNotNull(update);
         Preconditions.checkArgument(update.isUpdate());
 
-        return new LogicalRelocate(update, primaryRelocateWriters, primaryUpdateWriters, gsiRelocateWriters,
-            gsiUpdateWriters, autoIncColumns);
+        return new LogicalRelocate(update, autoIncColumns, relocateWriterMap,
+            modifyWriterMap, setColumnTargetMappings, setColumnSourceMappings, setColumnMetas, primaryDistinctWriter,
+            primaryRelocateWriter);
     }
 
     protected String explainNodeName() {
@@ -161,8 +198,7 @@ public class LogicalRelocate extends TableModify {
         }
         pw.item("SET", stringBuilder.toString());
 
-        final List<String> relocateSet = Stream.concat(primaryRelocateWriters.stream(),
-            gsiRelocateWriters.stream())
+        final List<String> relocateSet = relocateWriterMap.values().stream().flatMap(Collection::stream)
             .map(w -> Util.last(w.getTargetTable().getQualifiedName()))
             .collect(Collectors.toList());
 
@@ -170,8 +206,7 @@ public class LogicalRelocate extends TableModify {
             pw.item("RELOCATE", String.join(", ", relocateSet));
         }
 
-        final List<String> updateSet = Stream.concat(primaryUpdateWriters.stream(),
-            gsiUpdateWriters.stream())
+        final List<String> updateSet = modifyWriterMap.values().stream().flatMap(Collection::stream)
             .map(w -> Util.last(w.getTargetTable().getQualifiedName()))
             .collect(Collectors.toList());
 
@@ -198,31 +233,46 @@ public class LogicalRelocate extends TableModify {
             getHints(),
             getTableInfo(),
             getSchemaName(),
-            getPrimaryRelocateWriters(),
-            getPrimaryUpdateWriters(),
-            getGsiRelocateWriters(),
-            getGsiUpdateWriters(),
-            getAutoIncColumns());
-    }
-
-    public List<RelocateWriter> getPrimaryRelocateWriters() {
-        return primaryRelocateWriters;
-    }
-
-    public List<DistinctWriter> getPrimaryUpdateWriters() {
-        return primaryUpdateWriters;
-    }
-
-    public List<RelocateWriter> getGsiRelocateWriters() {
-        return gsiRelocateWriters;
-    }
-
-    public List<DistinctWriter> getGsiUpdateWriters() {
-        return gsiUpdateWriters;
+            getAutoIncColumns(),
+            getRelocateWriterMap(),
+            getModifyWriterMap(),
+            getSetColumnTargetMappings(),
+            getSetColumnSourceMappings(),
+            getSetColumnMetas(),
+            getPrimaryDistinctWriter(),
+            getPrimaryRelocateWriter());
     }
 
     public List<Integer> getAutoIncColumns() {
         return autoIncColumns;
+    }
+
+    public Map<Integer, List<RelocateWriter>> getRelocateWriterMap() {
+        return relocateWriterMap;
+    }
+
+    public Map<Integer, List<DistinctWriter>> getModifyWriterMap() {
+        return modifyWriterMap;
+    }
+
+    public Map<Integer, Mapping> getSetColumnTargetMappings() {
+        return setColumnTargetMappings;
+    }
+
+    public Map<Integer, Mapping> getSetColumnSourceMappings() {
+        return setColumnSourceMappings;
+    }
+
+    public Map<Integer, List<ColumnMeta>> getSetColumnMetas() {
+        return setColumnMetas;
+    }
+
+    public Map<Integer, DistinctWriter> getPrimaryDistinctWriter() {
+        return primaryDistinctWriter;
+    }
+
+    public Map<Integer, RelocateWriter> getPrimaryRelocateWriter() {
+        return primaryRelocateWriter;
     }
 
     @Override

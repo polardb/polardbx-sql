@@ -33,7 +33,12 @@ public interface CheckerCallback {
 
     void start(ExecutionContext baseEc, Checker checker);
 
-    boolean batch(String dbIndex, String phyTable, ExecutionContext selectEc, Checker checker, boolean primaryToGsi,
+    boolean batch(String logTbName,
+                  String dbIndex,
+                  String phyTable,
+                  ExecutionContext selectEc,
+                  Checker checker,
+                  boolean primaryToGsi,
                   List<List<Pair<ParameterContext, byte[]>>> baseRows,
                   List<List<Pair<ParameterContext, byte[]>>> checkRows);
 

@@ -16,8 +16,10 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
@@ -76,9 +78,12 @@ public class ShowMetadataLockHandler extends HandlerCommon {
                         continue;
                     }
 
-                    String formatSql = info.getSql();
+                    ByteString formatSql = info.getSql();
+                    String sql = null;
                     if (formatSql != null && formatSql.length() > 1024) {
-                        formatSql = formatSql.substring(0, 1024 - 3) + "...";
+                        sql = formatSql.substring(0, 1024 - 3) + "...";
+                    } else if (formatSql != null) {
+                        sql = formatSql.toString();
                     }
 
                     Object[] row;
@@ -86,13 +91,13 @@ public class ShowMetadataLockHandler extends HandlerCommon {
                         row = new Object[] {
                             ctxStamped.getConnId(),
                             info.getTrxId(), info.getTraceId(), key.getDbName(), key.getTableName(),
-                            null, null, null, info.getFrontend(), formatSql};
+                            null, null, null, info.getFrontend(), sql};
                     } else {
                         row = new Object[] {
                             ctxStamped.getConnId(),
                             info.getTrxId(), info.getTraceId(), key.getDbName(), key.getTableName(),
                             ticket.getType().name(), ticket.getDuration().name(),
-                            ticket.isValidate() ? 1 : 0, info.getFrontend(), formatSql};
+                            ticket.isValidate() ? 1 : 0, info.getFrontend(), sql};
                     }
 
                     resultCursor.addRow(row);

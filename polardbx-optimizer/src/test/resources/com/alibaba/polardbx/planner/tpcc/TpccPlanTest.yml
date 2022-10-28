@@ -3,7 +3,7 @@
       WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
 
   plan: |
-    PhyTableOperation(tables="optest_0001.[bmsql_customer, bmsql_warehouse]", sql="SELECT `bmsql_customer`.`c_discount`, `bmsql_customer`.`c_last`, `bmsql_customer`.`c_credit`, `bmsql_warehouse`.`w_tax` FROM ? AS `bmsql_customer` INNER JOIN ? AS `bmsql_warehouse` ON (`bmsql_warehouse`.`w_id` = `bmsql_customer`.`c_w_id`) WHERE (((`bmsql_customer`.`c_w_id` = 1) AND (`bmsql_customer`.`c_d_id` = 1)) AND (`bmsql_customer`.`c_id` = 1))")
+    phytableoperation(tables="optest_0001.[bmsql_customer, bmsql_warehouse]", sql="select `bmsql_customer`.`c_discount`, `bmsql_customer`.`c_last`, `bmsql_customer`.`c_credit`, `bmsql_warehouse`.`w_tax` from ? as `bmsql_customer` inner join ? as `bmsql_warehouse` on (`bmsql_warehouse`.`w_id` = `bmsql_customer`.`c_w_id`) where (((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1)) and (`bmsql_customer`.`c_id` = 1))")
 
 - sql: |
     SELECT d_tax, d_next_o_id     FROM bmsql_district     WHERE d_w_id = 1 AND d_id = 1     FOR UPDATE
@@ -99,7 +99,7 @@
 - sql: |
     SELECT o_id, o_entry_d, o_carrier_id     FROM bmsql_oorder     WHERE o_w_id = 1 AND o_d_id = 1 AND o_c_id = 1       AND o_id = (          SELECT max(o_id)               FROM bmsql_oorder               WHERE o_w_id = 1 AND o_d_id = 1 AND o_c_id = 1          )
   plan: |
-    PhyTableOperation(tables="optest_0001.[bmsql_oorder, bmsql_oorder]", sql="SELECT `bmsql_oorder`.`o_id`, `bmsql_oorder`.`o_entry_d`, `bmsql_oorder`.`o_carrier_id` FROM ? AS `bmsql_oorder` WHERE ((((`bmsql_oorder`.`o_w_id` = 1) AND (`bmsql_oorder`.`o_d_id` = 1)) AND (`bmsql_oorder`.`o_c_id` = 1)) AND (`bmsql_oorder`.`o_id` = (((SELECT MAX(`bmsql_oorder`.`o_id`) AS `max(o_id)` FROM ? AS `bmsql_oorder` WHERE (((`bmsql_oorder`.`o_w_id` = 1) AND (`bmsql_oorder`.`o_d_id` = 1)) AND (`bmsql_oorder`.`o_c_id` = 1)))))))")
+    phytableoperation(tables="optest_0001.[bmsql_oorder, bmsql_oorder]", sql="select `bmsql_oorder`.`o_id`, `bmsql_oorder`.`o_entry_d`, `bmsql_oorder`.`o_carrier_id` from ? as `bmsql_oorder` where ((((`bmsql_oorder`.`o_w_id` = 1) and (`bmsql_oorder`.`o_d_id` = 1)) and (`bmsql_oorder`.`o_c_id` = 1)) and (`bmsql_oorder`.`o_id` = (((select max(`bmsql_oorder`.`o_id`) as `max(o_id)` from ? as `bmsql_oorder` where (((`bmsql_oorder`.`o_w_id` = 1) and (`bmsql_oorder`.`o_d_id` = 1)) and (`bmsql_oorder`.`o_c_id` = 1)))))))")
 - sql: |
     SELECT ol_i_id, ol_supply_w_id, ol_quantity,        ol_amount, ol_delivery_d     FROM bmsql_order_line     WHERE ol_w_id = 1 AND ol_d_id = 1 AND ol_o_id = 1     ORDER BY ol_w_id, ol_d_id, ol_o_id, ol_number
   plan: |
@@ -107,7 +107,7 @@
 - sql: |
     SELECT count(*) AS low_stock FROM (    SELECT s_w_id, s_i_id, s_quantity         FROM bmsql_stock         WHERE s_w_id = 1 AND s_quantity < 1 AND s_i_id IN (            SELECT ol_i_id                 FROM bmsql_district                 JOIN bmsql_order_line ON ol_w_id = d_w_id                  AND ol_d_id = d_id                  AND ol_o_id >= d_next_o_id - 20                  AND ol_o_id < d_next_o_id                 WHERE d_w_id = 1 AND d_id = 1         )     ) AS L
   plan: |
-    PhyTableOperation(tables="optest_0001.[bmsql_stock, bmsql_district, bmsql_order_line]", sql="SELECT COUNT(*) AS `low_stock` FROM (SELECT `bmsql_stock`.`s_w_id`, `bmsql_stock`.`s_i_id`, `bmsql_stock`.`s_quantity` FROM ? AS `bmsql_stock` WHERE (((`bmsql_stock`.`s_w_id` = 1) AND (`bmsql_stock`.`s_quantity` < 1)) AND (`bmsql_stock`.`s_i_id` IN (SELECT `bmsql_order_line`.`ol_i_id` FROM ? AS `bmsql_district` INNER JOIN ? AS `bmsql_order_line` ON ((((`bmsql_order_line`.`ol_w_id` = `bmsql_district`.`d_w_id`) AND (`bmsql_order_line`.`ol_d_id` = `bmsql_district`.`d_id`)) AND (`bmsql_order_line`.`ol_o_id` >= (`bmsql_district`.`d_next_o_id` - 20))) AND (`bmsql_order_line`.`ol_o_id` < `bmsql_district`.`d_next_o_id`)) WHERE ((`bmsql_district`.`d_w_id` = 1) AND (`bmsql_district`.`d_id` = 1)))))) AS `L`")
+    phytableoperation(tables="optest_0001.[bmsql_stock, bmsql_district, bmsql_order_line]", sql="select count(*) as `low_stock` from (select `bmsql_stock`.`s_w_id`, `bmsql_stock`.`s_i_id`, `bmsql_stock`.`s_quantity` from ? as `bmsql_stock` where (((`bmsql_stock`.`s_w_id` = 1) and (`bmsql_stock`.`s_quantity` < 1)) and (`bmsql_stock`.`s_i_id` in (select `bmsql_order_line`.`ol_i_id` from ? as `bmsql_district` inner join ? as `bmsql_order_line` on ((((`bmsql_order_line`.`ol_w_id` = `bmsql_district`.`d_w_id`) and (`bmsql_order_line`.`ol_d_id` = `bmsql_district`.`d_id`)) and (`bmsql_order_line`.`ol_o_id` >= (`bmsql_district`.`d_next_o_id` - 20))) and (`bmsql_order_line`.`ol_o_id` < `bmsql_district`.`d_next_o_id`)) where ((`bmsql_district`.`d_w_id` = 1) and (`bmsql_district`.`d_id` = 1)))))) as `l`")
 - sql: |
     SELECT no_o_id     FROM bmsql_new_order     WHERE no_w_id = 1 AND no_d_id = 1     ORDER BY no_o_id ASC
   plan: |

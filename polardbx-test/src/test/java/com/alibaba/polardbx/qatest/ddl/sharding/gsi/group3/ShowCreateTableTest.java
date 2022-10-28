@@ -29,8 +29,6 @@ import org.junit.runners.Parameterized;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
-
 /**
  * @version 1.0
  */

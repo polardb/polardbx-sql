@@ -1,0 +1,2 @@
+- insert into nn1(n_nationkey, n_regionkey,n_de,n_gg) values(1,2,3,4),(5,6,7,8);
+- insert into nn2(n_nationkey, n_regionkey,n_de,n_gg) values(4,3,2,1),(8,7,6,5);

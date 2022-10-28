@@ -25,7 +25,6 @@ import org.apache.calcite.plan.RelDigest;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptCostFactory;
 import org.apache.calcite.plan.RelOptCostImpl;
-import org.apache.calcite.plan.RelOptListener;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -55,7 +54,6 @@ import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import com.google.common.collect.ImmutableList;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -502,7 +500,7 @@ public class HepPlanner extends AbstractRelOptPlanner {
 
     if (!call.getResults().isEmpty()) {
       if (useOptimizerTrace) {
-        CalcitePlanOptimizerTrace.getOptimizerTracer().get().traceIt(call);
+        CalcitePlanOptimizerTrace.traceItFromContext(call, context);
       }
       return applyTransformationResults(
           vertex,
@@ -976,7 +974,7 @@ public class HepPlanner extends AbstractRelOptPlanner {
   protected void fireRule(
       RelOptRuleCall ruleCall) {
     if (useOptimizerTrace) {
-      CalcitePlanOptimizerTrace.getOptimizerTracer().get().savePlanDisplayIfNecessary(this.getRoot(), this.context);
+      CalcitePlanOptimizerTrace.savePlanDisplayIfNecessaryFromContext(this.getRoot(), this.context);
     }
     super.fireRule(ruleCall);
   }

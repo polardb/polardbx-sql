@@ -51,8 +51,8 @@ import org.apache.calcite.sql.fun.SqlLikeOperator;
 
 public class RexExplainVisitor implements RexVisitor {
 
-    private RelNode       parent;
-    private StringBuilder sb = new StringBuilder();
+    protected RelNode       parent;
+    protected StringBuilder sb = new StringBuilder();
 
     public RexExplainVisitor(RelNode parent){
         this.parent = parent;

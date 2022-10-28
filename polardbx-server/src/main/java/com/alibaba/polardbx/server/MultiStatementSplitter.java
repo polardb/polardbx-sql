@@ -50,6 +50,12 @@ public class MultiStatementSplitter {
         do {
             lexer.nextToken();
 
+            if (lexer.token() == Token.PROCEDURE || lexer.token() == Token.TRIGGER || lexer.token() == Token.FUNCTION) {
+                List<ByteString> origin = new ArrayList<>();
+                origin.add(raw);
+                return origin;
+            }
+
             if (lexer.token() == Token.SEMI) {
                 if (hasToken) {
                     statements.add(raw.slice(startPos, lexer.pos()));

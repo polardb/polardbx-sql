@@ -34,7 +34,7 @@ public class DrivingStreamTableScanExec extends ResumeTableScanExec {
     protected void notifyFinish() {
         super.notifyFinish();
         if (isFinish) {
-            scanClient.cancelAllThreads();
+            scanClient.cancelAllThreads(false);
             resume();
         }
     }

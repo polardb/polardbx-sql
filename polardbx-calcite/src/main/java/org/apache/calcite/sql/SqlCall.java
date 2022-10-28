@@ -110,6 +110,9 @@ public abstract class SqlCall extends SqlNode {
           final SqlNode operand1 = getOperandList().get(1);
           if (parentUion && (operand1 instanceof SqlOrderBy || operand1 instanceof SqlSelect) ) {
             dialect.unparseCall(writer, this, 0, 0);
+          } else if ((this.getOperator() == SqlStdOperatorTable.UNION_ALL || this.getOperator() == SqlStdOperatorTable.UNION)
+                  && writer instanceof SqlPrettyWriter && ((SqlPrettyWriter) writer).getListStack().isEmpty()) {
+            dialect.unparseCall(writer, this, 0, 0);
           } else {
             final SqlWriter.Frame frame = writer.startList("(", ")");
             dialect.unparseCall(writer, this, 0, 0);
@@ -246,6 +249,24 @@ public abstract class SqlCall extends SqlNode {
       }
     }
 
+    return false;
+  }
+
+  /**
+   * Test to see if it is the function CHECK_SUM(*)
+   *
+   * @return boolean true if function call to CHECK_SUM(*)
+   */
+  public boolean isCheckSumStar() {
+    if (getOperator().isName("CHECK_SUM") && operandCount() == 1) {
+      final SqlNode parm = operand(0);
+      if (parm instanceof SqlIdentifier) {
+        SqlIdentifier id = (SqlIdentifier) parm;
+        if (id.isStar() && id.names.size() == 1) {
+          return true;
+        }
+      }
+    }
     return false;
   }
 

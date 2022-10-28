@@ -160,4 +160,11 @@ public class LocalTransaction {
         }
         return group.equalsIgnoreCase(((LocalTransaction) o).group);
     }
+
+    @Override
+    public String toString() {
+        return "LocalTrx{" +
+            "group='" + group + '\'' +
+            '}';
+    }
 }

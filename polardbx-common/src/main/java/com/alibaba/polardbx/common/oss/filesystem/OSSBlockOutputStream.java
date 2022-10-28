@@ -60,11 +60,14 @@ public class OSSBlockOutputStream extends OutputStream {
     private OutputStream blockStream;
     private final byte[] singleByte = new byte[1];
 
+    private FileSystemRateLimiter rateLimiter;
+
     public OSSBlockOutputStream(Configuration conf,
                                 OSSFileSystemStore store,
                                 String key,
                                 Long blockSize,
-                                ExecutorService executorService) throws IOException {
+                                ExecutorService executorService,
+                                FileSystemRateLimiter rateLimiter) throws IOException {
         this.store = store;
         this.conf = conf;
         this.key = key;
@@ -74,6 +77,7 @@ public class OSSBlockOutputStream extends OutputStream {
             new BufferedOutputStream(new FileOutputStream(blockFile));
         this.partETagsFutures = new ArrayList<>(2);
         this.executorService = MoreExecutors.listeningDecorator(executorService);
+        this.rateLimiter = rateLimiter;
     }
 
     private File newBlockFile() throws IOException {
@@ -139,6 +143,9 @@ public class OSSBlockOutputStream extends OutputStream {
         if (closed) {
             throw new IOException("Stream closed.");
         }
+
+        rateLimiter.acquireWrite(len);
+
         blockStream.write(b, off, len);
         blockWritten += len;
         if (blockWritten >= blockSize) {

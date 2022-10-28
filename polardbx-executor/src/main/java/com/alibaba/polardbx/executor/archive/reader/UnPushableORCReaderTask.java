@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.archive.reader;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.archive.columns.ColumnProvider;
 import com.alibaba.polardbx.executor.archive.columns.ColumnProviders;
@@ -24,6 +26,7 @@ import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.gms.engine.FileSystemGroup;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -35,6 +38,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
@@ -97,7 +101,8 @@ public class UnPushableORCReaderTask {
 
     public UnPushableORCReaderTask(OSSReadOption ossReadOption, String tableFileName, FileMeta fileMeta,
                                    PruningResult pruningResult, ExecutionContext context,
-                                   List<DataType> dataTypeList, List<AggregateCall> aggCalls, List<RelColumnOrigin> aggColumns) {
+                                   List<DataType> dataTypeList, List<AggregateCall> aggCalls,
+                                   List<RelColumnOrigin> aggColumns) {
         this.ossReadOption = ossReadOption;
         this.tableFileName = tableFileName;
         this.closed = new AtomicBoolean(false);
@@ -147,7 +152,7 @@ public class UnPushableORCReaderTask {
                     } else {
                         closeRecordReader();
                     }
-                }  else {
+                } else {
                     Iterator<Range<Long>> descendingIterator =
                         pruningResult.getRangeSet().asDescendingSetOfRanges().iterator();
                     List<Range<Long>> rangeList = new ArrayList<>();
@@ -163,7 +168,6 @@ public class UnPushableORCReaderTask {
                     this.recordReader = reader.rows(readerOptions);
                 }
             }
-
 
         } catch (Throwable t) {
             close();
@@ -253,13 +257,30 @@ public class UnPushableORCReaderTask {
     }
 
     private BlockBuilder fetchStatistics(SessionProperties sessionProperties, int colIndex,
-                                 SqlKind kind) {
+                                         SqlKind kind) {
         BlockBuilder blockBuilder;
         if (kind == SqlKind.COUNT) {
             // imprecise data type
             blockBuilder = BlockBuilders.create(dataTypeList.get(colIndex), context, 1);
             // No need to orc column statistics for count agg
             blockBuilder.writeLong(fileMeta.getTableRows());
+            index = -1;
+        } else if (kind == SqlKind.CHECK_SUM) {
+            // imprecise data type
+            blockBuilder = BlockBuilders.create(dataTypeList.get(colIndex), context, 1);
+            // No need to orc column statistics for checksum agg
+            blockBuilder.writeLong(fileMeta.getFileHash());
+            // check the existence of files
+            FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(fileMeta.getEngine());
+            Preconditions.checkArgument(fileSystemGroup != null);
+            try {
+                if (!fileSystemGroup.exists(fileMeta.getFileName())) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS,
+                        "File " + fileMeta.getFileName() + " doesn't exits");
+                }
+            } catch (IOException e) {
+                throw GeneralUtil.nestedException(e);
+            }
             index = -1;
         } else {
             RelColumnOrigin columnOrigin = aggColumns.get(colIndex);
@@ -273,7 +294,7 @@ public class UnPushableORCReaderTask {
             if (pruningResult.pass()) {
                 statistics = fileMeta.getStatisticsMap().get(columnOrigin.getColumnName());
             } else {
-                statistics= fileMeta.getStripeColumnMetas(columnOrigin.getColumnName())
+                statistics = fileMeta.getStripeColumnMetas(columnOrigin.getColumnName())
                     .get(index).getColumnStatistics();
             }
 
@@ -290,6 +311,7 @@ public class UnPushableORCReaderTask {
 
     /**
      * get the next stripe in the file
+     *
      * @return true if there is more stripe to read
      */
     private boolean nextStripe() {
@@ -301,7 +323,7 @@ public class UnPushableORCReaderTask {
             return false;
         }
         if (withAgg()) {
-            index = indexIterator.hasNext()? indexIterator.next() : -1;
+            index = indexIterator.hasNext() ? indexIterator.next() : -1;
             // end of stripes
             if (index == -1) {
                 return false;
@@ -348,7 +370,7 @@ public class UnPushableORCReaderTask {
     }
 
     private void closeRecordReader() {
-        try{
+        try {
             if (this.recordReader != null) {
                 this.recordReader.close();
                 this.recordReader = null;
@@ -376,7 +398,7 @@ public class UnPushableORCReaderTask {
                 long now = System.nanoTime() / 1000_000;
                 ExecuteSQLOperation op = new ExecuteSQLOperation(
                     fileMeta.getPhysicalTableSchema(),
-                    ossFileUri.toString(),
+                    tableFileName,
                     "pruning result:" + pruningResult.toString() + " predicate :" + ossReadOption.getSearchArgument()
                         .toString(),
                     now);

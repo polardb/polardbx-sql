@@ -32,7 +32,7 @@
     /*+TDDL:enable_broadcast_random_read=false*/ select((yearweek(timestamp_test  ))  >(66) )as A, null as B  from corona_select_broadcast   GROUP BY  1, 2     order by 1,2  limit 24,15 ;
 
   plan: |
-    LogicalView(tables="optest_0000.corona_select_broadcast", sql="SELECT (YEARWEEK(`corona_select_broadcast`.`timestamp_test`) > 66) AS `A`, NULL AS `B` FROM `corona_select_broadcast` AS `corona_select_broadcast` GROUP BY (YEARWEEK(`corona_select_broadcast`.`timestamp_test`) > 66), NULL ORDER BY 1, 2 LIMIT 15 OFFSET 24")
+    logicalview(tables="optest_0000.corona_select_broadcast", sql="select (yearweek(`corona_select_broadcast`.`timestamp_test`) > 66) as `a`, null as `b` from `corona_select_broadcast` as `corona_select_broadcast` group by (yearweek(`corona_select_broadcast`.`timestamp_test`) > 66), null order by 1, 2 limit 15 offset 24")
 
 - sql: |
     select * from  performance_schema.global_variables;

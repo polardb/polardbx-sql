@@ -23,16 +23,21 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.meta.delegate.TableInfoManagerDelegate;
-import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -40,6 +45,8 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
@@ -47,11 +54,13 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
+import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
@@ -75,6 +84,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class TableValidator {
+    private static final String GOD_USER_NAME = "polardbx_root";
 
     public static void validateTableInfo(String schemaName, String logicalTableName, SqlCreateTable sqlCreateTable,
                                          ParamManager paramManager) {
@@ -99,14 +109,6 @@ public class TableValidator {
     public static void validateTableName(String logicalTableName) {
         if (TStringUtil.isEmpty(logicalTableName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Empty table name is invalid");
-        }
-        validateSystemTables(logicalTableName);
-    }
-
-    public static void validateSystemTables(String logicalTableName) {
-        if (GmsSystemTables.contains(logicalTableName) && !GmsSystemTables
-            .systemIgnoreTablescontains(logicalTableName)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_MODIFY_SYSTEM_TABLE, logicalTableName);
         }
     }
 
@@ -274,6 +276,27 @@ public class TableValidator {
         }
     }
 
+    public static void validUnexpectedColumnType(String schemaName, String tableName, String unexpectedType) {
+        Preconditions.checkNotNull(unexpectedType);
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            ColumnsAccessor columnsAccessor = new ColumnsAccessor();
+            columnsAccessor.setConnection(connection);
+            List<ColumnsRecord> columnsRecords = columnsAccessor.query(schemaName, tableName);
+            for (ColumnsRecord columnsRecord : columnsRecords) {
+                if(unexpectedType.equalsIgnoreCase(columnsRecord.dataType)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        String.format("unexpected column [%s] in table [%s] with data type: [%s]",
+                            columnsRecord.columnName,
+                            columnsRecord.tableName,
+                            unexpectedType));
+                }
+            }
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
     /**
      * see checkDdlOnGsi()
      */
@@ -418,9 +441,21 @@ public class TableValidator {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLE_ALREADY_EXISTS, targetTableName);
         }
 
-        SequenceValidator.validateSequenceExistence(schemaName, targetTableName);
+        SequenceValidator.validateExistenceForRename(schemaName, targetTableName);
     }
 
+
+    public static void validateLocality(String schemaName, LocalityDesc localityDesc){
+        Long dbId = DbInfoManager.getInstance().getDbInfo(schemaName).id;
+        LocalityInfo localityInfo = LocalityManager.getInstance().getLocalityOfDb(dbId);
+        if(localityInfo != null && localityDesc != null){
+            LocalityDesc dbLocality = LocalityDesc.parse(localityInfo.getLocality());
+            if (!dbLocality.compactiableWith(localityDesc)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                        " Table locality definition is not compatible with database locality! ");
+            }
+        }
+    }
     public static void validateTruncatePartition(String schemaName, String tableName, SqlAlterTable sqlAlterTable) {
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
         boolean withGsi = tableMeta.withGsi();
@@ -569,5 +604,18 @@ public class TableValidator {
                 .format("the table topology of source table {0} and target table {1} are not consistent, "
                         + "please create a new archive table for source table {0}", sourceTable.getTableName(),
                     targetTable.getTableName()));
+    }
+
+    public static void checkGodPrivilege(ExecutionContext context) {
+        if (!context.isPrivilegeMode()) {
+            return;
+        }
+
+        PrivilegeContext pc = context.getPrivilegeContext();
+        PolarAccountInfo user = pc.getPolarUserInfo();
+        if (!GOD_USER_NAME.equalsIgnoreCase(user.getAccount().getUsername())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED,
+                "Execute this sql in low-privilege account: " + user.getAccount().getUsername());
+        }
     }
 }

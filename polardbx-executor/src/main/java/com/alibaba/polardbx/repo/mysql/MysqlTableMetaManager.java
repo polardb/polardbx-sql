@@ -223,7 +223,7 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
         return specialType;
     }
 
-    private TableMeta fetchTableMeta(Connection conn, String actualTableName, String logicalTableName,
+    private TableMeta fetchTableMeta(Connection conn, String schema, String actualTableName, String logicalTableName,
                                      Map<String, String> collationType, Map<String, String> specialType,
                                      Map<String, String> extraInfo, Map<String, String> defaultInfo) {
         Statement stmt = null;
@@ -242,6 +242,7 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
                     collationType,
                     extraInfo,
                     defaultInfo,
+                    schema,
                     logicalTableName,
                     actualTableName);
             } catch (Exception e) {
@@ -257,6 +258,7 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
                                 collationType,
                                 extraInfo,
                                 defaultInfo,
+                                schema,
                                 logicalTableName,
                                 actualTableName);
                         } catch (SQLException e1) {
@@ -324,7 +326,8 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
             Map<String, String> specialTypes = fetchColumnType(conn, actualTableName);
             Map<String, String> defaultInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             Map<String, String> extraInfo = fetchColumnExtraAndDefault(conn, actualTableName, defaultInfo);
-            return fetchTableMeta(conn, actualTableName, logicalTableName, collationTypes, specialTypes, extraInfo,
+            return fetchTableMeta(conn, schemaName, actualTableName, logicalTableName, collationTypes, specialTypes,
+                extraInfo,
                 defaultInfo);
         } catch (Exception e) {
             Throwables.propagate(e);
@@ -341,13 +344,14 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
     }
 
     @Override
-    public TableMeta getTableMetaFromConnection(String tableName, Connection conn) {
+    public TableMeta getTableMetaFromConnection(String schema, String tableName, Connection conn) {
         try {
             Map<String, String> collationTypes = fetchCollationType(conn, tableName);
             Map<String, String> specialTypes = fetchColumnType(conn, tableName);
             Map<String, String> defaultInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             Map<String, String> extraInfo = fetchColumnExtraAndDefault(conn, tableName, defaultInfo);
-            return fetchTableMeta(conn, tableName, tableName, collationTypes, specialTypes, extraInfo, defaultInfo);
+            return fetchTableMeta(conn, schema, tableName, tableName, collationTypes, specialTypes, extraInfo,
+                defaultInfo);
         } catch (Exception e) {
             return null;
         } finally {
@@ -364,9 +368,11 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
     public static TableMeta resultSetMetaToSchema(ResultSetMetaData rsmd, DatabaseMetaData dbmd,
                                                   Map<String, String> specialType, Map<String, String> collationType,
                                                   Map<String, String> extraInfo, Map<String, String> defaultInfo,
+                                                  String schema,
                                                   String logicalTableName, String actualTableName) {
 
-        return resultSetMetaToTableMeta(rsmd,
+        return resultSetMetaToTableMeta(schema,
+            rsmd,
             dbmd,
             specialType,
             collationType,
@@ -376,7 +382,7 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
             actualTableName);
     }
 
-    private static TableMeta resultSetMetaToTableMeta(ResultSetMetaData rsmd, DatabaseMetaData dbmd,
+    private static TableMeta resultSetMetaToTableMeta(String schema, ResultSetMetaData rsmd, DatabaseMetaData dbmd,
                                                       Map<String, String> specialType,
                                                       Map<String, String> collationType,
                                                       Map<String, String> extraInfo,
@@ -626,7 +632,7 @@ public class MysqlTableMetaManager extends RepoSchemaManager {
             primaryKeys,
             primaryValues);
 
-        TableMeta tableMeta = new TableMeta(tableName,
+        TableMeta tableMeta = new TableMeta(schema, tableName,
             allColumnsOrderByDefined,
             primaryKeyMeta,
             secondaryIndexMetas,

@@ -38,6 +38,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
+import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
+
 public abstract class BaseAppLoader extends AbstractLifecycle implements Lifecycle {
 
     private static final Logger logger = LoggerFactory.getLogger(BaseAppLoader.class);
@@ -81,6 +83,19 @@ public abstract class BaseAppLoader extends AbstractLifecycle implements Lifecyc
         // config: app1,app2,...
         logger.info("start loading apps in cluster:" + this.cluster);
         long startTime = TimeUtil.currentTimeMillis();
+
+        // Try to load 'polardbx' app first. In this way, some global
+        // timer tasks will be initialized by 'polardbx' schema,
+        // and the log file will be written under tddl file folder.
+        if (apps.contains(DEFAULT_DB_NAME)) {
+            try {
+                this.loadApp(DEFAULT_DB_NAME);
+                this.loadedApps.add(DEFAULT_DB_NAME);
+            } catch (Exception e) {
+                logger.error("load app error:" + DEFAULT_DB_NAME, e);
+            }
+        }
+
         // 先添加不存在的app
         for (String app : apps) {
             if (!this.loadedApps.contains(app)) {

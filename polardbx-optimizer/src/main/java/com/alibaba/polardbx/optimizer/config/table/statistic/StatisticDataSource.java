@@ -19,7 +19,10 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -31,20 +34,25 @@ public interface StatisticDataSource {
 
     Collection<SystemTableColumnStatistic.Row> loadAllColumnStatistic(long sinceTime);
 
-    ParamManager acquireStatisticConfig();
+    void renameTable(String schema, String oldTableName, String newTableName);
 
-    void renameTable(String oldTableName, String newTableName);
+    void removeLogicalTableColumnList(String schema, String logicalTableName, List<String> columnNameList);
 
-    void removeLogicalTableColumnList(String logicalTableName, List<String> columnNameList);
+    void removeLogicalTableList(String schema, List<String> logicalTableNameList);
 
-    void removeLogicalTableList(List<String> logicalTableNameList);
+    boolean sampleColumns(String schema, String logicalTableName);
 
     // ndv api start
 
     /**
      * reload ndv info by name from meta source
      */
-    void reloadNDVbyTableName(String tableName);
+    void reloadNDVbyTableName(String schema, String tableName);
+
+    /**
+     * remove ndv info by table name from meta source
+     */
+    void removeNdvLogicalTable(String schema, String logicalTableName);
 
     /**
      * reload all ndv info from meta source
@@ -54,12 +62,12 @@ public interface StatisticDataSource {
     /**
      * update ndv info by table name and column name from meta source if needed
      */
-    void updateColumnCardinality(String tableName, String columnName);
+    void updateColumnCardinality(String schema, String tableName, String columnName) throws SQLException;
 
     /**
      * force rebuilt ndv info by table name and column name from meta source
      */
-    void rebuildColumnCardinality(String tableName, String columnName);
+    void rebuildColumnCardinality(String schema, String tableName, String columnName) throws SQLException;
 
     /**
      * get current ndv value from cache
@@ -67,4 +75,10 @@ public interface StatisticDataSource {
     Map<? extends String, ? extends Long> syncCardinality();
 
     // ndv api end
+
+    void batchReplace(final List<SystemTableTableStatistic.Row> rowList);
+
+    void batchReplace(final ArrayList<SystemTableColumnStatistic.Row> rowList);
+
+    String scheduleJobs();
 }

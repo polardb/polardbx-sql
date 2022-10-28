@@ -94,9 +94,11 @@ public class ShardingModifyWriter extends AbstractSingleWriter implements Distin
      */
     protected final Mapping groupingMapping;
 
+    protected final boolean withoutPk;
+
     public ShardingModifyWriter(RelOptTable targetTable, LogicalModify modify, List<ColumnMeta> skMetas,
                                 Mapping pkMapping, Mapping skMapping, Mapping updateSetMapping,
-                                Mapping groupingMapping) {
+                                Mapping groupingMapping, boolean withoutPk) {
         super(targetTable, modify.getOperation());
         this.modify = modify;
         this.skMetas = skMetas;
@@ -104,6 +106,7 @@ public class ShardingModifyWriter extends AbstractSingleWriter implements Distin
         this.skMapping = skMapping;
         this.updateSetMapping = updateSetMapping;
         this.groupingMapping = groupingMapping;
+        this.withoutPk = withoutPk;
     }
 
     @Override
@@ -125,9 +128,9 @@ public class ShardingModifyWriter extends AbstractSingleWriter implements Distin
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {
         case UPDATE:
-            return builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, shardResult);
+            return builder.buildUpdateWithPk(modify, distinctRows, updateSetMapping, qn, shardResult, ec);
         case DELETE:
-            return builder.buildDeleteWithPk(modify, shardResult, ec);
+            return builder.buildDelete(modify, qn, shardResult, ec, withoutPk);
         default:
             throw new AssertionError("Cannot handle operation " + getOperation().name());
         }

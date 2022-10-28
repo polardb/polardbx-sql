@@ -1,0 +1,86 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.executor.pl;
+
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
+import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
+import com.alibaba.polardbx.executor.pl.type.BasicTypeBuilders;
+import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeSystem;
+import org.apache.calcite.schema.Function;
+import org.apache.calcite.schema.impl.TypeKnownScalarFunction;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlSyntax;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.AssignableOperandTypeChecker;
+import org.apache.calcite.sql.type.InferTypes;
+import org.apache.calcite.sql.type.ReturnTypes;
+import org.apache.calcite.sql.validate.SqlUserDefinedFunction;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+public class UdfUtils {
+    public static void registerSqlUdf(String createFunctionStr, boolean canPush) {
+        SqlUserDefinedFunction udf = createSqlUdf(createFunctionStr, canPush);
+        // register udf
+        TddlOperatorTable.instance().register(udf);
+        // enable type coercion
+        SqlStdOperatorTable.instance().enableTypeCoercion(udf);
+    }
+
+    // TODO : check collation and other situation
+    private static RelDataType createBasicSqlType(RelDataTypeSystem typeSystem, SQLDataType dataType) {
+        return BasicTypeBuilders.getTypeBuilder(dataType.getName()).createBasicSqlType(typeSystem, dataType);
+    }
+
+    public static SqlUserDefinedFunction createSqlUdf(String createFunctionStr, boolean canPush) {
+        SQLCreateFunctionStatement
+            statement = (SQLCreateFunctionStatement) FastsqlUtils.parseSql(createFunctionStr).get(0);
+
+        // create scalar function
+        List<SQLParameter> inputParams = statement.getParameters();
+        List<RelDataType> inputTypes =
+            inputParams.stream().map(t -> createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), t.getDataType()))
+                .collect(Collectors.toList());
+        List<String> inputNames =
+            inputParams.stream().map(t -> t.getName().getSimpleName()).collect(Collectors.toList());
+
+        RelDataType returnType =
+            createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), statement.getReturnDataType());
+
+        Function function = new TypeKnownScalarFunction(returnType, inputTypes, inputNames);
+
+        // create udf
+        String functionName = SQLUtils.getRewriteUdfName(statement.getName());
+        return new SqlUserDefinedFunction(new SqlIdentifier(functionName, SqlParserPos.ZERO),
+            ReturnTypes.explicit(returnType), InferTypes.explicit(inputTypes),
+            new AssignableOperandTypeChecker(inputTypes, inputNames), inputTypes, function, canPush);
+    }
+
+    public static void unregisterSqlUdf(String functionName) {
+        TddlOperatorTable.instance().unregister(functionName, SqlSyntax.FUNCTION);
+        // disable type coercion
+        SqlStdOperatorTable.instance().disableTypeCoercion(functionName, SqlSyntax.FUNCTION);
+    }
+}

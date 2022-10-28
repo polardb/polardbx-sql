@@ -54,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getConnectionProperties;
@@ -107,7 +108,7 @@ public class BaseTestCase implements BaseTestMode {
     public void initializeFileStorage() {
         boolean useFileStorageMode = PropertiesUtil.useFileStorage()
             && usingNewPartDb()
-            && fileStorageTestCases.contains(getClass());
+            && ClassHelper.getFileStorageTestCases().contains(getClass());
         if (!useFileStorageMode) {
             return;
         }
@@ -165,6 +166,31 @@ public class BaseTestCase implements BaseTestMode {
 
         String sourceDB1 = PropertiesUtil.polardbXAutoDBName1Innodb();
         String sourceDB2 = PropertiesUtil.polardbXAutoDBName2Innodb();
+
+        // check file storage
+        try (Connection conn = getPolardbxConnection(sourceDB1)) {
+            Statement statement = conn.createStatement();
+            ResultSet rs = statement.executeQuery(String.format("show filestorage;"));
+
+            boolean hasEngine = false;
+            while (rs.next()) {
+                String engineName = rs.getString(1);
+                if (PropertiesUtil.engine().name().equalsIgnoreCase(engineName)) {
+                    hasEngine = true;
+                    break;
+                }
+            }
+
+            String createFileStorageSql = PropertiesUtil.getCreateFileStorageSql();
+            if (!hasEngine
+                && createFileStorageSql != null
+                && !createFileStorageSql.isEmpty()) {
+                statement.execute(createFileStorageSql);
+            }
+
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
 
         List<String> archiveSqlList1 = new ArrayList<>();
         try (Connection conn = getPolardbxConnection(sourceDB1)) {
@@ -278,6 +304,24 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
+    public synchronized Connection getPolardbxConnectionWithExtraParams(String extraParams) {
+        return getPolardbxDirectConnection(PropertiesUtil.polardbXDBName1(usingNewPartDb()), extraParams);
+    }
+
+    public synchronized Connection getPolardbxDirectConnection(String db, String extraParams) {
+        try {
+            Connection connection = ConnectionManager.getInstance().newPolarDBXConnectionWithExtraParams(extraParams);
+            ConnectionWrap connectionWrap = new ConnectionWrap(connection);
+            this.polardbxConnections.add(connectionWrap);
+            useDb(connectionWrap, db);
+            setSqlMode(ConnectionManager.getInstance().getPolardbxMode(), connectionWrap);
+            return connectionWrap;
+        } catch (Throwable t) {
+            log.error("get PolardbxDirectConnection with extra params error!", t);
+            throw new RuntimeException(t);
+        }
+    }
+
     public synchronized Connection getMysqlConnection() {
         return getMysqlConnection(PropertiesUtil.mysqlDBName1());
     }
@@ -314,22 +358,24 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
-    public synchronized Connection getMysqlConnectionByAddress(String fullAddress) {
+    public synchronized Connection getMysqlConnectionByAddress(Set<String> fullAddress) {
         return getMysqlConnectionByAddress(fullAddress, PropertiesUtil.mysqlDBName1());
     }
 
-    public synchronized Connection getMysqlConnectionByAddress(String fullAddress, String db) {
+    public synchronized Connection getMysqlConnectionByAddress(Set<String> fullAddress, String db) {
         String mysqlFullAddress = String.format("%s:%s", ConnectionManager.getInstance().getMysqlAddress(),
             ConnectionManager.getInstance().getMysqlPort());
         String mysqlFullAddressSecond = String.format("%s:%s", ConnectionManager.getInstance().getMysqlAddressSecond(),
             ConnectionManager.getInstance().getMysqlPortSecond());
 
-        if (StringUtils.equals(fullAddress, mysqlFullAddress)) {
+        if (fullAddress.contains(mysqlFullAddress)) {
             return getMysqlConnection(db);
-        } else if (StringUtils.equals(fullAddress, mysqlFullAddressSecond)) {
+        } else if (fullAddress.contains(mysqlFullAddressSecond)) {
             return getMysqlConnectionSecond(db);
         } else {
-            throw new RuntimeException("fullAddress mismatched : " + fullAddress);
+            throw new RuntimeException(
+                "fullAddress mismatched : " + fullAddress + "; Mysql address is not dn address. Can't create db[" + db
+                    + "] connection");
         }
     }
 
@@ -340,6 +386,24 @@ public class BaseTestCase implements BaseTestMode {
     public synchronized Connection getMysqlDirectConnection(String db) {
         try {
             Connection connection = ConnectionManager.getInstance().newMysqlConnection();
+            ConnectionWrap connectionWrap = new ConnectionWrap(connection);
+            this.mysqlConnections.add(connectionWrap);
+            useDb(connectionWrap, db);
+            setSqlMode(ConnectionManager.getInstance().getMysqlMode(), connectionWrap);
+            return connectionWrap;
+        } catch (Throwable t) {
+            log.error("get MysqlDirectConnection error!", t);
+            throw new RuntimeException(t);
+        }
+    }
+
+    public synchronized Connection getMysqlConnectionWithExtraParams(String extraParams) {
+        return getMysqlDirectConnection(PropertiesUtil.mysqlDBName1(), extraParams);
+    }
+
+    public synchronized Connection getMysqlDirectConnection(String db, String extraParams) {
+        try {
+            Connection connection = ConnectionManager.getInstance().newMysqlConnectionWithExtraParams(extraParams);
             ConnectionWrap connectionWrap = new ConnectionWrap(connection);
             this.mysqlConnections.add(connectionWrap);
             useDb(connectionWrap, db);
@@ -482,6 +546,15 @@ public class BaseTestCase implements BaseTestMode {
     public void setSqlMode(String mode, Connection conn) {
         String sql = "SET session sql_mode = '" + mode + "'";
         JdbcUtil.updateDataTddl(conn, sql, null);
+    }
+
+    public static boolean isMySQL80() {
+        return PropertiesUtil.polardbXVersion().equalsIgnoreCase("8.0")
+            || PropertiesUtil.polardbXVersion().equalsIgnoreCase("galaxy");
+    }
+
+    public static boolean isGalaxy() {
+        return PropertiesUtil.polardbXVersion().equalsIgnoreCase("galaxy");
     }
 
     public int getExplainNum(Connection tddlConnection, String sql) {

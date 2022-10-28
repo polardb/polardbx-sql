@@ -62,6 +62,7 @@ public class LogicalInfoSchemaContext {
     private int offset = InfoSchemaCommon.LIMIT_NO_OFFSET_SPECIFIED;
     private int rowCount = InfoSchemaCommon.LIMIT_NO_ROW_COUNT_SPECIFIED;
     private List<Object[]> resultSet = new ArrayList<>();
+    private boolean withView = false;
 
     public LogicalInfoSchemaContext(ExecutionContext executionContext) {
         this.executionContext = executionContext;
@@ -262,4 +263,11 @@ public class LogicalInfoSchemaContext {
         return resultSet;
     }
 
+    public boolean isWithView() {
+        return withView;
+    }
+
+    public void setWithView(boolean withView) {
+        this.withView = withView;
+    }
 }

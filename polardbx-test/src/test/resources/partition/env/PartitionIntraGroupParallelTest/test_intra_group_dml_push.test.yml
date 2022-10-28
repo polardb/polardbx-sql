@@ -1,0 +1,92 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `sig_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `sig_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+CREATE TABLE `bro_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `hash_tbl_bigint2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+CREATE TABLE `hash_tbl_bigint3` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+
+delete from hash_tbl_bigint;
+delete from bro_tbl_bigint;
+delete from sig_tbl_bigint;
+delete from hash_tbl_bigint2;
+delete from bro_tbl_bigint2;
+delete from sig_tbl_bigint2;
+delete from hash_tbl_bigint3;
+
+insert into bro_tbl_bigint values (2,200),(10,100);
+insert into sig_tbl_bigint values (2,200),(10,100);
+insert into bro_tbl_bigint2 values (2,200),(10,100);
+insert into sig_tbl_bigint2 values (2,200),(10,100);
+insert into hash_tbl_bigint values (2,200),(5,500),(6,600),(9,900),(10,1000);
+insert into hash_tbl_bigint2 values (2,200),(5,500),(6,600),(9,900),(10,1000);
+insert into hash_tbl_bigint3 values (2,200),(5,500),(6,600),(9,900),(10,1000);
+
+## update part,sig,bro with point update & range
+begin;
+select * from hash_tbl_bigint order by a;
+select * from bro_tbl_bigint order by a;
+select * from hash_tbl_bigint t1 join hash_tbl_bigint2 t2 on t1.a=t2.a order by t1.a;
+select * from hash_tbl_bigint t1 join hash_tbl_bigint3 t2 on t1.a=t2.a order by t1.a;
+delete from hash_tbl_bigint3;
+/*TDDL:scan()*/insert into hash_tbl_bigint3 select t1.a as a, t1.b as b from hash_tbl_bigint t1 join hash_tbl_bigint2 t2 on t1.a=t2.a;
+select * from hash_tbl_bigint3 order by a;
+delete from hash_tbl_bigint3;
+/*TDDL:scan()*/insert into hash_tbl_bigint3 select t1.a as a, t1.b as b from hash_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a;
+select * from hash_tbl_bigint3 order by a;
+update hash_tbl_bigint as t1, hash_tbl_bigint as t2 set t1.b=1000, t2.b=1000 where t1.a=t2.a;select * from hash_tbl_bigint order by a;
+select * from hash_tbl_bigint2 order by a;
+delete t1,t2 from hash_tbl_bigint as t1 inner join hash_tbl_bigint2 as t2 where t1.a=t2.a;
+select * from hash_tbl_bigint order by a;
+select * from hash_tbl_bigint2 order by a;
+
+select * from sig_tbl_bigint order by a;
+select * from sig_tbl_bigint2 order by a;
+delete from sig_tbl_bigint2;
+/*TDDL:scan()*/insert into sig_tbl_bigint2 select t1.a as a, t1.b as b from sig_tbl_bigint t1 join bro_tbl_bigint t2 on t1.a=t2.a;
+select * from sig_tbl_bigint2 order by a;
+/*TDDL:scan()*/update sig_tbl_bigint2 as t1, bro_tbl_bigint as t2 set t1.b=1000 where t1.a=t2.a;
+select * from sig_tbl_bigint2 order by a;
+/*TDDL:scan()*/delete t1 from sig_tbl_bigint2 as t1 inner join bro_tbl_bigint as t2 where t1.a=t2.a;
+select * from sig_tbl_bigint2 order by a;
+
+replace into hash_tbl_bigint select * from bro_tbl_bigint;
+replace into hash_tbl_bigint2 select * from bro_tbl_bigint;
+select * from hash_tbl_bigint order by a;
+select * from hash_tbl_bigint as t1 inner join (select a, max(b) as max_b from hash_tbl_bigint2 group by a having a >= 0 and a <= 1000 ) as t2 on t1.a=t2.a order by t1.a;
+delete t1 from hash_tbl_bigint t1 inner join (select a, max(b) as max_b from hash_tbl_bigint2 t2 group by a having a >= 0 and a <= 1000 ) t2 on t1.a=t2.a ;
+select * from hash_tbl_bigint order by a;
+rollback;

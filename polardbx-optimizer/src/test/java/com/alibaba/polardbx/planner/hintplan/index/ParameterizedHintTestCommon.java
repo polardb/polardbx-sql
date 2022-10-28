@@ -55,11 +55,11 @@ public abstract class ParameterizedHintTestCommon extends PlanTestCommon {
     @Override
     protected String getPlan(String testSql) {
         Map<Integer, ParameterContext> currentParameter = new HashMap<>();
-        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(testSql, currentParameter);
+        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(testSql, currentParameter, false);
 
         final Map<Integer, ParameterContext> param = new HashMap<>();
 
-        ExecutionContext executionContext = new ExecutionContext();
+        ExecutionContext executionContext = new ExecutionContext(appName);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_SCALE_OUT_FEATURE,
             false);
         final SqlNodeList astList = parse(testSql, sqlParameterized, param, executionContext);
@@ -137,7 +137,7 @@ public abstract class ParameterizedHintTestCommon extends PlanTestCommon {
                               ExecutionContext executionContext) {
         SqlNodeList astList;
         if (null != sqlParameterized) {
-            param.putAll(OptimizerUtils.buildParam(sqlParameterized.getParameters()));
+            param.putAll(OptimizerUtils.buildParam(sqlParameterized.getParameters(), executionContext));
             astList = new FastsqlParser()
                 .parse(sqlParameterized.getSql(), sqlParameterized.getParameters(), executionContext);
         } else {

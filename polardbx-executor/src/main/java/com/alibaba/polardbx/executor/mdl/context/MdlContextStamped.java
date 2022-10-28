@@ -16,15 +16,17 @@
 
 package com.alibaba.polardbx.executor.mdl.context;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlKey;
 import com.alibaba.polardbx.executor.mdl.MdlManager;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
 
-import javax.validation.constraints.NotNull;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +45,7 @@ public class MdlContextStamped extends MdlContext {
     public class TransactionInfo {
         private final long trxId;
         private final String traceId;
-        private final String sql;
+        private final ByteString sql;
         private final String frontend;
 
         public TransactionInfo(long trxId) {
@@ -53,7 +55,7 @@ public class MdlContextStamped extends MdlContext {
             this.frontend = null;
         }
 
-        public TransactionInfo(long trxId, String traceId, String sql, String frontend) {
+        public TransactionInfo(long trxId, String traceId, ByteString sql, String frontend) {
             this.trxId = trxId;
             this.traceId = traceId;
             this.sql = sql;
@@ -68,7 +70,7 @@ public class MdlContextStamped extends MdlContext {
             return traceId;
         }
 
-        public String getSql() {
+        public ByteString getSql() {
             return sql;
         }
 

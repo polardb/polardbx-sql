@@ -373,7 +373,7 @@ public class ORCReaderTask {
                 long now = System.nanoTime() / 1000_000;
                 ExecuteSQLOperation op = new ExecuteSQLOperation(
                     fileMeta.getPhysicalTableSchema(),
-                    ossFileUri.toString(),
+                    tableFileName,
                     "pruning result:" + pruningResult.toString() + " predicate :" + ossReadOption.getSearchArgument()
                         .toString(),
                     now);

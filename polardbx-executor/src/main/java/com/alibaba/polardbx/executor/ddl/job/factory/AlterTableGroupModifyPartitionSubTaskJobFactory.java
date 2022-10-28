@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
@@ -48,8 +49,8 @@ import java.util.Map;
 import java.util.Set;
 
 public class AlterTableGroupModifyPartitionSubTaskJobFactory extends AlterTableGroupSubTaskJobFactory {
-    private final AlterTableGroupModifyPartitionPreparedData parentPreparedData;
-    private PartitionSpec tempPartitionInfo;
+    protected final AlterTableGroupModifyPartitionPreparedData parentPreparedData;
+    protected PartitionSpec tempPartitionInfo;
 
     public AlterTableGroupModifyPartitionSubTaskJobFactory(DDL ddl,
                                                            AlterTableGroupModifyPartitionPreparedData parentPreparedData,
@@ -63,7 +64,8 @@ public class AlterTableGroupModifyPartitionSubTaskJobFactory extends AlterTableG
                                                            boolean skipBackfill,
                                                            ExecutionContext executionContext) {
         super(ddl, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology, sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill, executionContext);
+            orderedTargetTableLocations, targetPartition, skipBackfill,
+            ComplexTaskMetaManager.ComplexTaskType.MODIFY_PARTITION, executionContext);
         this.parentPreparedData = parentPreparedData;
     }
 
@@ -82,9 +84,12 @@ public class AlterTableGroupModifyPartitionSubTaskJobFactory extends AlterTableG
         return partitionInfo;
     }
 
-    private PartitionSpec buildNewTempPartitionSpec(PartitionInfo partitionInfo) {
-        SqlAlterTableModifyPartitionValues sqlAlterTableModifyPartitionValues =
-            (SqlAlterTableModifyPartitionValues) ((SqlAlterTableGroup) ddl.getSqlNode()).getAlters().get(0);
+    protected SqlAlterTableModifyPartitionValues getSqlNode() {
+        return (SqlAlterTableModifyPartitionValues) ((SqlAlterTableGroup) ddl.getSqlNode()).getAlters().get(0);
+    }
+
+    protected PartitionSpec buildNewTempPartitionSpec(PartitionInfo partitionInfo) {
+        SqlAlterTableModifyPartitionValues sqlAlterTableModifyPartitionValues = getSqlNode();
         PartitionSpec partitionSpec = partitionInfo.getPartitionBy().getPartitions().get(0).copy();
         partitionSpec.setName(parentPreparedData.getTempPartition());
         PartitionGroupRecord partitionGroupRecord = parentPreparedData.getInvisiblePartitionGroups().stream()
@@ -104,8 +109,7 @@ public class AlterTableGroupModifyPartitionSubTaskJobFactory extends AlterTableG
         List<SearchDatumInfo> partBoundValues = new ArrayList<>();
         SqlPartition targetModifyPart = sqlAlterTableModifyPartitionValues.getPartition();
         List<SqlPartitionValueItem> itemsOfVals = targetModifyPart.getValues().getItems();
-        Map<SqlNode, RexNode> allRexExprInfo =
-            ((SqlAlterTableGroup) sqlAlterTableModifyPartitionValues.getParent()).getPartRexInfoCtx();
+        Map<SqlNode, RexNode> allRexExprInfo = parentPreparedData.getPartBoundExprInfo();
         boolean isMultiCols = partitionInfo.getPartitionBy().getPartitionColumnNameList().size() > 1;
         for (int i = 0; i < itemsOfVals.size(); i++) {
             SqlNode oneItem = itemsOfVals.get(i).getValue();
@@ -120,7 +124,8 @@ public class AlterTableGroupModifyPartitionSubTaskJobFactory extends AlterTableG
 
                     RelDataType bndValDt = cmp.getDatumRelDataTypes()[j];
                     PartitionBoundVal bndVal =
-                        PartitionPrunerUtils.getBoundValByRexExpr(oneBndExpr, bndValDt, PartFieldAccessType.DDL_EXECUTION, executionContext);
+                        PartitionPrunerUtils.getBoundValByRexExpr(oneBndExpr, bndValDt,
+                            PartFieldAccessType.DDL_EXECUTION, executionContext);
                     oneColsVal.add(bndVal);
                 }
             } else {
@@ -129,7 +134,8 @@ public class AlterTableGroupModifyPartitionSubTaskJobFactory extends AlterTableG
                 // So bndRexValsOfOneItem is a RexCall or RexLiteral
                 RelDataType bndValDt = cmp.getDatumRelDataTypes()[0];
                 PartitionBoundVal bndVal =
-                    PartitionPrunerUtils.getBoundValByRexExpr(bndRexValsOfOneItem, bndValDt, PartFieldAccessType.DDL_EXECUTION, executionContext);
+                    PartitionPrunerUtils.getBoundValByRexExpr(bndRexValsOfOneItem, bndValDt,
+                        PartFieldAccessType.DDL_EXECUTION, executionContext);
                 oneColsVal.add(bndVal);
             }
             SearchDatumInfo searchDatumInfo = new SearchDatumInfo(oneColsVal);

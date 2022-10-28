@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.google.common.base.Preconditions;
 import org.apache.calcite.sql.dialect.AnsiSqlDialect;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -160,6 +161,19 @@ public abstract class SqlNode implements Cloneable {
     unparse(writer, 0, 0);
     final String sql = writer.toString();
     return new SqlString(dialect, sql);
+  }
+
+  public BytesSql toBytesSql(SqlDialect dialect, boolean forceParens) {
+    if (dialect == null) {
+      dialect = AnsiSqlDialect.DEFAULT;
+    }
+    SqlPrettyWriter writer = new SqlPrettyWriter(dialect);
+    writer.setAlwaysUseParentheses(forceParens);
+    writer.setSelectListItemsOnSeparateLines(false);
+    writer.setIndentation(0);
+    unparse(writer, 0, 0);
+    writer.lastDynamicParam();
+    return writer.getBytesSqlBuilder().build();
   }
 
   public SqlString toSqlString(SqlDialect dialect) {

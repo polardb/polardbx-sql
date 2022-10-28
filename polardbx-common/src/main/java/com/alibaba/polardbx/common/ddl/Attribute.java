@@ -82,6 +82,12 @@ public class Attribute {
     public static final String ALTER_TABLE_ALGORITHM_INSTANT = "INSTANT";
     public static final String ALTER_TABLE_COMPRESSION_CLAUSE = "COMPRESSION";
 
+    /**
+     * For ONLINE MODIFY COLUMN
+     */
+    public static final String ALTER_TABLE_ALGORITHM_OMC = "OMC";
+    public static final String ALTER_TABLE_ALGORITHM_OMC_INDEX = "OMC_INDEX";
+
     public static final String COLUMN_SERVER = "SERVER";
     public static final String COLUMN_JOB_ID = "JOB_ID";
     public static final String COLUMN_LEFT_OBJ_SCHEMA = "LEFT_OBJ_SCHEMA";

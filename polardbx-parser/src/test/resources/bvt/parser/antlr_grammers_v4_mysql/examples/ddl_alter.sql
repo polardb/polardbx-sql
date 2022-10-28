@@ -32,7 +32,7 @@ do begin update test.t2 set 1c = 1c + 1; end; -- //
 #begin
 -- Alter function/procedure
 alter function f_name comment 'some funct' language sql sql security invoker;
-alter function one_more_func contains sql sql security definer;
+alter function one_more_func sql security definer;
 alter procedure p_name comment 'some funct' language sql sql security invoker;
 alter procedure one_more_proc contains sql sql security definer;
 #end

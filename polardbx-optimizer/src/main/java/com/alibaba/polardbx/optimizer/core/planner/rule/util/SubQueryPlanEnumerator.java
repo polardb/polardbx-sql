@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
@@ -50,12 +51,17 @@ public class SubQueryPlanEnumerator extends RelShuttleImpl {
         if (tableScan instanceof LogicalView) {
             LogicalView logicalView = (LogicalView) tableScan;
             if (logicalView.getScalarList() != null) {
+                boolean modifyRel = false;
                 for (RexDynamicParam dynamicParam : logicalView.getScalarList()) {
                     PlannerContext newPlannerContext =
                         PlannerContext.getPlannerContext(dynamicParam.getRel()).copyWithInSubquery();
                     RelNode optimizedRel = Planner.getInstance().optimizeByPlanEnumerator(dynamicParam.getRel(),
                         newPlannerContext);
                     dynamicParam.setRel(optimizedRel);
+                    modifyRel = true;
+                }
+                if (modifyRel) {
+                    logicalView.rebuildPartRoutingPlanInfo();
                 }
             }
             return logicalView;
@@ -134,7 +140,7 @@ public class SubQueryPlanEnumerator extends RelShuttleImpl {
 
         @Override
         public RexNode visitDynamicParam(RexDynamicParam dynamicParam) {
-            if (dynamicParam.getIndex() == -2 || dynamicParam.getIndex() == -3) {
+            if (dynamicParam.getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX || dynamicParam.getIndex() == PlannerUtils.APPLY_SUBQUERY_PARAM_INDEX) {
                 PlannerContext newPlannerContext =
                     PlannerContext.getPlannerContext(dynamicParam.getRel()).copyWithInSubquery();
                 RelNode optimizedRel = Planner.getInstance().optimizeByPlanEnumerator(dynamicParam.getRel(),

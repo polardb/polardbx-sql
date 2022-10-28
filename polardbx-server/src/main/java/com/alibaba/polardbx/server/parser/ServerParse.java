@@ -61,10 +61,22 @@ public final class ServerParse {
     public static final int DROP_ROLE = 35;
     public static final int RESIZE = 36;
     public static final int FLUSH = 37;
+    public static final int SHARDING_ADVISE = 38;
+    public static final int CALL = 40;
+    public static final int DEBUG_PROCEDURE_DEBUG = 61;
+    public static final int DEBUG_PROCEDURE_NEXT = 62;
+    public static final int DEBUG_PROCEDURE_SHOW_PROCEDURE = 63;
+    public static final int DEBUG_PROCEDURE_SHOW_BREAKPOINTS = 64;
+    public static final int DEBUG_PROCEDURE_SHOW_STATUS = 65;
+    public static final int DEBUG_PROCEDURE_ADD_BREAKPOINT = 66;
+    public static final int DEBUG_PROCEDURE_CLEAR_BREAKPOINTS = 67;
+
     public static final int LOAD_DATA_INFILE_SQL = 99;
     public static final int TABLE = 100;
     public static final int START_SLAVE = 101;
 
+    private static final Pattern ALTER_PROCEDURE_PATTERN = Pattern.compile("^\\s*alter\\s+procedure\\s+[\\s\\S]*$",
+        Pattern.CASE_INSENSITIVE);
     private static final Pattern CREATE_USER_PATTERN = Pattern.compile("^\\s*create\\s+user\\s+.*$",
         Pattern.CASE_INSENSITIVE);
     private static final Pattern CREATE_ROLE_PATTERN = Pattern.compile("^\\s*create\\s+role\\s+.*$",
@@ -77,6 +89,34 @@ public final class ServerParse {
         Pattern.CASE_INSENSITIVE);
     private static final Pattern SET_DEFAULT_ROLE_PATTERN = Pattern.compile("^\\s*set\\s+default\\s+role.*$",
         Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern DEBUG_PROCEDURE_DEBUG_PATTERN =
+        Pattern.compile("^\\s*debug\\s+procedure\\s+debug\\s+[\\s\\S]*$",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern DEBUG_PROCEDURE_NEXT_PATTERN =
+        Pattern.compile("^\\s*debug\\s+procedure\\s+next\\s+[\\s\\S]*$",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern DEBUG_PROCEDURE_SHOW_STATUS_PATTERN =
+        Pattern.compile("^\\s*debug\\s+procedure\\s+show\\s+status\\s+[\\s\\S]*$",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern DEBUG_PROCEDURE_SHOW_PROCEDURE_PATTERN =
+        Pattern.compile("^\\s*debug\\s+procedure\\s+show\\s+procedure\\s+[\\s\\S]*$",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern DEBUG_PROCEDURE_SHOW_BREAKPOINTS_PATTERN =
+        Pattern.compile("^\\s*debug\\s+procedure\\s+show\\s+breakpoints\\s+[\\s\\S]*$",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern DEBUG_PROCEDURE_ADD_BREAKPOINT_PATTERN =
+        Pattern.compile("^\\s*debug\\s+procedure\\s+add\\s+breakpoint\\s+[\\s\\S]*$",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern DEBUG_PROCEDURE_CLEAR_BREAKPOINTS_PATTERN =
+        Pattern.compile("^\\s*debug\\s+procedure\\s+clear\\s+breakpoints\\s+[\\s\\S]*$",
+            Pattern.CASE_INSENSITIVE);
 
     public static int parse(String stmt) {
         return parse(ByteString.from(stmt));
@@ -215,8 +255,34 @@ public final class ServerParse {
             case 'R':
             case 'r':
                 return drCheck(stmt, offset);
+            case 'E':
+            case 'e':
+                return deCheck(stmt, offset);
             default:
                 return OTHER;
+            }
+        }
+
+        return OTHER;
+    }
+
+    private static int deCheck(ByteString stmt, int offset) {
+        String stmtStr = stmt.toString().substring(offset - 1);
+        if (stmt.length() > ++offset) {
+            if (DEBUG_PROCEDURE_DEBUG_PATTERN.matcher(stmtStr).matches()) {
+                return DEBUG_PROCEDURE_DEBUG;
+            } else if (DEBUG_PROCEDURE_NEXT_PATTERN.matcher(stmtStr).matches()) {
+                return DEBUG_PROCEDURE_NEXT;
+            } else if (DEBUG_PROCEDURE_SHOW_PROCEDURE_PATTERN.matcher(stmtStr).matches()) {
+                return DEBUG_PROCEDURE_SHOW_PROCEDURE;
+            } else if (DEBUG_PROCEDURE_SHOW_BREAKPOINTS_PATTERN.matcher(stmtStr).matches()) {
+                return DEBUG_PROCEDURE_SHOW_BREAKPOINTS;
+            } else if (DEBUG_PROCEDURE_SHOW_STATUS_PATTERN.matcher(stmtStr).matches()) {
+                return DEBUG_PROCEDURE_SHOW_STATUS;
+            } else if (DEBUG_PROCEDURE_ADD_BREAKPOINT_PATTERN.matcher(stmtStr).matches()) {
+                return DEBUG_PROCEDURE_ADD_BREAKPOINT;
+            } else if (DEBUG_PROCEDURE_CLEAR_BREAKPOINTS_PATTERN.matcher(stmtStr).matches()) {
+                return DEBUG_PROCEDURE_CLEAR_BREAKPOINTS;
             }
         }
 
@@ -404,7 +470,7 @@ public final class ServerParse {
         return OTHER;
     }
 
-    // KILL' '
+    // KILL [CONNECTION | QUERY] processlist_id, see https://dev.mysql.com/doc/refman/8.0/en/kill.html
     private static int killCheck(ByteString stmt, int offset) {
         if (stmt.length() > offset + "ILL ".length()) {
             char c1 = stmt.charAt(++offset);
@@ -423,6 +489,9 @@ public final class ServerParse {
                     case 'Q':
                     case 'q':
                         return killQueryCheck(stmt, offset);
+                    case 'C':
+                    case 'c':
+                        return killConnectionCheck(stmt, offset);
                     case '\'':
                     case '\"':
                         return OTHER;
@@ -455,6 +524,47 @@ public final class ServerParse {
                         continue;
                     default:
                         return (offset << 8) | KILL_QUERY;
+                    }
+                }
+                return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
+    // KILL CONNECTION processlist_id , same with kill processlist_id
+    private static int killConnectionCheck(ByteString stmt, int offset) {
+        if (stmt.length() > offset + "ONNECTION ".length()) {
+            char c1 = stmt.charAt(++offset);
+            char c2 = stmt.charAt(++offset);
+            char c3 = stmt.charAt(++offset);
+            char c4 = stmt.charAt(++offset);
+            char c5 = stmt.charAt(++offset);
+            char c6 = stmt.charAt(++offset);
+            char c7 = stmt.charAt(++offset);
+            char c8 = stmt.charAt(++offset);
+            char c9 = stmt.charAt(++offset);
+            char c10 = stmt.charAt(++offset);
+
+            if ((c1 == 'O' || c1 == 'o')
+                && (c2 == 'N' || c2 == 'n')
+                && (c3 == 'N' || c3 == 'n')
+                && (c4 == 'E' || c4 == 'e')
+                && (c5 == 'C' || c5 == 'c')
+                && (c6 == 'T' || c6 == 't')
+                && (c7 == 'I' || c7 == 'i')
+                && (c8 == 'O' || c8 == 'o')
+                && (c9 == 'N' || c9 == 'n')
+                && (c10 == ' ' || c10 == '\t' || c10 == '\r' || c10 == '\n')) {
+                while (stmt.length() > ++offset) {
+                    switch (stmt.charAt(offset)) {
+                    case ' ':
+                    case '\t':
+                    case '\r':
+                    case '\n':
+                        continue;
+                    default:
+                        return (offset << 8) | KILL;
                     }
                 }
                 return OTHER;
@@ -572,6 +682,9 @@ public final class ServerParse {
             case 'R':
             case 'r':
                 return crCheck(stmt, offset);
+            case 'A':
+            case 'a':
+                return callCheck(stmt, offset);
             default:
                 return OTHER;
             }
@@ -590,6 +703,19 @@ public final class ServerParse {
                 return collectCheck(stmt, offset);
             default:
                 return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int callCheck(ByteString stmt, int offset) {
+        if (stmt.length() > offset + 3) {
+            char c1 = stmt.charAt(++offset);
+            char c2 = stmt.charAt(++offset);
+            char c3 = stmt.charAt(++offset);
+            if ((c1 == 'L' || c1 == 'l') && (c2 == 'L' || c2 == 'l')
+                && (c3 == ' ' || c3 == '\t' || c3 == '\r' || c3 == '\n')) {
+                return CALL;
             }
         }
         return OTHER;
@@ -801,7 +927,11 @@ public final class ServerParse {
                 return seCheck(stmt, offset);
             case 'H':
             case 'h':
-                return showCheck(stmt, offset);
+                int cmd = showCheck(stmt, offset);
+                if (cmd == OTHER) {
+                    cmd = shardingAdviseCheck(stmt, offset);
+                }
+                return cmd;
             case 'T':
             case 't':
                 return startCheck(stmt, offset);
@@ -890,6 +1020,20 @@ public final class ServerParse {
                 && (c3 == ' ' || c3 == '\t' || c3 == '\r' || c3 == '\n')) {
                 return (offset << 8) | SHOW;
             }
+        }
+        return OTHER;
+    }
+
+    private static int shardingAdviseCheck(ByteString stmt, int offset) {
+        String goal = "ARDINGADVISE";
+        offset++;
+        if (stmt.length() >= offset + goal.length()) {
+
+            String subString = stmt.substring(offset, offset + goal.length());
+            if (goal.equalsIgnoreCase(subString)) {
+                return SHARDING_ADVISE;
+            }
+            return OTHER;
         }
         return OTHER;
     }

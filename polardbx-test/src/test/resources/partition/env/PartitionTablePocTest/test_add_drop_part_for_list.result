@@ -11,7 +11,7 @@ PARTITION BY LIST (a) (
 	PARTITION p3 VALUES IN (200, 201)
 );
 ALTER TABLE tbl_list1
-	SET tablegroup = new_tg_for_add_part2;
+	SET tablegroup = new_tg_for_add_part2 FORCE;
 CREATE TABLE IF NOT EXISTS tbl_list2 (
 	a int NOT NULL,
 	PRIMARY KEY (`a`)
@@ -21,6 +21,8 @@ PARTITION BY LIST (a) (
 	PARTITION p2 VALUES IN (100, 101),
 	PARTITION p3 VALUES IN (200, 201)
 );
+ALTER TABLE tbl_list2
+	SET tablegroup = new_tg_for_add_part2 FORCE;
 INSERT INTO tbl_list1
 VALUES (10),
 	(100),

@@ -495,7 +495,7 @@ public enum CollationName {
     }
 
     public static CollationName defaultCollation() {
-        return UTF8_GENERAL_CI;
+        return UTF8MB4_0900_AI_CI;
     }
 
     public static CollationName defaultNumericCollation() {

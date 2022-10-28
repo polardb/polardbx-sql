@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel.dml.writer;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
@@ -66,9 +67,10 @@ public class UpsertRelocateWriter extends RelocateWriter {
                                 Mapping skTargetMapping,
                                 Mapping skSourceMapping,
                                 List<ColumnMeta> skMetas,
-                                boolean modifySkOnly) {
+                                boolean modifySkOnly,
+                                boolean usePartFieldChecker) {
         super(targetTable, relocateDeleteWriter, relocateInsertWriter, modifyWriter, skTargetMapping, skSourceMapping,
-            skMetas, modifySkOnly);
+            skMetas, modifySkOnly, usePartFieldChecker);
         this.parent = parent;
         this.simpleInsertWriter = simpleInsertWriter;
         this.insertThenUpdateWriter = insertThenUpdateWriter;
@@ -79,12 +81,21 @@ public class UpsertRelocateWriter extends RelocateWriter {
                                    SourceRows sourceRows, ExecutionContext ec, ClassifyResult result) {
         final List<DuplicateCheckResult> classifiedRows = sourceRows.valueRows;
 
+        final RelOptTable targetTable = getTargetTable();
+        assert targetTable.getQualifiedName().size() == 2;
+        final String schemaName = targetTable.getQualifiedName().get(0);
+        final String tableName = targetTable.getQualifiedName().get(1);
+
         classifiedRows.stream().filter(r -> !r.skipUpdate()).forEach(row -> {
             final boolean insertThenUpdate = row.insertThenUpdate();
             final boolean updateOnly = row.updateOnly();
 
+            // Use delete + insert to avoid dup key error while adding column
+            final boolean isOnlineModifyColumn = TableColumnUtils.isModifying(schemaName, tableName, ec);
+
             // If partition key is not modified do UPDATE, or else do DELETE + INSERT
-            final boolean doUpdate = updateOnly && identicalSk.test(this, Pair.of(row.updateSource, null));
+            final boolean doUpdate = updateOnly && identicalSk.test(this, Pair.of(row.updateSource, null))
+                && !isOnlineModifyColumn;
 
             addResult(row.before, row.after, row.updateSource, row.insertParam, row.duplicated, insertThenUpdate,
                 doUpdate, ec, result);

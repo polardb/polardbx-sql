@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateType;
+import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
@@ -33,6 +34,8 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.sql.Date;
+import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.TimeZone;
 
@@ -134,5 +137,28 @@ public class DatePartitionFieldTest {
         partitionField = PartitionFieldBuilder.createField(dateType);
         partitionField.setNull();
         com.alibaba.polardbx.common.utils.Assert.assertTrue(partitionField.isNull());
+    }
+
+    @Test
+    public void testJdbcDate() {
+        DateType dateType = new DateType();
+        partitionField = PartitionFieldBuilder.createField(dateType);
+        String dateStr = "2022-05-01";
+        TypeConversionStatus status
+            = partitionField.store(Date.valueOf(dateStr), dateType, SessionProperties.empty());
+        String res = partitionField.stringValue().toStringUtf8();
+        Assert.assertEquals(dateStr, res);
+    }
+
+    @Test
+    public void testJdbcTimestamp() {
+        DateType dateType = new DateType();
+        partitionField = PartitionFieldBuilder.createField(dateType);
+
+        String timestampStr = "2022-05-01 23:59:59.9999";
+        TypeConversionStatus status
+            = partitionField.store(Timestamp.valueOf(timestampStr), new TimestampType(), SessionProperties.empty());
+        String res = partitionField.stringValue().toStringUtf8();
+        Assert.assertEquals("2022-05-02", res);
     }
 }

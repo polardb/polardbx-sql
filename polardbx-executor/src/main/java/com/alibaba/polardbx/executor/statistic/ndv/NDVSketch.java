@@ -16,9 +16,13 @@
 
 package com.alibaba.polardbx.executor.statistic.ndv;
 
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.druid.util.StringUtils;
+import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchService;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
@@ -27,7 +31,6 @@ import com.google.common.collect.Maps;
 import org.glassfish.jersey.internal.guava.Sets;
 
 import java.sql.SQLException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,11 +46,6 @@ public class NDVSketch implements NDVSketchService {
      * schemaName:table name:columns name -> sketch
      */
     private Map<String, NDVShardSketch> stringNDVShardSketchMap = Maps.newConcurrentMap();
-    private String schemaName;
-
-    public NDVSketch(String schemaName) {
-        this.schemaName = schemaName;
-    }
 
     public void parse(SystemTableNDVSketchStatistic.SketchRow[] sketchRows) {
         Map<String, List<String>> shardParts = Maps.newHashMap();
@@ -111,10 +109,10 @@ public class NDVSketch implements NDVSketchService {
     }
 
     @Override
-    public void remove(String tableName) {
+    public void remove(String schema, String tableName) {
         List<String> removeList = Lists.newLinkedList();
         for (String sketchKey : stringNDVShardSketchMap.keySet()) {
-            if (sketchKey.startsWith(schemaName + ":" + tableName.toLowerCase() + ":")) {
+            if (sketchKey.startsWith(schema + ":" + tableName.toLowerCase() + ":")) {
                 removeList.add(sketchKey);
             }
         }
@@ -122,16 +120,16 @@ public class NDVSketch implements NDVSketchService {
     }
 
     @Override
-    public void remove(String tableName, String columns) {
+    public void remove(String schema, String tableName, String columns) {
         if (StringUtils.isEmpty(tableName) || StringUtils.isEmpty(columns)) {
             return;
         }
-        String sketchKey = buildSketchKey(schemaName, tableName, columns);
+        String sketchKey = buildSketchKey(schema, tableName, columns);
         stringNDVShardSketchMap.remove(sketchKey);
     }
 
-    public StatisticResult getCardinality(String tableName, String columnNames) {
-        NDVShardSketch ndvSketch = stringNDVShardSketchMap.get(buildSketchKey(schemaName, tableName, columnNames));
+    public StatisticResult getCardinality(String schema, String tableName, String columnNames) {
+        NDVShardSketch ndvSketch = stringNDVShardSketchMap.get(buildSketchKey(schema, tableName, columnNames));
         if (ndvSketch == null) {
             return StatisticResult.EMPTY;
         }
@@ -155,32 +153,32 @@ public class NDVSketch implements NDVSketchService {
     }
 
     @Override
-    public boolean updateStockShardParts(String tableName, String columnNames) throws SQLException {
-        String ndvKey = buildSketchKey(schemaName, tableName, columnNames);
-        if (!stringNDVShardSketchMap.containsKey(ndvKey) || stringNDVShardSketchMap.get(ndvKey) == null) {
-            return false;
-        }
+    public String scheduleJobs() {
+        List<ScheduledJobsRecord> jobs = Lists.newLinkedList();
+        List<ScheduledJobsRecord> sampleSketchJobs = ScheduledJobsManager.getScheduledJobResultByScheduledType(
+            ScheduledJobExecutorType.STATISTIC_SAMPLE_SKETCH.name());
+        List<ScheduledJobsRecord> rowCountJobs = ScheduledJobsManager.getScheduledJobResultByScheduledType(
+            ScheduledJobExecutorType.STATISTIC_ROWCOUNT_COLLECTION.name());
+        jobs.addAll(sampleSketchJobs);
+        jobs.addAll(rowCountJobs);
 
-        NDVShardSketch ndvShardSketch = stringNDVShardSketchMap.get(ndvKey);
-        boolean isUpdated = ndvShardSketch.updateStockShardParts();
-        if (isUpdated) {
-            /** sync other nodes */
-            SyncManagerHelper.sync(
-                new UpdateStatisticSyncAction(
-                    schemaName,
-                    tableName,
-                    null),
-                schemaName);
-        }
-        return isUpdated;
+        StringBuilder stringBuilder = new StringBuilder();
+        jobs.stream().forEach(j -> stringBuilder.append(j.toString()).append(";"));
+        return stringBuilder.toString();
     }
 
     @Override
-    public void updateAllShardParts(String tableName, String columnName) throws SQLException {
-        String ndvKey = buildSketchKey(schemaName, tableName, columnName);
-        if (!stringNDVShardSketchMap.containsKey(ndvKey) || stringNDVShardSketchMap.get(ndvKey) == null
-            || !stringNDVShardSketchMap.get(ndvKey).validityCheck()) {
-            NDVShardSketch ndvShardSketch = NDVShardSketch.buildNDVShardSketch(schemaName, tableName, columnName);
+    public boolean sampleColumns(String schema, String logicalTableName) {
+        return StatisticUtils.sampleColumns(schema, logicalTableName);
+    }
+
+    @Override
+    public void updateAllShardParts(String schema, String tableName, String columnName) throws SQLException {
+        String ndvKey = buildSketchKey(schema, tableName, columnName);
+        if (!stringNDVShardSketchMap.containsKey(ndvKey)) {
+            // rebuild sketch
+            NDVShardSketch ndvShardSketch =
+                NDVShardSketch.buildNDVShardSketch(schema, tableName, columnName, false);
             if (ndvShardSketch != null) {
                 stringNDVShardSketchMap.put(ndvKey, ndvShardSketch);
             }
@@ -193,18 +191,19 @@ public class NDVSketch implements NDVSketchService {
             /** sync other nodes */
             SyncManagerHelper.sync(
                 new UpdateStatisticSyncAction(
-                    schemaName,
+                    schema,
                     tableName,
                     null),
-                schemaName);
+                schema);
         }
     }
 
     @Override
-    public void reBuildShardParts(String tableName, String columnName) throws SQLException {
+    public void reBuildShardParts(String schema, String tableName, String columnName) throws SQLException {
+        // only analyze table would enter here
         remove(tableName, columnName);
-        String ndvKey = buildSketchKey(schemaName, tableName, columnName);
-        NDVShardSketch ndvShardSketch = NDVShardSketch.buildNDVShardSketch(schemaName, tableName, columnName);
+        String ndvKey = buildSketchKey(schema, tableName, columnName);
+        NDVShardSketch ndvShardSketch = NDVShardSketch.buildNDVShardSketch(schema, tableName, columnName, true);
         if (ndvShardSketch != null) {
             stringNDVShardSketchMap.put(ndvKey, ndvShardSketch);
         }

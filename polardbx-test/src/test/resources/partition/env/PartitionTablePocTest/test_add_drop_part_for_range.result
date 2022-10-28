@@ -11,7 +11,7 @@ PARTITION BY RANGE (a) (
 	PARTITION p3 VALUES LESS THAN (300)
 );
 ALTER TABLE tbl_range1
-	SET tablegroup = new_tg_for_add_part;
+	SET tablegroup = new_tg_for_add_part FORCE;
 CREATE TABLE IF NOT EXISTS tbl_range2 (
 	a int NOT NULL,
 	PRIMARY KEY (`a`)
@@ -21,6 +21,8 @@ PARTITION BY RANGE (a) (
 	PARTITION p2 VALUES LESS THAN (200),
 	PARTITION p3 VALUES LESS THAN (300)
 );
+ALTER TABLE tbl_range2
+	SET tablegroup = new_tg_for_add_part FORCE;
 SHOW CREATE TABLE tbl_range1;
 Table,Create Table
 tbl_range1,CREATE TABLE `tbl_range1` (

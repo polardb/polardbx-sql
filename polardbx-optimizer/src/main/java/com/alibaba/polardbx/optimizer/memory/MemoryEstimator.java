@@ -19,6 +19,8 @@ package com.alibaba.polardbx.optimizer.memory;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.memory.ObjectSizeUtils;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyOperationBuilderCommon;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
@@ -41,6 +43,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -115,6 +118,26 @@ public class MemoryEstimator {
 
     public static long estimateRowSize(RelDataType rowType) {
         return estimateRowSize(rowType.getFieldList());
+    }
+
+    public static long estimateColumnSize(ColumnMeta columnMeta) {
+        RelDataType type = Optional.ofNullable(columnMeta).map(ColumnMeta::getField).map(
+            Field::getRelType).orElse(null);
+        if (type == null) {
+            return 0;
+        }
+        long result = 0;
+        if (type instanceof BasicSqlType) {
+            BasicSqlType sqlType = (BasicSqlType) type;
+            result += estimateFieldSize(sqlType);
+        } else if (type.isStruct()) {
+            result += estimateRowSize(type.getFieldList());
+        } else if (type instanceof EnumSqlType) {
+            result += 10;
+        } else {
+            throw new AssertionError();
+        }
+        return result;
     }
 
     private static long estimateFieldSize(BasicSqlType type) {
@@ -299,11 +322,11 @@ public class MemoryEstimator {
         return pcSize;
     }
 
-    public static long calcPhyTableScanAndModifyViewBuilderMemory(String sqlTemplate,
+    public static long calcPhyTableScanAndModifyViewBuilderMemory(long sqlSize,
                                                                   Map<Integer, ParameterContext> params,
                                                                   Map<String, List<List<String>>> targetTables) {
         long memVal = 0;
-        memVal += sqlTemplate.length() * ObjectSizeUtils.SIZE_CHAR + ObjectSizeUtils.SIZE_OBJ_REF;
+        memVal += sqlSize * ObjectSizeUtils.SIZE_CHAR + ObjectSizeUtils.SIZE_OBJ_REF;
         memVal += ObjectSizeUtils.SIZE_OBJ_REF * params.size() * 2;
         for (ParameterContext pc : params.values()) {
             memVal += calcMemByParameterContext(pc);
@@ -338,7 +361,7 @@ public class MemoryEstimator {
             String phyTb = phyTbListOfOneShard.get(i);
             lengthOfPhyTbOfOneShard += phyTb.length();
         }
-        phyOpMem += ObjectSizeUtils.SIZE_CHAR * (lengthOfPhyTbOfOneShard * phyTableListArr.size() + groupName.length())
+        phyOpMem += ObjectSizeUtils.SIZE_CHAR * (lengthOfPhyTbOfOneShard + groupName.length())
             + PhyTableOperation.INSTANCE_MEM_SIZE;
         return phyOpMem;
     }
@@ -357,7 +380,13 @@ public class MemoryEstimator {
                 lengthOfPhyTbOfOneShard += phyTb.length();
             }
         }
-        phyOpMem += ObjectSizeUtils.SIZE_CHAR * lengthOfPhyTbOfOneShard * phyTableListArr.size();
+
+        /**
+         * for dml, only calc one phy tbl name as mem cost
+         */
+        //phyOpMem += ObjectSizeUtils.SIZE_CHAR * lengthOfPhyTbOfOneShard * phyTableListArr.size();
+        phyOpMem += ObjectSizeUtils.SIZE_CHAR * lengthOfPhyTbOfOneShard;
+
         // for groupName
         phyOpMem += ObjectSizeUtils.SIZE_CHAR * groupName.length();
 

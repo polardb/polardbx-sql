@@ -117,10 +117,8 @@ public class PolarSetPasswordHandler extends AbstractPrivilegeCommandHandler {
         checkDrdsRoot(grantees);
 
         for (PolarAccountInfo user : grantees) {
-            if (!UserPasswdChecker.verifyPassword(user.getPassword(),
-                CobarServer.getInstance().getConfig().getSystem().getPasswordRuleConfig())) {
-                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_PASSWORD);
-            }
+            UserPasswdChecker.verifyPassword(user.getPassword(),
+                CobarServer.getInstance().getConfig().getSystem().getPasswordRuleConfig());
         }
     }
 

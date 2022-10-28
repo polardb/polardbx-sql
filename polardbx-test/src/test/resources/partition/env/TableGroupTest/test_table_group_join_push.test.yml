@@ -5,7 +5,7 @@ CREATE TABLE `t1` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`,`b`)
 PARTITIONS 4
-tablegroup = tg1111;
+TABLEGROUP = tg1111;
 show full create table t1;
 
 CREATE TABLE `t2` (
@@ -13,7 +13,9 @@ CREATE TABLE `t2` (
 `b` int(11) DEFAULT NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
-PARTITIONS 4;
+PARTITIONS 4
+TABLEGROUP = tg1111;
+
 show full create table t2;
 
 CREATE TABLE `t3` (
@@ -22,7 +24,9 @@ CREATE TABLE `t3` (
 `c` int(11) DEFAULT NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`,`b`,`c`)
-PARTITIONS 4;
+PARTITIONS 4
+TABLEGROUP = tg1111;
+
 show full create table t3;
 
 explain select t1.a from t1 join t2 on t1.a=t2.a;

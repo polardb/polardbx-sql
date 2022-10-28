@@ -21,37 +21,24 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 
 import javax.sql.DataSource;
+import java.util.List;
+import java.util.Map;
 
 public interface BaselineManageable {
-    void forceClear(Integer baselineId);
-
-    void forceClearAll();
-
-    void forceLoad(Integer baselineId);
 
     void forceLoadAll();
 
-    void forceValidateAll();
-
-    void forceValidate(Integer baselineId);
-
     BaselineInfo createBaselineInfo(String parameterizedSql, SqlNode ast, ExecutionContext ec);
 
-    PlanInfo createPlanInfo(String planJsonString, RelNode plan, int baselinInfoId, String traceId,
+    PlanInfo createPlanInfo(String schema, String planJsonString, RelNode plan, int baselinInfoId, String traceId,
                             String origin, SqlNode ast,
                             ExecutionContext executionContext);
 
-    void updateBaseline(BaselineInfo otherBaselineInfo);
+    void updateBaseline(Map<String, List<String>> bMap);
 
-    void deleteBaseline(int baselineInfoId, String parameterSql);
+    void deleteBaseline(String schema, String parameterSql);
 
-    void deleteBaseline(int baselineInfoId, String parameterSql, int planInfoId);
-
-    void updatePlanInfo(PlanInfo planInfo, String parameterSql, int originPlanId);
+    void deleteBaseline(String schema, String parameterSql, int planInfoId);
 
     boolean checkBaselineHashCodeValid(BaselineInfo baselineInfo, PlanInfo planInfo);
-
-    void forcePersist(Integer baselineId);
-
-    void forcePersistAll();
 }

@@ -22,6 +22,8 @@ import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.Connection;
@@ -32,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import static com.alibaba.polardbx.qatest.util.PropertiesUtil.usePrepare;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeBatchOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
@@ -46,6 +49,7 @@ import static org.junit.Assert.assertTrue;
  * @since 5.1.14
  */
 
+@RunWith(Parameterized.class)
 public class MultiSqlTest extends AutoCrudBasedLockTestCase {
 
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
@@ -214,6 +218,10 @@ public class MultiSqlTest extends AutoCrudBasedLockTestCase {
 
     @Test
     public void testTrxInMultiStatement() throws Exception {
+        if (usePrepare()) {
+            // prepare 模式不支持语句
+            return;
+        }
         String sql = "begin;"
             + "set drds_transaction_policy='2PC';"
             + "insert into " + baseOneTableName + "(pk,integer_test,varchar_test) values (?,?,?), (?,?,?);"

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -44,6 +45,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 import java.sql.Timestamp;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 class DatetimeColumnProvider implements ColumnProvider<Long> {
     @Override
@@ -100,10 +102,10 @@ class DatetimeColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -114,6 +116,7 @@ class DatetimeColumnProvider implements ColumnProvider<Long> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((LongColumnVector) columnVector).vector[rowNumber] = 0;
+                accumulator.ifPresent(CrcAccumulator::appendNull);
                 return;
             }
             MysqlDateTime t = DataTypeUtil.toMySQLDatetimeByFlags(
@@ -121,6 +124,7 @@ class DatetimeColumnProvider implements ColumnProvider<Long> {
                 TimeParserFlags.FLAG_TIME_NO_ZERO_DATE);
             packed = TimeStorage.writeTimestamp(t);
             ((LongColumnVector) columnVector).vector[rowNumber] = packed;
+            accumulator.ifPresent(a -> a.appendHash(Long.hashCode(packed)));
         }
 
     }

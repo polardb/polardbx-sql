@@ -16,12 +16,18 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime;
 
+import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
+import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
+import java.sql.Types;
 import java.util.Calendar;
 import java.util.List;
 
@@ -44,6 +50,9 @@ import java.util.List;
  * @since 5.0.7
  */
 public class LastDay extends AbstractScalarFunction {
+    private final static int[] DAYS_IN_MONTH = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31, 0};
+
+
     public LastDay(List<DataType> operandTypes, DataType resultType) {
         super(operandTypes, resultType);
     }
@@ -56,15 +65,28 @@ public class LastDay extends AbstractScalarFunction {
             }
         }
 
-        java.sql.Timestamp timestamp = DataTypes.TimestampType.convertFrom(args[0]);
-        if (timestamp == null) {
+        MysqlDateTime t = DataTypeUtil
+            .toMySQLDatetimeByFlags(args[0], Types.TIMESTAMP, TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+
+        if (t == null || t.getMonth() == 0) {
+            // Cannot calculate last day for zero month.
             return null;
         }
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(timestamp);
 
-        cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH));
-        return resultType.convertFrom(cal.getTime());
+        int monthIndex = (int) (t.getMonth() - 1);
+        t.setDay(DAYS_IN_MONTH[monthIndex]);
+
+        // fix 2 month.
+        if (monthIndex == 1 && MySQLTimeTypeUtil.calcDaysInYear((int) t.getYear()) == 366) {
+            t.setDay(29);
+        }
+
+        t.setHour(0);
+        t.setMinute(0);
+        t.setSecond(0);
+        t.setSecondPart(0);
+
+        return new OriginalDate(t);
     }
 
     @Override

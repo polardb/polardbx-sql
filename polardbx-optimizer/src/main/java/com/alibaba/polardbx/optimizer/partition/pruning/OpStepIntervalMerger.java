@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.parse.util.Pair;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 
 import java.util.ArrayList;
@@ -39,18 +40,20 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
     public OpStepIntervalMerger(PartitionPruneStepOp opStep, PartitionInfo partInfo) {
         this.opStep = opStep;
         this.partInfo = partInfo;
-        this.exprInfo = ((PartPredicateRouteFunction) opStep.getPredRouteFunc()).getSearchExprInfo();
         initOpRawRange();
     }
 
     protected void initOpRawRange() {
 
+        if (this.opStep.isDynamicSubQueryInStep()) {
+            return;
+        }
+        this.exprInfo = ((PartPredicateRouteFunction) opStep.getPredRouteFunc()).getSearchExprInfo();
         int partCol = partInfo.getPartitionBy().getPartitionColumnNameList().size();
         ComparisonKind cmpKind = exprInfo.getCmpKind();
         if (cmpKind == ComparisonKind.LESS_THAN || cmpKind == ComparisonKind.LESS_THAN_OR_EQUAL) {
             StepIntervalInfo range = new StepIntervalInfo();
             range.setRangeType(RangeIntervalType.SATISFIABLE_RANGE);
-
 
             /**
              * Convert stepOp <(=):stepOp   to (minInf,stepOp) or  (minInf,stepOp]
@@ -147,8 +150,16 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
     @Override
     public List<StepIntervalInfo> mergeIntervals(ExecutionContext context, PartPruneStepPruningContext pruningCtx) {
 
-        List<SearchExprEvalResult> exprEvalRsInfos = null;
+        List<Pair<SearchExprEvalResult, Integer>> exprEvalRsInfos = null;
         List<StepIntervalInfo> ranges = new ArrayList<>();
+
+        if (this.opStep.isDynamicSubQueryInStep()) {
+            StepIntervalInfo rng = new StepIntervalInfo();
+            rng.setForbidMerging(true);
+            rng.setFinalStep(this.opStep);
+            ranges.add(rng);
+            return ranges;
+        }
 
         List<SearchExprInfo> exprRsInfos = new ArrayList<>();
         exprRsInfos.add(this.exprInfo);
@@ -175,18 +186,18 @@ public class OpStepIntervalMerger implements StepIntervalMerger {
                 /**
                  * Save the computed result datumInfos into the new copied StepRangeIntervalInfo
                  */
-                range.getMaxVal().setBndValue(exprEvalRsInfos.get(0).getSearchDatumInfo());
+                range.getMaxVal().setBndValue(exprEvalRsInfos.get(0).getKey().getSearchDatumInfo());
             }
 
             if (!range.getMinVal().isMinInf()) {
                 /**
                  * Save the computed result datumInfos into the new copied StepRangeIntervalInfo
                  */
-                range.getMinVal().setBndValue(exprEvalRsInfos.get(0).getSearchDatumInfo());
+                range.getMinVal().setBndValue(exprEvalRsInfos.get(0).getKey().getSearchDatumInfo());
             }
         } else {
-            range.getMaxVal().setBndValue(exprEvalRsInfos.get(0).getSearchDatumInfo());
-            range.getMinVal().setBndValue(exprEvalRsInfos.get(0).getSearchDatumInfo());
+            range.getMaxVal().setBndValue(exprEvalRsInfos.get(0).getKey().getSearchDatumInfo());
+            range.getMinVal().setBndValue(exprEvalRsInfos.get(0).getKey().getSearchDatumInfo());
         }
 
         ranges.add(range);

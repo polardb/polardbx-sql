@@ -33,5 +33,6 @@ public class CalcParamsAttribute {
     public final static String DB_SHARD_KEY_SET = "DB_SHARD_KEY_SET";
     public final static String TB_SHARD_KEY_SET = "TB_SHARD_KEY_SET";
     public final static String COND_COL_IDX_MAP = "COND_COL_IDX_MAP";
+    public final static String EXECUTION_CONTEXT = "EXECUTION_CONTEXT";
 
 }

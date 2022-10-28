@@ -18,7 +18,6 @@ package com.alibaba.polardbx.rule;
 
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.rule.enums.RuleType;
-import com.alibaba.polardbx.rule.model.ShardPrepareResult;
 
 import java.util.Map;
 import java.util.Set;
@@ -72,14 +71,14 @@ public interface ExtRule<T> extends Rule<T> {
      * </pre>
      */
     public Map<T, ? extends Object> calculate(Map<String/* 列名 */, Comparative> sqlArgs, Object ctx, Object outerContext,
-                                              Map<String, Object> calcParams, ShardPrepareResult shardPrepareResult,
+                                              Map<String, Object> calcParams,
                                               RuleType ruleType);
 
     /**
      * 不返回每个结果对应的得到该结果的输入值（描点）集合
      */
-    public Set<T> calculateNoTrace(Map<String/* 列名 */, Comparative/* 比较树 */> sqlArgs, Object ctx, Object outerContext,
-                                   ShardPrepareResult shardPrepareResult, RuleType ruleType);
+    public Set<T> calculateNoTrace(
+        Map<String/* 列名 */, Comparative/* 比较树 */> sqlArgs, Object ctx, Object outerContext, RuleType ruleType);
 
     /**
      * 不返回每个结果对应的得到该结果的输入值（描点）集合
@@ -89,7 +88,7 @@ public interface ExtRule<T> extends Rule<T> {
      * 它与outerContext的不同是，outerContext的作用域是表级别的，所以同一表的不同路由的参数是共用的
      */
     public Set<T> calculateNoTrace(Map<String/* 列名 */, Comparative/* 比较树 */> sqlArgs, Object ctx, Object outerContext,
-                                   Map<String, Object> calcParams, ShardPrepareResult shardPrepareResult,
+                                   Map<String, Object> calcParams,
                                    RuleType ruleType);
 
     public VirtualTableSupport getTableRule();

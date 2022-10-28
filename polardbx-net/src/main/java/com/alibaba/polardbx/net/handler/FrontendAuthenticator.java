@@ -21,6 +21,8 @@ import com.alibaba.polardbx.Commands;
 import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.common.audit.AuditAction;
 import com.alibaba.polardbx.common.audit.AuditUtils;
+import com.alibaba.polardbx.net.util.AuditUtil;
+import com.taobao.tddl.common.privilege.EncrptPassword;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.encrypt.SecurityUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -345,10 +347,12 @@ public class FrontendAuthenticator implements NIOHandler {
         source.clearMDC();
         if (errno == ErrorCode.ER_DBACCESS_DENIED_ERROR || errno == ErrorCode.ER_ACCESS_DENIED_ERROR) {
             incrementLoginErrorCount(auth.user, source.getHost());
-            logAuditInfo(auth.database, auth.user, source.getHost(), source.getPort(), AuditAction.LOGIN_ERR);
+            AuditUtil.logAuditInfo(source.getInstanceId(), auth.database, auth.user, source.getHost(), source.getPort(),
+                AuditAction.LOGIN_ERR);
         }
         if (errno == ErrorCode.ER_PASSWORD_NOT_ALLOWED) {
-            logAuditInfo(auth.database, auth.user, source.getHost(), source.getPort(), AuditAction.LOGIN_ERR);
+            AuditUtil.logAuditInfo(source.getInstanceId(), auth.database, auth.user, source.getHost(), source.getPort(),
+                AuditAction.LOGIN_ERR);
         }
         if (cause != null) {
             logger.error(info + " caused by " + cause);
@@ -374,23 +378,11 @@ public class FrontendAuthenticator implements NIOHandler {
         return PolarPrivManager.getInstance().checkUserLoginErrMaxCount(userName, host);
     }
 
-    public void incrementLoginErrorCount(String userName, String host) {
-        PolarPrivManager.getInstance().incrementLoginErrorCount(userName, host);
+    public boolean checkUserPasswordExpire(String user, String host) {
+        return PolarPrivManager.getInstance().checkUserPasswordExpire(user, host);
     }
 
-    public void logAuditInfo(String database, String user, String host, int port, AuditAction action) {
-        if (!Boolean.valueOf(System.getProperty(ConnectionProperties.ENABLE_LOGIN_AUDIT_CONFIG))) {
-            return;
-        }
-        // `gmt_create`, `instance_name`, `user_name`, `db_name`, `host`, `action`
-        AuditUtils.logAuditInfo(String.valueOf(source.getInstanceId()) + ',' + String.valueOf(user)
-            + ',' + String.valueOf(database) + ',' + String.valueOf(host), action);
-        AuditLogAccessor auditLogAccessor = new AuditLogAccessor();
-        try (Connection conn = MetaDbUtil.getConnection()) {
-            auditLogAccessor.setConnection(conn);
-            auditLogAccessor.addAuditLog(user, host, port, database, null, action, null);
-        } catch (SQLException e) {
-            //ignore;
-        }
+    public void incrementLoginErrorCount(String userName, String host) {
+        PolarPrivManager.getInstance().incrementLoginErrorCount(userName, host);
     }
 }

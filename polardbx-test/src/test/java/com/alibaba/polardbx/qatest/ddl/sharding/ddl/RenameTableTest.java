@@ -433,16 +433,20 @@ public class RenameTableTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testReCreateTableAfterRenameOperation() {
         if (originTableName.endsWith(ONE_DB_ONE_TB_SUFFIX)) {
             String sql = "drop table if exists reabc";
             JdbcUtil.executeUpdate(tddlConnection, sql);
-            sql = "create table reabc(id bigint(20))";
-            JdbcUtil.executeUpdate(tddlConnection, sql);
-            sql = "rename table reabc to redef";
+            sql = "drop table if exists redef";
             JdbcUtil.executeUpdate(tddlConnection, sql);
             sql = "create table reabc(id bigint(20))";
+            JdbcUtil.executeUpdate(tddlConnection, sql);
+            String ranameTable = randomTableName("redef", 3);
+            sql = "rename table reabc to " + ranameTable;
+            JdbcUtil.executeUpdate(tddlConnection, sql);
+            sql = "create table reabc(id bigint(20))";
+            JdbcUtil.executeUpdate(tddlConnection, sql);
+            sql = "drop table if exists " + ranameTable;
             JdbcUtil.executeUpdate(tddlConnection, sql);
         }
     }

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.profiler.memory;
 
-import com.alibaba.polardbx.common.model.SqlType;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.parse.visitor.AstStructStats;
 
 /**

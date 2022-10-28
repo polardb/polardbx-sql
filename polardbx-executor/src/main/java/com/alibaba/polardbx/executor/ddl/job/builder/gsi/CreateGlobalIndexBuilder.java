@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.builder.gsi;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCurrentTimeExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
@@ -34,6 +35,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
@@ -41,6 +43,7 @@ import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -66,6 +69,8 @@ import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTablePartitionCount;
+import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
 import org.apache.calcite.sql.SqlAlterTableRepartition;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlCreateIndex;
@@ -81,6 +86,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -122,6 +128,14 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             || relDdl.sqlNode instanceof SqlAlterTableRepartition);
     }
 
+    public boolean isRemovePartitioning() {
+        return relDdl != null && relDdl.sqlNode != null && relDdl.sqlNode instanceof SqlAlterTableRemovePartitioning;
+    }
+
+    public boolean isAlterPartitionCount() {
+        return relDdl != null && relDdl.sqlNode != null && relDdl.sqlNode instanceof SqlAlterTablePartitionCount;
+    }
+
     /**
      * @return true if it's repartition single or broadcast
      */
@@ -136,6 +150,12 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             return ((SqlAlterTableRepartition) relDdl.sqlNode).isSingleOrBroadcast();
         }
         return false;
+    }
+
+    public boolean isRepartitionAutoTable() {
+        // primary table meta
+        CreateTablePreparedData indexTablePreparedData = gsiPreparedData.getIndexTablePreparedData();
+        return indexTablePreparedData.getTableMeta().isAutoPartition();
     }
 
     @Override
@@ -197,6 +217,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         indexTablePreparedData.setBroadcast(indexDef.isBroadcast());
         indexTablePreparedData.setSharding(!indexDef.isSingle() && !indexDef.isBroadcast());
         indexTablePreparedData.setPartitioning(indexDef.getPartitioning());
+        //indexTablePreparedData.setTableGroupName(indexDef.getTableGroupName());
     }
 
     protected void refreshShardingInfo(SqlCreateIndex sqlCreateIndex, CreateTablePreparedData indexTablePreparedData) {
@@ -230,6 +251,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         indexTablePreparedData.setTbPartitionBy(sqlCreateIndex.getTbPartitionBy());
         indexTablePreparedData.setTbPartitions(sqlCreateIndex.getTbPartitions());
         indexTablePreparedData.setPartitioning(sqlCreateIndex.getPartitioning());
+        indexTablePreparedData.setTableGroupName(sqlCreateIndex.getTableGroupName());
     }
 
     @Override
@@ -272,7 +294,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         indexDef.setPrimaryTableDefinition(gsiPreparedData.getPrimaryTableDefinition());
 
         final SqlAlterTable sqlAlterTable =
-            new SqlAlterTable(primaryTableName, new HashMap<>(), "", null, alters, SqlParserPos.ZERO);
+            new SqlAlterTable(null, primaryTableName, new HashMap<>(), "", null, alters, SqlParserPos.ZERO);
 
         this.originSqlTemplate = sqlAlterTable;
         this.sequenceBean = null;
@@ -510,23 +532,36 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                                          List<SQLSelectOrderByItem> pkList) {
     }
 
+    protected void genUniqueIndexForUGSI(MySqlCreateTableStatement indexTableStmt,
+                                         List<SQLSelectOrderByItem> pkList) {
+    }
+
+    private boolean ukContainsPartKey(List<String> uk, List<String> partKey) {
+        final Set<String> partKeySet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        final Set<String> ukSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        partKeySet.addAll(partKey.stream().map(SqlIdentifier::surroundWithBacktick).collect(Collectors.toList()));
+        ukSet.addAll(uk);
+        return ukSet.containsAll(partKeySet);
+    }
+
     /**
      * change gsi to local index when alter table repartition to single or broadcast table.
      */
     protected void genLocalIndexForRepartition(MySqlCreateTableStatement indexTableStmt) {
         RepartitionPrepareData repartitionPrepareData = gsiPreparedData.getRepartitionPrepareData();
-        if (repartitionPrepareData == null || repartitionPrepareData.getLocalIndexes() == null) {
+        if (repartitionPrepareData == null || repartitionPrepareData.getGsiInfo() == null) {
             return;
         }
 
-        for (Map.Entry<String, List<String>> entry : repartitionPrepareData.getLocalIndexes().entrySet()) {
+        for (Map.Entry<String, Pair<List<String>, Boolean>> entry : repartitionPrepareData.getGsiInfo().entrySet()) {
             final Iterator<SQLTableElement> it = indexTableStmt.getTableElementList().iterator();
             List<SQLSelectOrderByItem> indexColumns = new ArrayList<>();
-            for (String name : entry.getValue()) {
-                indexColumns.add(new SQLSelectOrderByItem(new SQLIdentifierExpr(name)));
+            List<String> idxCol = entry.getValue().getKey();
+            Boolean nonUnique = entry.getValue().getValue();
+            for (String colName : idxCol) {
+                indexColumns.add(new SQLSelectOrderByItem(new SQLIdentifierExpr(colName)));
             }
 
-            boolean createLocalIndex = false;
             while (it.hasNext()) {
                 final SQLTableElement tableElement = it.next();
                 if (tableElement instanceof MySqlTableIndex) {
@@ -535,7 +570,6 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                         SQLIdentifierExpr indexName = (SQLIdentifierExpr) mySqlTableIndex.getName();
                         if (indexName != null && indexName.getName().contains(TddlConstants.AUTO_LOCAL_INDEX_PREFIX)) {
                             it.remove();
-                            createLocalIndex = true;
                         }
                     }
                 } else if (tableElement instanceof MySqlKey) {
@@ -544,17 +578,32 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                         SQLIdentifierExpr keyName = (SQLIdentifierExpr) mySqlKey.getName();
                         if (keyName != null && keyName.getName().contains(TddlConstants.AUTO_LOCAL_INDEX_PREFIX)) {
                             it.remove();
-                            createLocalIndex = true;
                         }
                     }
                 }
             }
 
-            if (!createLocalIndex) {
-                continue;
+            // add local index/uk
+            MySqlKey index;
+            if (isRepartitionSingleOrBroadcast() && !nonUnique) {
+                index = new MySqlUnique();
+                index.getIndexDefinition().setType("UNIQUE");
+            } else if (isRepartitionAutoTable() && !nonUnique) {
+                PartitionInfo indexPartitionInfo = gsiPreparedData.getIndexPartitionInfo();
+                List<String> partColumns = indexPartitionInfo.getPartitionColumns();
+                // if unique gsi contains new partition key, then create local unique key
+                // else throw error
+                if (ukContainsPartKey(idxCol, partColumns)) {
+                    index = new MySqlUnique();
+                    index.getIndexDefinition().setType("UNIQUE");
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_REPARTITION_TABLE_WITH_GSI,
+                        "can't alter repartition on an auto table which has unique gsi and uk don't contain partition keys");
+                }
+            } else {
+                index = new MySqlKey();
             }
-            final MySqlTableIndex index = new MySqlTableIndex();
-            index.getIndexDefinition().setIndex(true);
+
             index.getIndexDefinition().setName(new SQLIdentifierExpr(entry.getKey()));
             index.getIndexDefinition().getColumns().addAll(indexColumns);
             // BTREE OR HASH
@@ -697,9 +746,27 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     duplicatedIndexName = indexName;
                 }
 
-                if (!isRepartition() || (isRepartition() && indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX))) {
-                    removeIndexOnGsi(fullColumn, it, key);
+                if (isRepartition() && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
+                    // repartition will drop the index generated by gsi
+                    continue;
                 }
+
+                if (isRemovePartitioning() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)
+                    && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
+                    // remove partitioning will drop the index generated by gsi on new primary table (gsi)
+                    // remove partitioning will drop all indexes on the other new gsi
+                    // convert the local index on new primary table (gsi)
+                    if (!indexName.contains(TddlConstants.AUTO_LOCAL_INDEX_PREFIX)) {
+                        key.setName(new SQLIdentifierExpr(TddlConstants.AUTO_LOCAL_INDEX_PREFIX + indexName));
+                    }
+                    continue;
+                }
+
+                if (isAlterPartitionCount() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)) {
+                    // alter partition count will drop all indexes on new gsi expect new primary table (gsi)
+                    continue;
+                }
+                removeIndexOnGsi(fullColumn, it, key);
             } else if (tableElement instanceof MySqlTableIndex) {
                 final MySqlTableIndex tableIndex = (MySqlTableIndex) tableElement;
 
@@ -708,9 +775,27 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                     duplicatedIndexName = indexName;
                 }
 
-                if (!isRepartition() || (isRepartition() && indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX))) {
-                    removeIndexOnGsi(fullColumn, it, tableIndex);
+                if (isRepartition() && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
+                    // repartition will drop the index generated by gsi
+                    continue;
                 }
+
+                if (isRemovePartitioning() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)
+                    && !indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
+                    // remove partitioning will drop the index generated by gsi on new primary table (gsi)
+                    // remove partitioning will drop all indexes on the other new gsi
+                    // convert the local index on new primary table (gsi)
+                    if (!indexName.contains(TddlConstants.AUTO_LOCAL_INDEX_PREFIX)) {
+                        tableIndex.setName(new SQLIdentifierExpr(TddlConstants.AUTO_LOCAL_INDEX_PREFIX + indexName));
+                    }
+                    continue;
+                }
+
+                if (isAlterPartitionCount() && StringUtils.containsIgnoreCase(gsiName, primaryTableName)) {
+                    // alter partition count will drop all indexes on new gsi expect new primary table (gsi)
+                    continue;
+                }
+                removeIndexOnGsi(fullColumn, it, tableIndex);
             } else if (tableElement instanceof MysqlForeignKey) {
                 final MysqlForeignKey foreignKey = (MysqlForeignKey) tableElement;
 
@@ -728,10 +813,10 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             genSimpleIndexForUGSI(indexTableStmt, pkList);
         }
 
-        // for alter repartition
-        // Generate simple index of other gsi partition key when alter table to single or broadcast
-        // because the other gsi tables will be dropped
-        if (isRepartitionSingleOrBroadcast()) {
+        // For alter repartition. Generate simple index of other gsi partition key
+        // 1. when alter table to single or broadcast, because the other gsi tables will be dropped
+        // 2. alter an auto table to a partition table (auto mode only)
+        if (isRepartitionSingleOrBroadcast() || isRepartitionAutoTable()) {
             genLocalIndexForRepartition(indexTableStmt);
         }
 
@@ -763,7 +848,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
                 "need default value other than CURRENT_TIMESTAMP for column `" + timestampWithoutDefault + "`");
         }
 
-        if (null != duplicatedIndexName) {
+        if (null != duplicatedIndexName && !isRemovePartitioning()) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_INDEX_TABLE_DEFINITION,
                 "Duplicate index name '" + duplicatedIndexName + "'");
         }
@@ -775,7 +860,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             relDdl.sqlNode = createIndex.rebuildCovering(sortedCovering);
             gsiPreparedData.setSqlCreateIndex((SqlCreateIndex) relDdl.sqlNode);
         } else if (sqlNode instanceof SqlAlterTable) {
-            final SqlAlterTable alterTable = (SqlAlterTable) sqlNode;
+            final SqlAlterTable alterTable = sqlAlterTable != null ? sqlAlterTable : (SqlAlterTable) sqlNode;
             final SqlAddIndex oldAddIndex = (SqlAddIndex) alterTable.getAlters().get(0);
             final SqlIndexDefinition oldIndexDef = oldAddIndex.getIndexDef();
             final SqlIndexDefinition newIndexDef = oldIndexDef.replaceCovering(sortedCovering);
@@ -789,12 +874,19 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             updateAddIndex(sqlAlterTable, 0, addIndex, newIndexDef);
         }
 
-
         if (isRepartition()) {
             addLocalIndex(indexColumnMap, indexTableStmt, unique, options);
         } else {
             final List<String> indexShardKey = gsiPreparedData.getShardColumns();
             SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, indexShardKey);
+        }
+
+        // Generate unique index of pk on unique GSI.
+        // the unique index will be dropped when backfill finish
+        Map<String, TableMeta> tableMetaMap = ec.getSchemaManager().getCache();
+        if (unique && !pkList.isEmpty() && tableMetaMap != null && tableMetaMap.containsKey(
+            primaryTableName.toLowerCase())) {
+            genUniqueIndexForUGSI(indexTableStmt, pkList);
         }
 
         final SqlNodeList columnList = new SqlNodeList(SqlParserPos.ZERO);
@@ -820,6 +912,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             createIndexTable,
             false,
             sequenceBean,
+            null,
             null,
             null,
             null,
@@ -1043,6 +1136,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
             null,
             null,
             null,
+            null,
             null);
 
         result.setUniqueShardingKey(unique);
@@ -1100,23 +1194,24 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
         return result;
     }
 
-    private void validatePartitionColumnInPkForLocalPartition(List<SQLSelectOrderByItem> pkList){
-        if(CollectionUtils.isEmpty(pkList)){
+    private void validatePartitionColumnInPkForLocalPartition(List<SQLSelectOrderByItem> pkList) {
+        if (CollectionUtils.isEmpty(pkList)) {
             return;
         }
-        if(gsiPreparedData.getIndexTablePreparedData() == null){
+        if (gsiPreparedData.getIndexTablePreparedData() == null) {
             return;
         }
-        if(gsiPreparedData.getIndexTablePreparedData().getLocalPartitionDefinitionInfo()==null){
+        if (gsiPreparedData.getIndexTablePreparedData().getLocalPartitionDefinitionInfo() == null) {
             return;
         }
         LocalPartitionDefinitionInfo definitionInfo =
             gsiPreparedData.getIndexTablePreparedData().getLocalPartitionDefinitionInfo();
         String localPartitionColumn = definitionInfo.getColumnName().replace("`", "").toLowerCase();
         List<String> columnNameList =
-            pkList.stream().map(e->((SQLIdentifierExpr)e.getExpr()).getName().replace("`", "").toLowerCase()).collect(
+            pkList.stream().map(e -> ((SQLIdentifierExpr) e.getExpr()).getName().replace("`", "").toLowerCase())
+                .collect(
                 Collectors.toList());
-        if(!columnNameList.contains(localPartitionColumn)){
+        if (!columnNameList.contains(localPartitionColumn)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_INDEX_TABLE_DEFINITION,
                 String.format("Primary Key must contain local partition column: %s", localPartitionColumn));
         }

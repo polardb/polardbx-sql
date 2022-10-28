@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.scaleout.backfill;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -69,27 +71,38 @@ public class BackfillExecutor {
                 .create(schemaName, tableName, tableName, this.executeFunc, baseEc.isUseHint(), baseEc,
                     sourceTargetGroupMap);
 
-        // Load latest extractor position mark
-        extractor.loadBackfillMeta(baseEc);
-
+        boolean finished;
         // Foreach row: lock batch -> fill into index -> release lock
         final AtomicInteger affectRows = new AtomicInteger();
-        extractor.foreachBatch(baseEc, new BatchConsumer() {
-            @Override
-            public void consume(List<Map<Integer, ParameterContext>> batch,
-                                Pair<ExecutionContext, String> extractEcAndIndexPair) {
-                loader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
-                    try {
-                        // Commit and close extract statement
-                        extractEcAndIndexPair.getKey().getTransaction().commit();
-                        return true;
-                    } catch (Exception e) {
-                        logger.error("Close extract statement failed!", e);
-                        return false;
+        do {
+            finished = true;
+            // Load latest extractor position mark
+            extractor.loadBackfillMeta(baseEc);
+            try {
+                extractor.foreachBatch(baseEc, new BatchConsumer() {
+                    @Override
+                    public void consume(List<Map<Integer, ParameterContext>> batch,
+                                        Pair<ExecutionContext, Pair<String, String>> extractEcAndIndexPair) {
+                        loader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
+                            try {
+                                // Commit and close extract statement
+                                extractEcAndIndexPair.getKey().getTransaction().commit();
+                                return true;
+                            } catch (Exception e) {
+                                logger.error("Close extract statement failed!", e);
+                                return false;
+                            }
+                        });
                     }
                 });
+            } catch (TddlNestableRuntimeException e) {
+                if (e.getMessage().contains("need to be split into smaller batches")) {
+                    finished = false;
+                } else {
+                    throw e;
+                }
             }
-        });
+        } while (!finished);
 
         return affectRows.get();
     }

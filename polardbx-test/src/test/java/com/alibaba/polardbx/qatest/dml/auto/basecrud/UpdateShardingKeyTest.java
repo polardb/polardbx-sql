@@ -24,6 +24,8 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.ResultSet;
@@ -44,13 +46,18 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * @author chenmo.cm
  */
 
+@RunWith(Parameterized.class)
 public class UpdateShardingKeyTest extends AutoCrudBasedLockTestCase {
 
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 
-    private static final String HINT = "/*+TDDL:cmd_extra(ENABLE_MODIFY_SHARDING_COLUMN=true)*/";
+    private static final String HINT1 = "/*+TDDL:cmd_extra(ENABLE_MODIFY_SHARDING_COLUMN=true)*/";
+    //多线程执行
+    private static final String HINT2 = "/*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN=true,UPDATE_DELETE_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
 
-    @Parameters(name = "{index}:table0={0},table1={1}")
+    private final String HINT;
+
+    @Parameters(name = "{index}:hint={0},table1={1}")
     public static List<String[]> prepareData() {
         final List<String[]> result = new ArrayList<>();
         result.addAll(
@@ -58,10 +65,19 @@ public class UpdateShardingKeyTest extends AutoCrudBasedLockTestCase {
         result.addAll(Arrays
             .asList(ExecuteTableName.allBaseTypeWithStringRuleOneTable(ExecuteTableName.UPDATE_DELETE_BASE_AUTONIC)));
 
-        return result;
+        final List<String[]> allTests = new ArrayList<>();
+        result.forEach(strings -> allTests.add(new String[] {HINT1, strings[0]}));
+
+        //单表，广播表不走多线程模式，过滤掉
+        result.stream().filter(s -> !(s[0].contains("one_db_one_tb") || s[0].contains("broadcast"))).forEach(strings -> {
+            allTests.add(new String[] {HINT2, strings[0]});
+        });
+
+        return allTests;
     }
 
-    public UpdateShardingKeyTest(String baseOneTableName) {
+    public UpdateShardingKeyTest(String tHint, String baseOneTableName) {
+        HINT = tHint;
         this.baseOneTableName = baseOneTableName;
     }
 
@@ -601,6 +617,10 @@ public class UpdateShardingKeyTest extends AutoCrudBasedLockTestCase {
      */
     @Test
     public void updateWithSubquery() throws Exception {
+        if (HINT.equals(HINT2)) {
+            //分割多次执行会Duplicate key
+            return;
+        }
 
         String sql = HINT
             + "UPDATE (select * from %s) t SET %s.float_test=0, %s.double_test=0 WHERE  pk BETWEEN 3 AND 7";
@@ -624,6 +644,11 @@ public class UpdateShardingKeyTest extends AutoCrudBasedLockTestCase {
      */
     @Test
     public void updateWithSubquery2() throws Exception {
+        if (HINT.equals(HINT2)) {
+            //分割多次执行会Duplicate key
+            return;
+        }
+
         String sql = HINT
             + "UPDATE (select * from %s) t, %s a,(select * from %s) t2 SET a.pk = a.pk + 100, a.varchar_test = concat"
             + "(a.varchar_test, 'b'), a.float_test=0, a.double_test=0 WHERE  a.pk BETWEEN 3 AND 7 and t2.pk BETWEEN "

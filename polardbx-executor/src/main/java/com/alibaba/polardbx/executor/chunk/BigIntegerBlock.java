@@ -24,6 +24,7 @@ import org.openjdk.jol.info.ClassLayout;
 import java.math.BigInteger;
 import java.util.Arrays;
 
+import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
@@ -147,5 +148,15 @@ public class BigIntegerBlock extends AbstractCommonBlock {
 
     public byte[] getData() {
         return data;
+    }
+
+    @Override
+    public int checksum(int position) {
+        if (isNull(position)) {
+            return NULL_TAG;
+        }
+        BigInteger bigInteger = getBigInteger(position);
+        long longVal = bigInteger.longValue();
+        return Long.hashCode(longVal);
     }
 }

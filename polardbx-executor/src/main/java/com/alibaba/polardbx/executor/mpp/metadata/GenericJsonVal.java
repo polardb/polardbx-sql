@@ -1,0 +1,73 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.executor.mpp.metadata;
+
+import com.alibaba.polardbx.common.utils.SerializeUtils;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.io.Serializable;
+import java.util.Base64;
+
+public class GenericJsonVal {
+
+    public static final String GJVal = "@@GJVal";
+
+    private Object object;
+    private String objectClass;
+    private String paramsBytes;
+
+    public GenericJsonVal(Object object) {
+        this.object = object;
+        this.objectClass = object.getClass().getName();
+    }
+
+    @JsonCreator
+    public GenericJsonVal(@JsonProperty("objectClass") String objectClass,
+                          @JsonProperty("paramsBytes") String paramsBytes) throws ClassNotFoundException {
+        byte[] decoded = Base64.getDecoder().decode(paramsBytes);
+        this.object = SerializeUtils.deFromBytes(decoded, Class.forName(objectClass));
+    }
+
+    @JsonProperty
+    public String getParamsBytes() {
+        if (paramsBytes == null && object != null) {
+            byte[] ret = SerializeUtils.getBytes((Serializable) object);
+            paramsBytes = Base64.getEncoder().encodeToString(ret);
+        }
+        return paramsBytes;
+    }
+
+    @JsonIgnore
+    public Object getObject() {
+        return object;
+    }
+
+    public void setObject(Object object) {
+        this.object = object;
+    }
+
+    @JsonProperty
+    public String getObjectClass() {
+        return objectClass;
+    }
+
+    public void setObjectClass(String objectClass) {
+        this.objectClass = objectClass;
+    }
+}

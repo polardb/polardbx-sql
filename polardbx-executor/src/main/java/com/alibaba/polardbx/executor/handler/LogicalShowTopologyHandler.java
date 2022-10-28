@@ -16,10 +16,16 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -36,6 +42,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShowTopology;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -130,19 +137,50 @@ public class LogicalShowTopologyHandler extends HandlerCommon {
         result.addColumn("GROUP_NAME", DataTypes.StringType);
         result.addColumn("TABLE_NAME", DataTypes.StringType);
         result.addColumn("PARTITION_NAME", DataTypes.StringType);
+        result.addColumn("PHY_DB_NAME", DataTypes.StringType);
+        result.addColumn("DN_ID", DataTypes.StringType);
 
         result.initMeta();
         int index = 0;
         Map<String, List<PhysicalPartitionInfo>> physicalPartitionInfos =
             partitionInfo.getPhysicalPartitionTopology(new ArrayList<>());
 
+        Map<String, GroupDetailInfoExRecord> groupDnMap = new HashMap<>();
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+            groupDetailInfoAccessor.setConnection(metaDbConn);
+            List<GroupDetailInfoExRecord> completedGroupInfos =
+                groupDetailInfoAccessor.getCompletedGroupInfosByInstId(InstIdUtil.getInstId());
+            for (int i = 0; i < completedGroupInfos.size(); i++) {
+                GroupDetailInfoExRecord grpInfo = completedGroupInfos.get(i);
+                groupDnMap.put(grpInfo.getGroupName(), grpInfo);
+            }
+        } catch (Throwable ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, ex);
+        }
+
         for (Map.Entry<String, List<PhysicalPartitionInfo>> phyPartItem : physicalPartitionInfos.entrySet()) {
             String grpGroupKey = phyPartItem.getKey();
             List<PhysicalPartitionInfo> phyPartList = phyPartItem.getValue();
             for (int i = 0; i < phyPartList.size(); i++) {
+                PhysicalPartitionInfo phyPartInfo = phyPartList.get(i);
+                String grpName = phyPartInfo.getGroupKey();
+                GroupDetailInfoExRecord grpInfo = groupDnMap.get(grpName);
+                String dbId = "NA";
+                String phyDb = "NA";
+                if (grpInfo != null) {
+                    dbId = grpInfo.getStorageInstId();
+                    phyDb = grpInfo.getPhyDbName();
+                }
                 result.addRow(
                     new Object[] {
-                        index++, grpGroupKey, phyPartList.get(i).getPhyTable(), phyPartList.get(i).getPartName()});
+                        index++,
+                        grpGroupKey,
+                        phyPartList.get(i).getPhyTable(),
+                        phyPartList.get(i).getPartName(),
+                        phyDb,
+                        dbId
+                    });
             }
         }
         return result;

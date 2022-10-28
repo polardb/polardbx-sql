@@ -47,6 +47,19 @@ public class FrontendCommandHandler implements NIOHandler {
         source.setPacketId((byte) (0 & 0xff));
         source.setLastActiveTime(System.nanoTime());
         source.setSqlBeginTimestamp(System.currentTimeMillis());
+
+        // In cursor mode, only the following requests can be handled:
+        // COM_STMT_FETCH, COM_STMT_CLOSE, begin/commit/rollback/set autocommit
+        if (source.isCursorFetchMode()
+            && data[4] != Commands.COM_STMT_FETCH
+            && data[4] != Commands.COM_STMT_CLOSE
+            && data[4] != Commands.COM_QUERY) {
+            source.writeErrMessage(ErrorCode.ER_NOT_ALLOWED_COMMAND,
+                "Not allow to execute commands except for: "
+                    + "COM_STMT_FETCH, COM_STMT_FETCH, begin, commit, rollback, set autocommit");
+            return;
+        }
+
         switch (data[4]) {
         case Commands.COM_INIT_DB:
             commandCount.doInitDB();
@@ -95,6 +108,10 @@ public class FrontendCommandHandler implements NIOHandler {
         case Commands.COM_SET_OPTION:
             commandCount.doSetOption();
             source.setOption(data);
+            break;
+        case Commands.COM_STMT_FETCH:
+            commandCount.doStmtFetch();
+            source.stmtFetch(data);
             break;
         case Commands.COM_REFRESH:
             PacketOutputProxyFactory.getInstance().createProxy(source).writeArrayAsPacket(OkPacket.OK);

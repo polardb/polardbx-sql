@@ -22,6 +22,8 @@ import com.alibaba.polardbx.common.utils.extension.Activate;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.sequence.ISequenceManager;
 
+import java.util.Map;
+
 /**
  * 基于tddl sequence的实现
  *
@@ -39,6 +41,11 @@ public class OptimizerSequenceManager extends AbstractLifecycle implements ISequ
     @Override
     public Long nextValue(String schemaName, String seqName, int batchSize) {
         return ExecutorContext.getContext(schemaName).getSequenceManager().nextValue(schemaName, seqName, batchSize);
+    }
+
+    @Override
+    public Long currValue(String schemaName, String seqName) {
+        return ExecutorContext.getContext(schemaName).getSequenceManager().currValue(schemaName, seqName);
     }
 
     @Override
@@ -63,12 +70,14 @@ public class OptimizerSequenceManager extends AbstractLifecycle implements ISequ
 
     @Override
     public int invalidateAll(String schemaName) {
-        return ExecutorContext.getContext(schemaName).getSequenceManager().invalidateAll(schemaName);
-    }
-
-    @Override
-    public void validateDependence(String schemaName) {
-        ExecutorContext.getContext(schemaName).getSequenceManager().validateDependence(schemaName);
+        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        if (executorContext != null) {
+            AbstractSequenceManager sequenceManager = executorContext.getSequenceManager();
+            if (sequenceManager != null) {
+                return sequenceManager.invalidateAll(schemaName);
+            }
+        }
+        return 0;
     }
 
     @Override
@@ -106,11 +115,6 @@ public class OptimizerSequenceManager extends AbstractLifecycle implements ISequ
     }
 
     @Override
-    public boolean isCustomUnitGroupSeqSupported(String schemaName) {
-        return ExecutorContext.getContext(schemaName).getSequenceManager().isCustomUnitGroupSeqSupported(schemaName);
-    }
-
-    @Override
     public int[] getCustomUnitArgsForGroupSeq(String schemaName) {
         return ExecutorContext.getContext(schemaName).getSequenceManager().getCustomUnitArgsForGroupSeq(schemaName);
     }
@@ -118,5 +122,27 @@ public class OptimizerSequenceManager extends AbstractLifecycle implements ISequ
     @Override
     public boolean areAllSequencesSameType(String schemaName, Type seqType) {
         return ExecutorContext.getContext(schemaName).getSequenceManager().areAllSequencesSameType(schemaName, seqType);
+    }
+
+    @Override
+    public void reloadConnProps(String schemaName, Map<String, Object> connProps) {
+        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        if (executorContext != null) {
+            AbstractSequenceManager sequenceManager = executorContext.getSequenceManager();
+            if (sequenceManager != null) {
+                sequenceManager.reloadConnProps(schemaName, connProps);
+            }
+        }
+    }
+
+    @Override
+    public void resetNewSeqResources(String schemaName) {
+        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        if (executorContext != null) {
+            AbstractSequenceManager sequenceManager = executorContext.getSequenceManager();
+            if (sequenceManager != null) {
+                sequenceManager.resetNewSeqResources(schemaName);
+            }
+        }
     }
 }

@@ -131,6 +131,8 @@ public class PartitionInfoMocker {
             location.setGroupKey(groupAllocator.allocate());
             p.setLocation(location);
             partitionInfo.partitionBy.partitions.add(p);
+            //partitionInfo.setPartSpecSearcher(PartSpecSearcher.buildPartSpecSearcher(partitionInfo.getTableType(),partitionInfo.getPartitionBy()));
+            partitionInfo.initPartSpecSearcher();
         }
         return partitionInfo;
     }

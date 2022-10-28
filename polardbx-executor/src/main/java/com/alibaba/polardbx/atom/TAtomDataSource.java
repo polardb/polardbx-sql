@@ -59,6 +59,8 @@ public class TAtomDataSource extends AbstractTAtomDataSource {
     @Deprecated
     private boolean masterDB = true;
 
+    private String dnId;
+
     public TAtomDataSource() {
         dsConfHandle = new TAtomDsConfHandle(this);
     }
@@ -303,5 +305,16 @@ public class TAtomDataSource extends AbstractTAtomDataSource {
 
     public boolean isMasterDB() {
         return masterDB;
+    }
+
+    public String getDnId() {
+        if (dnId == null) {
+            return "empty";
+        }
+        return dnId;
+    }
+
+    public void setDnId(String dnId) {
+        this.dnId = dnId;
     }
 }

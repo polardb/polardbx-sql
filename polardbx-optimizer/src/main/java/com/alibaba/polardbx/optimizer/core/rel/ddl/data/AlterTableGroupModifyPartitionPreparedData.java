@@ -24,18 +24,21 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupBasePreparedData {
-    boolean dropVal = false;
     //the temp partition for the values to be drop
     String tempPartition;
+    private Map<SqlNode, RexNode> partBoundExprInfo;
 
     public AlterTableGroupModifyPartitionPreparedData() {
     }
@@ -55,7 +58,7 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
         int i = 0;
         List<String> oldParts = new ArrayList<>();
         oldParts.addAll(getOldPartitionNames());
-        if (dropVal) {
+        if (isDropVal()) {
             List<String> tempPartitionNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1);
             tempPartition = tempPartitionNames.get(0);
             oldParts.add(tempPartition);
@@ -77,19 +80,20 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
         setInvisiblePartitionGroups(inVisiblePartitionGroups);
     }
 
-    public boolean isDropVal() {
-        return dropVal;
-    }
-
-    public void setDropVal(boolean dropVal) {
-        this.dropVal = dropVal;
-    }
-
     public String getTempPartition() {
         return tempPartition;
     }
 
     public void setTempPartition(String tempPartition) {
         this.tempPartition = tempPartition;
+    }
+
+    public Map<SqlNode, RexNode> getPartBoundExprInfo() {
+        return partBoundExprInfo;
+    }
+
+    public void setPartBoundExprInfo(
+        Map<SqlNode, RexNode> partBoundExprInfo) {
+        this.partBoundExprInfo = partBoundExprInfo;
     }
 }

@@ -34,6 +34,7 @@ public class CommandCount {
     private long other;
     private long fieldList;
     private long setOption;
+    private long stmtFetch;
 
     public void doInitDB() {
         ++initDB;
@@ -138,5 +139,13 @@ public class CommandCount {
 
     public long setOption() {
         return setOption;
+    }
+
+    public void doStmtFetch() {
+        ++stmtFetch;
+    }
+
+    public long stmtFetch() {
+        return stmtFetch;
     }
 }

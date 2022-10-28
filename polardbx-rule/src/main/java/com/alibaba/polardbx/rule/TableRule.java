@@ -405,8 +405,8 @@ public class TableRule extends VirtualTableSupport implements VirtualTableRule {
         } catch (Throwable e) {
             // DRDS模式下，忽略报错
             logger.error(String.format("failed to build shardFunctionMeta, its tbNamePattern is %s, classUrl is %s",
-                tbNamePattern,
-                classUrl == null ? "null" : classUrl),
+                    tbNamePattern,
+                    classUrl == null ? "null" : classUrl),
                 e);
         }
         return shardFunctionMetaObj;
@@ -569,8 +569,11 @@ public class TableRule extends VirtualTableSupport implements VirtualTableRule {
             }
         }
         if (dbShardFunctionMetaMap != null && tbShardFunctionMetaMap != null) {
-            if ("RangeHash1Meta".equals(dbShardFunctionMetaMap.get("classUrl"))
-                && "RangeHash1Meta".equals(tbShardFunctionMetaMap.get("classUrl"))) {
+            if (dbShardFunctionMetaMap.get("classUrl") != null
+                && dbShardFunctionMetaMap.get("classUrl").toString().contains("RangeHash1Meta")
+                && tbShardFunctionMetaMap.get("classUrl") != null
+                && tbShardFunctionMetaMap.get("classUrl").toString().contains("RangeHash1Meta")
+            ) {
                 if (dbShardFunctionMetaMap.get("shardKeys").equals(tbShardFunctionMetaMap.get("shardKeys"))) {
                     return true;
                 }

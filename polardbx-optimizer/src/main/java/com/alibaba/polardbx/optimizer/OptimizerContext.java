@@ -66,8 +66,6 @@ public class OptimizerContext {
     private Partitioner partitioner;
     private String schemaName;
     private MatrixStatistics statistics;
-    private StatisticManager statisticManager;
-    private PlanManager planManager;
     private ViewManager viewManager;
     private VariableManager variableManager;
     private PartitionInfoManager partitionInfoManager;
@@ -186,19 +184,10 @@ public class OptimizerContext {
     }
 
     public StatisticManager getStatisticManager() {
-        return statisticManager;
+        return StatisticManager.getInstance();
     }
 
     public void setStatisticManager(StatisticManager statisticManager) {
-        this.statisticManager = statisticManager;
-    }
-
-    public PlanManager getPlanManager() {
-        return planManager;
-    }
-
-    public void setPlanManager(PlanManager planManager) {
-        this.planManager = planManager;
     }
 
     public void setViewManager(ViewManager viewManager) {

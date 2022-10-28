@@ -148,6 +148,7 @@ public class TaskContext {
     public void failed(Throwable cause) {
         taskStateMachine.failed(cause);
         finished.set(true);
+        pipelineDepTree = null;
     }
 
     public boolean isSpillable() {

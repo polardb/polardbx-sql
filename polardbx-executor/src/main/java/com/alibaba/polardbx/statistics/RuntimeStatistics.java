@@ -16,10 +16,11 @@
 
 package com.alibaba.polardbx.statistics;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.CpuCollector;
@@ -82,18 +83,21 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
 
     public static final long NOT_SUPPORT_VALUE = -1;
 
+    private Metrics storedMetrics;
+
     private RelNode planTree;
     private final String traceId;
     private final Map<Integer, OperatorStatisticsGroup> relationToStatistics = new ConcurrentHashMap<>();
     private final Map<String, MemoryStatisticsGroup> memoryToStatistics = new ConcurrentHashMap<>();
     private final Map<Integer, RelNode> relationIdToNode = new HashMap<>();
     private final WeakHashMap<Integer, RuntimeStatisticsSketch> mppOperatorStats = new WeakHashMap<>();
-    private final ExecutionContext executionContext;
+    private QuerySpillSpaceMonitor querySpillSpaceMonitor;
     private MemoryPool holdMemoryPool;
     private CpuStat sqlWholeStageCpuStat;
     private MemoryEstimation sqlWholeStageMemEstimation;
     private boolean finishExecution = false;
     private SqlType sqlType = null;
+    private String schemaName;
 
     // Metrics for sql.log
     private AtomicLong sqlLogCpuTime = new AtomicLong(0L);
@@ -124,7 +128,11 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
 
     public RuntimeStatistics(String traceId, ExecutionContext executionContext) {
         this.traceId = traceId;
-        this.executionContext = executionContext;
+        if (executionContext != null) {
+            this.schemaName = executionContext.getSchemaName();
+            this.holdMemoryPool = executionContext.getMemoryPool();
+            this.querySpillSpaceMonitor = executionContext.getQuerySpillSpaceMonitor();
+        }
         this.sqlWholeStageCpuStat = new CpuStat();
         this.sqlWholeStageMemEstimation = new MemoryEstimation();
     }
@@ -625,8 +633,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
             planTmpTbMem += (queryPool.getMaxMemoryUsage() - planMemoryPool.getMaxMemoryUsage());
         }
 
-        if (executionContext.getQuerySpillSpaceMonitor() != null) {
-            spillCnt = executionContext.getQuerySpillSpaceMonitor().getSpillCnt();
+        if (querySpillSpaceMonitor != null) {
+            spillCnt = querySpillSpaceMonitor.getSpillCnt();
         }
 
         // ====== disable some metrics for non-query sql ========
@@ -677,9 +685,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
 
     @Override
     public MemoryPool getMemoryPool() {
-        MemoryPool memoryPool =
-            this.executionContext.getMemoryPool() != null ? this.executionContext.getMemoryPool() : holdMemoryPool;
-        return memoryPool;
+        return holdMemoryPool;
     }
 
     @Override
@@ -877,13 +883,13 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                                        @JsonProperty("initConnDuration") long initConnDuration,
                                        @JsonProperty("prepareStmtEnvDuration") long prepareStmtEnvDuration,
                                        @JsonProperty("createAndInitJdbcStmtDuration")
-                                           long createAndInitJdbcStmtDuration,
+                                       long createAndInitJdbcStmtDuration,
                                        @JsonProperty("execJdbcStmtDuration") long execJdbcStmtDuration,
                                        @JsonProperty("fetchJdbcResultSetDuration") long fetchJdbcResultSetDuration,
                                        @JsonProperty("closeAndClearJdbcEnv") long closeAndClearJdbcEnv,
                                        @JsonProperty("phyResultSetRowCount") long phyResultSetRowCount,
                                        @JsonProperty("fetchJdbcResultSetParallelism")
-                                           int fetchJdbcResultSetParallelism) {
+                                       int fetchJdbcResultSetParallelism) {
             this.statistics = statistics;
             this.hasInputOperator = hasInputOperator;
             this.finishCount.set(finishCount);
@@ -1095,7 +1101,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
     }
 
     public String getSchemaName() {
-        return executionContext.getSchemaName();
+        return schemaName;
     }
 
     public boolean isFinishExecution() {
@@ -1164,8 +1170,13 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
 
     @Override
     public void holdMemoryPool() {
-        if (executionContext != null) {
-            this.holdMemoryPool = executionContext.getMemoryPool();
-        }
+    }
+
+    public Metrics getStoredMetrics() {
+        return storedMetrics;
+    }
+
+    public void setStoredMetrics(Metrics storedMetrics) {
+        this.storedMetrics = storedMetrics;
     }
 }

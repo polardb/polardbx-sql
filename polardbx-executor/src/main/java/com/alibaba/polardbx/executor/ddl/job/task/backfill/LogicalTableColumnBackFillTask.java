@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.backfill;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -31,7 +32,7 @@ import java.util.List;
 
 @TaskName(name = "LogicalTableColumnBackFillTask")
 @Getter
-public class LogicalTableColumnBackFillTask extends BaseBackfillTask {
+public class LogicalTableColumnBackFillTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
 
     String sourceTableName;
     String targetTableName;

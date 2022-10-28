@@ -36,6 +36,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -172,9 +173,9 @@ public class CdcCheckTest extends BaseTestCase {
         } else {
             String checkBlackList = configProp.getProperty(ConfigConstant.CDC_CHECK_DB_BLACKLIST, "");
             if (StringUtils.isNotBlank(checkBlackList)) {
-                String[] dbs = StringUtils.split(checkBlackList, ";");
+                String[] dbs = StringUtils.split(StringUtils.lowerCase(checkBlackList), ";");
                 for (String db : dbs) {
-                    if (StringUtils.equals(db, database)) {
+                    if (StringUtils.equalsIgnoreCase(db, database)) {
                         return true;
                     }
                 }
@@ -202,7 +203,7 @@ public class CdcCheckTest extends BaseTestCase {
         } else {
             String checkBlackList = configProp.getProperty(ConfigConstant.CDC_CHECK_TABLE_BLACKLIST, "");
             if (StringUtils.isNotBlank(checkBlackList)) {
-                String[] patterns = StringUtils.split(checkBlackList, ";");
+                String[] patterns = StringUtils.split(StringUtils.lowerCase(checkBlackList), ";");
                 for (String patternStr : patterns) {
                     Pattern pattern = Pattern.compile(patternStr);
                     Matcher m2 = pattern.matcher(fullTable);
@@ -213,6 +214,68 @@ public class CdcCheckTest extends BaseTestCase {
                 }
             }
             return false;
+        }
+    }
+    public static final String SAFE_TABLE_PREFIX = "safe_point_table_";
+    /**
+     * 保障源库binlog，目标库收到了
+     */
+    public void safePoint() throws SQLException, InterruptedException {
+        String dbName = PropertiesUtil.polardbXDBName1(false);
+        int safeSuffix = 1;
+
+        String currentSafePoint = getCurrentSafePointTable(dbName);
+        if (StringUtils.isNotBlank(currentSafePoint)){
+            safeSuffix = Integer.parseInt(currentSafePoint.substring(SAFE_TABLE_PREFIX.lastIndexOf("_")+1));
+            String dropDDL = String.format("drop table `%s`.`%s`", dbName, currentSafePoint);
+            executeDDL(dropDDL);
+        }
+        String nextTable = SAFE_TABLE_PREFIX + (safeSuffix+1);
+        String createNextTable = String.format("create table `%s`.`%s`(id int primary key)", dbName, nextTable);
+        executeDDL(createNextTable);
+
+        long start = System.currentTimeMillis();
+        int waitTimeMinute = Integer.valueOf(configProp.getProperty("cdcWaitTokenTimeOutMinute", "5"));
+        while (true) {
+            try {
+                waitForSafeTable(dbName, nextTable);
+                break;
+            } catch (Exception e) {
+                if (System.currentTimeMillis() - start > 1000 * 60 * waitTimeMinute) {
+                    throw new RuntimeException("check cdc safe point timeout", e);
+                }
+                Thread.sleep(1000);
+            }
+        }
+    }
+
+    private String getCurrentSafePointTable(String dbName) throws SQLException {
+        List<String> srcTableList = getTableList(dbName, 0);
+        for (String st : srcTableList){
+            if (st.startsWith(SAFE_TABLE_PREFIX)){
+                return st;
+            }
+        }
+        return null;
+    }
+
+    private void waitForSafeTable(String dbName ,String tableName) throws SQLException {
+        Connection connection = dstDs.getConnection();
+        try{
+            Statement st = connection.createStatement();
+            st.execute("show create table `"+dbName+"`.`" + tableName+"`");
+        }finally {
+            connection.close();
+        }
+    }
+
+    private void executeDDL(String ddl) throws SQLException {
+        Connection connection = srcDs.getConnection();
+        try{
+            Statement st = connection.createStatement();
+            st.executeUpdate(ddl);
+        }finally {
+            connection.close();
         }
     }
 
@@ -271,12 +334,12 @@ public class CdcCheckTest extends BaseTestCase {
         }
     }
 
-    public void waitCdcToken(String token, int type) throws InterruptedException {
+    public void waitCdcToken(String token) throws InterruptedException {
         long start = System.currentTimeMillis();
         int waitTimeMinute = Integer.valueOf(configProp.getProperty("cdcWaitTokenTimeOutMinute", "5"));
         while (true) {
             try {
-                checkCdcToken(token, type);
+                checkCdcToken(token);
                 break;
             } catch (Exception e) {
                 if (System.currentTimeMillis() - start > 1000 * 60 * waitTimeMinute) {
@@ -287,17 +350,13 @@ public class CdcCheckTest extends BaseTestCase {
         }
     }
 
-    public void sendCdcToken(String token, int type) throws SQLException {
+    public void sendCdcToken(String token) throws SQLException {
         Connection conn = null;
         Statement stmt = null;
         ResultSet rs = null;
         String sql = null;
         try {
-            if (type == 0) {
-                conn = srcDs.getConnection();
-            } else {
-                conn = dstDs.getConnection();
-            }
+            conn = srcDs.getConnection();
             stmt = conn.createStatement();
             stmt.execute("drop table if exists random_sql." + token);
             stmt.execute("create table random_sql." + token + "(id bigint)");
@@ -309,17 +368,13 @@ public class CdcCheckTest extends BaseTestCase {
         }
     }
 
-    public void checkCdcToken(String token, int type) throws SQLException {
+    public void checkCdcToken(String token) throws SQLException {
         Connection conn = null;
         Statement stmt = null;
         ResultSet rs = null;
         String sql = null;
         try {
-            if (type == 0) {
-                conn = dstDs.getConnection();
-            } else {
-                conn = srcDs.getConnection();
-            }
+            conn = dstDs.getConnection();
             stmt = conn.createStatement();
             stmt.execute("show create table random_sql." + token);
         } catch (SQLException e) {
@@ -352,7 +407,7 @@ public class CdcCheckTest extends BaseTestCase {
                     !StringUtils.equalsIgnoreCase(db, "mysql") &&
                     !StringUtils.equalsIgnoreCase(db, "sys") &&
                     !StringUtils.equalsIgnoreCase(db, "performance_schema")) {
-                    databases.add(db);
+                    databases.add(StringUtils.lowerCase(db));
                 }
             }
         } catch (SQLException e) {

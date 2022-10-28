@@ -173,6 +173,9 @@ public abstract class CharsetTestBase extends ReadBaseTestCase {
     }
 
     protected void testJoin(List<byte[]> bytesList, String col) {
+        if (isMySQL80()) {
+            return; // this test only for mysql57
+        }
         insertStrings(bytesList, col);
         String selectSql = String.format(JOIN_SQL_FORMAT, col, col, table, table, col, col);
         selectContentSameAssert(selectSql, null, mysqlConnection, tddlConnection);

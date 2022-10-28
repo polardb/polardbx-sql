@@ -84,6 +84,25 @@ public class GroupInfoUtil {
         return grpName;
     }
 
+    public static String buildSchemaNameFromGroupName(String groupName) {
+        int len = groupName.length();
+        String schemaName = groupName.substring(0, len - 13);
+        return schemaName;
+    }
+
+
+    public static String buildGroupNamePattern(String dbName, boolean forPartitionTable) {
+        String grpNamePattern = String
+            .format(forPartitionTable ? GROUP_NAME_TEMPLATE_FOR_PARTITIONED_TABLES : GROUP_NAME_TEMPLATE,
+                dbName, 0);
+        if (forPartitionTable) {
+            grpNamePattern = grpNamePattern.toUpperCase().replace("P00000", "P{0000}");
+        } else {
+            grpNamePattern = grpNamePattern.toUpperCase().replace("000000", "{000000}");
+        }
+        return grpNamePattern;
+    }
+
     public static String buildGroupNameFromPhysicalDb(String physicalDb) {
         physicalDb = StringUtils.stripEnd(physicalDb, "sS");
         String groupName = physicalDb + "_group";

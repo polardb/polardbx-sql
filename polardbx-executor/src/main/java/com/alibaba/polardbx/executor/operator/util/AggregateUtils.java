@@ -18,9 +18,8 @@ package com.alibaba.polardbx.executor.operator.util;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.executor.accumulator.CheckSumAccumulator;
+import com.alibaba.polardbx.executor.accumulator.CheckSumMergeAccumulator;
 import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.executor.calc.aggfunctions.Avg;
 import com.alibaba.polardbx.executor.calc.aggfunctions.BitAnd;
@@ -97,6 +96,9 @@ import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
 import com.alibaba.polardbx.executor.calc.aggfunctions.Sum0;
 import com.alibaba.polardbx.executor.calc.aggfunctions.WrapedLong2WarpedLongMax;
 import com.alibaba.polardbx.executor.calc.aggfunctions.WrapedLong2WarpedLongMin;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.GroupConcatAggregateCall;
@@ -113,7 +115,6 @@ import java.util.List;
 
 /**
  * Abstract AggHandler
- *
  */
 public abstract class AggregateUtils {
 
@@ -356,6 +357,15 @@ public abstract class AggregateUtils {
             }
             case __FIRST_VALUE: {
                 aggList.add(new InternalFirstValue(index, outputType, filterArg, executionContext));
+                break;
+            }
+            case CHECK_SUM: {
+                aggList.add(new CheckSumAccumulator(GroupConcat.toIntArray(call.getArgList()), outputType, filterArg,
+                    inputTypes));
+                break;
+            }
+            case CHECK_SUM_MERGE: {
+                aggList.add(new CheckSumMergeAccumulator(index, outputType, filterArg, inputTypes));
                 break;
             }
             default:

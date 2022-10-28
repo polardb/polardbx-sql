@@ -18,6 +18,10 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
@@ -39,6 +43,7 @@ import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.exception.InvalidTypeConversionException;
+import com.alibaba.polardbx.optimizer.partition.util.StepExplainItem;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.rule.model.Field;
@@ -60,6 +65,11 @@ import java.util.Set;
  */
 public class PartitionPrunerUtils {
 
+    /**
+     * The log for storage check ha log
+     */
+    public static final Logger PRUNER_LOG = LoggerFactory.getLogger("PRUNER_LOG");
+
     protected static final RelDataTypeFactory typeFactory =
         new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
     protected static final RexBuilder rexBuilder = new RexBuilder(typeFactory);
@@ -77,20 +87,21 @@ public class PartitionPrunerUtils {
     }
 
     //=========== Some tool methods for TargetDB ============
+    /**
+     * Full topology of one tbl : PartitionInfo.getPhysicalPartitionTopology() & PartitionInfo.getTopology()
+     */
 
     /**
-     * Convert the list of topologyInfo to TargetDB
+     * Convert one PartPrunedResult to TargetDB
      */
-    public static List<TargetDB> buildTargetDbsByTopologyInfos(String logTbl,
-                                                               Map<String, List<PhysicalPartitionInfo>> topologyInfo) {
+    public static List<TargetDB> buildTargetDbsByPartPrunedResults(PartPrunedResult result) {
 
         List<TargetDB> targetDbList = new ArrayList<>();
         Map<String, Map<String, Field>> targetDbInfo = new HashMap<>();
 
-        final List<PhysicalPartitionInfo> allPhyPartInfo = new ArrayList<>();
-        topologyInfo.entrySet().stream().forEach(e -> allPhyPartInfo.addAll(e.getValue()));
-        for (int j = 0; j < allPhyPartInfo.size(); j++) {
-            PhysicalPartitionInfo prunedPart = allPhyPartInfo.get(j);
+        List<PhysicalPartitionInfo> prunedParts = result.getPrunedPartitions();
+        for (int j = 0; j < prunedParts.size(); j++) {
+            PhysicalPartitionInfo prunedPart = prunedParts.get(j);
 
             String grpKey = prunedPart.getGroupKey();
             String phyTb = prunedPart.getPhyTable();
@@ -105,7 +116,7 @@ public class PartitionPrunerUtils {
             TargetDB targetDB = new TargetDB();
             targetDB.setDbIndex(k);
             targetDB.setTableNames(v);
-            targetDB.setLogTblName(logTbl);
+            targetDB.setLogTblName(result.getLogicalTableName());
             targetDbList.add(targetDB);
         });
         return targetDbList;
@@ -137,7 +148,7 @@ public class PartitionPrunerUtils {
 
         for (int i = 0; i < results.size(); i++) {
             PartPrunedResult result = results.get(i);
-            if (result.getPrunedParttions().isEmpty()) {
+            if (result.getPrunedPartitions().isEmpty()) {
                 return phyGrpInfoMap;
             }
         }
@@ -148,7 +159,7 @@ public class PartitionPrunerUtils {
                 broadcastTopologyList.add(result.getPartInfo().getTopology());
                 continue;
             }
-            List<PhysicalPartitionInfo> prunedParts = result.getPrunedParttions();
+            List<PhysicalPartitionInfo> prunedParts = result.getPrunedPartitions();
             for (int j = 0; j < prunedParts.size(); j++) {
                 PhysicalPartitionInfo prunedPart = prunedParts.get(j);
                 String grpKey = prunedPart.getGroupKey();
@@ -211,24 +222,19 @@ public class PartitionPrunerUtils {
         return phyGrpInfoMap;
     }
 
-    /*======= Methods for get PartitionIntFunction ========*/
-    public static PartitionIntFunction getPartitionIntFunction(String funcName) {
-        return partFuncInfo.get(funcName);
-    }
-
-    public static Set<String> getAllSupportedPartitionIntFunctions() {
-        return partFuncInfo.keySet();
-    }
-
-    /*======== Methods for covert to TargetDB from PartPrunedResult ========*/
-    public static List<TargetDB> buildTargetDbsByPartPrunedResults(PartPrunedResult result) {
+    /**
+     * Convert the list of topologyInfo to TargetDB， used by cdc only
+     */
+    public static List<TargetDB> buildTargetDbsByTopologyInfos(String logTbl,
+                                                               Map<String, List<PhysicalPartitionInfo>> topologyInfo) {
 
         List<TargetDB> targetDbList = new ArrayList<>();
         Map<String, Map<String, Field>> targetDbInfo = new HashMap<>();
 
-        List<PhysicalPartitionInfo> prunedParts = result.getPrunedParttions();
-        for (int j = 0; j < prunedParts.size(); j++) {
-            PhysicalPartitionInfo prunedPart = prunedParts.get(j);
+        final List<PhysicalPartitionInfo> allPhyPartInfo = new ArrayList<>();
+        topologyInfo.entrySet().stream().forEach(e -> allPhyPartInfo.addAll(e.getValue()));
+        for (int j = 0; j < allPhyPartInfo.size(); j++) {
+            PhysicalPartitionInfo prunedPart = allPhyPartInfo.get(j);
 
             String grpKey = prunedPart.getGroupKey();
             String phyTb = prunedPart.getPhyTable();
@@ -243,10 +249,19 @@ public class PartitionPrunerUtils {
             TargetDB targetDB = new TargetDB();
             targetDB.setDbIndex(k);
             targetDB.setTableNames(v);
-            targetDB.setLogTblName(result.getLogicalTableName());
+            targetDB.setLogTblName(logTbl);
             targetDbList.add(targetDB);
         });
         return targetDbList;
+    }
+
+    /*======= Methods for get PartitionIntFunction ========*/
+    public static PartitionIntFunction getPartitionIntFunction(String funcName) {
+        return partFuncInfo.get(funcName);
+    }
+
+    public static Set<String> getAllSupportedPartitionIntFunctions() {
+        return partFuncInfo.keySet();
     }
 
     /*======== Methods for building partition bitset ========*/
@@ -561,6 +576,11 @@ public class PartitionPrunerUtils {
             evalValObj = calcExpr.eval(null, executionContext);
         }
 
+//        // list meaning this value come from IN expr.
+//        if(evalValObj instanceof List){
+//            evalValObj = ((List<?>) evalValObj).get(0);
+//        }
+
         /**
          * Try to fetch the data type from evalValObj
          */
@@ -813,14 +833,128 @@ public class PartitionPrunerUtils {
         throw new RuntimeException("compare SearchDatumInfo error");
     }
 
-    public static boolean checkIfPointSelect(PartitionPruneStep step) {
+    public static boolean checkIfPointSelect(PartitionPruneStep step, ExecutionContext ec) {
+        if (ec.getParams() != null) {
+            Map<Integer, ParameterContext> map = ec.getParams().getCurrentParameter();
+            for (ParameterContext parameterContext : map.values()) {
+                if (parameterContext.getValue() instanceof RawString) {
+                    return false;
+                }
+            }
+        }
+
         PartPruneStepType stepType = step.getStepType();
         if (stepType == PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY) {
             PartitionPruneStepOp stepOp = (PartitionPruneStepOp) step;
+            if (stepOp.isDynamicSubQueryInStep()) {
+                return false;
+            }
             if (stepOp.getComparisonKind() == ComparisonKind.EQUAL) {
                 return true;
             }
         }
         return false;
+    }
+
+    public static void logStepExplainInfo(ExecutionContext context,
+                                          PartitionInfo partInfo,
+                                          PartPruneStepPruningContext pruningContext) {
+        if (!pruningContext.isEnableLogPruning()) {
+            return;
+        }
+        try {
+            String traceId = context.getTraceId();
+            String dbName = partInfo.getTableSchema();
+            String tblName = partInfo.getTableName();
+            StringBuilder explainBuilder = new StringBuilder();
+            explainBuilder.append("\nTraceId=").append(traceId);
+            explainBuilder.append(",").append("Table=").append(dbName).append(".").append(tblName);
+            if (!pruningContext.isPruningByTuple()) {
+                logStepExplainInfoInner(pruningContext.getRootStep(), 2, pruningContext.getStepExplainInfo(),
+                    explainBuilder);
+            } else {
+                PartitionTupleRouteInfo tupleRouteInfo = pruningContext.getRootTuple();
+                List<PartTupleDispatchInfo> dispatchInfos = tupleRouteInfo.getTupleDispatchFuncInfos();
+                for (int i = 0; i < dispatchInfos.size(); i++) {
+                    logStepExplainInfoInner(dispatchInfos.get(i), 2, pruningContext.getStepExplainInfo(),
+                        explainBuilder);
+                }
+            }
+
+            explainBuilder.append("\n");
+            PRUNER_LOG.info(explainBuilder.toString());
+        } catch (Throwable ex) {
+            // ignore
+            PRUNER_LOG.error(ex);
+        }
+    }
+
+    private static void logStepExplainInfoInner(PartitionPruneBase current,
+                                                int currentLevel,
+                                                Map<Object, StepExplainItem> stepExplainInfo,
+                                                StringBuilder explainBuilder) {
+
+        boolean isTuple = current instanceof PartTupleDispatchInfo;
+        StepExplainItem item = stepExplainInfo.get(current);
+        if (item == null) {
+            return;
+        }
+        explainBuilder.append("\n");
+        for (int i = 0; i < currentLevel; i++) {
+            explainBuilder.append(" ");
+        }
+        explainBuilder.append(isTuple ? "Tuple=" : "Step=");
+        explainBuilder.append(item.stepDesc);
+        explainBuilder.append(",");
+        explainBuilder.append("PartSet={").append(item.prunedResult.toString()).append("}");
+        if (current instanceof PartitionPruneStepCombine) {
+            PartitionPruneStepCombine stepCombine = (PartitionPruneStepCombine) current;
+            List<PartitionPruneStep> steps = stepCombine.getSubSteps();
+            for (int i = 0; i < steps.size(); i++) {
+                logStepExplainInfoInner(steps.get(i), currentLevel + 1, stepExplainInfo, explainBuilder);
+            }
+        }
+    }
+
+    public static void collateTupleRouteExplainInfo(PartTupleDispatchInfo tupleDispatchInfo,
+                                                    ExecutionContext context,
+                                                    PartPrunedResult result,
+                                                    PartPruneStepPruningContext pruningContext) {
+        if (!pruningContext.isEnableLogPruning()) {
+            return;
+        }
+        try {
+            StepExplainItem item = new StepExplainItem();
+            item.prunedResult = result;
+            item.stepDesc = tupleDispatchInfo.buildStepDigest(context);
+            Map<Object, StepExplainItem> explainInfo = pruningContext.getStepExplainInfo();
+            explainInfo.put(tupleDispatchInfo, item);
+        } catch (Throwable ex) {
+            // ignore all exception
+            PRUNER_LOG.error(ex);
+        }
+    }
+
+    public static void collateStepExplainInfo(PartitionPruneStep step,
+                                              ExecutionContext context,
+                                              PartPrunedResult result,
+                                              PartPruneStepPruningContext pruningContext) {
+        if (!pruningContext.isEnableLogPruning()) {
+            return;
+        }
+        try {
+            StepExplainItem item = new StepExplainItem();
+            item.prunedResult = result;
+            if (step instanceof PartitionPruneStepOp) {
+                item.stepDesc = ((PartitionPruneStepOp) step).buildStepDigest(context);
+            } else {
+                item.stepDesc = step.getStepType().getSymbol();
+            }
+            Map<Object, StepExplainItem> explainInfo = pruningContext.getStepExplainInfo();
+            explainInfo.put(step, item);
+        } catch (Throwable ex) {
+            // ignore all exception
+            PRUNER_LOG.error(ex);
+        }
     }
 }

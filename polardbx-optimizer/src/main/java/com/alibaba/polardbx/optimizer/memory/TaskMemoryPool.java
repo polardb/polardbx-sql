@@ -18,12 +18,12 @@ package com.alibaba.polardbx.optimizer.memory;
 
 import com.alibaba.polardbx.optimizer.statis.MemoryStatisticsGroup;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TaskMemoryPool extends MemoryPool {
 
-    private Map<String, MemoryStatisticsGroup> memoryStatistics = new HashMap<>();
+    private Map<String, MemoryStatisticsGroup> memoryStatistics = new ConcurrentHashMap<>();
 
     public TaskMemoryPool(String name, long limit, MemoryPool parent) {
         super(name, limit, parent, MemoryType.TASK);

@@ -19,6 +19,7 @@ import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExplainStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
@@ -33,13 +34,12 @@ public class MySqlExplainStatement extends SQLExplainStatement implements MySqlS
     private boolean distributeInfo = false; // for ads
 
     public MySqlExplainStatement() {
-        super (DbType.mysql);
+        super(DbType.mysql);
     }
 
     public MySqlExplainStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
-
 
     @Override
     public void accept0(MySqlASTVisitor visitor) {
@@ -126,5 +126,13 @@ public class MySqlExplainStatement extends SQLExplainStatement implements MySqlS
 
     public void setDistributeInfo(boolean distributeInfo) {
         this.distributeInfo = distributeInfo;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        if (isDescribe()) {
+            return SqlType.DESC;
+        }
+        return SqlType.EXPLAIN;
     }
 }

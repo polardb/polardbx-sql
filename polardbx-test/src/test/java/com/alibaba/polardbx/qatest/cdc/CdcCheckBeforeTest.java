@@ -22,6 +22,7 @@ import org.springframework.jdbc.support.JdbcUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 import static com.alibaba.polardbx.qatest.cdc.Bank.ACCOUNT_COUNT;
 
@@ -40,8 +41,8 @@ public class CdcCheckBeforeTest extends CdcCheckTest {
 
     @Test
     public void checkData() throws SQLException, InterruptedException {
-        sendCdcToken(CHECK_CDC_READY_TOKEN, 0);
-        waitCdcToken(CHECK_CDC_READY_TOKEN, 0);
+        sendCdcToken(CHECK_CDC_READY_TOKEN);
+        waitCdcToken(CHECK_CDC_READY_TOKEN);
         doCheck(0);
     }
 

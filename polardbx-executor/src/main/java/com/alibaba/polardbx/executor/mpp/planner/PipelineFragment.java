@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class PipelineFragment {
 
@@ -156,12 +157,18 @@ public class PipelineFragment {
         return holdSingleTonParallelism;
     }
 
+    public List<Integer> getPrefetchLists() {
+        return idToSources.values().stream().map(t -> t.totalSplitSize()).collect(Collectors.toList());
+    }
+
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
             .add("id", properties.getPipelineId())
             .add("plan", RelUtils.toString(properties.getRelNode()))
             .add("parallelism", parallelism)
+            .add("prefetch",
+                idToSources.values().stream().map(t -> t.totalSplitSize()).collect(Collectors.toList()))
             .add("dependency", properties.getDependency())
             .add("childPipelines", properties.getChildPipelines().keySet())
             .add("buildDepOnAllConsumers", buildDepOnAllConsumers)

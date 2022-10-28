@@ -16,14 +16,18 @@
 
 package com.alibaba.polardbx.common.constants;
 
+import com.alibaba.polardbx.common.utils.ArrayTrie;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.HashSet;
 import java.util.Set;
 
+/**
+ * System Tables
+ */
 public class SystemTables {
 
-    private static final Set<String> systemTables = new HashSet<>();
+    private static final ArrayTrie systemTables;
 
     public static final String SEQUENCE = "sequence";
     public static final String SEQUENCE_OPT = "sequence_opt";
@@ -62,44 +66,53 @@ public class SystemTables {
     public static final String DRDS_SYSTEM_SCALEOUT_BACKFILL_OBJECTS = "__drds__systable__scaleout__backfill_objects__";
 
     static {
-        register(SEQUENCE);
-        register(SEQUENCE_OPT);
-        register(DRDS_DB_STATUS);
-        register(DRDS_SYSTEM_LOCK);
-        register(TXC_UNDO_LOG);
-        register(DRDS_GLOBAL_TX_LOG);
-        register(DRDS_LOCAL_TX_LOG);
-        register(DRDS_REDO_LOG);
-        register(TDDL_RULE);
-        register(TDDL_RULE_STATUS);
-        register(TDDL_RULE_CLONE_BAK);
-        register(DRDS_SYSTEM_RECYCLEBIN);
-        register(DRDS_SYSTABLE_TABLES);
-        register(DRDS_SYSTABLE_INDEXES);
-        register(DRDS_SYSTABLE_LEADERSHIP);
-        register(DRDS_SYSTABLE_DDL_JOBS);
-        register(DRDS_SYSTABLE_DDL_OBJECTS);
-        register(DUAL);
-        register(DRDS_SYSTABLE_LOGICAL_TABLE_STATISTIC);
-        register(DRDS_SYSTABLE_COLUMN_STATISTIC);
-        register(DRDS_SYSTABLE_PLAN_INFO);
-        register(DRDS_SYSTABLE_BASELIN_INFO);
-        register(DRDS_SYSTABLE_BACKFILL_OBJECTS);
-        register(DRDS_SYSTABLE_CHECKER_REPORTS);
-        register(DRDS_SYSTEM_SCALEOUT_OUTLINE);
-        register(DRDS_SYSTEM_SCALEOUT_BACKFILL_OBJECTS);
-        register(DRDS_SYSTABLE_VIEW);
-        register(DRDS_SYSTABLE_LOCKING_FUNCTION);
+        Set<String> systemTableSet = new HashSet<>();
+        register(systemTableSet, SEQUENCE);
+        register(systemTableSet, SEQUENCE_OPT);
+        register(systemTableSet, DRDS_DB_STATUS);
+        register(systemTableSet, DRDS_SYSTEM_LOCK);
+        register(systemTableSet, TXC_UNDO_LOG);
+        register(systemTableSet, DRDS_GLOBAL_TX_LOG);
+        register(systemTableSet, DRDS_LOCAL_TX_LOG);
+        register(systemTableSet, DRDS_REDO_LOG);
+        register(systemTableSet, TDDL_RULE);
+        register(systemTableSet, TDDL_RULE_STATUS);
+        register(systemTableSet, TDDL_RULE_CLONE_BAK);
+        register(systemTableSet, DRDS_SYSTEM_RECYCLEBIN);
+        register(systemTableSet, DRDS_SYSTABLE_TABLES);
+        register(systemTableSet, DRDS_SYSTABLE_INDEXES);
+        register(systemTableSet, DRDS_SYSTABLE_LEADERSHIP);
+        register(systemTableSet, DRDS_SYSTABLE_DDL_JOBS);
+        register(systemTableSet, DRDS_SYSTABLE_DDL_OBJECTS);
+        register(systemTableSet, DUAL);
+        register(systemTableSet, DRDS_SYSTABLE_LOGICAL_TABLE_STATISTIC);
+        register(systemTableSet, DRDS_SYSTABLE_COLUMN_STATISTIC);
+        register(systemTableSet, DRDS_SYSTABLE_PLAN_INFO);
+        register(systemTableSet, DRDS_SYSTABLE_BASELIN_INFO);
+        register(systemTableSet, DRDS_SYSTABLE_BACKFILL_OBJECTS);
+        register(systemTableSet, DRDS_SYSTABLE_CHECKER_REPORTS);
+        register(systemTableSet, DRDS_SYSTEM_SCALEOUT_OUTLINE);
+        register(systemTableSet, DRDS_SYSTEM_SCALEOUT_BACKFILL_OBJECTS);
+        register(systemTableSet, DRDS_SYSTABLE_VIEW);
+        register(systemTableSet, DRDS_SYSTABLE_LOCKING_FUNCTION);
+        try {
+            // magic number 512
+            // Test after adding SystemTables
+            systemTables = ArrayTrie.buildTrie(systemTableSet, true, 512);
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
+        systemTableSet.clear();
     }
 
-    private static void register(String tableName) {
-        systemTables.add(tableName.toLowerCase());
+    private static void register(Set<String> systemTableSet, String tableName) {
+        systemTableSet.add(tableName);
     }
 
     public static boolean contains(String tableName) {
         if (StringUtils.isEmpty(tableName)) {
             return false;
         }
-        return systemTables.contains(tableName.toLowerCase());
+        return systemTables.contains(tableName);
     }
 }

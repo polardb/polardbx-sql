@@ -115,6 +115,10 @@ public class SystemDefaultPropertyHelper {
         sysDefaultProperties.put(ConnectionProperties.LOGICAL_DB_TIME_ZONE, String.valueOf(
             InternalTimeZone.defaultTimeZone.getMySqlTimeZoneName()));
 
+        //  The read/write parallelism of one phy group of auto-mode db
+        sysDefaultProperties.put(ConnectionProperties.GROUP_PARALLELISM, String.valueOf(
+            ConnectionParams.GROUP_PARALLELISM.getDefault()));
+
         // Prepare some default properties for partition management
         prepareDefaultPropertiesForPartitionManagementProperties(sysDefaultProperties);
 
@@ -245,6 +249,8 @@ public class SystemDefaultPropertyHelper {
             ConnectionParams.ENABLE_INTERVAL_ENUMERATION_IN_PRUNING.getDefault());
         sysDefaultProperties.put(ConnectionProperties.MAX_ENUMERABLE_INTERVAL_LENGTH,
             ConnectionParams.MAX_ENUMERABLE_INTERVAL_LENGTH.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.MAX_IN_SUBQUERY_PRUNING_SIZE,
+            ConnectionParams.MAX_IN_SUBQUERY_PRUNING_SIZE.getDefault());
         sysDefaultProperties.put(ConnectionProperties.USE_FAST_SINGLE_POINT_INTERVAL_MERGING,
             ConnectionParams.USE_FAST_SINGLE_POINT_INTERVAL_MERGING.getDefault());
         sysDefaultProperties.put(ConnectionProperties.ENABLE_CONST_EXPR_EVAL_CACHE,

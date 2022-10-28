@@ -129,11 +129,15 @@ public class Field {
     }
 
     public Field(String originTableName, String originColumnName, RelDataType relDataType) {
+        this(originTableName, originColumnName, relDataType, false);
+    }
+
+    public Field(String originTableName, String originColumnName, RelDataType relDataType, boolean primary) {
         this.originTableName = originTableName;
         this.originColumnName = originColumnName;
         this.relDataType = relDataType;
         this.autoIncrement = false;
-        this.primary = false;
+        this.primary = primary;
         this.collationName = relDataType.getCollation() == null ? null : relDataType.getCollation().getCollationName();
     }
 

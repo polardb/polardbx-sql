@@ -46,6 +46,7 @@ public class SQLAlterSequenceStatement extends SQLStatementImpl implements SQLAl
     private boolean changeToSimple;
     private boolean changeToGroup;
     private boolean changeToTime;
+    private boolean changeToNew;
 
     public SQLAlterSequenceStatement() {
 
@@ -218,5 +219,13 @@ public class SQLAlterSequenceStatement extends SQLStatementImpl implements SQLAl
 
     public void setChangeToTime(boolean changeToTime) {
         this.changeToTime = changeToTime;
+    }
+
+    public boolean isChangeToNew() {
+        return changeToNew;
+    }
+
+    public void setChangeToNew(boolean changeToNew) {
+        this.changeToNew = changeToNew;
     }
 }

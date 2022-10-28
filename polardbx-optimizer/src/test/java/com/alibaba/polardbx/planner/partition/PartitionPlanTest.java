@@ -35,6 +35,11 @@ public class PartitionPlanTest extends PlanTestCommon {
         this.useNewPartDb = true;
     }
 
+    @Override
+    public String replacePlanStr(String planStr) {
+        return planStr.replaceAll("p_departmentinfo_[0-9a-zA-Z]{4}", "p_departmentinfo");
+    }
+
     @Parameterized.Parameters(name = "{0}:{1}")
     public static List<Object[]> prepare() {
         return loadSqls(PartitionPlanTest.class);

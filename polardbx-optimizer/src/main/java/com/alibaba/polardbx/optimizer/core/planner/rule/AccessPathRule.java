@@ -130,6 +130,10 @@ public abstract class AccessPathRule extends RelOptRule {
             if (logicalView instanceof LogicalModifyView) {
                 return false;
             }
+
+            if (logicalView.isFromMergeIndex()) {
+                return false;
+            }
             return true;
         }
 

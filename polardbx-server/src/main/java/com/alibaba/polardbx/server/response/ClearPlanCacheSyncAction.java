@@ -21,6 +21,7 @@ import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 public class ClearPlanCacheSyncAction implements ISyncAction {
 
@@ -45,7 +46,7 @@ public class ClearPlanCacheSyncAction implements ISyncAction {
     public ResultCursor sync() {
         SchemaConfig schema = CobarServer.getInstance().getConfig().getSchemas().get(db);
         String schemaName = schema.getDataSource().getSchemaName();
-        OptimizerContext.getContext(schemaName).getPlanManager().cleanCache();
+        PlanManager.getInstance().cleanCache(schemaName);
         return null;
     }
 }

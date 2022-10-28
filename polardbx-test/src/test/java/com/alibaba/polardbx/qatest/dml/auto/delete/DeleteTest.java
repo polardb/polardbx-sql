@@ -132,7 +132,7 @@ public class DeleteTest extends AutoCrudBasedLockTestCase {
      */
     @Test
     public void deleteWithInTestWithLimit() throws Exception {
-        String sql = String.format("delete from %s where pk in (2,7,10) limit 2", baseOneTableName);
+        String sql = String.format("delete from %s where pk in (2,7,10) order by pk limit 2", baseOneTableName);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, true);
 
         if (!ConfigUtil.isMultiTable(baseOneTableName)) {
@@ -996,8 +996,11 @@ public class DeleteTest extends AutoCrudBasedLockTestCase {
 
     @Test
     public void deleteMysqlPartitionTest() throws Exception {
+        if (baseOneTableName.contains("broadcast")) {
+            return;
+        }
         String sql = String.format("delete from %s partition (p123) where pk = 5", baseOneTableName);
-        executeErrorAssert(tddlConnection, sql, null, "Do not support table with mysql partition");
+        executeErrorAssert(tddlConnection, sql, null, "unknown partition 'p123'");
     }
 
     @Test

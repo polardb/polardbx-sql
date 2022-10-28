@@ -78,7 +78,7 @@ public class LogicalSemiJoinToSemiHashJoinRule extends ConverterRule {
         if (semiJoin.getJoinType() == JoinRelType.ANTI
             && semiJoin.getOperands() != null && !semiJoin.getOperands().isEmpty()) {
             // If this node is an Anti-Join without operands ('NOT IN')
-            if (!newCondition.isA(SqlKind.EQUALS)) {
+            if (!newCondition.isA(SqlKind.EQUALS) && !newCondition.isA(SqlKind.IS_NOT_DISTINCT_FROM)) {
                 // ... and contains multiple equi-conditions
                 return null; // reject!
             }

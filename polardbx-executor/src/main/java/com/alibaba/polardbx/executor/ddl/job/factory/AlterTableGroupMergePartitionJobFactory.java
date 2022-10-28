@@ -22,9 +22,11 @@ import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupM
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -33,17 +35,18 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -87,14 +90,20 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
             .getTableGroupConfigByName(alterTableGroupMergePartitionPreparedData.getTableGroupName());
 
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
+        List<String> outdatedPartitionGroupLocalities = new ArrayList<>();
         for (String mergePartitionName : alterTableGroupMergePartitionPreparedData.getOldPartitionNames()) {
             for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
                 if (record.partition_name.equalsIgnoreCase(mergePartitionName)) {
                     outdatedPartitionGroupId.add(record.id);
+                    outdatedPartitionGroupLocalities.add(record.locality);
                     break;
                 }
             }
         }
+        String firstPartitionLocality = outdatedPartitionGroupLocalities.get(0);
+        Boolean isIdentical = outdatedPartitionGroupLocalities.stream().allMatch(o -> o.equals(firstPartitionLocality));
+        LocalityDesc targetLocality = isIdentical ? LocalityDesc.parse(firstPartitionLocality) : new LocalityDesc();
+        List<String> localities = Arrays.asList(targetLocality.toString());
         List<String> targetDbList = new ArrayList<>();
         int targetDbCnt = alterTableGroupMergePartitionPreparedData.getTargetGroupDetailInfoExRecords().size();
         List<String> newPartitions = new ArrayList<>();
@@ -111,7 +120,11 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
             taskType.getValue(),
             outdatedPartitionGroupId,
             targetDbList,
-            newPartitions);
+            newPartitions,
+            localities
+        );
+
+        DdlTask syncTableGroupTask = new TableGroupSyncTask(schemaName, tableGroupName);
 
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
             validateTask,
@@ -138,6 +151,12 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
             constructSubTasks(schemaName, executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask),
                 alterTableGroupMergePartitionPreparedData.getMergePartitions().keySet().iterator().next());
         }
+
+        executableDdlJob.addSequentialTasksAfter(
+            executableDdlJob.getTail(),
+            Lists.newArrayList(
+                syncTableGroupTask
+            ));
         executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
         return executableDdlJob;
     }

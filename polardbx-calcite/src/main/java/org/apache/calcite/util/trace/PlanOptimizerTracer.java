@@ -20,6 +20,7 @@ import org.apache.calcite.plan.Context;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.util.PlannerContextWithParam;
 
 import java.util.ArrayList;
@@ -31,16 +32,16 @@ import java.util.Map;
  */
 public class PlanOptimizerTracer {
 
-    private String                          rootPlanForDisplay;
+    private String rootPlanForDisplay;
     private List<Map.Entry<String, String>> optimizedPlanSnapshots = new ArrayList<>();
     private Map<RelNode, RuntimeStatisticsSketch> runtimeStatistics;
 
     private class SnapShotEntry implements Map.Entry<String, String> {
 
         private final String key;
-        private String       value;
+        private String value;
 
-        public SnapShotEntry(String key, String value){
+        public SnapShotEntry(String key, String value) {
             this.key = key;
             this.value = value;
         }
@@ -64,25 +65,21 @@ public class PlanOptimizerTracer {
 
     }
 
-    public void savePlanDisplayIfNecessary(RelNode rootPlan, Context context) {
-        if (CalcitePlanOptimizerTrace.isOpen()) {
-            RelDrdsWriter relWriter = new RelDrdsWriter();
-            if (context instanceof PlannerContextWithParam) {
-                final PlannerContextWithParam ctxWithParam = (PlannerContextWithParam) context;
-                relWriter =
-                    new RelDrdsWriter(null, ctxWithParam.getParams().getCurrentParameter(), ctxWithParam.getEvalFunc(),
-                        null);
-            }
-            rootPlan.explainForDisplay(relWriter);
-            rootPlanForDisplay = relWriter.asString();
-            relWriter.done(rootPlan);
+    public void savePlanDisplayIfNecessary(RelNode rootPlan, Context context, SqlExplainLevel sqlExplainLevel) {
+        RelDrdsWriter relWriter = new RelDrdsWriter(sqlExplainLevel);
+        if (context instanceof PlannerContextWithParam) {
+            final PlannerContextWithParam ctxWithParam = (PlannerContextWithParam) context;
+            relWriter =
+                new RelDrdsWriter(null, sqlExplainLevel, ctxWithParam.getParams().getCurrentParameter(), ctxWithParam.getEvalFunc(),
+                    ctxWithParam.getExecContext());
         }
+        rootPlan.explainForDisplay(relWriter);
+        rootPlanForDisplay = relWriter.asString();
+        relWriter.done(rootPlan);
     }
 
     public void traceIt(RelOptRuleCall ruleCall) {
-        if (CalcitePlanOptimizerTrace.isOpen()) {
-            addRootPlan(ruleCall.getRule().toString());
-        }
+        addRootPlan(ruleCall.getRule().toString());
     }
 
     public void addSnapshot(String ruleName, String plan) {
@@ -90,22 +87,21 @@ public class PlanOptimizerTracer {
         optimizedPlanSnapshots.add(snapShotEntry);
     }
 
-    public void addSnapshot(String ruleName, RelNode plan, PlannerContextWithParam context) {
-        if (CalcitePlanOptimizerTrace.isOpen()) {
-            RelDrdsWriter relWriter = new RelDrdsWriter();
-            if (null != context) {
-                relWriter =
-                    new RelDrdsWriter(null, context.getParams().getCurrentParameter(), context.getEvalFunc(), null);
-            }
-            plan.explainForDisplay(relWriter);
-            String logicalPlanString = relWriter.asString();
-            relWriter.done(plan);
-            SnapShotEntry snapShotEntry = new SnapShotEntry(ruleName, logicalPlanString);
-            optimizedPlanSnapshots.add(snapShotEntry);
+    public void addSnapshot(String ruleName, RelNode plan, PlannerContextWithParam context, SqlExplainLevel sqlExplainLevel) {
+        RelDrdsWriter relWriter = new RelDrdsWriter(sqlExplainLevel);
+        if (null != context) {
+            relWriter =
+                new RelDrdsWriter(null, sqlExplainLevel, context.getParams().getCurrentParameter(), context.getEvalFunc(),
+                    context.getExecContext());
         }
+        plan.explainForDisplay(relWriter);
+        String logicalPlanString = relWriter.asString();
+        relWriter.done(plan);
+        SnapShotEntry snapShotEntry = new SnapShotEntry(ruleName, logicalPlanString);
+        optimizedPlanSnapshots.add(snapShotEntry);
     }
 
-    public void addRootPlan(String ruleName) {
+    private void addRootPlan(String ruleName) {
         addSnapshot(ruleName, rootPlanForDisplay);
     }
 

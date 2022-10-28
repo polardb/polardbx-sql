@@ -56,11 +56,6 @@ public class SqlSequenceFunction extends SqlFunction {
     }
 
     @Override
-    public boolean canPushDown() {
-        return false;
-    }
-
-    @Override
     public void validateCall(SqlCall call, SqlValidator validator, SqlValidatorScope scope,
                              SqlValidatorScope operandScope) {
         String defaultSchemaName = DefaultSchema.getSchemaName();

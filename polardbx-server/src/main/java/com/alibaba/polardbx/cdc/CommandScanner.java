@@ -305,26 +305,33 @@ public class CommandScanner extends AbstractLifecycle {
                 logicCreateSql, phyCreateSql));
         }
 
-        List<SQLStatement> logicStatementList =
-            SQLParserUtils.createSQLStatementParser(logicCreateSql, DbType.mysql, FEATURES).parseStatementList();
-        MySqlCreateTableStatement logicCreateStmt = (MySqlCreateTableStatement) logicStatementList.get(0);
-        List<String> logicColumns =
-            logicCreateStmt.getColumnDefinitions().stream().map(c -> c.getColumnName().toLowerCase())
-                .collect(Collectors.toList());
+        try {
+            List<SQLStatement> logicStatementList =
+                SQLParserUtils.createSQLStatementParser(logicCreateSql, DbType.mysql, FEATURES).parseStatementList();
+            MySqlCreateTableStatement logicCreateStmt = (MySqlCreateTableStatement) logicStatementList.get(0);
+            List<String> logicColumns =
+                logicCreateStmt.getColumnDefinitions().stream().map(c -> c.getColumnName().toLowerCase())
+                    .collect(Collectors.toList());
 
-        List<SQLStatement> phyStatementList =
-            SQLParserUtils.createSQLStatementParser(phyCreateSql, DbType.mysql, FEATURES).parseStatementList();
-        MySqlCreateTableStatement phyCreateStmt = (MySqlCreateTableStatement) phyStatementList.get(0);
-        List<String> phyColumns =
-            phyCreateStmt.getColumnDefinitions().stream().map(c -> c.getColumnName().toLowerCase())
-                .collect(Collectors.toList());
+            List<SQLStatement> phyStatementList =
+                SQLParserUtils.createSQLStatementParser(phyCreateSql, DbType.mysql, FEATURES).parseStatementList();
+            MySqlCreateTableStatement phyCreateStmt = (MySqlCreateTableStatement) phyStatementList.get(0);
+            List<String> phyColumns =
+                phyCreateStmt.getColumnDefinitions().stream().map(c -> c.getColumnName().toLowerCase())
+                    .collect(Collectors.toList());
 
-        //如果逻辑表和物理表的列序不一致，则需要额外提供以物理表列序为依据的建表sql
-        if (!logicColumns.equals(phyColumns)) {
-            logger.warn(
-                "logic table`s columns is different from phy tables`, table name : " + logicCreateStmt.getTableName());
-            phyCreateStmt.setTableName(logicCreateStmt.getTableName());
-            return phyCreateStmt.toUnformattedString();
+            //如果逻辑表和物理表的列序不一致，则需要额外提供以物理表列序为依据的建表sql
+            if (!logicColumns.equals(phyColumns)) {
+                logger.warn(
+                    "logic table`s columns is different from phy tables`, table name : " + logicCreateStmt
+                        .getTableName());
+                phyCreateStmt.setTableName(logicCreateStmt.getTableName());
+                return phyCreateStmt.toUnformattedString();
+            }
+        } catch (Throwable t) {
+            logger.error("try build phy create sql error, logicCreateSql is " + logicCreateSql + ", phyCreateSql is "
+                + phyCreateSql, t);
+            throw t;
         }
 
         return null;

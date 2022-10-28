@@ -379,35 +379,6 @@ public class PolarAccountInfo {
         return ret;
     }
 
-//    public boolean hasPermission(Permission permission) {
-//        return PolarAuthorizer.hasPermission(this, permission);
-//        if (!checkSpecialCases(permission)) {
-//            return false;
-//        }
-//
-//        if (instPriv.hasPrivilege(permission.getPrivilege())) {
-//            return true;
-//        }
-//
-//        boolean hasDatabasePrivilege = Optional.ofNullable(permission.getDatabase())
-//            .flatMap(db -> Optional.ofNullable(getDbPriv(db)))
-//            .map(dbPrivilege -> dbPrivilege.hasPrivilege(permission.getPrivilege()))
-//            .orElse(false);
-//        if (hasDatabasePrivilege) {
-//            return true;
-//        }
-//
-//        boolean hasTablePrivilege = Optional.ofNullable(permission.getTable())
-//            .flatMap(table -> Optional.ofNullable(getTbPriv(permission.getDatabase(), permission.getTable())))
-//            .map(tablePrivilege -> tablePrivilege.hasPrivilege(permission.getPrivilege()))
-//            .orElse(false);
-//        if (hasTablePrivilege) {
-//            return true;
-//        }
-//
-//        return false;
-//}
-
     public List<Permission> toPermissions() {
         List<Permission> permissions = new ArrayList<>(instPriv.toPermissions());
 
@@ -448,4 +419,5 @@ public class PolarAccountInfo {
 
         return true;
     }
+
 }

@@ -33,12 +33,11 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
-
-@ExpressionSignatures(names = {"LT","<"}, argumentTypes = {"Date", "Date"}, argumentKinds = {Variable, Variable})
+@ExpressionSignatures(names = {"LT", "<"}, argumentTypes = {"Date", "Date"}, argumentKinds = {Variable, Variable})
 public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpression {
 
     public LTDateColDateColVectorizedExpression(int outputIndex,
-                                                  VectorizedExpression[] children) {
+                                                VectorizedExpression[] children) {
         super(DataTypes.LongType, outputIndex, children);
     }
 
@@ -52,8 +51,10 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
         int[] sel = chunk.selection();
 
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
-        RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
+        RandomAccessBlock leftInputVectorSlot =
+            chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+        RandomAccessBlock rightInputVectorSlot =
+            chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
         if (leftInputVectorSlot instanceof DateBlock && rightInputVectorSlot instanceof DateBlock) {
             long[] array1 = ((DateBlock) leftInputVectorSlot).getPacked();
@@ -63,7 +64,7 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
                     int j = sel[i];
-                    res[j] = (array1[j] < array2[i]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+                    res[j] = (array1[j] < array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
@@ -71,34 +72,30 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
                 }
             }
 
-            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(), children[1].getOutputIndex());
+            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
+                children[1].getOutputIndex());
         } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof ReferenceBlock) {
             long[] res = ((LongBlock) outputVectorSlot).longArray();
 
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
                     int j = sel[i];
-                    MysqlDateTime lDate = ((OriginalDate) leftInputVectorSlot.elementAt(j)).getMysqlDateTime();
-                    MysqlDateTime rDate = ((OriginalDate) rightInputVectorSlot.elementAt(j)).getMysqlDateTime();
-                    boolean cmp = lDate.getYear() < rDate.getYear()
-                            || (lDate.getYear() == rDate.getYear() && lDate.getMonth() < rDate.getMonth())
-                            || (lDate.getYear() == rDate.getYear() && lDate.getMonth() == rDate.getMonth() && lDate.getDay() < rDate.getDay());
+                    long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, j);
+                    long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, j);
 
-                    res[j] = cmp ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+                    res[j] = lPack < rPack ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
-                    MysqlDateTime lDate = ((OriginalDate) leftInputVectorSlot.elementAt(i)).getMysqlDateTime();
-                    MysqlDateTime rDate = ((OriginalDate) rightInputVectorSlot.elementAt(i)).getMysqlDateTime();
-                    boolean cmp = lDate.getYear() < rDate.getYear()
-                            || (lDate.getYear() == rDate.getYear() && lDate.getMonth() < rDate.getMonth())
-                            || (lDate.getYear() == rDate.getYear() && lDate.getMonth() == rDate.getMonth() && lDate.getDay() < rDate.getDay());
+                    long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, i);
+                    long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, i);
 
-                    res[i] = cmp ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+                    res[i] = lPack < rPack ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             }
 
-            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(), children[1].getOutputIndex());
+            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
+                children[1].getOutputIndex());
         } else if (leftInputVectorSlot instanceof DateBlock && rightInputVectorSlot instanceof ReferenceBlock) {
             long[] res = ((LongBlock) outputVectorSlot).longArray();
             long[] array1 = ((DateBlock) leftInputVectorSlot).getPacked();
@@ -106,19 +103,18 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
                     int j = sel[i];
-                    MysqlDateTime rDate = ((OriginalDate) rightInputVectorSlot.elementAt(i)).getMysqlDateTime();
-                    long rPack = TimeStorage.writeDate(rDate);
+                    long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, j);
                     res[j] = (array1[j] < rPack) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
-                    MysqlDateTime rDate = ((OriginalDate) rightInputVectorSlot.elementAt(i)).getMysqlDateTime();
-                    long rPack = TimeStorage.writeDate(rDate);
+                    long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, i);
                     res[i] = (array1[i] < rPack) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             }
 
-            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(), children[1].getOutputIndex());
+            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
+                children[1].getOutputIndex());
         } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof DateBlock) {
             long[] res = ((LongBlock) outputVectorSlot).longArray();
             long[] array2 = ((DateBlock) rightInputVectorSlot).getPacked();
@@ -126,19 +122,19 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
                     int j = sel[i];
-                    MysqlDateTime lDate = ((OriginalDate) leftInputVectorSlot.elementAt(i)).getMysqlDateTime();
-                    long lPack = TimeStorage.writeDate(lDate);
+                    long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, j);
                     res[j] = (lPack < array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
-                    MysqlDateTime lDate = ((OriginalDate) leftInputVectorSlot.elementAt(i)).getMysqlDateTime();
-                    long lPack = TimeStorage.writeDate(lDate);
+                    long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, i);
                     res[i] = (lPack < array2[i]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             }
 
-            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(), children[1].getOutputIndex());
+            VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
+                children[1].getOutputIndex());
         }
+
     }
 }

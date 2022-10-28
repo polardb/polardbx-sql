@@ -45,7 +45,7 @@ public class ExpressionConstructor<T extends VectorizedExpression> {
             }
             return constructor.newInstance(dataType, outputIndex, args);
         } catch (Exception e) {
-            throw GeneralUtil.nestedException("Failed to create instance: ", e);
+            throw GeneralUtil.nestedException("Failed to create instance: " + constructor, e);
         }
     }
 

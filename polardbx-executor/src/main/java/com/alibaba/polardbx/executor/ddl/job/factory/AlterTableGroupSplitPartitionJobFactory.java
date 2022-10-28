@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupS
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
@@ -39,11 +40,11 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -86,10 +87,12 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
             .getTableGroupConfigByName(alterTableGroupSplitPartitionPreparedData.getTableGroupName());
 
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
+        String locality = "";
         for (String splitPartitionName : alterTableGroupSplitPartitionPreparedData.getSplitPartitions()) {
             for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
                 if (record.partition_name.equalsIgnoreCase(splitPartitionName)) {
                     outdatedPartitionGroupId.add(record.id);
+                    locality = (record.locality == null) ? "" : record.locality;
                     break;
                 }
             }
@@ -102,6 +105,7 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
                 .get(i % targetDbCnt).phyDbName);
             newPartitions.add(alterTableGroupSplitPartitionPreparedData.getNewPartitionNames().get(i));
         }
+        List<String> localities = new ArrayList<>(Collections.nCopies(newPartitions.size(), locality));
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             tableGroupName,
             tableGroupConfig.getTableGroupRecord().getId(),
@@ -110,7 +114,10 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
             taskType.getValue(),
             outdatedPartitionGroupId,
             targetDbList,
-            newPartitions);
+            newPartitions,
+            localities);
+
+        DdlTask syncTableGroupTask = new TableGroupSyncTask(schemaName, tableGroupName);
 
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
             validateTask,
@@ -137,6 +144,11 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
             constructSubTasks(schemaName, executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask),
                 alterTableGroupSplitPartitionPreparedData.getSplitPartitions().get(0));
         }
+        executableDdlJob.addSequentialTasksAfter(
+            executableDdlJob.getTail(),
+            Lists.newArrayList(
+                syncTableGroupTask
+            ));
 
         executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
 

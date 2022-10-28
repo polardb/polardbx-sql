@@ -47,6 +47,9 @@ public class UpdateGsiShardingKeyTest extends GsiDMLTest {
     private static Map<String, String> shadowTables = new HashMap<>();
     private static Map<String, String> mysqlTables = new HashMap<>();
 
+    //多线程执行
+    private static final String HINT1 = " /*+TDDL:CMD_EXTRA(UPDATE_DELETE_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+
     @BeforeClass
     public static void beforeCreateTables() {
         try {
@@ -693,4 +696,62 @@ public class UpdateGsiShardingKeyTest extends GsiDMLTest {
         assertIndexSame(baseOneTableName);
         assertRouteCorrectness(baseOneTableName);
     }
+
+    /**
+     * @since 5.0.1
+     */
+    @Test
+    public void updateSomeByMulti() throws Exception {
+
+        String sql = hint + HINT1 + " /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN=TRUE)*/ " + "UPDATE " + baseOneTableName
+            + " SET bigint_test = BIGINT_TEST + 2000, VARCHAR_TEST = concat(varchar_test, 'b'), float_test=?,double_test=? WHERE integer_test >= 7";
+        List<Object> param = new ArrayList<Object>();
+        param.add(columnDataGenerator.float_testValue);
+        param.add(columnDataGenerator.double_testValue);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
+
+        sql = hint + "SELECT * FROM " + baseOneTableName + "  WHERE integer_test >= 7";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        assertIndexSame(baseOneTableName);
+        assertRouteCorrectness(baseOneTableName);
+    }
+
+    /**
+     * @since 5.0.1
+     */
+    @Test
+    public void updateAllByMulti() throws Exception {
+
+        String sql = hint + HINT1 + " /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN=TRUE)*/ " + " UPDATE " + baseOneTableName
+            + " SET bigint_test = bigint_test + 2000 , varchar_test = concat(varchar_test, 'sk modified')";
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, ImmutableList.of(), true);
+
+        sql = hint + "SELECT * FROM " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        assertIndexSame(baseOneTableName);
+        assertRouteCorrectness(baseOneTableName);
+    }
+
+    /**
+     * @since 5.0.1
+     */
+    @Test
+    public void nowUpdateByMultiTest() throws Exception {
+        String sql = hint + HINT1 + " /*+TDDL:CMD_EXTRA(ENABLE_MODIFY_SHARDING_COLUMN=TRUE)*/ " + " UPDATE " + baseOneTableName
+            + " SET bigint_test = bigint_test + 2000, varchar_test = concat(varchar_test, 'b'), date_test= now(),datetime_test=now()  "
+            + ",timestamp_test=now()";
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, true);
+
+        sql = hint + "SELECT * FROM  " + baseOneTableName + " where integer_test = 1";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        assertIndexSame(baseOneTableName);
+        assertRouteCorrectness(baseOneTableName);
+    }
+
 }

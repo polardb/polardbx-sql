@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 public class AlterTableGroupBaseBuilder {
 
@@ -85,14 +86,10 @@ public class AlterTableGroupBaseBuilder {
     }
 
     public void buildTablesPhysicalPlans() {
-        TableGroupConfig tableGroupConfig =
-            OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
-                .getTableGroupConfigByName(preparedData.getTableGroupName());
         List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getTargetGroupDetailInfoExRecords();
-        List<TablePartRecordInfoContext> allTables = tableGroupConfig.getAllTables();
+        List<String> allTables = getAllTableNames();
         generateNewPhysicalTableNames(allTables);
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : allTables) {
-            String tableName = tablePartRecordInfoContext.getTableName();
+        for (String tableName : allTables) {
             AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
                 createAlterTableGroupItemPreparedData(tableName, groupDetailInfoExRecords);
             AlterTableGroupItemBuilder itemBuilder =
@@ -105,6 +102,13 @@ public class AlterTableGroupBaseBuilder {
             tablesPreparedData.put(tableName, alterTableGroupItemPreparedData);
             orderedTargetTablesLocations.put(tableName, itemBuilder.getOrderedTargetTableLocations());
         }
+    }
+
+    public List<String> getAllTableNames() {
+        TableGroupConfig tableGroupConfig =
+            OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
+                .getTableGroupConfigByName(preparedData.getTableGroupName());
+        return tableGroupConfig.getAllTables().stream().map(o -> o.getTableName()).collect(Collectors.toList());
     }
 
     public Map<String, List<PhyDdlTableOperation>> getNewPartitionsPhysicalPlansMap() {
@@ -161,7 +165,8 @@ public class AlterTableGroupBaseBuilder {
         alterTableGroupItemPreparedData.setPrimaryTableName(primaryTableName);
         alterTableGroupItemPreparedData
             .setTableVersion(
-                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName).getVersion());
+                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName)
+                    .getVersion());
 
         return alterTableGroupItemPreparedData;
     }
@@ -182,7 +187,7 @@ public class AlterTableGroupBaseBuilder {
         return newPhysicalTables.get(tableName);
     }
 
-    protected void generateNewPhysicalTableNames(List<TablePartRecordInfoContext> allLogicalTables) {
+    protected void generateNewPhysicalTableNames(List<String> allLogicalTableNames) {
         final String schemaName = preparedData.getSchemaName();
         TableGroupRecord tableGroupRecord;
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
@@ -197,9 +202,9 @@ public class AlterTableGroupBaseBuilder {
 
                 int[] minPostfix = new int[1];
                 int maxPostfix = 1;
-                for (TablePartRecordInfoContext tablePartRecordInfoContext : allLogicalTables) {
-                    minPostfix[0] = tableGroupRecord.getInited();
-                    String tableName = tablePartRecordInfoContext.getTableName();
+                for (String tableName : allLogicalTableNames) {
+                    minPostfix[0] = tableGroupRecord.getInited() - preparedData.getNewPartitionNames().size();
+                    minPostfix[0] = Math.max(minPostfix[0], 0);
                     PartitionInfo partitionInfo =
                         OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
                     List<String> physicalTables = PartitionInfoUtil

@@ -145,9 +145,9 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
         }
 
         //5. sync after drop table
-        //TableSyncTask dropTableSyncTask = new TableSyncTask(schemaName, primaryTableName);
-        TablesSyncTask dropTableSyncTask =
-            new TablesSyncTask(schemaName, Lists.newArrayList(indexTableName, primaryTableName));
+        TableSyncTask dropTableSyncTask = new TableSyncTask(schemaName, primaryTableName);
+        //TablesSyncTask dropTableSyncTask =
+        //    new TablesSyncTask(schemaName, Lists.newArrayList(indexTableName, primaryTableName));
         taskList.add(dropTableSyncTask);
 
 //        final ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();

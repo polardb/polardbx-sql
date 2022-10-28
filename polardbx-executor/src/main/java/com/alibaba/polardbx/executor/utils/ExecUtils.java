@@ -16,41 +16,29 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.alibaba.polardbx.executor.sync.ISyncAction;
-import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
-import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
-import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
-import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
-import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.mysql.jdbc.ConnectionImpl;
-import com.mysql.jdbc.exceptions.MySQLQueryInterruptedException;
-import com.alibaba.polardbx.atom.TAtomDataSource;
-import com.alibaba.polardbx.atom.config.TAtomDsConfDO;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.RepoInst;
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -61,14 +49,15 @@ import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.StageInfo;
 import com.alibaba.polardbx.executor.mpp.execution.TaskInfo;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
-import com.alibaba.polardbx.executor.spi.IGroupExecutor;
-import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
-import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbConnectionProxy;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
@@ -76,20 +65,23 @@ import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
 import com.alibaba.polardbx.gms.node.StorageStatusManager;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.bean.NullValue;
+import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;
+import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
@@ -98,6 +90,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.UnionOptHelper;
@@ -105,15 +98,22 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
+import com.alibaba.polardbx.optimizer.utils.GroupConnId;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.sequence.impl.BaseSequence;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
 import it.unimi.dsi.fastutil.HashCommon;
 import org.apache.calcite.linq4j.Ord;
@@ -125,18 +125,26 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.logical.LogicalValues;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rex.RexDynamicParam;
+import org.apache.calcite.rex.RexLiteral;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.StringUtils;
+import org.weakref.jmx.internal.guava.primitives.Bytes;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -153,11 +161,15 @@ import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_HLL;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
+import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
+import static com.alibaba.polardbx.gms.module.LogPattern.INTERRUPTED;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
 
@@ -580,6 +592,14 @@ public class ExecUtils {
 
     public static QueryConcurrencyPolicy getQueryConcurrencyPolicy(ExecutionContext executionContext,
                                                                    LogicalView logicalView) {
+        if (logicalView instanceof OSSTableScan) {
+            if (executionContext.getParamManager().getBoolean(ConnectionParams.OSS_FILE_CONCURRENT)) {
+                return QueryConcurrencyPolicy.FILE_CONCURRENT;
+            } else {
+                return QueryConcurrencyPolicy.CONCURRENT;
+            }
+        }
+
         // if MERGE_UNION = false, force use SEQUENTIAL
         if (!executionContext.getParamManager().getBoolean(ConnectionParams.MERGE_UNION)) {
             return QueryConcurrencyPolicy.SEQUENTIAL;
@@ -606,6 +626,9 @@ public class ExecUtils {
                 .getBoolean(ConnectionParams.MERGE_CONCURRENT))) {
                 return QueryConcurrencyPolicy.CONCURRENT;
             }
+            if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_GROUP_PARALLELISM)) {
+                return QueryConcurrencyPolicy.RELAXED_GROUP_CONCURRENT;
+            }
             return QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
         }
 
@@ -614,25 +637,6 @@ public class ExecUtils {
         }
 
         return QueryConcurrencyPolicy.SEQUENTIAL;
-    }
-
-    private static int getMaxConnCountForSingleGroup(String schemaName, String groupName, ExecutionContext context,
-                                                     LogicalView logicalView) {
-        TGroupDataSource ds = new MyDataSourceGetter(schemaName).getDataSource(groupName);
-        final Map<String, DataSourceWrapper> dataSourceWrapperMap = ds.getConfigManager()
-            .getDataSourceWrapperMap();
-        Entry<String, DataSourceWrapper> atomEntry = dataSourceWrapperMap.entrySet().iterator().next();
-        if (atomEntry == null) {
-            return 1;
-        } else {
-            DataSourceWrapper dataSourceWrapper = atomEntry.getValue();
-            TAtomDataSource atom = dataSourceWrapper.getWrappedDataSource();
-            TAtomDsConfDO atomConfig = atom.getDsConfHandle().getRunTimeConf();
-            // In insert select, we are inserting while selecting, which
-            // costs double connections.
-            double factor = context.isModifySelect() ? 0.3 : 0.6;
-            return Math.min((int) Math.ceil(atomConfig.getMaxPoolSize() * factor), 10);
-        }
     }
 
     public static int getAffectRowsByCursors(List<Cursor> cursors, boolean isBroadcast) {
@@ -715,7 +719,7 @@ public class ExecUtils {
                 .getDefaultDbIndex(null);
         } else if (relNode instanceof BroadcastTableModify) {
             group = OptimizerContext.getContext(((BroadcastTableModify) relNode).getDirectTableOperation()
-                .getSchemaName())
+                    .getSchemaName())
                 .getRuleManager()
                 .getDefaultDbIndex(null);
         } else if (relNode instanceof LogicalShow) {
@@ -784,6 +788,12 @@ public class ExecUtils {
     }
 
     public static List<RelNode> getInputs(
+        LogicalView logicalPlan, ExecutionContext executionContext, boolean forceIgnoreRF, SqlSelect sqlTemplate) {
+        return logicalPlan.getInput(
+            getUnionOptHelper(logicalPlan, executionContext), executionContext, forceIgnoreRF, sqlTemplate);
+    }
+
+    public static List<RelNode> getInputs(
         LogicalView logicalPlan, ExecutionContext executionContext, boolean forceIgnoreRF) {
         return logicalPlan.getInput(
             getUnionOptHelper(logicalPlan, executionContext), executionContext, forceIgnoreRF);
@@ -792,7 +802,7 @@ public class ExecUtils {
     public static UnionOptHelper getUnionOptHelper(LogicalView logicalPlan, ExecutionContext executionContext) {
         return new UnionOptHelper() {
             @Override
-            public int calMergeUnionSize(int total, String groupName) {
+            public int calMergeUnionSize(int totalCount, int toUnionCount, String groupName) {
                 // mock mode force union size=1
                 if (ConfigDataMode.isFastMock()) {
                     return 1;
@@ -803,7 +813,7 @@ public class ExecUtils {
                 }
 
                 // Only one sql, do not need to union.
-                if (total == 1) {
+                if (toUnionCount == 1) {
                     return 0;
                 }
 
@@ -825,20 +835,19 @@ public class ExecUtils {
                     return mergeUnionSize;
                 }
 
-                String schemaName = logicalPlan.getSchemaName();
-                if (StringUtils.isEmpty(schemaName)) {
-                    schemaName = executionContext.getSchemaName();
-                }
-                // Use default size, MIN(10, ceil(maxPoolSize * 0.6))
-                int maxConnCount = getMaxConnCountForSingleGroup(schemaName, groupName,
-                    executionContext, logicalPlan);
-                if (maxConnCount == 1) {
-                    // Only one connection, return 0 means union all.
-                    return 0;
-                } else {
-                    // The min value is 1, means do not use union optimizer.
-                    return (int) Math.ceil((double) total / maxConnCount);
-                }
+                // todo JINWU: adjust union policy in AP queries, which should be done in another proper way
+//                if (executionContext.getWorkloadType() == WorkloadType.AP) {
+//                    // to exploit parallelism for AP queries, don't use union
+//                    return 1;
+//                }
+
+                int unionSize = totalCount / getPrefetchNumForLogicalView(totalCount);
+                int minUnionSize = Math.max(unionSize,
+                    executionContext.getParamManager().getInt(ConnectionParams.MIN_MERGE_UNION_SIZE));
+                int maxUnionSize = executionContext.getParamManager().getInt(ConnectionParams.MAX_MERGE_UNION_SIZE);
+                minUnionSize = Math.min(minUnionSize, maxUnionSize);
+                // union size should be no more than toUnionCount
+                return Math.min(toUnionCount, minUnionSize);
             }
         };
     }
@@ -857,7 +866,7 @@ public class ExecUtils {
             if (!shareReadView && !context.isAutoCommit()) {
                 return false;
             } else {
-                if (context.getSqlType() != SqlType.SELECT) {
+                if (!isSelectQuery(context)) {
                     return false;
                 }
                 if (logicalView != null) {
@@ -869,6 +878,14 @@ public class ExecUtils {
             }
         } else {
             return true;
+        }
+    }
+
+    private static boolean isSelectQuery(ExecutionContext context) {
+        if (context.getFinalPlan() == null || context.getFinalPlan().getAst() == null) {
+            return context.getSqlType() == SqlType.SELECT;
+        } else {
+            return context.getFinalPlan().getAst().getKind().belongsTo(SqlKind.QUERY);
         }
     }
 
@@ -887,18 +904,46 @@ public class ExecUtils {
         return append.toString();
     }
 
+    public static byte[] hintPrefix = "/*DRDS /".getBytes(StandardCharsets.UTF_8);
+    public static byte[] hintDivision = "/".getBytes(StandardCharsets.UTF_8);
+    public static byte[] hintEnd = "/ */".getBytes(StandardCharsets.UTF_8);
+    public static byte[] hintNULL = "null".getBytes(StandardCharsets.UTF_8);
+
+    public static byte[] buildDRDSTraceCommentBytes(ExecutionContext context) {
+        String clientIp = context.getClientIp();
+        String traceId = context.getTraceId();
+        Object server_id = "";
+        Long phySqlId = context.getPhySqlId();
+        final Map<String, Object> extraVariables = context.getExtraServerVariables();
+        if (null != extraVariables && extraVariables.containsKey("polardbx_server_id")) {
+            server_id = extraVariables.get("polardbx_server_id");
+        }
+        if (clientIp == null) {
+            clientIp = "null";
+        }
+        return Bytes.concat(hintPrefix, clientIp.getBytes(StandardCharsets.UTF_8), hintDivision,
+            traceId.getBytes(StandardCharsets.UTF_8), hintDivision,
+            phySqlId == null ? hintNULL : phySqlId.toString().getBytes(StandardCharsets.UTF_8),
+            hintDivision, server_id.toString().getBytes(StandardCharsets.UTF_8), hintEnd);
+
+    }
+
     public static Sequence mockSeq(String name) {
         BaseSequence sequence = new BaseSequence() {
             long seq = 0;
 
             @Override
             public long nextValue() throws SequenceException {
-                return seq++;
+                long value = seq++;
+                currentValue = value;
+                return value;
             }
 
             @Override
             public long nextValue(int size) throws SequenceException {
-                return seq + size;
+                long value = seq + size;
+                currentValue = value;
+                return value;
             }
 
             @Override
@@ -913,17 +958,14 @@ public class ExecUtils {
 
     public static void buildOneChunk(Chunk keyChunk, int position, ConcurrentRawHashTable hashTable,
                                      int[] positionLinks,
-                                     FastIntBloomFilter bloomFilter) {
+                                     FastIntBloomFilter bloomFilter, List<Integer> ignoreNullBlocks) {
         // Calculate hash codes of the whole chunk
         int[] hashes = keyChunk.hashCodeVector();
 
-        if (checkJoinKeysAllNotNull(keyChunk)) {
+        if (checkJoinKeysAllNullSafe(keyChunk, ignoreNullBlocks)) {
             // If all keys are not null, we can leave out the null-check procedure
             for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
                 int next = hashTable.put(position, hashes[offset]);
-                if (next != -1) {
-                    int a = 1;
-                }
                 positionLinks[position] = next;
                 if (bloomFilter != null) {
                     bloomFilter.put(hashes[offset]);
@@ -932,7 +974,7 @@ public class ExecUtils {
         } else {
             // Otherwise we have to check nullability for each row
             for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
-                if (checkJoinKeysNotNull(keyChunk, offset)) {
+                if (checkJoinKeysNulSafe(keyChunk, offset, ignoreNullBlocks)) {
                     int next = hashTable.put(position, hashes[offset]);
                     positionLinks[position] = next;
                     if (bloomFilter != null) {
@@ -943,8 +985,8 @@ public class ExecUtils {
         }
     }
 
-    public static boolean checkJoinKeysAllNotNull(Chunk keyChunk) {
-        for (int i = 0; i < keyChunk.getBlockCount(); i++) {
+    public static boolean checkJoinKeysAllNullSafe(Chunk keyChunk, List<Integer> ignoreNullBlocks) {
+        for (int i : ignoreNullBlocks) {
             if (keyChunk.getBlock(i).mayHaveNull()) {
                 return false;
             }
@@ -952,8 +994,8 @@ public class ExecUtils {
         return true;
     }
 
-    public static boolean checkJoinKeysNotNull(Chunk keyChunk, int offset) {
-        for (int i = 0; i < keyChunk.getBlockCount(); i++) {
+    public static boolean checkJoinKeysNulSafe(Chunk keyChunk, int offset, List<Integer> ignoreNullBlocks) {
+        for (int i : ignoreNullBlocks) {
             if (keyChunk.getBlock(i).isNull(offset)) {
                 return false;
             }
@@ -962,9 +1004,236 @@ public class ExecUtils {
     }
 
     /**
+     * reorder the  inputList by both groupName and groupConnId.
+     * (the count of groupConnId of a group depend on the params of GROUP_PARALLELISM)
+     * <pre>
+     *     for example, set GROUP_PARALLELISM=2 ：
+     *      inputs:
+     *              p1(g1,conn1),p3(g1,conn1),p5(g1,conn2),p6(g2,conn1),
+     *              p2(g2,conn1),p4(g2,conn2),p7(g2,conn2),p8(g1,conn2)
+     *      inputs after zigzag:
+     *          ( g1.conn1 and g1.conn2 can be exec concurrently )
+     *
+     *           orderNum       g1.conn1, g2.conn1, g1.conn2, g2.conn2
+     *              0             p1,p3
+     *              1                       p2,p6
+     *              2                                p5,p8
+     *              3                                           p4,p7
+     *
+     *      return
+     *              { {p1,p3}/g1.conn1, {p2,p6}/g2.conn1, {p5,p8}/g1.conn2, {p4,p7}/g2.conn2 }
+     * </pre>
+     */
+    public static List<RelNode> zigzagInputsByBothDnInstAndGroupConnId(List<RelNode> inputs,
+                                                                       String schemaName, ExecutionContext ec,
+                                                                       List<GroupConnId> outputGrpConnIdSet,
+                                                                       List<List<RelNode>> outputPhyOpListGroupedByGrpConnId) {
+        if (inputs.isEmpty()) {
+            return new ArrayList<>();
+        }
+        RelNode firstOp = inputs.get(0);
+        boolean isPhyTblOp = firstOp instanceof PhyTableOperation;
+        boolean isSystemDb = SystemDbHelper.isDBBuildIn(schemaName);
+        if (!isPhyTblOp || isSystemDb) {
+            throw new NotSupportException(
+                "Not support do zizag by group conn id for non PhyTableOperations or build-in db");
+        }
+
+        Map<String, RepoInst> groupToDnInstMap =
+            ExecutorContext.getContext(schemaName).getTopologyHandler().getGroupRepoInstMapsForzigzag();
+
+        PhyTableOperation phyOperation;
+        Long grpParallelism = ec.getGroupParallelism();
+        Boolean enableGrpParallelism = ec.getParamManager().getBoolean(ConnectionParams.ENABLE_GROUP_PARALLELISM);
+
+        /**
+         * key: groupConnid
+         * val: list of phyOp
+         *
+         */
+        Map<GroupConnId, List<RelNode>> grpConnToPhyOpSetMap = new HashMap<>();
+        int maxPhyOpCntOfOneGroupConn = 0;
+
+        /**
+         * key: groupName
+         * val: set of GroupConnId
+         */
+        Map<String, List<GroupConnId>> grpToConnIdListMap = new HashMap<>();
+        Map<String, Set<GroupConnId>> grpToConnIdSetMap = new HashMap<>();//used to remove duplicate GroupConnId
+        int maxGrpConnCntOfOneGrp = 0;
+
+        /**
+         * key: dnInstId( dnId@dnAddr )
+         * val: set of GroupName
+         */
+        Map<String, List<String>> dnInstIdToGroupListMap = new HashMap<>();
+        Map<String, Set<String>> dnInstIdToGroupSetMap = new HashMap<>();//used to remove duplicate groupName
+        int maxGrpCntOfOneDnInst = 0;
+
+        for (int i = 0; i < inputs.size(); i++) {
+            phyOperation = (PhyTableOperation) inputs.get(i);
+            String groupIndex = phyOperation.getDbIndex();
+            RepoInst dnInst = groupToDnInstMap.get(groupIndex);
+            String dnRepoId = dnInst.getRepoInstId();
+            Long connId = enableGrpParallelism ?
+                PhyTableOperationUtil.computeGrpConnIdByGrpConnKey(
+                    PhyTableOperationUtil.fetchPhyOpIntraGroupConnKey(phyOperation, ec), enableGrpParallelism,
+                    grpParallelism) : PhyTableOperationUtil.DEFAULT_WRITE_CONN_ID;
+            GroupConnId groConn = new GroupConnId(groupIndex, connId);
+            List<RelNode> phyOpSet = grpConnToPhyOpSetMap.computeIfAbsent(groConn, conn -> new ArrayList<>());
+            phyOpSet.add(phyOperation);
+            if (maxPhyOpCntOfOneGroupConn < phyOpSet.size()) {
+                maxPhyOpCntOfOneGroupConn = phyOpSet.size();
+            }
+            List<GroupConnId> connIdList = grpToConnIdListMap.computeIfAbsent(groupIndex, g -> new ArrayList<>());
+            Set<GroupConnId> connIdSet = grpToConnIdSetMap.computeIfAbsent(groupIndex, g -> new HashSet<>());
+            if (!connIdSet.contains(groConn)) {
+                connIdList.add(groConn);
+                connIdSet.add(groConn);
+                if (maxGrpConnCntOfOneGrp < connIdList.size()) {
+                    maxGrpConnCntOfOneGrp = connIdList.size();
+                }
+            }
+            List<String> grpList = dnInstIdToGroupListMap.computeIfAbsent(dnRepoId, id -> new ArrayList<>());
+            Set<String> grpSet = dnInstIdToGroupSetMap.computeIfAbsent(dnRepoId, id -> new HashSet<>());
+            if (!grpSet.contains(groupIndex)) {
+                grpList.add(groupIndex);
+                grpSet.add(groupIndex);
+                if (maxGrpCntOfOneDnInst < grpList.size()) {
+                    maxGrpCntOfOneDnInst = grpList.size();
+                }
+            }
+        }
+
+        /**
+         * step1:
+         *
+         * dn1: g1,g3
+         * dn2: g2,g4
+         * => reorder group set by dnInst
+         * g1,g2,g3,g4
+         */
+        List<String> newGroupListAfterZigzagDnInst = new ArrayList<>();
+        for (int i = 0; i < maxGrpCntOfOneDnInst; i++) {
+            for (List<String> grpSetItem : dnInstIdToGroupListMap.values()) {
+                if (i < grpSetItem.size()) {
+                    newGroupListAfterZigzagDnInst.add(grpSetItem.get(i));
+                }
+            }
+        }
+
+        /**
+         * step2:
+         *
+         * g1: c1,c2
+         * g2: c2
+         * g3: c1
+         * g4: c2
+         * => reorder group connId set by new ordered group name set
+         * g1c1,g2c2,g3c1,g4c2,g1c2
+         *
+         * step1 & step2: do dnInst zigzag for the list of groupConnId
+         * <pre>
+         *     old:
+         *          dn1: g1.conn1, g2.conn1,g1.conn3
+         *          dn2: g3.conn3, g4.conn1
+         *          dn3: g5.conn2
+         *     new
+         *          orderNum        dn1            dn2          dn3
+         *          1               g1.conn1
+         *          2                              g3.conn3
+         *          3                                           g5.conn2
+         *          4               g4.conn1
+         *          5                              g2.conn1
+         *          6               g1.conn3
+         *     ,so return
+         *      { g1.conn1, g3.conn3, g5.conn2, g4.conn1, g2.conn1, g1.conn3 }
+         *
+         * </pre>
+         */
+        List<GroupConnId> newGroupConnListAfterZigzagDnInstAndGrp = new ArrayList<>();
+        for (int i = 0; i < maxGrpConnCntOfOneGrp; i++) {
+
+            /**
+             * foreach the new order of group name set
+             */
+            for (int j = 0; j < newGroupListAfterZigzagDnInst.size(); j++) {
+                List<GroupConnId> grpConnIdSet = grpToConnIdListMap.get(newGroupListAfterZigzagDnInst.get(j));
+                if (i < grpConnIdSet.size()) {
+                    newGroupConnListAfterZigzagDnInstAndGrp.add(grpConnIdSet.get(i));
+                }
+            }
+        }
+
+        /**
+         * set step3:
+         *
+         * g1c1: op1,op6
+         * g2c2: op2,op7
+         * g3c1: op3,op8
+         * g4c2: op4,op9
+         * g1c2: op5,op10
+         * => reorder all phyOp set by new ordered group connId set
+         * op1,op2,op3,op4,op5,op6,op7,op8,op9,op10
+         *
+         * step3 do grpConnId zigzag for the list of all phy op
+         * <pre>
+         *     for example, set GROUP_PARALLELISM=2 ：
+         *      mapping:
+         *          g1.conn1: p1,p3
+         *          g3.conn3: p7
+         *          g5.conn2: p15
+         *          g4.conn1: p12
+         *          g2.conn1: p2,p6
+         *          g1.conn3: p5
+         *
+         *      inputs after zigzag:
+         *          ( g1.conn1 and g1.conn2 can be exec concurrently )
+         *
+         *           dn             dn1,      dn2,      dn3,      dn1,      dn2,      dn1
+         *           orderNum       g1.conn1, g3.conn3, g5.conn2, g4.conn1, g2.conn1, g1.conn3
+         *              0             p1,p3
+         *              1                       p7
+         *              2                                p15
+         *              3                                           p12
+         *              4                                                   p2,p6
+         *              6                                                               p5
+         *
+         *      return
+         *              { {p1,p3}/g1.conn1, {p7}/g3.conn3, {p15}/g5.conn2, {p12}/g4.conn1, {p2,p6}/g2.conn1, p5/g1.conn3 }
+         *
+         * </pre>
+         *
+         */
+        List<RelNode> newInputListAfterZigzagDnAndGrpCnnId = new ArrayList<>();
+        for (int i = 0; i < maxPhyOpCntOfOneGroupConn; i++) {
+
+            /**
+             * foreach the new order of group connId set
+             */
+            for (int j = 0; j < newGroupConnListAfterZigzagDnInstAndGrp.size(); j++) {
+                List<RelNode> phyOpSet = grpConnToPhyOpSetMap.get(newGroupConnListAfterZigzagDnInstAndGrp.get(j));
+                if (i < phyOpSet.size()) {
+                    newInputListAfterZigzagDnAndGrpCnnId.add(phyOpSet.get(i));
+                }
+            }
+        }
+        if (outputGrpConnIdSet != null) {
+            outputGrpConnIdSet.addAll(newGroupConnListAfterZigzagDnInstAndGrp);
+        }
+        if (outputPhyOpListGroupedByGrpConnId != null) {
+            for (int i = 0; i < newGroupConnListAfterZigzagDnInstAndGrp.size(); i++) {
+                List<RelNode> phyOpSet = grpConnToPhyOpSetMap.get(newGroupConnListAfterZigzagDnInstAndGrp.get(i));
+                outputPhyOpListGroupedByGrpConnId.add(phyOpSet);
+            }
+        }
+        return newInputListAfterZigzagDnAndGrpCnnId;
+    }
+
+    /**
      * 将inputList按RDS实例重排一下
      */
-    public static List<RelNode> zigzagInputsByMysqlInst(List<RelNode> inputs, String schemaName) {
+    public static List<RelNode> zigzagInputsByMysqlInst(List<RelNode> inputs, String schemaName, ExecutionContext ec) {
 
         List<RelNode> newInputs = new ArrayList<RelNode>(inputs.size());
 
@@ -972,48 +1241,70 @@ public class ExecUtils {
             return newInputs;
         }
 
-        BaseQueryOperation phyOperation = (BaseQueryOperation) inputs.get(0);
+        RelNode firstOp = inputs.get(0);
+        boolean isPhyTblOp = firstOp instanceof PhyTableOperation;
+        boolean isSystemDb = SystemDbHelper.isDBBuildIn(schemaName);
 
-        Map<String, RepoInst> groupRepoInstMap =
-            ExecutorContext.getContext(schemaName).getTopologyHandler().getGroupRepoInstMapsForzigzig();
+        if (isPhyTblOp && !isSystemDb) {
+            /**
+             *    dn1        dn2        dn3
+             * { grp1.conn1,grp2.conn2,grp1.conn2,grp2.conn2 ... }
+             */
+            newInputs = ExecUtils.zigzagInputsByBothDnInstAndGroupConnId(inputs, schemaName, ec, null, null);
+            return newInputs;
+        } else {
+            BaseQueryOperation phyOperation;
+            Map<String, RepoInst> groupRepoInstMap =
+                ExecutorContext.getContext(schemaName).getTopologyHandler().getGroupRepoInstMapsForzigzag();
 
-        int instCount = 0;
-        List<List<RelNode>> instPhyRelArrList = new ArrayList<List<RelNode>>();
-        Map<String, Integer> instIndexMap = new HashMap<String, Integer>();
+            /**
+             *  all phy op list of each db inst:
+             *
+             *    =======dn1======  =====dn2=====
+             *  { { op1, op3,.... }, {op2,op4,...}, ... }
+             */
+            List<List<RelNode>> instPhyRelArrList = new ArrayList<List<RelNode>>();
 
-        int maxPhyRelIndexOfOneInst = 0;
-        for (int i = 0; i < inputs.size(); i++) {
-            phyOperation = (BaseQueryOperation) inputs.get(i);
-            String groupIndex = phyOperation.getDbIndex();
-            RepoInst repoInst = groupRepoInstMap.get(groupIndex);
-            String instAddr = repoInst.getAddress();
-            Integer instIndex = instIndexMap.get(instAddr);
+            /**
+             * mapping: dbInstAddr -> dnInstIndex of instPhyRelArrList
+             */
+            Map<String, Integer> instIndexMap = new HashMap<String, Integer>();
 
-            List<RelNode> phyRelListOfInst = null;
-            if (instIndex == null) {
-                ++instCount;
-                instIndex = instCount - 1;
-                instIndexMap.put(instAddr, instIndex);
-                phyRelListOfInst = new ArrayList<RelNode>();
-                instPhyRelArrList.add(phyRelListOfInst);
-            }
-            phyRelListOfInst = instPhyRelArrList.get(instIndex);
-            phyRelListOfInst.add(phyOperation);
-            if (phyRelListOfInst.size() > maxPhyRelIndexOfOneInst) {
-                maxPhyRelIndexOfOneInst = phyRelListOfInst.size();
-            }
-        }
+            int maxPhyRelIndexOfOneInst = 0;
+            int instCount = 0;
+            for (int i = 0; i < inputs.size(); i++) {
+                phyOperation = (BaseQueryOperation) inputs.get(i);
+                String groupIndex = phyOperation.getDbIndex();
+                RepoInst repoInst = groupRepoInstMap.get(groupIndex);
+                String instId = repoInst.getRepoInstId();
+                Integer instIndex = instIndexMap.get(instId);
 
-        for (int relIdx = 0; relIdx < maxPhyRelIndexOfOneInst; ++relIdx) {
-            for (int instIdx = 0; instIdx < instPhyRelArrList.size(); ++instIdx) {
-                List<RelNode> phyRelArr = instPhyRelArrList.get(instIdx);
-                if (relIdx < phyRelArr.size()) {
-                    newInputs.add(phyRelArr.get(relIdx));
+                List<RelNode> phyRelListOfInst = null;
+                if (instIndex == null) {
+                    ++instCount;
+                    instIndex = instCount - 1;
+                    instIndexMap.put(instId, instIndex);
+                    phyRelListOfInst = new ArrayList<RelNode>();
+                    instPhyRelArrList.add(phyRelListOfInst);
+                }
+                phyRelListOfInst = instPhyRelArrList.get(instIndex);
+                phyRelListOfInst.add(phyOperation);
+                if (phyRelListOfInst.size() > maxPhyRelIndexOfOneInst) {
+                    maxPhyRelIndexOfOneInst = phyRelListOfInst.size();
                 }
             }
-        }
 
-        return newInputs;
+            for (int relIdx = 0; relIdx < maxPhyRelIndexOfOneInst; ++relIdx) {
+                for (int instIdx = 0; instIdx < instPhyRelArrList.size(); ++instIdx) {
+                    List<RelNode> phyRelArr = instPhyRelArrList.get(instIdx);
+                    if (relIdx < phyRelArr.size()) {
+                        newInputs.add(phyRelArr.get(relIdx));
+                    }
+                }
+            }
+
+            return newInputs;
+        }
     }
 
     public static boolean isPowerOfTwo(int val) {
@@ -1127,6 +1418,48 @@ public class ExecUtils {
         return replaceRow;
     }
 
+    public static DataType getTypeForNewGroupKey(RexNode rex, Object value) {
+        DataType type = DataTypeUtil.calciteToDrdsType(rex.getType());
+        ExprContextProvider exprCxtProvider = new ExprContextProvider();
+        IExpression evalFuncExec = RexUtils.getEvalFuncExec(rex, exprCxtProvider);
+        if (evalFuncExec instanceof DynamicParamExpression) {
+            type = DataTypeUtil.getTypeOfObject(value);
+        }
+        return type;
+    }
+
+    public static List<GroupKey> buildNewGroupKeys(List<List<Integer>> ukColumnsList,
+                                                   List<List<ColumnMeta>> ukColumnMetas,
+                                                   Function<Integer, Object> columnValue,
+                                                   ExecutionContext ec) {
+        final List<GroupKey> replaceRow = new ArrayList<>();
+        for (Ord<List<Integer>> o : Ord.zip(ukColumnsList)) {
+            final List<Integer> columns = o.getValue();
+            final List<ColumnMeta> metas = ukColumnMetas.get(o.i);
+            final Object[] groupKeys = columns.stream().map(columnValue).toArray();
+
+            replaceRow.add(new NewGroupKey(groupKeys, metas, false, ec));
+        }
+        return replaceRow;
+    }
+
+    public static List<GroupKey> buildNewGroupKeys(List<List<Integer>> ukColumnsList,
+                                                   List<List<ColumnMeta>> ukColumnMetas,
+                                                   List<Object> columnValue,
+                                                   List<RexNode> rex,
+                                                   ExecutionContext ec) {
+        final List<GroupKey> replaceRow = new ArrayList<>();
+        for (Ord<List<Integer>> o : Ord.zip(ukColumnsList)) {
+            final List<Integer> columns = o.getValue();
+            final List<ColumnMeta> metas = ukColumnMetas.get(o.i);
+            final Object[] groupKeys = columns.stream().map(columnValue::get).toArray();
+            final List<RexNode> rexs = columns.stream().map(rex::get).collect(Collectors.toList());
+
+            replaceRow.add(new NewGroupKey(groupKeys, metas, rexs, false, ec));
+        }
+        return replaceRow;
+    }
+
     public static List<List<GroupKey>> buildRowDuplicateCheckers(List<List<Object>> selectedRows,
                                                                  List<List<Integer>> ukColumnsList,
                                                                  List<List<ColumnMeta>> ukColumnMetas) {
@@ -1178,6 +1511,26 @@ public class ExecUtils {
         return duplicateCheckers;
     }
 
+    public static List<Set<GroupKey>> buildColumnDuplicateCheckersWithNewGroupKey(List<List<Object>> duplicateValues,
+                                                                                  List<List<Integer>> ukColumnsList,
+                                                                                  List<List<ColumnMeta>> ukColumnMetas,
+                                                                                  ExecutionContext ec) {
+        final List<Set<GroupKey>> duplicateCheckers = new ArrayList<>();
+        for (Ord<List<Integer>> o : Ord.zip(ukColumnsList)) {
+            final List<Integer> ukColumns = o.getValue();
+            final List<ColumnMeta> metas = ukColumnMetas.get(o.i);
+
+            final Set<GroupKey> checker = new HashSet<>();
+            duplicateValues.forEach(row -> {
+                final Object[] groupKeys = ukColumns.stream().map(row::get).toArray();
+                checker.add(new NewGroupKey(groupKeys, metas, false, ec));
+            });
+
+            duplicateCheckers.add(checker);
+        }
+        return duplicateCheckers;
+    }
+
     public static long getMaxRowCount(RelNode node, ExecutionContext context) {
         long outputCount = Long.MAX_VALUE;
         if (node != null && node instanceof Sort) {
@@ -1201,10 +1554,12 @@ public class ExecUtils {
 
         List<String> tableNameList;
         String schemaName = tableOperation.getSchemaName();
-        if (tableOperation instanceof DirectTableOperation ||
-            tableOperation instanceof SingleTableOperation ||
-            tableOperation instanceof DirectShardingKeyTableOperation) {
-            tableNameList = tableOperation.getTableNames();
+        if (tableOperation instanceof DirectTableOperation) {
+            tableNameList = ((DirectTableOperation) tableOperation).getLogicalTableNames();
+        } else if (tableOperation instanceof SingleTableOperation) {
+            tableNameList = ((SingleTableOperation) tableOperation).getLogicalTableNames();
+        } else if (tableOperation instanceof DirectShardingKeyTableOperation) {
+            tableNameList = ((DirectShardingKeyTableOperation) tableOperation).getLogicalTableNames();
         } else if (tableOperation instanceof PhyTableOperation) {
             tableNameList = ((PhyTableOperation) tableOperation).getLogicalTableNames();
             if (tableNameList == null && tableOperation.getParent() instanceof DirectTableOperation) {
@@ -1295,6 +1650,9 @@ public class ExecUtils {
     }
 
     public static boolean existMppOnlyInstanceNode() {
+        if (ServiceProvider.getInstance().getServer() == null) {
+            return false;
+        }
         InternalNodeManager nodeManager = ServiceProvider.getInstance().getServer().getNodeManager();
         Set<InternalNode> nodes = null;
         if (ConfigDataMode.isMasterMode()) {
@@ -1445,4 +1803,108 @@ public class ExecUtils {
         }
         return allDnId;
     }
+
+    public static boolean isMysql80Version() {
+        boolean isMysql80Version = false;
+        try {
+            isMysql80Version = ExecutorContext.getContext(
+                SystemDbHelper.INFO_SCHEMA_DB_NAME).getStorageInfoManager().isMysql80();
+        } catch (Throwable t) {
+            //ignore
+        }
+        return isMysql80Version;
+    }
+
+    public static List<String> getTableGroupNames(String schemaName, String tableName) {
+        final Set<String> dbNames;
+        final TddlRuleManager or = Objects.requireNonNull(OptimizerContext.getContext(schemaName)).getRuleManager();
+        PartitionInfoManager partitionInfoManager =
+            Objects.requireNonNull(OptimizerContext.getContext(schemaName)).getPartitionInfoManager();
+        if (partitionInfoManager.isNewPartDbTable(tableName)) {
+            PartitionInfo partitionInfo =
+                partitionInfoManager.getPartitionInfo(tableName);
+            dbNames = partitionInfo.getTopology().keySet();
+        } else {
+            dbNames = or.getTableRule(tableName).getActualTopology().keySet();
+        }
+        return Lists.newArrayList(dbNames);
+    }
+
+    public static Pair<Integer, Integer> calculateLogicalAndPhysicalThread(ExecutionContext ec, int groupConnSetSize,
+                                                                           boolean isSingleTable, boolean useTrans) {
+        int logicalThreads = ec.getParamManager().getInt(ConnectionParams.MODIFY_SELECT_LOGICAL_THREADS);
+        int physicalThreads =
+            ec.getParamManager().getInt(ConnectionParams.MODIFY_SELECT_PHYSICAL_THREADS);
+        //logicalThreads，physicalThreads <= 0 意味着根据环境自动设置
+        if (physicalThreads <= 0) {
+            int cnCores =
+                ExecUtils.getPolarDBXCores(ec.getParamManager(), ConfigDataMode.isMasterMode());
+            if (isSingleTable) {
+                //单表情况，执行物理任务线程等于核数
+                physicalThreads = Math.max(cnCores, 1);
+            } else {
+                //多表情况下，执行物理任务线程数等于核数*2，Insert的CPU开销较小
+                physicalThreads = Math.max(cnCores, 1) * 2;
+            }
+        }
+        if (useTrans && physicalThreads > groupConnSetSize) {
+            //事务时执行物理任务线程不能超过group数目
+            physicalThreads = groupConnSetSize;
+        }
+        if (logicalThreads <= 0) {
+            //执行逻辑任务线程个数是执行物理任务线程的1/4，这个比例是经验值。
+            logicalThreads = (physicalThreads % 4 > 0) ? physicalThreads / 4 + 1 : physicalThreads / 4;
+        }
+        return Pair.of(logicalThreads, physicalThreads);
+    }
+
+    /**
+     * Is statistic sketch background job need to be interrupted
+     */
+    public static com.alibaba.polardbx.common.utils.Pair<Boolean, String> needSketchInterrupted() {
+        if (FailPoint.isKeyEnable(FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB)) {
+            return com.alibaba.polardbx.common.utils.Pair.of(false, "FailPoint");
+        }
+        boolean enableStatisticBackground =
+            InstConfUtil.getBool(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION);
+        if (!enableStatisticBackground) {
+            return com.alibaba.polardbx.common.utils.Pair.of(true,
+                "ENABLE_BACKGROUND_STATISTIC_COLLECTION not enabled");
+        }
+        if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+            return com.alibaba.polardbx.common.utils.Pair.of(true, "ENABLE_HLL not enabled");
+        }
+        try {
+            return com.alibaba.polardbx.common.utils.Pair.of(InstConfUtil.isInMaintenanceTimeWindow(),
+                "not in maintenance time window");
+        } catch (ParseException e) {
+            // should not happen
+            logger.error("ndv sketch interrupted judge error", e);
+            return com.alibaba.polardbx.common.utils.Pair.of(true, "unexpected error" + e.getMessage());
+        }
+    }
+
+    public static boolean useParameterDelegate(ExecutionContext context) {
+        return isMppMode(context) && DynamicConfig.getInstance().useParameterDelegate();
+    }
+
+    /**
+     * used for information schema phy table name match
+     */
+    public static void handleTableNameParams(Object obj, Map<Integer, ParameterContext> params,
+                                             Set<String> indexTableNames) {
+        if (obj instanceof RexDynamicParam) {
+            String tableName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
+            indexTableNames.add(tableName.toLowerCase());
+        } else if (obj instanceof RexLiteral) {
+            String tableName = ((RexLiteral) obj).getValueAs(String.class);
+            indexTableNames.add(tableName.toLowerCase());
+        } else if (obj instanceof RawString) {
+            for (Object o : ((RawString) obj).getObjList()) {
+                assert !(o instanceof List);
+                indexTableNames.add(o.toString().toLowerCase());
+            }
+        }
+    }
+
 }

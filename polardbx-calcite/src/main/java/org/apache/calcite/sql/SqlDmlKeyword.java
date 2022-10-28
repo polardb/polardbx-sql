@@ -32,7 +32,8 @@ public enum SqlDmlKeyword {
   HIGH_PRIORITY,
   IGNORE,
   QUICK,
-  UPSERT;
+  UPSERT,
+  OVERWRITE;
 
   /**
    * Creates a parse-tree node representing an occurrence of this keyword

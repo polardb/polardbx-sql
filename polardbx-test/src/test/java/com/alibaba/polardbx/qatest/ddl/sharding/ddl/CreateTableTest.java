@@ -34,11 +34,12 @@ import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
+import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertNotExistsBroadcastTable;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertShardDbTableExist;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertShardDbTableNotExist;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.isIndexExist;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
 /**
  * 建表测试
@@ -2719,5 +2720,63 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
 
         dropTableIfExists(tableNameWithPrefix);
         dropTableIfExists(likeTableNameWithPrefix);
+    }
+
+    @Test
+    public void testCreateTableLikeWithGsiBinaryDefaultValue() throws Exception {
+        String tableName = testTableName + "_105";
+        String gsiName = testTableName + "_gsi_105";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String createTable = String.format("create table %s ("
+            + "`pk` int primary key auto_increment, "
+            + "`bin_col` varbinary(20) default x'0A08080E10011894AB0E', "
+            + "`pad` varchar(20) default 'ggg' "
+            + ")", tableName);
+        String partitionDef = " dbpartition by hash(`pk`)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String createGsi =
+            String.format("create global index %s on %s(`pk`) dbpartition by hash(`pk`)", gsiName,
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+
+        // Use upsert to test default value on CN
+        String upsert = String.format("insert into %s(`pk`) values (null) on duplicate key update pad=null", tableName);
+        // Use insert to test default value on DN
+        String insert = String.format("insert into %s(`pk`) values (null)", tableName);
+        String select = String.format("select `bin_col` from %s", tableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        String likeTableName = testTableName + "_106";
+        String likeGsiName = testTableName + "_gsi_106";
+
+        dropTableIfExists(likeTableName);
+        dropTableIfExistsInMySql(likeTableName);
+
+        String createTableLike = String.format("create table %s like %s", likeTableName, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTableLike);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTableLike);
+        String createGsiLike =
+            String.format("create global index %s on %s(`pk`) dbpartition by hash(`pk`)", likeGsiName, likeTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsiLike);
+
+        // Use upsert to test default value on CN
+        upsert = String.format("insert into %s(`pk`) values (null) on duplicate key update pad=null", likeTableName);
+        // Use insert to test default value on DN
+        insert = String.format("insert into %s(`pk`) values (null)", likeTableName);
+        select = String.format("select `bin_col` from %s", likeTableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
     }
 }

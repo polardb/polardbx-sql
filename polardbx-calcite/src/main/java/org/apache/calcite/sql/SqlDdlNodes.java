@@ -38,37 +38,32 @@ import java.util.Map;
  * Utilities concerning {@link SqlNode} for DDL.
  */
 public class SqlDdlNodes {
-  private SqlDdlNodes() {}
+    private SqlDdlNodes() {
+    }
 
-  public static SqlCreateDatabase createDatabase(SqlParserPos pos, boolean ifNotExists, SqlIdentifier dbName,
-                                                 String charSet, String collate, String locality, String partitionMode) {
-    return new SqlCreateDatabase(pos, ifNotExists, dbName, charSet, collate, locality, partitionMode);
-  }
+    public static SqlCreateDatabase createDatabase(SqlParserPos pos, boolean ifNotExists, SqlIdentifier dbName,
+                                                   String charSet, String collate, String locality,
+                                                   String partitionMode) {
+        return new SqlCreateDatabase(pos, ifNotExists, dbName, charSet, collate, locality, partitionMode);
+    }
 
-  public static SqlDropDatabase dropDatabase(SqlParserPos pos, boolean ifExists, SqlIdentifier dbName) {
-    return new SqlDropDatabase(pos, ifExists, dbName);
-  }
+    public static SqlDropDatabase dropDatabase(SqlParserPos pos, boolean ifExists, SqlIdentifier dbName) {
+        return new SqlDropDatabase(pos, ifExists, dbName);
+    }
 
-  public static SqlCreateJavaFunction createJavaFunction(SqlParserPos pos, SqlIdentifier funcName,
-                                                         String returnType, List<String> inputTypes,
-                                                         String javaCode, String importString) {
-    return new SqlCreateJavaFunction(pos, funcName, returnType, inputTypes, javaCode, importString);
-  }
-
-  public static SqlDropJavaFunction dropJavaFunction(SqlParserPos pos, SqlIdentifier funcName, boolean ifExists) {
-    return new SqlDropJavaFunction(pos, funcName, ifExists);
-  }
-
-  /** Creates a CREATE TABLE. */
-  public static SqlCreateTable createTable(SqlParserPos pos, boolean replace,
-                                           boolean ifNotExists, SqlNode name,
-                                           SqlNode likeTableName, SqlNodeList columnList,
-                                           SqlNode query, SqlNode dbpartitionBy, SqlNode dbpartitions,
-                                           SqlNode tbpartitionBy, SqlNode tbpartitions, String sourceSql,
-                                           boolean broadcast, SequenceBean sequence, SqlNode sqlPartition,
-                                           SqlNode localPartition,
-                                           SqlNode tableGroupName,
-                                           SQLPartitionByRange localPartitionSuffix) {
+    /**
+     * Creates a CREATE TABLE.
+     */
+    public static SqlCreateTable createTable(SqlParserPos pos, boolean replace,
+                                             boolean ifNotExists, SqlNode name,
+                                             SqlNode likeTableName, SqlNodeList columnList,
+                                             SqlNode query, SqlNode dbpartitionBy, SqlNode dbpartitions,
+                                             SqlNode tbpartitionBy, SqlNode tbpartitions, String sourceSql,
+                                             boolean broadcast, SequenceBean sequence, SqlNode sqlPartition,
+                                             SqlNode localPartition,
+                                             SqlNode tableGroupName,
+                                             SqlNode joinGroupName,
+                                             SQLPartitionByRange localPartitionSuffix) {
         return new SqlCreateTable(
             pos,
             replace,
@@ -87,73 +82,87 @@ public class SqlDdlNodes {
             sqlPartition,
             localPartition,
             tableGroupName,
+            joinGroupName,
             localPartitionSuffix
         );
-  }
+    }
 
-  /** Creates a CREATE VIEW. */
-  public static SqlCreateView createView(SqlParserPos pos, boolean replace,
-                                         SqlIdentifier name, SqlNodeList columnList, SqlNode query) {
-    return new SqlCreateView(pos, replace, name, columnList, query);
-  }
+    /**
+     * Creates a CREATE VIEW.
+     */
+    public static SqlCreateView createView(SqlParserPos pos, boolean replace,
+                                           SqlIdentifier name, SqlNodeList columnList, SqlNode query) {
+        return new SqlCreateView(pos, replace, name, columnList, query);
+    }
 
-  /** Creates a DROP TABLE. */
-  public static SqlDropTable dropTable(SqlParserPos pos, boolean ifExists,
-                                       SqlIdentifier name, boolean purge) {
-    return new SqlDropTable(pos, ifExists, name, purge);
-  }
+    /**
+     * Creates a DROP TABLE.
+     */
+    public static SqlDropTable dropTable(SqlParserPos pos, boolean ifExists,
+                                         SqlIdentifier name, boolean purge) {
+        return new SqlDropTable(pos, ifExists, name, purge);
+    }
 
-  /** Truncate a TABLE. */
-  public static SqlTruncateTable truncateTable(SqlParserPos pos, boolean ifExists,
-                                       SqlIdentifier name ,boolean purge) {
-    return new SqlTruncateTable(pos, ifExists, name, purge);
-  }
+    /**
+     * Truncate a TABLE.
+     */
+    public static SqlTruncateTable truncateTable(SqlParserPos pos, boolean ifExists,
+                                                 SqlIdentifier name, boolean purge) {
+        return new SqlTruncateTable(pos, ifExists, name, purge);
+    }
 
-  public static SqlDropIndex dropIndex(SqlIdentifier name , SqlIdentifier tableName , String sql, SqlParserPos pos) {
-    return new SqlDropIndex(name, tableName , sql, pos);
-  }
+    public static SqlDropIndex dropIndex(SqlIdentifier name, SqlIdentifier tableName, String sql, SqlParserPos pos) {
+        return new SqlDropIndex(name, tableName, sql, pos);
+    }
 
-  public static SqlAlterTableDropIndex alterTabledropIndex(SqlIdentifier tableName , SqlIdentifier indexName , String sql, SqlParserPos pos) {
-    return new SqlAlterTableDropIndex(tableName, indexName , sql, pos);
-  }
+    public static SqlAlterTableDropIndex alterTabledropIndex(SqlIdentifier tableName, SqlIdentifier indexName,
+                                                             String sql, SqlParserPos pos) {
+        return new SqlAlterTableDropIndex(tableName, indexName, sql, pos);
+    }
 
-  public static SqlCreateSequence createSequence(SqlCharStringLiteral name , SqlIdentifier tableName , String sql, SqlParserPos pos) {
-    return new SqlCreateSequence(name, tableName , sql, pos);
-  }
+    public static SqlCreateSequence createSequence(SqlCharStringLiteral name, SqlIdentifier tableName, String sql,
+                                                   SqlParserPos pos) {
+        return new SqlCreateSequence(name, tableName, sql, pos);
+    }
 
-  public static SqlAlterSequence alterSequence(SqlCharStringLiteral name , SqlIdentifier tableName , String sql, SqlParserPos pos) {
-    return new SqlAlterSequence(name, tableName , sql, pos);
-  }
+    public static SqlAlterSequence alterSequence(SqlCharStringLiteral name, SqlIdentifier tableName, String sql,
+                                                 SqlParserPos pos) {
+        return new SqlAlterSequence(name, tableName, sql, pos);
+    }
 
-  public static SqlDropSequence dropSequence(SqlCharStringLiteral name , SqlIdentifier tableName , String sql, SqlParserPos pos) {
-    return new SqlDropSequence(name, tableName , sql, pos);
-  }
+    public static SqlDropSequence dropSequence(SqlCharStringLiteral name, SqlIdentifier tableName, String sql,
+                                               SqlParserPos pos) {
+        return new SqlDropSequence(name, tableName, sql, pos);
+    }
 
-  public static SqlRenameSequence renameSequence(SqlCharStringLiteral name , SqlCharStringLiteral to,SqlIdentifier tableName , String sql, SqlParserPos pos) {
-    return new SqlRenameSequence(name, to, tableName , sql, pos);
-  }
+    public static SqlRenameSequence renameSequence(SqlCharStringLiteral name, SqlCharStringLiteral to,
+                                                   SqlIdentifier tableName, String sql, SqlParserPos pos) {
+        return new SqlRenameSequence(name, to, tableName, sql, pos);
+    }
 
-  public static SqlRenameTable renameTable(SqlIdentifier to , SqlIdentifier tableName , String sql, SqlParserPos pos) {
-    return new SqlRenameTable(to, tableName , sql, pos);
-  }
+    public static SqlRenameTable renameTable(SqlIdentifier to, SqlIdentifier tableName, String sql, SqlParserPos pos) {
+        return new SqlRenameTable(to, tableName, sql, pos);
+    }
 
-  public static SqlAlterTable alterTable(SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts,
-                                         String sql, SqlTableOptions tableOptions,
-                                         List<SqlAlterSpecification> alters,
-                                         SqlParserPos pos) {
-    return new SqlAlterTable(tableName ,columnOpts, sql, tableOptions, alters, pos);
-  }
+    public static SqlAlterTable alterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts,
+                                           String sql, SqlTableOptions tableOptions,
+                                           List<SqlAlterSpecification> alters,
+                                           SqlParserPos pos) {
+        return new SqlAlterTable(objectNames, tableName, columnOpts, sql, tableOptions, alters, pos);
+    }
 
-  public static SqlAlterRule alterRule(SqlIdentifier tableName, String sql, SqlParserPos pos) {
-    return new SqlAlterRule(tableName, sql, pos);
-  }
+    public static SqlAlterRule alterRule(SqlIdentifier tableName, String sql, SqlParserPos pos) {
+        return new SqlAlterRule(tableName, sql, pos);
+    }
 
-  public static SqlAlterTableSetTableGroup alterTableSetTableGroup(SqlIdentifier tableName, String targetTableGroup,
-                                                                   String sql, SqlParserPos pos) {
-    return new SqlAlterTableSetTableGroup(tableName, targetTableGroup, sql, pos);
-  }
+    public static SqlAlterTableSetTableGroup alterTableSetTableGroup(List<SqlIdentifier> objectNames, SqlIdentifier tableName, String targetTableGroup,
+                                                                     String sql, SqlParserPos pos, boolean force) {
+        return new SqlAlterTableSetTableGroup(objectNames, tableName, targetTableGroup, sql, pos, force);
+    }
 
-  /** Creates a column declaration. */
+    /**
+     * Creates a column declaration.
+     */
     public static SqlNode column(SqlParserPos pos, SqlIdentifier name, SqlDataTypeSpec dataType, ColumnNull notNull,
                                  SqlLiteral defaultVal, SqlCall defaultExpr, boolean autoIncrement,
                                  SpecialIndex specialIndex, SqlLiteral comment, ColumnFormat columnFormat,
@@ -179,45 +188,49 @@ public class SqlDdlNodes {
             innerStep);
     }
 
-  /** Returns the schema in which to create an object. */
-  static Pair<CalciteSchema, String> schema(CalcitePrepare.Context context,
-                                            boolean mutable, SqlIdentifier id) {
-    final String name;
-    final List<String> path;
-    if (id.isSimple()) {
-      path = context.getDefaultSchemaPath();
-      name = id.getSimple();
-    } else {
-      path = Util.skipLast(id.names);
-      name = Util.last(id.names);
+    /**
+     * Returns the schema in which to create an object.
+     */
+    static Pair<CalciteSchema, String> schema(CalcitePrepare.Context context,
+                                              boolean mutable, SqlIdentifier id) {
+        final String name;
+        final List<String> path;
+        if (id.isSimple()) {
+            path = context.getDefaultSchemaPath();
+            name = id.getSimple();
+        } else {
+            path = Util.skipLast(id.names);
+            name = Util.last(id.names);
+        }
+        CalciteSchema schema = mutable ? context.getMutableRootSchema()
+            : context.getRootSchema();
+        for (String p : path) {
+            schema = schema.getSubSchema(p, true);
+        }
+        return Pair.of(schema, name);
     }
-    CalciteSchema schema = mutable ? context.getMutableRootSchema()
-        : context.getRootSchema();
-    for (String p : path) {
-      schema = schema.getSubSchema(p, true);
-    }
-    return Pair.of(schema, name);
-  }
 
-  /** Wraps a query to rename its columns. Used by CREATE VIEW and CREATE
-   * MATERIALIZED VIEW. */
-  static SqlNode renameColumns(SqlNodeList columnList, SqlNode query) {
-    if (columnList == null) {
-      return query;
+    /**
+     * Wraps a query to rename its columns. Used by CREATE VIEW and CREATE
+     * MATERIALIZED VIEW.
+     */
+    static SqlNode renameColumns(SqlNodeList columnList, SqlNode query) {
+        if (columnList == null) {
+            return query;
+        }
+        final SqlParserPos p = query.getParserPosition();
+        final SqlNodeList selectList =
+            new SqlNodeList(ImmutableList.<SqlNode>of(SqlIdentifier.star(p)), p);
+        final SqlCall from =
+            SqlStdOperatorTable.AS.createCall(p,
+                ImmutableList.<SqlNode>builder()
+                    .add(query)
+                    .add(new SqlIdentifier("_", p))
+                    .addAll(columnList)
+                    .build());
+        return new SqlSelect(p, null, selectList, from, null, null, null, null,
+            null, null, null);
     }
-    final SqlParserPos p = query.getParserPosition();
-    final SqlNodeList selectList =
-        new SqlNodeList(ImmutableList.<SqlNode>of(SqlIdentifier.star(p)), p);
-    final SqlCall from =
-        SqlStdOperatorTable.AS.createCall(p,
-            ImmutableList.<SqlNode>builder()
-                .add(query)
-                .add(new SqlIdentifier("_", p))
-                .addAll(columnList)
-                .build());
-    return new SqlSelect(p, null, selectList, from, null, null, null, null,
-        null, null, null);
-  }
 
 }
 

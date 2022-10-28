@@ -40,6 +40,7 @@ public abstract class DdlJobFactory {
         }
         ExecutableDdlJob executableDdlJob = doCreate();
         excludeResources(executableDdlJob.getExcludeResources());
+        sharedResources(executableDdlJob.getSharedResources());
 
         //this is a quite interesting injection
         FailPoint.inject(FP_HIJACK_DDL_JOB, (k, v) -> {
@@ -80,7 +81,7 @@ public abstract class DdlJobFactory {
      */
     protected abstract void sharedResources(Set<String> resources);
 
-    protected String concatWithDot(String schemaName, String tableName) {
+    public static String concatWithDot(String schemaName, String tableName) {
         if (StringUtils.isEmpty(schemaName)) {
             return tableName;
         }

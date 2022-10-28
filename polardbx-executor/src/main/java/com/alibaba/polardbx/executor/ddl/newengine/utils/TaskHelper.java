@@ -17,6 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.newengine.utils;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
@@ -51,9 +56,15 @@ public class TaskHelper {
         if (record == null) {
             return null;
         }
-        DdlTask task = deSerializeTask(record.name, record.value);
+        DdlTask task;
+        if(DdlHelper.isGzip(record.value)){
+            task = deSerializeTask(record.name, DdlHelper.decompress(record.value));
+        }else {
+            task = deSerializeTask(record.name, record.value);
+        }
         task.setJobId(record.jobId);
         task.setTaskId(record.taskId);
+        task.setRootJobId(record.getRootJobId());
         task.setSchemaName(record.schemaName);
         task.setState(DdlTaskState.valueOf(record.state));
         try {
@@ -62,8 +73,31 @@ public class TaskHelper {
             SQLRecorderLogger.sqlLogger.error("error parse DdlExceptionAction:[" + record.exceptionAction + "]");
             task.setExceptionAction(DdlExceptionAction.DEFAULT_ACTION);
         }
+        if(StringUtils.isNotEmpty(record.getCost()) && task instanceof CostEstimableDdlTask){
+            try {
+                CostEstimableDdlTask.CostInfo costInfo = decodeCostInfo(record.getCost());
+                ((CostEstimableDdlTask) task).setCostInfo(costInfo);
+            }catch (Exception e){
+                SQLRecorderLogger.ddlEngineLogger.error("parse CostInfo error for Ddl Task", e);
+                EventLogger.log(EventType.DDL_WARN, "parse CostInfo error for Ddl Task");
+            }
+        }
 
         return task;
+    }
+
+    public static CostEstimableDdlTask.CostInfo decodeCostInfo(String str){
+        if(StringUtils.isEmpty(str)){
+            return CostEstimableDdlTask.createCostInfo(0L, 0L);
+        }
+        return JSONObject.parseObject(str, CostEstimableDdlTask.CostInfo.class);
+    }
+
+    public static String encodeCostInfo(CostEstimableDdlTask.CostInfo costInfo){
+        if(costInfo == null){
+            costInfo = CostEstimableDdlTask.createCostInfo(0L, 0L);
+        }
+        return JSONObject.toJSONString(costInfo);
     }
 
     /**
@@ -78,13 +112,24 @@ public class TaskHelper {
         DdlEngineTaskRecord taskRecord = new DdlEngineTaskRecord();
         taskRecord.jobId = task.getJobId();
         taskRecord.taskId = task.getTaskId();
+        taskRecord.rootJobId = task.getRootJobId();
         taskRecord.schemaName = task.getSchemaName();
         //get name from SerializableClassMapper
         taskRecord.name = SerializableClassMapper.getNameByTaskClass(task.getClass());
         taskRecord.state = task.getState().name();
         taskRecord.exceptionAction = task.getExceptionAction().name();
+        final String valueContent = JSON.toJSONString(task);
+        if(valueContent.getBytes().length > 1024 * 1024){
+            taskRecord.value = DdlHelper.compress(valueContent);
+        }else {
+            taskRecord.value = valueContent;
+        }
 
         taskRecord.value = JSON.toJSONString(task);
+        if(task instanceof CostEstimableDdlTask && ((CostEstimableDdlTask) task).getCostInfo() != null){
+            String costInfoStr = JSONObject.toJSONString(((CostEstimableDdlTask) task).getCostInfo());
+            taskRecord.cost = costInfoStr;
+        }
         return taskRecord;
     }
 
@@ -101,7 +146,7 @@ public class TaskHelper {
      * @param taskName: determines which Class the json will be converted to
      * @param json: the json format of DdlTask
      */
-    private static DdlTask deSerializeTask(String taskName, String json) {
+    public static DdlTask deSerializeTask(String taskName, String json) {
         if (StringUtils.isEmpty(taskName) || StringUtils.isEmpty(json)) {
             String errMsg = String.format("unexpected value for deSerializeTask. name:%s, value:%s", taskName, json);
             throw new TddlNestableRuntimeException(errMsg);

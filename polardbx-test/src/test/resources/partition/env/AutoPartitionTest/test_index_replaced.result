@@ -1,0 +1,149 @@
+DROP TABLE IF EXISTS `bmsql_oorder`;
+CREATE TABLE `bmsql_oorder` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE INDEX `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+SHOW CREATE TABLE bmsql_oorder;
+Table,Create Table
+bmsql_oorder,CREATE TABLE `bmsql_oorder` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE INDEX `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE bmsql_oorder;
+Table,Create Table
+bmsql_oorder,CREATE PARTITION TABLE `bmsql_oorder` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE GLOBAL INDEX /* bmsql_oorder_idx1_$ */ `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITION BY KEY (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE bmsql_oorder_idx1;
+Table,Create Table
+bmsql_oorder_idx1_$,CREATE TABLE `bmsql_oorder_idx1_$` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_o_w_id_o_d_id_o_carrier_id_o_id` USING BTREE (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`),
+	KEY `_gsi_pk_idx_` USING BTREE (`o_w_id`, `o_d_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_carrier_id`,`o_id`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE bmsql_oorder_idx1;
+Table,Create Table
+bmsql_oorder_idx1_$,CREATE TABLE `bmsql_oorder_idx1_$` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_o_w_id_o_d_id_o_carrier_id_o_id` USING BTREE (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`o_w_id`, `o_d_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_carrier_id`,`o_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `bmsql_oorder`;
+CREATE TABLE `bmsql_oorder` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE CLUSTERED INDEX `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+SHOW CREATE TABLE bmsql_oorder;
+Table,Create Table
+bmsql_oorder,CREATE TABLE `bmsql_oorder` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE CLUSTERED INDEX `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE bmsql_oorder;
+Table,Create Table
+bmsql_oorder,CREATE PARTITION TABLE `bmsql_oorder` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE CLUSTERED INDEX /* bmsql_oorder_idx1_$ */ `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITION BY KEY (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`) PARTITIONS #@#,
+	UNIQUE LOCAL KEY `_local_bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE bmsql_oorder_idx1;
+Table,Create Table
+bmsql_oorder_idx1_$,CREATE TABLE `bmsql_oorder_idx1_$` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE KEY `_local_bmsql_oorder_idx1` USING BTREE (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_carrier_id`,`o_id`)
+PARTITIONS #@#
+SHOW FULL CREATE TABLE bmsql_oorder_idx1;
+Table,Create Table
+bmsql_oorder_idx1_$,CREATE TABLE `bmsql_oorder_idx1_$` (
+	`o_w_id` int(11) NOT NULL,
+	`o_d_id` int(11) NOT NULL,
+	`o_id` int(11) NOT NULL,
+	`o_c_id` int(11) DEFAULT NULL,
+	`o_carrier_id` int(11) DEFAULT NULL,
+	`o_ol_cnt` int(11) DEFAULT NULL,
+	`o_all_local` int(11) DEFAULT NULL,
+	`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+	UNIQUE LOCAL KEY `_local_bmsql_oorder_idx1` USING BTREE (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`o_w_id`,`o_d_id`,`o_carrier_id`,`o_id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `bmsql_oorder`;

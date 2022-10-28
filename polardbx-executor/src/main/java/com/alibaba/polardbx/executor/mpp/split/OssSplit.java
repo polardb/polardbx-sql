@@ -32,10 +32,12 @@ import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
+import com.alibaba.polardbx.optimizer.utils.TypeUtils;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -440,7 +442,7 @@ public class OssSplit implements ConnectorSplit {
             SqlKind kind = agg.getAggCallList().get(i).getAggregation().getKind();
             RelColumnOrigin columnOrigin = ossTableScan.getAggColumns().get(i);
             // any stripe can't use statistics
-            if (kind == SqlKind.COUNT) {
+            if (kind == SqlKind.COUNT || kind == SqlKind.CHECK_SUM) {
                 if (!pruningResult.fullAgg()) {
                     pruningResult.addNotAgg(pruningResult.getStripeMap().keySet());
                 }

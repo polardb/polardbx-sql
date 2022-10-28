@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.balancer.stats;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -87,7 +88,7 @@ public class GroupStats {
                 }
 
                 // query data-size
-                Map<String, Long> dataSizeMap = StatsUtils.queryDbGroupDataSize(schema, groups);
+                Map<String, Pair<Long, Long>> dataSizeMap = StatsUtils.queryDbGroupDataSize(schema, groups);
 
                 // retrieve existed groups
                 List<GroupsOfStorage> groupOfStorage =
@@ -151,11 +152,11 @@ public class GroupStats {
         /**
          * <GroupName, DataSize>
          */
-        final public Map<String, Long> groupDataSizeMap;
+        final public Map<String, Pair<Long, Long>> groupDataSizeMap;
 
         public GroupsOfStorage(String storageInst,
                                List<GroupDetailInfoExRecord> groups,
-                               Map<String, Long> groupDataSizeMap) {
+                               Map<String, Pair<Long, Long>> groupDataSizeMap) {
             this.storageInst = storageInst;
             this.groups = groups;
             this.groupDataSizeMap = new HashMap<>();
@@ -168,7 +169,7 @@ public class GroupStats {
             this(storageInst, groups, new HashMap<>());
         }
 
-        public Map<String, Long> getGroupDataSizeMap() {
+        public Map<String, Pair<Long, Long>> getGroupDataSizeMap() {
             return this.groupDataSizeMap;
         }
 

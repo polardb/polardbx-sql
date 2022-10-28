@@ -25,6 +25,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
@@ -43,7 +44,12 @@ public class DropPartitionTableWithGsiValidateTask extends BaseValidateTask {
         super(schemaName);
         this.primaryTable = primaryTable;
         this.indexNames = indexNames;
-        this.tableGroupConfigList = tableGroupConfigList;
+        this.tableGroupConfigList = new ArrayList<>();
+        if (tableGroupConfigList != null) {
+            for (TableGroupConfig tgc : tableGroupConfigList) {
+                this.tableGroupConfigList.add(TableGroupConfig.copyWithoutTables(tgc));
+            }
+        }
     }
 
     @Override

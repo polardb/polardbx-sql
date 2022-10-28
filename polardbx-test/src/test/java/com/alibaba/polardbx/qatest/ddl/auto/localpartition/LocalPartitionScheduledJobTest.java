@@ -23,6 +23,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import net.jcip.annotations.NotThreadSafe;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
@@ -81,11 +82,33 @@ public class LocalPartitionScheduledJobTest extends LocalPartitionBaseTest {
         Assert.assertEquals(resultSet.getString("schedule_expr"), "0 0 12 1/5 * ?");
         Assert.assertEquals(resultSet.getString("time_zone"), "+00:00");
 
-        int count =
-            JdbcUtil
-                .executeUpdateAndGetEffectCount(tddlConnection, "DROP SCHEDULE " + resultSet.getLong("schedule_id"));
-        Assert.assertEquals(count, 1);
-        validateScheduledJob(tddlConnection, false, tddlDatabase1, primaryTableName);
+        //test pause
+        {
+            int count =
+                    JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                            "PAUSE SCHEDULE " + resultSet.getLong("schedule_id"));
+            Assert.assertEquals(count, 1);
+            validateScheduledJob(tddlConnection, true, false, tddlDatabase1, primaryTableName);
+        }
+
+        //test continue
+        {
+            int count =
+                    JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                            "CONTINUE SCHEDULE " + resultSet.getLong("schedule_id"));
+            Assert.assertEquals(count, 1);
+            validateScheduledJob(tddlConnection, true, true, tddlDatabase1, primaryTableName);
+        }
+
+
+        //test drop
+        {
+            int count =
+                    JdbcUtil.executeUpdateAndGetEffectCount(tddlConnection,
+                            "DROP SCHEDULE " + resultSet.getLong("schedule_id"));
+            Assert.assertEquals(count, 1);
+            validateScheduledJob(tddlConnection, false, tddlDatabase1, primaryTableName);
+        }
     }
 
     @Test

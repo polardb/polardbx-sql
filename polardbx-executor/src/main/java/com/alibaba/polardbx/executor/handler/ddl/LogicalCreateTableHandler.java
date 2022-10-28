@@ -74,6 +74,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ERROR_TABLE_EXISTS;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_PARTITION_MANAGEMENT;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TABLE_ALREADY_EXISTS;
 
 public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
@@ -142,11 +143,12 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             LogicalCreateTable logicalCreateTableLikeRelNode = (LogicalCreateTable) createTableLikeSqlPlan.getPlan();
             logicalCreateTable = logicalCreateTableLikeRelNode;
             boolean returnImmediately = validatePlan(logicalCreateTable, executionContext);
-            if(returnImmediately){
+            if (returnImmediately) {
                 return new TransientDdlJob();
             }
         }
 
+        //todo: this place support DEFAULT
         logicalCreateTable.prepareData(executionContext);
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalCreateTable.getSchemaName());
         if (!isNewPartDb) {
@@ -188,7 +190,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             final String targetTableName = logicalDdlPlan.getTableName();
 
             boolean tableExists = TableValidator.checkIfTableExists(targetSchemaName, targetTableName);
-            if(tableExists){
+            if (tableExists) {
                 throw new TddlNestableRuntimeException(String.format("Not unique table/alias: '%s'", targetTableName));
             }
             if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 1) {
@@ -231,7 +233,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             DdlContext ddlContext = executionContext.getDdlContext();
             CdcManagerHelper.getInstance().notifyDdlNew(schemaName, logicalTableName, SqlKind.CREATE_TABLE.name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), null, null,
-                DdlVisibility.Public, executionContext.getExtraCmds());
+                DdlVisibility.Public, buildExtendParameter(executionContext));
 
             // Prompt "show warning" only.
             DdlHelper.storeFailedMessage(schemaName, ERROR_TABLE_EXISTS,

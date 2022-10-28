@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -331,17 +332,20 @@ public class MetaUtils {
 
         public final Set<String> primaryKeys;
         public final Set<String> shardingKeys;
+        public final List<Set<String>> localIndexKeys;
         public final List<Set<String>> localUniqueKeys;
         public final Map<String, Set<String>> gsiShardingKeys;
         public final Map<String, List<Set<String>>> gsiUniqueKeys;
         public final Map<String, Set<String>> gsiIndexColumns;
         public final Map<String, Set<String>> gsiCoveringColumns;
 
-        private TableColumns(Set<String> primaryKeys, Set<String> shardingKeys, List<Set<String>> localUniqueKeys,
-                             Map<String, Set<String>> gsiShardingKeys, Map<String, List<Set<String>>> gsiUniqueKeys,
-                             Map<String, Set<String>> gsiIndexColumns, Map<String, Set<String>> gsiCoveringColumns) {
+        private TableColumns(Set<String> primaryKeys, Set<String> shardingKeys, List<Set<String>> localIndexKeys,
+                             List<Set<String>> localUniqueKeys, Map<String, Set<String>> gsiShardingKeys,
+                             Map<String, List<Set<String>>> gsiUniqueKeys, Map<String, Set<String>> gsiIndexColumns,
+                             Map<String, Set<String>> gsiCoveringColumns) {
             this.primaryKeys = primaryKeys;
             this.shardingKeys = shardingKeys;
+            this.localIndexKeys = localIndexKeys;
             this.localUniqueKeys = localUniqueKeys;
             this.gsiShardingKeys = gsiShardingKeys;
             this.gsiUniqueKeys = gsiUniqueKeys;
@@ -352,6 +356,7 @@ public class MetaUtils {
         private static TableColumns buildDRDSTableColumns(TableMeta tableMeta) {
             final Set<String> primaryKeys = new HashSet<>();
             final Set<String> shardingKeys = new HashSet<>();
+            final List<Set<String>> localIndexKeys = new LinkedList<>();
             final List<Set<String>> localUniqueKeys = new LinkedList<>();
             final Map<String, Set<String>> gsiShardingKeys = new HashMap<>();
             final Map<String, List<Set<String>>> gsiUniqueKeys = new HashMap<>();
@@ -367,6 +372,11 @@ public class MetaUtils {
                     .stream()
                     .map(ColumnMeta::getName)
                     .collect(Collectors.toSet()));
+
+                localIndexKeys.addAll(tableMeta.getSecondaryIndexes().stream()
+                    .map(s -> s.getKeyColumns().stream().map(ColumnMeta::getName)
+                        .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))))
+                    .collect(Collectors.toList()));
 
                 localUniqueKeys.addAll(tableMeta.getUniqueIndexes(false)
                     .stream()
@@ -414,6 +424,7 @@ public class MetaUtils {
 
             return new TableColumns(primaryKeys,
                 shardingKeys,
+                localIndexKeys,
                 localUniqueKeys,
                 gsiShardingKeys,
                 gsiUniqueKeys,
@@ -424,6 +435,7 @@ public class MetaUtils {
         private static TableColumns buildPartitionTableColumns(TableMeta tableMeta) {
             final Set<String> primaryKeys = new HashSet<>();
             final Set<String> shardingKeys = new HashSet<>();
+            final List<Set<String>> localIndexKeys = new LinkedList<>();
             final List<Set<String>> localUniqueKeys = new LinkedList<>();
             final Map<String, Set<String>> gsiShardingKeys = new HashMap<>();
             final Map<String, List<Set<String>>> gsiUniqueKeys = new HashMap<>();
@@ -440,6 +452,11 @@ public class MetaUtils {
                     .stream()
                     .map(ColumnMeta::getName)
                     .collect(Collectors.toSet()));
+
+                localIndexKeys.addAll(tableMeta.getSecondaryIndexes().stream()
+                    .map(s -> s.getKeyColumns().stream().map(ColumnMeta::getName)
+                        .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))))
+                    .collect(Collectors.toList()));
 
                 localUniqueKeys.addAll(tableMeta.getUniqueIndexes(false)
                     .stream()
@@ -487,6 +504,7 @@ public class MetaUtils {
 
             return new TableColumns(primaryKeys,
                 shardingKeys,
+                localIndexKeys,
                 localUniqueKeys,
                 gsiShardingKeys,
                 gsiUniqueKeys,
@@ -598,6 +616,10 @@ public class MetaUtils {
                 }
             }
             return false;
+        }
+
+        public boolean existsInLocalIndexKey(String columnName) {
+            return localIndexKeys.stream().anyMatch(s -> s.contains(columnName));
         }
     }
 }

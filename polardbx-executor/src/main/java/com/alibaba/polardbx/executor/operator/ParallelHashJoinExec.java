@@ -108,7 +108,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
         if (memoryPool != null) {
             int partition = shared.buildCount.getAndIncrement();
             if (partition < shared.numPartitions) {
-                shared.buildHashTable(partition, memoryAllocator);
+                shared.buildHashTable(partition, memoryAllocator, getIgnoreNullsInJoinKey());
             }
             // Copy the built hash-table from shared states into this executor
             this.buildChunks = shared.builderChunks;
@@ -403,7 +403,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
             }
         }
 
-        private void buildHashTable(int partition, MemoryAllocatorCtx ctx) {
+        private void buildHashTable(int partition, MemoryAllocatorCtx ctx, List<Integer> ignoreNullBlocks) {
             initHashTable(ctx);
             final int partitionSize = -Math.floorDiv(-builderKeyChunks.getChunkCount(), numPartitions);
             final int startChunkId = partitionSize * partition;
@@ -419,7 +419,7 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
             int position = startPosition;
             for (int chunkId = startChunkId; chunkId < endChunkId; ++chunkId) {
                 final Chunk keyChunk = builderKeyChunks.getChunk(chunkId);
-                buildOneChunk(keyChunk, position, hashTable, positionLinks, bloomFilter);
+                buildOneChunk(keyChunk, position, hashTable, positionLinks, bloomFilter, ignoreNullBlocks);
                 position += keyChunk.getPositionCount();
             }
             assert position == endPosition;

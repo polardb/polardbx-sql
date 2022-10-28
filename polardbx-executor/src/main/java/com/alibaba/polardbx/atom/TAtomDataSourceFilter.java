@@ -133,9 +133,14 @@ public class TAtomDataSourceFilter extends FilterAdapter {
                 String key = results.getString(1);
                 String val = results.getString(2);
                 if (results.wasNull() || StringUtils.isEmpty(val)) {
-                    val = "NULL";
+                    serverVariables.put(key.toLowerCase(), "NULL");
+                } else if ("true".equalsIgnoreCase(val)) {
+                    serverVariables.put(key.toLowerCase(), true);
+                } else if ("false".equalsIgnoreCase(val)) {
+                    serverVariables.put(key.toLowerCase(), false);
+                } else {
+                    serverVariables.put(key.toLowerCase(), val);
                 }
-                serverVariables.put(key.toLowerCase(), val);
             }
 
             results.close();

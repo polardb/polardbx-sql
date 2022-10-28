@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.matrix.jdbc;
 
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -42,9 +43,13 @@ public class TResultSetMetaData implements ResultSetMetaData {
 
     public TResultSetMetaData(List<ColumnMeta> columns, Map<String, Object> connectionProperties) {
         this.columnMetas = columns;
-        this.columnLabelInSensitive = GeneralUtil.getPropertyBoolean(connectionProperties,
-            ConnectionProperties.COLUMN_LABEL_INSENSITIVE,
-            true);
+        if (DynamicConfig.getInstance().enableExtremePerformance()) {
+            this.columnLabelInSensitive = true;
+        } else {
+            this.columnLabelInSensitive = GeneralUtil.getPropertyBoolean(connectionProperties,
+                ConnectionProperties.COLUMN_LABEL_INSENSITIVE,
+                true);
+        }
     }
 
     @Override
@@ -241,6 +246,11 @@ public class TResultSetMetaData implements ResultSetMetaData {
     @Override
     public boolean isDefinitelyWritable(int column) throws SQLException {
         return false;
+    }
+
+    public Field getField(int column) throws SQLException {
+        column--;
+        return this.columnMetas.get(column).getField();
     }
 
     public List<ColumnMeta> getColumnMetas() {

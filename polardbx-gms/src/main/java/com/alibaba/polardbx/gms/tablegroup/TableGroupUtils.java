@@ -21,15 +21,20 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
+import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionSpecConfig;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * utils to get the tablegroupInfo from metadb.
@@ -51,16 +56,50 @@ public class TableGroupUtils {
             tablePartitionAccessor.setConnection(conn);
 
             List<TableGroupRecord> tableGroupRecords = tableGroupAccessor.getAllTableGroups(dbName);
+            List<PartitionGroupRecord> allPartitionGroupRecords =
+                partitionGroupAccessor.getPartitionGroupsBySchema(dbName);
+            List<TablePartitionConfig> tablePartitionConfigs =
+                tablePartitionAccessor.getAllTablePartitionConfigs(dbName);
+
             for (TableGroupRecord tableGroupRecord : tableGroupRecords) {
-                List<PartitionGroupRecord> partitionGroupRecords =
-                    partitionGroupAccessor.getPartitionGroupsByTableGroupId(tableGroupRecord.id, false);
+                List<PartitionGroupRecord> partitionGroupRecords = allPartitionGroupRecords.stream()
+                    .filter(o -> o.tg_id.longValue() == tableGroupRecord.id.longValue()).collect(Collectors.toList());
+                List<TablePartitionConfig> tablePartitionConfigsForTableGroup = tablePartitionConfigs.stream()
+                    .filter(o -> o.getTableConfig().groupId.longValue() == tableGroupRecord.id.longValue()).collect(
+                        Collectors.toList());
+                List<TablePartRecordInfoContext> tablePartRecordInfoContexts = new ArrayList<>();
+                for (TablePartitionConfig config : tablePartitionConfigsForTableGroup) {
+                    TablePartitionRecord tablePartitionRecord = config.getTableConfig();
+                    if (tablePartitionRecord.partStatus != TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC) {
+                        continue;
+                    }
+                    List<TablePartitionSpecConfig> partitionSpecConfigs = config.getPartitionSpecConfigs();
+                    List<TablePartitionRecord> partitionRecList = new ArrayList<>();
+                    List<TablePartitionRecord> subPartitionRecList = new ArrayList<>();
+                    if (GeneralUtil.isNotEmpty(partitionSpecConfigs)) {
+                        for (TablePartitionSpecConfig partitionSpecConfig : partitionSpecConfigs) {
+                            partitionRecList.add(partitionSpecConfig.getSpecConfigInfo());
+                            if (GeneralUtil.isNotEmpty(partitionSpecConfig.getSubPartitionSpecConfigs())) {
+                                for (TablePartitionSpecConfig subPartSpecConfig : partitionSpecConfig.getSubPartitionSpecConfigs()) {
+                                    subPartitionRecList.add(subPartSpecConfig.getSpecConfigInfo());
+                                }
+                            }
+                        }
+                    }
+                    TablePartRecordInfoContext tablePartRecordInfoContext = new TablePartRecordInfoContext();
+                    tablePartRecordInfoContext.setLogTbRec(tablePartitionRecord);
+                    Collections.sort(partitionRecList,
+                        (o1, o2) -> o1.getPartPosition().compareTo(o2.getPartPosition()));
+                    tablePartRecordInfoContext.setPartitionRecList(partitionRecList);
+                    Collections.sort(subPartitionRecList,
+                        (o1, o2) -> o1.getPartPosition().compareTo(o2.getPartPosition()));
+                    tablePartRecordInfoContext.setSubPartitionRecList(subPartitionRecList);
 
-                List<TablePartRecordInfoContext> tablePartRecordInfoContexts =
-                    tablePartitionAccessor
-                        .getAllTablePartRecordInfoContextsByGroupId(dbName, tableGroupRecord.id, null);
-
+                    tablePartRecordInfoContexts.add(tablePartRecordInfoContext);
+                }
                 TableGroupConfig tableGroupConfig =
-                    new TableGroupConfig(tableGroupRecord, partitionGroupRecords, tablePartRecordInfoContexts);
+                    new TableGroupConfig(tableGroupRecord, partitionGroupRecords, tablePartRecordInfoContexts,
+                        tableGroupRecord.getLocality());
                 result.add(tableGroupConfig);
             }
             return result;
@@ -100,7 +139,8 @@ public class TableGroupUtils {
 
                 tableGroupConfig = new TableGroupConfig(tableGroupRecords.get(0),
                     partitionGroupRecords,
-                    tablePartRecordInfoContexts);
+                    tablePartRecordInfoContexts,
+                    tableGroupRecords.get(0).getLocality());
             }
             return tableGroupConfig;
         });
@@ -142,11 +182,8 @@ public class TableGroupUtils {
 
                 tableGroupConfig = new TableGroupConfig(tableGroupRecords.get(0),
                     partitionGroupRecords,
-                    tablePartRecordInfoContexts);
-                String locality = tableGroupRecords.get(0).getLocality();
-                if (TStringUtil.isNotBlank(locality)) {
-                    tableGroupConfig.setLocality(locality);
-                }
+                    tablePartRecordInfoContexts,
+                    tableGroupRecords.get(0).getLocality());
             }
             return tableGroupConfig;
         });

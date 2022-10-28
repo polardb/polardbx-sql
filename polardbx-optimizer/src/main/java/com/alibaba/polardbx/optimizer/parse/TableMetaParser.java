@@ -75,6 +75,17 @@ public class TableMetaParser {
      * !!!! JUST FOR TEST !!!!!
      */
     @Deprecated
+    public TableMeta parse(MySqlCreateTableStatement stmt) {
+        SqlNode sqlNode =
+            FastsqlParser.convertStatementToSqlNode(stmt, Collections.emptyList(), new ExecutionContext());
+        return parse((SqlCreateTable) sqlNode);
+    }
+
+    /**
+     * Parse TableMeta from FastSql's statements.
+     * !!!! JUST FOR TEST !!!!!
+     */
+    @Deprecated
     public TableMeta parse(MySqlCreateTableStatement stmt, ExecutionContext ec) {
         SqlNode sqlNode =
             FastsqlParser.convertStatementToSqlNode(stmt, Collections.emptyList(), ec);
@@ -139,7 +150,7 @@ public class TableMetaParser {
                 primaryKey = parseIndex(tableName, columnsMap,
                     new SqlIndexDefinition(SqlParserPos.ZERO, false, null, null, null, null, null, null,
                         ImmutableList.of(new SqlIndexColumnName(SqlParserPos.ZERO, probPk, null, null)),
-                        null, null, null, null, null, null, false), true, true);
+                        null, null, null, null, null, null, false, null), true, true);
             }
         }
 
@@ -157,8 +168,10 @@ public class TableMetaParser {
             .addAll(keys).addAll(uniqueKeys)
             .build();
 
-        TableMeta tableMeta = new TableMeta(tableName, columns, primaryKey, secondaryIndexes, primaryKey != null, TableStatus.PUBLIC,
-        0, 0);
+        TableMeta tableMeta =
+            new TableMeta(schemaName, tableName, columns, primaryKey, secondaryIndexes, primaryKey != null,
+                TableStatus.PUBLIC,
+                0, 0);
         tableMeta.setEngine(sqlCreateTable.getEngine());
         return tableMeta;
     }

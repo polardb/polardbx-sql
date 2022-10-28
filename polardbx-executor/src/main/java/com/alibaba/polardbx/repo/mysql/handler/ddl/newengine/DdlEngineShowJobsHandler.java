@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -54,7 +55,7 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DdlEngineShowJobsHandler.class);
 
-    private final DdlEngineSchedulerManager schedulerManager = new DdlEngineSchedulerManager();
+    private final DdlJobManager ddlJobManager = new DdlJobManager();
 
     private GsiBackfillManager gsiBackfillManager;
 
@@ -83,7 +84,7 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         List<Long> jobIds = showDdlJobs.getJobIds();
 
         List<DdlEngineRecord> records =
-            inspectDdlJobs(Pair.of(jobIds, executionContext.getSchemaName()), schedulerManager);
+            inspectDdlJobs(Pair.of(jobIds, executionContext.getSchemaName()), ddlJobManager);
 
         ArrayResultCursor resultCursor = buildResultCursor(isFull);
         if (CollectionUtils.isNotEmpty(records)) {
@@ -231,7 +232,7 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
      * @return
      */
     private Pair<String, String> getTaskAndBackfillProgress(long jobId) {
-        List<DdlEngineTaskRecord> taskRecordList = schedulerManager.fetchTaskRecord(jobId);
+        List<DdlEngineTaskRecord> taskRecordList = ddlJobManager.fetchTaskRecord(jobId);
         if (CollectionUtils.isEmpty(taskRecordList)) {
             return Pair.of(NONE, NONE);
         }

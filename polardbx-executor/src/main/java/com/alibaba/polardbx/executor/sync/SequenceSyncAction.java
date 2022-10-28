@@ -21,9 +21,7 @@ import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 
 /**
- * 同步下sequence,刷新sequence内存cache
- *
- * @author agapple 2015年3月26日 下午8:07:41
+ * @author agapple 2015/3/26 20:07:41
  * @since 5.1.19
  */
 public class SequenceSyncAction implements ISyncAction {

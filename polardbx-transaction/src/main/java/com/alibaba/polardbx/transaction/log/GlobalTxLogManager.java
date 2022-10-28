@@ -22,15 +22,23 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.rpc.compatible.XPreparedStatement;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
-import com.alibaba.polardbx.transaction.TransactionType;
 import com.alibaba.polardbx.transaction.TransactionState;
+import com.alibaba.polardbx.transaction.TransactionType;
+import com.google.protobuf.ByteString;
 
-import java.sql.*;
+import java.security.MessageDigest;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 
 public class GlobalTxLogManager extends AbstractLifecycle {
@@ -94,21 +102,39 @@ public class GlobalTxLogManager extends AbstractLifecycle {
             + "ADD COLUMN `PARTICIPANTS` BLOB DEFAULT NULL, "
             + "ALGORITHM=INPLACE, LOCK=NONE";
 
-    private static final String APPEND_TRX = "INSERT INTO `" + GLOBAL_TX_LOG_TABLE
-        + "` (`TXID`, `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`) VALUES (?, ?, ?, ?, ?)";
+    /**
+     * Note: We want to use same digest for all sql on different physical DB, so we treat table as a parameter.
+     */
 
-    private static final String APPEND_TRX_WITH_TS = "INSERT INTO `" + GLOBAL_TX_LOG_TABLE
-        + "` (`TXID`, `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`, `COMMIT_TS`) VALUES (?, ?, ?, ?, ?, ?)";
+    private static final String APPEND_TRX =
+        "INSERT INTO ? (`TXID`, `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`) VALUES (?, ?, ?, ?, ?)";
+
+    private static ByteString APPEND_TRX_DIGEST;
+
+    private static final String APPEND_TRX_WITH_TS =
+        "INSERT INTO ? (`TXID`, `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`, `COMMIT_TS`) VALUES (?, ?, ?, ?, ?, ?)";
+
+    private static ByteString APPEND_TRX_WITH_TS_DIGEST;
 
     private static final String SELECT_BY_ID =
-        "SELECT `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`, `COMMIT_TS` FROM `" + GLOBAL_TX_LOG_TABLE
-            + "` WHERE `TXID` = ?";
+        "SELECT `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`, `COMMIT_TS` FROM ? WHERE `TXID` = ?";
 
-    private static final String DELETE_SQL = "DELETE FROM `" + GLOBAL_TX_LOG_TABLE + "` WHERE `TXID` < ? LIMIT ?";
+    private static ByteString SELECT_BY_ID_DIGEST;
 
     private String currentServerAddr;
 
     private TransactionExecutor executor;
+
+    static {
+        try {
+            final MessageDigest md5 = MessageDigest.getInstance("md5");
+            APPEND_TRX_DIGEST = ByteString.copyFrom(md5.digest(APPEND_TRX.getBytes()));
+            APPEND_TRX_WITH_TS_DIGEST = ByteString.copyFrom(md5.digest(APPEND_TRX_WITH_TS.getBytes()));
+            SELECT_BY_ID_DIGEST = ByteString.copyFrom(md5.digest(SELECT_BY_ID.getBytes()));
+        } catch (Exception e) {
+            logger.error(e);
+        }
+    }
 
     @Override
     public void doInit() {
@@ -137,11 +163,15 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     public void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
                        IConnection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(APPEND_TRX)) {
-            ps.setLong(1, txid);
-            ps.setString(2, type.name());
-            ps.setString(3, state.name());
-            ps.setString(4, currentServerAddr);
-            ps.setString(5, JSON.toJSONString(context));
+            if (ps.isWrapperFor(XPreparedStatement.class)) {
+                ps.unwrap(XPreparedStatement.class).setGalaxyDigest(APPEND_TRX_DIGEST);
+            }
+            ps.setObject(1, new TableName(GLOBAL_TX_LOG_TABLE));
+            ps.setLong(2, txid);
+            ps.setString(3, type.name());
+            ps.setString(4, state.name());
+            ps.setString(5, currentServerAddr);
+            ps.setString(6, JSON.toJSONString(context));
             ps.executeUpdate();
         }
     }
@@ -149,12 +179,16 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     public void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
                        long commitTimestamp, IConnection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(APPEND_TRX_WITH_TS)) {
-            ps.setLong(1, txid);
-            ps.setString(2, type.name());
-            ps.setString(3, state.name());
-            ps.setString(4, currentServerAddr);
-            ps.setString(5, JSON.toJSONString(context));
-            ps.setLong(6, commitTimestamp);
+            if (ps.isWrapperFor(XPreparedStatement.class)) {
+                ps.unwrap(XPreparedStatement.class).setGalaxyDigest(APPEND_TRX_WITH_TS_DIGEST);
+            }
+            ps.setObject(1, new TableName(GLOBAL_TX_LOG_TABLE));
+            ps.setLong(2, txid);
+            ps.setString(3, type.name());
+            ps.setString(4, state.name());
+            ps.setString(5, currentServerAddr);
+            ps.setString(6, JSON.toJSONString(context));
+            ps.setLong(7, commitTimestamp);
             ps.executeUpdate();
         }
     }
@@ -163,7 +197,11 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         IDataSource dataSource = executor.getGroupExecutor(primaryGroup).getDataSource();
         try (IConnection conn = dataSource.getConnection();
             PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID)) {
-            ps.setLong(1, txid);
+            if (ps.isWrapperFor(XPreparedStatement.class)) {
+                ps.unwrap(XPreparedStatement.class).setGalaxyDigest(SELECT_BY_ID_DIGEST);
+            }
+            ps.setObject(1, new TableName(GLOBAL_TX_LOG_TABLE));
+            ps.setLong(2, txid);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     GlobalTxLog trans = new GlobalTxLog();
@@ -201,11 +239,11 @@ public class GlobalTxLogManager extends AbstractLifecycle {
                     if ("MAXVALUE".equalsIgnoreCase(partitionDescText)) {
                         continue;
                     }
-                    final long tableRows = rs.getLong(3);
-                    dropped += tableRows;
                     try {
                         long maxTxidInPartition = Long.parseLong(partitionDescText);
                         if (maxTxidInPartition < beforeTxid) {
+                            final long tableRows = rs.getLong(3);
+                            dropped += tableRows;
                             partitionsWillDrop.add("`" + partitionName + "`");
                         }
                         txidUpperBound = Math.max(txidUpperBound, maxTxidInPartition);

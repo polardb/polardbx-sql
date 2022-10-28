@@ -16,11 +16,9 @@
 
 package com.alibaba.polardbx.executor.balancer.action;
 
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ddl.job.MockDdlJob;
-import com.alibaba.polardbx.executor.ddl.job.builder.AlterPartitionTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -31,17 +29,17 @@ import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupSplitPartiti
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.MoveDatabasesJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.RefreshTopologyFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.UnArchiveJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
+import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupDropPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMergePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMovePartition;
@@ -61,7 +59,6 @@ import org.apache.calcite.rel.ddl.RefreshTopology;
 import org.apache.calcite.rel.ddl.UnArchive;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlRebalance;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -101,29 +98,20 @@ public class ActionUtils {
 
     }
 
-    public static ExecutableDdlJob convertToDelegatorJob(ExecutionContext ec, String schema, String sql) {
+    public static ExecutableDdlJob convertToDelegatorJob(String schema, String sql) {
+        return convertToDelegatorJob(schema, sql, null);
+    }
+
+    public static ExecutableDdlJob convertToDelegatorJob(String schema, String sql,
+                                                         CostEstimableDdlTask.CostInfo costInfo) {
         ExecutableDdlJob job = new ExecutableDdlJob();
         SubJobTask delegator = new SubJobTask(schema, sql, null);
+        delegator.setCostInfo(costInfo);
         job.addTask(delegator);
         job.labelAsHead(delegator);
         job.labelAsTail(delegator);
+        delegator.setParentAcquireResource(true);
         return job;
-    }
-
-    /**
-     * Parse sql to ddl job, and save some essential state in the DDLContext
-     */
-    public static ExecutableDdlJob parseDdlJob(ExecutionContext ec,
-                                               DdlContext dc,
-                                               String schema,
-                                               String sql) {
-        if (FailPoint.isKeyEnable(FailPointKey.FP_HIJACK_DDL_JOB)
-            && StringUtils.equalsIgnoreCase(sql, FailPointKey.FP_INJECT_SUBJOB)) {
-            return new MockDdlJob(5, 5, 30, false).create();
-        }
-        DDL ddl = parseDdl(ec, sql);
-        dc.setDdlStmt(sql);
-        return convertJob(ec, dc, schema, ddl);
     }
 
     private static ExecutableDdlJob convertJob(ExecutionContext ec, DdlContext ddlContext,
@@ -131,19 +119,19 @@ public class ActionUtils {
         if (ddl instanceof AlterTableGroupSplitPartition) {
             LogicalAlterTableGroupSplitPartition splitPartition = LogicalAlterTableGroupSplitPartition.create(ddl);
             splitPartition.setSchemaName(schema);
-            splitPartition.preparedData();
+            splitPartition.preparedData(ec);
             ddlContext.setDdlType(splitPartition.getDdlType());
             return AlterTableGroupSplitPartitionJobFactory.create(ddl, splitPartition.getPreparedData(), ec);
         } else if (ddl instanceof AlterTableGroupMergePartition) {
             LogicalAlterTableGroupMergePartition mergePartition = LogicalAlterTableGroupMergePartition.create(ddl);
             mergePartition.setSchemaName(schema);
-            mergePartition.preparedData();
+            mergePartition.preparedData(ec);
             ddlContext.setDdlType(mergePartition.getDdlType());
             return AlterTableGroupMergePartitionJobFactory.create(ddl, mergePartition.getPreparedData(), ec);
         } else if (ddl instanceof AlterTableGroupMovePartition) {
             LogicalAlterTableGroupMovePartition movePartition = LogicalAlterTableGroupMovePartition.create(ddl);
             movePartition.setSchemaName(schema);
-            movePartition.preparedData();
+            movePartition.preparedData(ec);
             ddlContext.setDdlType(movePartition.getDdlType());
             return AlterTableGroupMovePartitionJobFactory.create(ddl, movePartition.getPreparedData(), ec);
         } else if (ddl instanceof UnArchive) {
@@ -166,7 +154,7 @@ public class ActionUtils {
         } else if (ddl instanceof AlterTableGroupDropPartition) {
             LogicalAlterTableGroupDropPartition dropPartition = LogicalAlterTableGroupDropPartition.create(ddl);
             dropPartition.setSchemaName(schema);
-            dropPartition.preparedData();
+            dropPartition.preparedData(ec);
             ddlContext.setDdlType(dropPartition.getDdlType());
             return AlterTableGroupDropPartitionJobFactory.create(ddl, dropPartition.getPreparedData(), ec);
         } else if (ddl instanceof AlterTable) {
@@ -184,11 +172,11 @@ public class ActionUtils {
         }
     }
 
-    public static String genRebalanceResourceName(SqlRebalance.RebalanceTarget target, String name) {
-        return "rebalance_" + target.toString() + "_" + TStringUtil.backQuote(name);
+    public static String genRebalanceResourceName(RebalanceTarget target, String name) {
+        return LockUtil.genRebalanceResourceName(target, name);
     }
 
     public static String genRebalanceClusterName() {
-        return "rebalance_" + SqlRebalance.RebalanceTarget.CLUSTER;
+        return LockUtil.genRebalanceClusterName();
     }
 }

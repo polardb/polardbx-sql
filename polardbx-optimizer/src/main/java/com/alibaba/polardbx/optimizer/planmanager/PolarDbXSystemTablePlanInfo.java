@@ -22,18 +22,18 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.util.JdbcUtils;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.concurrent.ExecutionException;
 
 /**
  * @author dylan
  */
-public class PolarDbXSystemTablePlanInfo implements SystemTablePlanInfo {
+public class PolarDbXSystemTablePlanInfo {
     private static final Logger logger = LoggerFactory.getLogger(PolarDbXSystemTablePlanInfo.class);
 
     public static final String TABLE_NAME = GmsSystemTables.PLAN_INFO;
@@ -78,43 +78,13 @@ public class PolarDbXSystemTablePlanInfo implements SystemTablePlanInfo {
     public static final String DELETE_SQL = "DELETE FROM " + TABLE_NAME +
         " WHERE SCHEMA_NAME = ? AND BASELINE_ID = ? AND ID = ?";
 
+    public static final String DELETE_BY_BASELINE_SQL = "DELETE FROM " + TABLE_NAME +
+        " WHERE SCHEMA_NAME = ? AND BASELINE_ID = ?";
+
     public static final String DELETE_ALL_SQL = "DELETE FROM " + TABLE_NAME +
         " WHERE SCHEMA_NAME = ?";
 
-    private DataSource dataSource;
-
-    private String schemaName;
-
-    public boolean checkTableFromCache() {
-        try {
-            return APPNAME_PLAN_INFO_ENABLED.get(schemaName, this::checkTable);
-        } catch (ExecutionException e) {
-            logger.error("APPNAME_PLAN_INFO_ENABLED.get error", e);
-            return false;
-        }
-    }
-
-    public PolarDbXSystemTablePlanInfo(DataSource dataSource, String schemaName) {
-        if (dataSource == null) {
-            logger.error("PolarDbXSystemTablePlanInfo dataSource is null");
-        }
-        if (schemaName == null) {
-            logger.error("PolarDbXSystemTablePlanInfo schemaName is null");
-        }
-        this.dataSource = dataSource;
-        this.schemaName = schemaName;
-    }
-
-    @Override
-    public void resetDataSource(DataSource dataSource) {
-        if (dataSource == null) {
-            logger.error("resetDataSource dataSource is null");
-        }
-        this.dataSource = dataSource;
-    }
-
-    @Override
-    public void createTableIfNotExist() {
+    public static void createTableIfNotExist() {
         if (!canWrite()) {
             return;
         }
@@ -122,7 +92,7 @@ public class PolarDbXSystemTablePlanInfo implements SystemTablePlanInfo {
         PreparedStatement ps = null;
         PreparedStatement psAlter = null;
         try {
-            conn = dataSource.getConnection();
+            conn = MetaDbDataSource.getInstance().getDataSource().getConnection();
             ps = conn.prepareStatement(CREATE_TABLE_IF_NOT_EXIST_SQL);
             ps.executeUpdate();
             psAlter = conn.prepareStatement(ALTER_TABLE_ADD_TABLES_HASHCODE);
@@ -130,6 +100,7 @@ public class PolarDbXSystemTablePlanInfo implements SystemTablePlanInfo {
         } catch (Exception e) {
             if (e instanceof SQLException && e.getMessage().contains("Duplicate column name")) {
                 // ignore duplicate column error
+                logger.debug("create " + TABLE_NAME + " if not exist error", e);
             } else {
                 logger.error("create " + TABLE_NAME + " if not exist error", e);
             }
@@ -140,11 +111,14 @@ public class PolarDbXSystemTablePlanInfo implements SystemTablePlanInfo {
         }
     }
 
-    public static boolean deleteAll(String schemaName, Connection conn) {
+    public static boolean deleteAll(String schemaName) {
+        if (!canWrite()) {
+            return false;
+        }
         PreparedStatement ps = null;
         String sql = "";
-        try {
-            ps = conn.prepareStatement(DELETE_ALL_SQL);
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            ps = metaDbConn.prepareStatement(DELETE_ALL_SQL);
             ps.setString(1, schemaName.toLowerCase());
             ps.executeUpdate();
             return true;
@@ -156,48 +130,7 @@ public class PolarDbXSystemTablePlanInfo implements SystemTablePlanInfo {
         }
     }
 
-    @Override
-    public boolean deleteAll(Connection conn) {
-        if (!canWrite()) {
-            return false;
-        }
-        if (!checkTableFromCache()) {
-            return false;
-        }
-        return deleteAll(schemaName, conn);
-    }
-
-    public boolean canRead() {
-        return dataSource != null;
-    }
-
-    public boolean canWrite() {
-        return ConfigDataMode.isMasterMode() && dataSource != null;
-    }
-
-    private boolean checkTable() {
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-        try {
-            conn = dataSource.getConnection();
-            ps = conn.prepareStatement("show tables like '" + TABLE_NAME + "'");
-            ps.executeQuery();
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                logger.debug("[debug] check table = true");
-                return true;
-            } else {
-                logger.debug("[debug] check table = false");
-                return false;
-            }
-        } catch (Exception e) {
-            logger.error("check " + TABLE_NAME + " exist error", e);
-            return false;
-        } finally {
-            JdbcUtils.close(ps);
-            JdbcUtils.close(conn);
-            JdbcUtils.close(rs);
-        }
+    public static boolean canWrite() {
+        return ConfigDataMode.isMasterMode();
     }
 }

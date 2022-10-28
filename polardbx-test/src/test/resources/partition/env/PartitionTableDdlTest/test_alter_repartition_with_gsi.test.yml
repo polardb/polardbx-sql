@@ -1,0 +1,52 @@
+drop table if exists tbl;
+drop table if exists tbl2;
+
+create table tbl (
+a int not null,
+b int not null,
+c int not null,
+d int not null,
+primary key (`a`),
+global unique index `gu_idx_c`(`c`) partition by key(c),
+global index `g_idx_b`(`b`) partition by key(b))
+partition by key(a);
+
+insert into tbl values (101, 101, 101, 101),
+(102, 102, 102, 102),
+(103, 103, 103, 103),
+(201, 201, 201, 201),
+(202, 202, 202, 202),
+(203, 203, 203, 203);
+
+select * from tbl order by a;
+
+alter table tbl single;
+show create table tbl;
+select * from tbl order by a;
+
+create table tbl2 (
+a int not null,
+b int not null,
+c int not null,
+d int not null,
+primary key (`a`),
+global unique index `gu_idx_c`(`c`) partition by key(c),
+global index `g_idx_b`(`b`) partition by key(b))
+partition by key(a);
+
+insert into tbl2 values (101, 101, 101, 101),
+(102, 102, 102, 102),
+(103, 103, 103, 103),
+(201, 201, 201, 201),
+(202, 202, 202, 202),
+(203, 203, 203, 203);
+
+select * from tbl order by a;
+
+alter table tbl2 broadcast;
+show create table tbl2;
+select * from tbl order by a;
+
+
+
+

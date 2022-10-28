@@ -38,6 +38,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlExprImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlShowColumnOutpuVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
+import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -53,6 +54,7 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
     private List<SQLCommentHint> hints = new ArrayList<SQLCommentHint>();
     private List<SQLCommentHint> optionHints = new ArrayList<SQLCommentHint>();
     private SQLName tableGroup; // for polarx
+    private SQLName joinGroup; // for polarx
     protected boolean prefixPartition; // for polarx
     protected boolean prefixBroadcast; // for polarx
     protected boolean prefixSingle; // for polarx
@@ -222,6 +224,14 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
         this.tableGroup = tableGroup;
     }
 
+    public SQLName getJoinGroup() {
+        return joinGroup;
+    }
+
+    public void setJoinGroup(SQLName joinGroup) {
+        this.joinGroup = joinGroup;
+    }
+
     @Override
     public void simplify() {
         tableOptions.clear();
@@ -323,6 +333,9 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
     }
 
     public boolean apply(MySqlAlterTableOption item) {
+        if (StringUtils.equalsIgnoreCase(item.getName(), "algorithm")) {
+            return false;
+        }
         addOption(item.getName(), (SQLExpr) item.getValue());
         return true;
     }
@@ -487,6 +500,10 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
         }
         if (tableGroup != null) {
             x.setTableGroup(tableGroup.clone());
+        }
+
+        if (joinGroup != null) {
+            x.setJoinGroup(joinGroup.clone());
         }
 
         x.setPrefixPartition(prefixPartition);

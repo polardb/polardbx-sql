@@ -23,6 +23,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlignToTableGroup;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -30,36 +31,37 @@ import java.util.List;
 
 public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLStatement, SQLAlterStatement {
 
-    private SQLExprTableSource      tableSource;
-    private List<SQLAlterTableItem> items                   = new ArrayList<SQLAlterTableItem>();
+    private SQLExprTableSource tableSource;
+    private List<SQLAlterTableItem> items = new ArrayList<SQLAlterTableItem>();
 
     // for mysql
-    private boolean                 ignore                  = false;
-    private boolean                 online                  = false;
-    private boolean                 offline                 = false;
+    private boolean ignore = false;
+    private boolean online = false;
+    private boolean offline = false;
 
-    private boolean                 updateGlobalIndexes     = false;
-    private boolean                 invalidateGlobalIndexes = false;
+    private boolean updateGlobalIndexes = false;
+    private boolean invalidateGlobalIndexes = false;
 
-    private boolean                 removePatiting          = false;
-    private boolean                 removeLocalPatiting          = false;
-    private boolean                 upgradePatiting         = false;
-    private List<SQLAssignItem>     tableOptions = new ArrayList<SQLAssignItem>();
-    private SQLPartitionBy          partition               = null;
-    private SQLPartitionBy          localPartition               = null;
+    private boolean removePatiting = false;
+    private boolean removeLocalPatiting = false;
+    private boolean upgradePatiting = false;
+    private List<SQLAssignItem> tableOptions = new ArrayList<SQLAssignItem>();
+    private SQLPartitionBy partition = null;
+    private SQLPartitionBy localPartition = null;
+    private DrdsAlignToTableGroup alignToTableGroup = null;
 
     // odps
-    private boolean                 mergeSmallFiles         = false;
-    protected final List<SQLSelectOrderByItem> clusteredBy      = new ArrayList<SQLSelectOrderByItem>();
-    protected final List<SQLSelectOrderByItem> sortedBy         = new ArrayList<SQLSelectOrderByItem>();
-    protected int                   buckets;
-    protected int                   shards;
+    private boolean mergeSmallFiles = false;
+    protected final List<SQLSelectOrderByItem> clusteredBy = new ArrayList<SQLSelectOrderByItem>();
+    protected final List<SQLSelectOrderByItem> sortedBy = new ArrayList<SQLSelectOrderByItem>();
+    protected int buckets;
+    protected int shards;
 
-    public SQLAlterTableStatement(){
+    public SQLAlterTableStatement() {
 
     }
 
-    public SQLAlterTableStatement(DbType dbType){
+    public SQLAlterTableStatement(DbType dbType) {
         super(dbType);
     }
 
@@ -274,5 +276,14 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
 
     public void setShards(int shards) {
         this.shards = shards;
+    }
+
+    public DrdsAlignToTableGroup getAlignToTableGroup() {
+        return alignToTableGroup;
+    }
+
+    public void setAlignToTableGroup(
+        DrdsAlignToTableGroup alignToTableGroup) {
+        this.alignToTableGroup = alignToTableGroup;
     }
 }

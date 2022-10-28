@@ -118,4 +118,7 @@ public abstract class ComparativeBaseList extends Comparative {
         return true;
     }
 
+    public void setList(List<Comparative> list) {
+        this.list = list;
+    }
 }

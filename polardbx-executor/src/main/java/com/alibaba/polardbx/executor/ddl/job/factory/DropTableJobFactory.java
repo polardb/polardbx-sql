@@ -51,19 +51,18 @@ public class DropTableJobFactory extends DdlJobFactory {
     protected ExecutableDdlJob doCreate() {
         DropTableValidateTask validateTask = new DropTableValidateTask(schemaName, logicalTableName);
         DropTableRemoveMetaTask removeMetaTask = new DropTableRemoveMetaTask(schemaName, logicalTableName);
+        StoreTableLocalityTask storeTableLocalityTask = new StoreTableLocalityTask(schemaName, logicalTableName, "", false);
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
         DropTablePhyDdlTask phyDdlTask = new DropTablePhyDdlTask(schemaName, physicalPlanData);
         CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
-        StoreTableLocalityTask dropLocality = new StoreTableLocalityTask(schemaName, logicalTableName, null, true);
-
         ExecutableDdlJob4DropTable executableDdlJob = new ExecutableDdlJob4DropTable();
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
-            validateTask,
-            dropLocality,
-            removeMetaTask,
-            tableSyncTask,
-            phyDdlTask,
-            cdcDdlMarkTask
+                validateTask,
+                storeTableLocalityTask,
+                removeMetaTask,
+                tableSyncTask,
+                phyDdlTask,
+                cdcDdlMarkTask
         ));
         //labels should be replaced by fields in ExecutableDdlJob4DropTable
         executableDdlJob.labelAsHead(validateTask);

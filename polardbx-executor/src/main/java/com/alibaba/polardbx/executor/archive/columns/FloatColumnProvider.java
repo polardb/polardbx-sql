@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
+import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
@@ -37,6 +41,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 class FloatColumnProvider implements ColumnProvider<Float> {
     @Override
@@ -93,10 +98,10 @@ class FloatColumnProvider implements ColumnProvider<Float> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -106,8 +111,10 @@ class FloatColumnProvider implements ColumnProvider<Float> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((DoubleColumnVector) columnVector).vector[rowNumber] = 0;
+                accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
                 ((DoubleColumnVector) columnVector).vector[rowNumber] = num;
+                accumulator.ifPresent(a -> a.appendHash(Float.hashCode(num)));
             }
         }
     }

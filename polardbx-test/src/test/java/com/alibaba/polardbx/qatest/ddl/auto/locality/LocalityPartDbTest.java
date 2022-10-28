@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.locality;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
+import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestUtils;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import lombok.Value;
@@ -82,7 +83,7 @@ public class LocalityPartDbTest extends LocalityTestBase {
     @Test
     public void testDatabaseLocality() {
 
-        final String dn = chooseDatanode();
+        final String dn = chooseDatanode(true);
         final String localitySql = " LOCALITY=" + TStringUtil.quoteString("dn=" + dn);
         final String dbName = "test_locality_partdb";
         final String dropDbSql = String.format("drop database if exists %s", dbName);
@@ -114,7 +115,7 @@ public class LocalityPartDbTest extends LocalityTestBase {
         final String localitySql = " LOCALITY=" + TStringUtil.quoteString("dn=" + dn);
         final String createTgSql = String.format("create tablegroup %s %s", tgName, localitySql);
         final String createTableSql = String.format("create table %s(id int) tablegroup='%s' "
-            + "partition by hash(id)", tableName, tgName);
+            + "partition by hash(id) partitions 32", tableName, tgName);
 
         // create tablegroup
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTgSql);
@@ -140,21 +141,17 @@ public class LocalityPartDbTest extends LocalityTestBase {
     /**
      * Partition table not support locality
      */
-    @Test
-    public void testLocalityNotSupported() {
-
-        final String tableName = "table_hash";
-        final String dn = chooseDatanode();
-        final String localitySql = " LOCALITY=" + TStringUtil.quoteString("dn=" + dn);
-
-        final String createPartTableSql = String.format("create table %s(id int) %s %s",
-            tableName, "partition by hash(id)", localitySql);
-        JdbcUtil.executeUpdateFailed(tddlConnection, createPartTableSql, "not support");
-
-        final String createBroadcastTableSql = String.format("create table %s (id int) %s %s",
-            tableName, "broadcast", localitySql);
-        JdbcUtil.executeUpdateFailed(tddlConnection, createPartTableSql, "not support");
-    }
+//    @Test
+//    public void testLocalityNotSupported() {
+//
+//        final String tableName = "table_hash";
+//        final String dn = chooseDatanode();
+//        final String localitySql = " LOCALITY=" + TStringUtil.quoteString("dn=" + dn);
+//
+//        final String createBroadcastTableSql = String.format("create table %s (id int) %s %s",
+//            tableName, "broadcast", localitySql);
+//        JdbcUtil.executeUpdateFailed(tddlConnection, createBroadcastTableSql, "not support");
+//    }
 
     @Test
     public void testSingleTableLocality() {
@@ -170,7 +167,7 @@ public class LocalityPartDbTest extends LocalityTestBase {
         String createResult = showCreateTable(tableName);
         Assert.assertTrue(" create table is " + createResult, createResult.contains(localitySql));
         // check locality_info
-        Optional<LocalityBean> localityInfo =
+        Optional<LocalityTestBase.LocalityBean> localityInfo =
             getLocalityBeanInfos().stream().filter(x -> tableName.equals(x.objectName)).findFirst();
         Assert.assertEquals(localitySql, localityInfo.get().locality);
 
@@ -274,8 +271,7 @@ public class LocalityPartDbTest extends LocalityTestBase {
         if (!matcher.find()) {
             throw new RuntimeException("tablegroup not found: " + create);
         }
-        String tg = matcher.group(1);
-        return tg;
+        return matcher.group(1);
     }
 
     private String showCreateTable(String tablename) {

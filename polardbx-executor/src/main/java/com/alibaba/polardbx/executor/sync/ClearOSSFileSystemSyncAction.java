@@ -18,11 +18,26 @@ package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.archive.reader.BufferPoolManager;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.gms.engine.FileSystemGroup;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
+import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
+import com.alibaba.polardbx.gms.topology.InstConfigRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import org.apache.hadoop.fs.FileSystem;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * @author chenzilin
@@ -37,12 +52,47 @@ public class ClearOSSFileSystemSyncAction implements ISyncAction {
     public ResultCursor sync() {
         FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(Engine.OSS);
         if (fileSystemGroup != null) {
-            ((FileMergeCachingFileSystem) fileSystemGroup.getMaster()).getCacheManager().clear();
-            for (FileSystem slave : fileSystemGroup.getSlaves()) {
-                ((FileMergeCachingFileSystem) slave).getCacheManager().clear();
+            Map<String, Long> configs = fetchConfig();
+
+            if (configs == null || configs.isEmpty()) {
+                // just clear
+                ((FileMergeCachingFileSystem) fileSystemGroup.getMaster()).getCacheManager().clear();
+                for (FileSystem slave : fileSystemGroup.getSlaves()) {
+                    ((FileMergeCachingFileSystem) slave).getCacheManager().clear();
+                }
+            } else {
+                // rebuild cache by new configs.
+                ((FileMergeCachingFileSystem) fileSystemGroup.getMaster()).getCacheManager().rebuildCache(configs);
+                for (FileSystem slave : fileSystemGroup.getSlaves()) {
+                    ((FileMergeCachingFileSystem) slave).getCacheManager().rebuildCache(configs);
+                }
             }
         }
         return null;
+    }
+
+    private Map<String, Long> fetchConfig() {
+        Map<String, Long> results = new HashMap<>();
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            InstConfigAccessor accessor = new InstConfigAccessor();
+            accessor.setConnection(connection);
+
+            doFetch(results, ConnectionProperties.OSS_FS_CACHE_TTL, accessor);
+            doFetch(results, ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES, accessor);
+        } catch (SQLException e) {
+            GeneralUtil.nestedException(e);
+        }
+        return results;
+    }
+
+    private void doFetch(Map<String, Long> results, String connProp, InstConfigAccessor accessor) {
+        List<InstConfigRecord> records = accessor.queryByParamKey(InstIdUtil.getInstId(), connProp);
+        Long result;
+        if (records != null
+            && !records.isEmpty()
+            && (result = DataTypes.LongType.convertFrom(records.get(0).paramVal)) != null) {
+            results.put(connProp, result);
+        }
     }
 }
 

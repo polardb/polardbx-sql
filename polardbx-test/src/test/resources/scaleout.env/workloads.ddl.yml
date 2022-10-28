@@ -1,0 +1,398 @@
+test_table_a:
+  CREATE TABLE IF NOT EXISTS `test_table_a` (
+    `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+    `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+    PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+test_table_b:
+  CREATE TABLE IF NOT EXISTS `test_table_b` (
+    `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+    `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+    `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+test_table_c:
+  CREATE TABLE IF NOT EXISTS `test_table_c` (
+    `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+    `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+    `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST;
+
+test_tb_bro1:
+  CREATE TABLE IF NOT EXISTS `test_tb_bro1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '#',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+test_tb_bro2:
+  CREATE TABLE IF NOT EXISTS `test_tb_bro2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '*',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+test_tb_bro3:
+  CREATE TABLE IF NOT EXISTS `test_tb_bro3` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+mdb_mtb1:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb2:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb3:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb3` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb4:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb4` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb5:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb5` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      UNIQUE KEY `str_uk_mtb5` (`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb6:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb6` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      UNIQUE KEY `int_uk_mtb6` (`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+
+mdb_mtb_guk1:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_guk1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      UNIQUE GLOBAL INDEX `g_u_int_mtb1`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb_guk2:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_guk2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      UNIQUE GLOBAL INDEX `g_u_str_mtb2`(`varchar_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+
+mdb_mtb_mk1:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mk1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`, `integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb_mk2:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mk2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`,`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+
+mdb_mtb_mk_msk1:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mk_msk1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`, `integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY MM(datetime_test) TBPARTITIONS 12;
+
+mdb_mtb_mk_msk2:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mk_msk2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`,`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY MM(datetime_test) TBPARTITIONS 12;
+
+
+mdb_mtb_og1:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_og1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`),
+      GLOBAL INDEX `g_i_int_og1`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb_og2:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_og2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`),
+      GLOBAL INDEX `g_i_int_og2`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+mdb_mtb_mg1:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mg1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`),
+      GLOBAL INDEX `g_i_int_mg1_1`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`),
+      GLOBAL INDEX `g_i_str_mg1_2`(`varchar_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+
+mdb_mtb_mg2:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mg2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`),
+      GLOBAL INDEX `g_i_int_mg2_1`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`),
+      GLOBAL INDEX `g_i_str_mg2_2`(`varchar_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY HASH(pk) TBPARTITIONS 4;
+
+
+mdb_mtb_mg_mk_msk1:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mg_mk_msk1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`, `integer_test`),
+      GLOBAL INDEX `g_i_int_mg_mk1_1`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`),
+      GLOBAL INDEX `g_i_str_mg_mk1_2`(`varchar_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY MM(datetime_test) TBPARTITIONS 12;
+
+
+mdb_mtb_mg_mk_msk2:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mg_mk_msk2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`, `integer_test`),
+      GLOBAL INDEX `g_i_int_mg_mk2_1`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`),
+      GLOBAL INDEX `g_i_str_mg_mk2_2`(`varchar_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY MM(datetime_test) TBPARTITIONS 12;
+
+
+mdb_mtb_mg_mk_msk3:
+  CREATE TABLE IF NOT EXISTS `mdb_mtb_mg_mk_msk3` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`, `integer_test`),
+      GLOBAL INDEX `g_i_int_mg_mk3_1`(`integer_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`integer_test`),
+      UNIQUE GLOBAL INDEX `g_i_str_mg_mk3_2`(`varchar_test`) COVERING (`pk`, `datetime_test`) dbpartition by hash(`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 DBPARTITION BY HASH(pk) TBPARTITION BY MM(datetime_test) TBPARTITIONS 12;
+
+###########
+
+btb1:
+  CREATE TABLE IF NOT EXISTS `btb1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb2:
+  CREATE TABLE IF NOT EXISTS `btb2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb3:
+  CREATE TABLE IF NOT EXISTS `btb3` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb4:
+  CREATE TABLE IF NOT EXISTS `btb4` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb_uk1:
+  CREATE TABLE IF NOT EXISTS `btb_uk1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      UNIQUE KEY `str_uk_btb1` (`varchar_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb_uk2:
+  CREATE TABLE IF NOT EXISTS `btb_uk2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      UNIQUE KEY `str_uk_btb2` (`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+
+btb_si1:
+  CREATE TABLE IF NOT EXISTS `btb_si1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      INDEX `int_ik1`(`integer_test`, `datetime_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb_si2:
+  CREATE TABLE IF NOT EXISTS `btb_si2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT NULL,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT '0000-00-00 00:00:00',
+      PRIMARY KEY (`pk`),
+      INDEX `var_ik1`(`varchar_test`, `datetime_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+
+btb_mk1:
+  CREATE TABLE IF NOT EXISTS `btb_mk1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`, `integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb_mk2:
+  CREATE TABLE IF NOT EXISTS `btb_mk2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`,`integer_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb_mk_mi1:
+  CREATE TABLE IF NOT EXISTS `btb_mk_mi1` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`,`integer_test`),
+      INDEX `var_ik_btb_mk_mi1`(`integer_test`, `datetime_test`),
+      UNIQUE KEY `str_uk_btb_mk_mi1` (`varchar_test`, `datetime_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;
+
+btb_mk_mi2:
+  CREATE TABLE IF NOT EXISTS `btb_mk_mi2` (
+      `pk` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,
+      `integer_test` int(11) DEFAULT 0,
+      `varchar_test` varchar(255) DEFAULT '$',
+      `datetime_test` datetime DEFAULT '0000-00-00 00:00:00',
+      `timestamp_test` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`pk`,`integer_test`),
+      INDEX `var_ik_btb_mk_mi2`(`integer_test`, `datetime_test`),
+      UNIQUE KEY `str_uk_btb_mk_mi2` (`varchar_test`, `datetime_test`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 BROADCAST;

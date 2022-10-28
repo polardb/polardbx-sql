@@ -48,18 +48,6 @@ public class FunctionWithoutArg extends SqlFunction {
     public static FunctionWithoutArg CHECK_FIREWORKS = new FunctionWithoutArg("CHECK_FIREWORKS", ReturnTypes.INTEGER);
 
     @Override
-    public boolean canPushDown(boolean withScaleOut) {
-        if (this == LAST_INSERT_ID || this == CONNECTION_ID || this == DATABASE || this == SCHEMA) {
-            return false;
-        }
-        String name = getName();
-        if ("CURRENT_USER".equals(name) || "VERSION".equals(name)) {
-            return false;
-        }
-        return super.canPushDown(withScaleOut);
-    }
-
-    @Override
     public boolean isDynamicFunction() {
         return this == UUID || this == UUID_SHORT || this == LOCALTIME || super.isDynamicFunction();
     }

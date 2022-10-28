@@ -42,6 +42,18 @@ import java.util.stream.Collectors;
  */
 public class InformationSchemaInnodbLocksHandler extends BaseVirtualViewSubClassHandler {
 
+    private static final String INNODB_LOCK_SQL =
+        "SELECT lock_id, lock_trx_id, lock_mode, lock_type, lock_table, lock_index, lock_space, "
+            + "lock_page, lock_rec, lock_data, trx_mysql_thread_id "
+            + "FROM information_schema.INNODB_LOCKS join information_schema.INNODB_TRX "
+            + "on lock_trx_id = trx_id";
+
+    private static final String INNODB_LOCK_SQL_80 =
+        "SELECT engine_lock_id, engine_transaction_id, lock_mode, lock_type, object_schema, object_name, index_name, "
+            + "lock_data, trx_mysql_thread_id "
+            + "FROM performance_schema.DATA_LOCKS join information_schema.INNODB_TRX "
+            + "on engine_transaction_id = trx_id";
+
     public InformationSchemaInnodbLocksHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }
@@ -56,59 +68,89 @@ public class InformationSchemaInnodbLocksHandler extends BaseVirtualViewSubClass
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
         TrxLookupSet lookupSet = TransactionUtils.getTrxLookupSet(schemaNames);
         Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(schemaNames);
-
+        boolean isMySQL80 = ExecUtils.isMysql80Version();
+        String querySql = isMySQL80 ? INNODB_LOCK_SQL_80 : INNODB_LOCK_SQL;
         for (List<TGroupDataSource> groupDataSourceList : instId2GroupList.values()) {
-
             TGroupDataSource repGroupDataSource = groupDataSourceList.get(0);
-
             List<String> groupNameList =
                 groupDataSourceList.stream().map(x -> x.getDbGroupKey()).collect(Collectors.toList());
 
-            try (IConnection conn = repGroupDataSource.getConnection(); Statement stmt = conn.createStatement()) {
-                ResultSet rs = stmt.executeQuery(
-                    "SELECT lock_id, lock_trx_id, lock_mode, lock_type, lock_table, lock_index, lock_space, "
-                        + "lock_page, lock_rec, lock_data, trx_mysql_thread_id "
-                        + "FROM information_schema.INNODB_LOCKS join information_schema.INNODB_TRX "
-                        + "on lock_trx_id = trx_id");
+            try (IConnection conn = repGroupDataSource.getConnection();
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(querySql)) {
 
                 while (rs.next()) {
-                    String lock_id = rs.getString("lock_id");
-                    String lock_trx_id = rs.getString("lock_trx_id");
-                    String lock_mode = rs.getString("lock_mode");
-                    String lock_type = rs.getString("lock_type");
-                    String lock_table = rs.getString("lock_table");
-                    String lock_index = rs.getString("lock_index");
-                    long lock_space = rs.getLong("lock_space");
-                    long lock_page = rs.getLong("lock_page");
-                    long lock_rec = rs.getLong("lock_rec");
-                    String lock_data = rs.getString("lock_data");
-                    long trx_mysql_thread_id = rs.getLong("trx_mysql_thread_id");
-
-                    Long tranId = lookupSet.getTransactionId(groupNameList, trx_mysql_thread_id);
-
-                    if (tranId == null) {
-                        continue;
-                    }
-
-                    cursor.addRow(new Object[] {
-                        lock_id,
-                        Long.toHexString(tranId),
-                        lock_mode,
-                        lock_type,
-                        lock_table,
-                        lock_index,
-                        lock_space,
-                        lock_page,
-                        lock_rec,
-                        lock_data
-                    });
+                    extractInnodbLock(cursor, rs, lookupSet, groupNameList, isMySQL80);
                 }
+
             } catch (SQLException ex) {
                 throw new RuntimeException(
                     "Failed to fetch innodb_locks on group " + repGroupDataSource.getDbGroupKey(), ex);
             }
         }
         return cursor;
+    }
+
+    private void extractInnodbLock(ArrayResultCursor cursor, ResultSet rs,
+                                   TrxLookupSet lookupSet, List<String> groupNameList,
+                                   boolean isMySQL80) throws SQLException {
+        long trx_mysql_thread_id = rs.getLong("trx_mysql_thread_id");
+        Long tranId = lookupSet.getTransactionId(groupNameList, trx_mysql_thread_id);
+        if (tranId == null) {
+            return;
+        }
+
+        if (isMySQL80) {
+            String lock_id = rs.getString("engine_lock_id");
+            String lock_trx_id = rs.getString("engine_transaction_id");
+            String lock_mode = rs.getString("lock_mode");
+            String lock_type = rs.getString("lock_type");
+            String lock_schema = rs.getString("object_schema");
+            String lock_table = rs.getString("object_name");
+            lock_table = String.format("%s.%s", lock_schema, lock_table);
+            String lock_index = rs.getString("index_name");
+            Long lock_space = null;
+            Long lock_page = null;
+            Long lock_rec = null;
+            String lock_data = rs.getString("lock_data");
+
+            cursor.addRow(new Object[] {
+                lock_id,
+                Long.toHexString(tranId),
+                lock_mode,
+                lock_type,
+                lock_table,
+                lock_index,
+                lock_space,
+                lock_page,
+                lock_rec,
+                lock_data
+            });
+        } else {
+            String lock_id = rs.getString("lock_id");
+            String lock_trx_id = rs.getString("lock_trx_id");
+            String lock_mode = rs.getString("lock_mode");
+            String lock_type = rs.getString("lock_type");
+            String lock_table = rs.getString("lock_table");
+            String lock_index = rs.getString("lock_index");
+            long lock_space = rs.getLong("lock_space");
+            long lock_page = rs.getLong("lock_page");
+            long lock_rec = rs.getLong("lock_rec");
+            String lock_data = rs.getString("lock_data");
+
+            cursor.addRow(new Object[] {
+                lock_id,
+                Long.toHexString(tranId),
+                lock_mode,
+                lock_type,
+                lock_table,
+                lock_index,
+                lock_space,
+                lock_page,
+                lock_rec,
+                lock_data
+            });
+        }
     }
 }
 

@@ -272,7 +272,8 @@ public class SQLExprParser extends SQLParser {
             lexer.nextToken();
             SQLExpr rightExp;
             if (dbType == DbType.mysql) {
-                if (lexer.token == Token.LITERAL_CHARS || lexer.token == Token.LITERAL_ALIAS) {
+                if (lexer.token == Token.LITERAL_CHARS || lexer.token == Token.LITERAL_ALIAS
+                    || lexer.token == Token.QUES) {
                     rightExp = primary();
                 } else {
                     rightExp = expr();
@@ -417,7 +418,11 @@ public class SQLExprParser extends SQLParser {
 
     public SQLCharExpr charExpr() {
         SQLCharExpr charExpr = new SQLCharExpr(lexer.stringVal());
-        accept(Token.LITERAL_CHARS);
+        if (lexer.token == Token.LITERAL_CHARS) {
+            accept(Token.LITERAL_CHARS);
+        } else {
+            accept(Token.LITERAL_ALIAS);
+        }
         return charExpr;
     }
 
@@ -524,6 +529,7 @@ public class SQLExprParser extends SQLParser {
                 sqlExpr = dateExpr;
             } else if (hash_lower == FnvHash.Constants.TIMESTAMP
                 && (isString || lexer.token == Token.VARIANT)) {
+
                 SQLTimestampExpr dateExpr = new SQLTimestampExpr(stringValue);
                 lexer.nextToken();
                 sqlExpr = dateExpr;
@@ -708,6 +714,8 @@ public class SQLExprParser extends SQLParser {
         case VARIANT: {
             String varName = lexer.stringVal();
             lexer.nextToken();
+
+
 
             SQLVariantRefExpr varRefExpr = new SQLVariantRefExpr(varName);
             if (varName.startsWith(":")) {
@@ -1095,6 +1103,7 @@ public class SQLExprParser extends SQLParser {
             break;
         case BANG:
         case BANGBANG: {
+
             lexer.nextToken();
             SQLExpr bangExpr = primary();
             sqlExpr = new SQLUnaryExpr(SQLUnaryOperator.Not, bangExpr);
@@ -1200,9 +1209,10 @@ public class SQLExprParser extends SQLParser {
         case DELETE:
         case BY:
         case UPDATE:
+
             throw new ParserException("ERROR. " + lexer.info());
         case DISTINCT:
-            if (dbType == DbType.mysql) {
+            if ( dbType == DbType.mysql) {
                 Lexer.SavePoint mark = lexer.mark();
                 sqlExpr = new SQLIdentifierExpr(lexer.stringVal());
                 lexer.nextToken();
@@ -1215,8 +1225,10 @@ public class SQLExprParser extends SQLParser {
             }
             throw new ParserException("ERROR. " + lexer.info());
         case IN:
+
             throw new ParserException("ERROR. " + lexer.info());
         case LBRACKET:
+
             throw new ParserException("ERROR. " + lexer.info());
         default:
             throw new ParserException("ERROR. " + lexer.info());
@@ -2105,7 +2117,9 @@ public class SQLExprParser extends SQLParser {
             case VALUES:
             case IN:
             case OUT:
-                throw new ParserException("illegal name, " + lexer.info());
+
+                    throw new ParserException("illegal name, " + lexer.info());
+
             default:
                 throw new ParserException("illegal name, " + lexer.info());
             }
@@ -3157,7 +3171,7 @@ public class SQLExprParser extends SQLParser {
             expr = new SQLBinaryOpExpr(expr, op, rightExp, dbType);
         }
         break;
-        case BANGEQ:
+        case  BANGEQ:
         case CARETEQ: {
             lexer.nextToken();
             rightExp = bitOr();
@@ -3291,12 +3305,14 @@ public class SQLExprParser extends SQLParser {
             expr = new SQLBinaryOpExpr(expr, SQLBinaryOperator.Array_ContainedBy, rightExp, getDbType());
             break;
         case QUES:
+
             break;
         case NOT:
             lexer.nextToken();
             expr = notRationalRest(expr);
             break;
         case BANG:
+
             break;
         case BETWEEN:
             lexer.nextToken();
@@ -3311,17 +3327,27 @@ public class SQLExprParser extends SQLParser {
             expr = inRest(expr);
             break;
         case EQEQ:
+
             break;
         case TILDE:
+
             break;
         case TILDE_STAR:
-            return expr;
+
+                return expr;
+
         case BANG_TILDE:
-            return expr;
+
+                return expr;
+
         case BANG_TILDE_STAR:
-            return expr;
+
+                return expr;
+
         case TILDE_EQ:
-            return expr;
+
+                return expr;
+
         case RLIKE:
             lexer.nextToken();
             rightExp = bitOr();
@@ -3341,7 +3367,7 @@ public class SQLExprParser extends SQLParser {
                 rightExp = bitOr();
 
                 expr = new SQLBinaryOpExpr(expr, SQLBinaryOperator.RegExp, rightExp, DbType.mysql);
-            } else {
+            } else  {
                 return expr;
             }
             break;
@@ -4104,7 +4130,11 @@ public class SQLExprParser extends SQLParser {
                 //sequence parser
                 if (lexer.token == Token.BY) {
                     lexer.nextToken();
-                    if (lexer.hash_lower() == FnvHash.Constants.GROUP) {
+                    if (lexer.hash_lower() == FnvHash.Constants.NEW) {
+                        lexer.nextToken();
+                        column.setSequenceType(AutoIncrementType.NEW);
+                        return parseColumnRest(column);
+                    } else if (lexer.hash_lower() == FnvHash.Constants.GROUP) {
                         lexer.nextToken();
                         column.setSequenceType(AutoIncrementType.GROUP);
                         if (lexer.identifierEquals(FnvHash.Constants.UNIT)) {
@@ -4136,19 +4166,8 @@ public class SQLExprParser extends SQLParser {
                         return parseColumnRest(column);
                     } else if (lexer.hash_lower() == FnvHash.Constants.SIMPLE) {
                         lexer.nextToken();
-                        if (lexer.hash_lower() == FnvHash.Constants.WITH) {
-                            lexer.nextToken();
-                            if (lexer.hash_lower() == FnvHash.Constants.CACHE) {
-                                column.setSequenceType(AutoIncrementType.SIMPLE_CACHE);
-                            } else {
-                                throw new ParserException("TODO : " + lexer.info());
-                            }
-                            lexer.nextToken();
-                            return parseColumnRest(column);
-                        } else {
-                            column.setSequenceType(AutoIncrementType.SIMPLE);
-                            return parseColumnRest(column);
-                        }
+                        column.setSequenceType(AutoIncrementType.SIMPLE);
+                        return parseColumnRest(column);
                     }
                     return parseColumnRest(column);
                 } else if (lexer.identifierEquals(FnvHash.Constants.UNIT)) {
@@ -4189,6 +4208,9 @@ public class SQLExprParser extends SQLParser {
             } else if (lexer.token == Token.LITERAL_CHARS) {
                 String stringVal = lexer.stringVal();
                 lexer.nextToken();
+
+
+
                 column.setComment(stringVal);
             } else {
                 column.setComment(primary());
@@ -4696,6 +4718,11 @@ public class SQLExprParser extends SQLParser {
                     } else if (lexer.identifierEquals(FnvHash.Constants.TBPARTITIONS)) {
                         lexer.nextToken();
                         indexDefinition.setTbPartitions(primary());
+                    } else if (lexer.identifierEquals(FnvHash.Constants.TABLEGROUP)) {
+                        lexer.nextToken();
+                        accept(Token.EQ);
+                        SQLName tableGroupName = this.name();
+                        indexDefinition.setTableGroup(tableGroupName);
                     } else {
                         break _opts;
                     }
@@ -4911,7 +4938,8 @@ public class SQLExprParser extends SQLParser {
                 expr = dateExpr;
             } else if (FnvHash.Constants.TIMESTAMP == hash_lower
                 && lexer.stringVal().charAt(0) != '`'
-                && isString) {
+                && isString
+                ) {
                 lexer.nextToken();
 
                 SQLTimestampExpr ts = new SQLTimestampExpr(stringValue);
@@ -4938,7 +4966,8 @@ public class SQLExprParser extends SQLParser {
                 }
             } else if (FnvHash.Constants.DATETIME == hash_lower
                 && lexer.stringVal().charAt(0) != '`'
-                && isString) {
+                && isString
+                ) {
                 lexer.nextToken();
 
                 SQLDateTimeExpr ts = new SQLDateTimeExpr(stringValue);

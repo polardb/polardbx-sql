@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.ddl;
 
+import com.alibaba.polardbx.common.ddl.Attribute;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -36,10 +38,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertThat;
 
@@ -774,6 +780,21 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
+    public void testAlterSeqAutoIncrementStartWith3() {
+        String tableName = schemaPrefix + "alter_table_test_no_seq";
+        dropTableIfExists(tableName);
+        String sql = String.format(
+            "create table %s (auto_id int not null primary key, id int , name varchar(20)) dbpartition by hash(id)",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s auto_increment = 40", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        dropTableIfExists(tableName);
+    }
+
+    @Test
     public void testAlterTableFollowedByInsertWhenAutoCommitFalse() throws Exception {
         String tableName = schemaPrefix + "ddl_followed_by_dml_when_autocommit_false";
 
@@ -1005,8 +1026,95 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
-    public void testAlterTableColumnPosition() throws SQLException {
+    public void testUpdateStatisticsAfterDdl() throws SQLException {
+        String simpleTableName = "test_stats_after_ddl";
+        String simpleTableNameRenamed = simpleTableName + "_renamed";
+        String tableName = schemaPrefix + simpleTableName;
+        String tableNameRenamed = tableName + "_renamed";
 
+        dropTableIfExists(tableName);
+        dropTableIfExists(tableNameRenamed);
+
+        String sql = "create table %s(c1 int not null primary key, c2 int, c3 int) dbpartition by hash(c1)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "select * from %s where c1 > 10";
+        JdbcUtil.executeSuccess(tddlConnection, String.format(sql, tableName));
+        checkVirtualStatistics(simpleTableName, new String[] {"c1", "c2", "c3"});
+
+        sql = "rename table %s to %s";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName, tableNameRenamed));
+        checkVirtualStatistics(simpleTableName, null);
+        checkVirtualStatistics(simpleTableNameRenamed, new String[] {"c1", "c2", "c3"});
+
+        sql = "alter table %s drop column c3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableNameRenamed));
+        checkVirtualStatistics(simpleTableNameRenamed, new String[] {"c1", "c2"});
+
+        sql = "alter table %s change column c2 c4 bigint";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableNameRenamed));
+        checkVirtualStatistics(simpleTableNameRenamed, new String[] {"c1", "c4"});
+
+        dropTableIfExists(tableNameRenamed);
+        checkVirtualStatistics(simpleTableNameRenamed, null);
+    }
+
+    @Test
+    public void testAlterTableAddColumnWithKeys() throws SQLException {
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String mysqlSchema = TStringUtil.isBlank(mysqlDatabase2) ? mysqlDatabase1 : mysqlDatabase2;
+        String simpleTableName = "test_add_col_with_key";
+        String tableName = schemaPrefix + simpleTableName;
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(simpleTableName);
+
+        String sql = "create table if not exists %s (c1 smallint not null unique key primary key)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
+        sql += " dbpartition by hash(`c1`)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
+        Pair<String, String> phyDbTableName = fetchPhyDbAndTableNames(schemaName, simpleTableName, false);
+        compareIndexColumnInfo(schemaName, simpleTableName, phyDbTableName.getKey(), phyDbTableName.getValue());
+
+        sql = "alter table %s "
+            + "add c2 enum ('e1' , 'e2', 'e3', 'e4', 'e5') null, "
+            + "add c3 boolean null unique, "
+            + "add c4 timestamp unique key, "
+            + "add c5 year(4) null unique";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
+        compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
+        compareIndexColumnInfo(schemaName, simpleTableName, phyDbTableName.getKey(), phyDbTableName.getValue());
+
+        sql = "alter table %s drop c2, drop c3, drop c4, drop c5";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
+        compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
+        compareIndexColumnInfo(schemaName, simpleTableName, phyDbTableName.getKey(), phyDbTableName.getValue());
+
+        sql = "alter table %s add column ("
+            + "c2 enum ('e1' , 'e2', 'e3', 'e4', 'e5') null, "
+            + "c3 boolean null unique, "
+            + "c4 timestamp unique key, "
+            + "c5 year(4) null unique)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
+        compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
+        compareIndexColumnInfo(schemaName, simpleTableName, phyDbTableName.getKey(), phyDbTableName.getValue());
+
+        sql = "drop index c5 on %s";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
+        compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
+        compareIndexColumnInfo(schemaName, simpleTableName, phyDbTableName.getKey(), phyDbTableName.getValue());
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(simpleTableName);
+    }
+
+    @Test
+    public void testAlterTableColumnPosition() throws SQLException {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String mysqlSchema = TStringUtil.isBlank(mysqlDatabase2) ? mysqlDatabase1 : mysqlDatabase2;
         String simpleTableName = "test_col_pos";
@@ -1045,19 +1153,81 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
+    public void testAlterTableColumnIndexWithEscapeChar() {
+        String tableName = schemaPrefix + "test_escaping_col_name";
+
+        dropTableIfExists(tableName);
+
+        String sql = "create table %s (id int not null primary key, name varchar(10), age int, dept int) broadcast";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "create index idx_name on %s(name, dept)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "create index idx_age on %s(age)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s rename index idx_age to `'`";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s change column `name` `'` varchar(10)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s drop index `'`";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s add index `'`(age)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "drop index `'` on %s";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "create index `'` on %s(age)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s drop column `'`";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s add column `'` varchar(10)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "create index idx_new on %s(`'`, dept)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "drop index idx_new on %s";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s add index idx_new(`'`, dept)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s drop index idx_new";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        dropTableIfExists(tableName);
+    }
+
+    @Test
+    @Ignore("not supported")
+    public void testSetGlobalInstantAddColumn() throws Exception {
+        setGlobalSupportInstantAddColumn(true);
+        Assert.assertTrue(checkInstantAddColumnVariables(true));
+
+        setGlobalSupportInstantAddColumn(false);
+        Assert.assertTrue(checkInstantAddColumnVariables(false));
+    }
+
+    @Test
     public void testInstantAddColumn() throws SQLException {
         testInstantAddColumn(true);
     }
 
     @Test
-    public void testInstantAddColumnUnsupported() throws SQLException {
-        testInstantAddColumn(false);
+    public void testInstantAddColumnComplexUnsupported() throws Exception {
+        testInstantAddColumnComplex(false);
     }
 
-    private void testInstantAddColumn(boolean instantAddColumnSupported) throws SQLException {
-
-        String instantAddColumnDisabled = "/*+TDDL:cmd_extra(SUPPORT_INSTANT_ADD_COLUMN=FALSE)*/";
-        String hint = instantAddColumnSupported ? "" : instantAddColumnDisabled;
+    private void testInstantAddColumn(boolean supported) throws SQLException {
+        setGlobalSupportInstantAddColumn(supported);
 
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String mysqlSchema = TStringUtil.isBlank(mysqlDatabase2) ? mysqlDatabase1 : mysqlDatabase2;
@@ -1073,31 +1243,31 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
 
-        sql = hint + "alter table %s add c3 int first, add c4 int, add c5 int after c1";
+        sql = "alter table %s add c3 int first, add c4 int, add c5 int after c1";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
         compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
 
-        sql = hint + "alter table %s add c6 int after c1, drop c5, add c7 int first, "
+        sql = "alter table %s add c6 int after c1, drop c5, add c7 int first, "
             + "modify c4 varchar(100), add c8 int after c2, change c3 c33 bigint";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
         compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
 
-        sql = hint + "alter table %s add c9 int after c9";
+        sql = "alter table %s add c9 int after c9";
         JdbcUtil.executeUpdateFailed(tddlConnection, String.format(sql, tableName), "Unknown column 'c9'");
 
-        sql = hint + "alter table %s add c9 int, compression='zlib'";
+        sql = "alter table %s add c9 int, compression='zlib'";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
         compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
 
-        sql = hint + "alter table %s drop primary key";
+        sql = "alter table %s drop primary key";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
         compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
 
-        sql = hint + "alter table %s add c10 int not null primary key";
+        sql = "alter table %s add c10 int not null primary key";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, simpleTableName));
         compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
@@ -1108,6 +1278,11 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     @Test
     public void testInstantAddColumnComplex() throws Exception {
+        testInstantAddColumnComplex(true);
+    }
+
+    public void testInstantAddColumnComplex(boolean supported) throws Exception {
+        setGlobalSupportInstantAddColumn(supported);
 
         String msg = "Start testing %s table:";
         log.info(String.format(msg, "single"));
@@ -1123,8 +1298,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         testInstantAddColumnComplex("dbpartition by hash(id) tbpartition by hash(id) tbpartitions 2");
     }
 
-    private void testInstantAddColumnComplex(String extSyntax)
-        throws Exception {
+    private void testInstantAddColumnComplex(String extSyntax) throws Exception {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String mysqlSchema = TStringUtil.isBlank(mysqlDatabase2) ? mysqlDatabase1 : mysqlDatabase2;
         String simpleTableName = "test_instant_add_column_complex";
@@ -1149,10 +1323,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     private void testAlterThenInserts(String schemaName, String simpleTableName, String tableName, String mysqlSchema,
-                                      String baseTableName)
-        throws Exception {
+                                      String baseTableName) throws Exception {
         String sql;
-
         for (String[] param : TEST_PARAMS) {
             log.info("Start Change " + param[0]);
 
@@ -1165,14 +1337,46 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
             compareAllColumnPositions(schemaName, tableName, mysqlSchema, simpleTableName);
 
             // The insert statements should execute successfully.
-            sql = "insert into %s values %s";
+            sql = "insert into %s() values %s";
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName, param[2]));
-            sql = "insert into %s values %s";
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName, param[2]));
+            sql = "insert into %s() values %s";
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName, param[3]));
-            sql = "insert into %s values %s on duplicate key update %s";
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName, param[3]));
+            sql = "insert into %s() values %s on duplicate key update %s";
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName, param[4], param[5]));
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName, param[4], param[5]));
+
+            sql = "select * from %s";
+            selectContentSameAssert(String.format(sql, tableName), null, mysqlConnection, tddlConnection, false);
+
             sql = "delete from %s where id > 0";
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName));
+
+            // reverse column order
+            sql = "insert into %s %s values %s";
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format(sql, tableName, param[6], reverseValues(param[2])));
+            JdbcUtil.executeUpdateSuccess(mysqlConnection,
+                String.format(sql, tableName, param[6], reverseValues(param[2])));
+            sql = "insert into %s %s values %s";
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format(sql, tableName, param[6], reverseValues(param[3])));
+            JdbcUtil.executeUpdateSuccess(mysqlConnection,
+                String.format(sql, tableName, param[6], reverseValues(param[3])));
+            sql = "insert into %s %s values %s on duplicate key update %s";
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format(sql, tableName, param[6], reverseValues(param[4]), param[5]));
+            JdbcUtil.executeUpdateSuccess(mysqlConnection,
+                String.format(sql, tableName, param[6], reverseValues(param[4]), param[5]));
+
+            sql = "select * from %s";
+            selectContentSameAssert(String.format(sql, tableName), null, mysqlConnection, tddlConnection, false);
+
+            sql = "delete from %s where id > 0";
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName));
 
             // Add some data to select source table.
             sql = "insert into %s values %s";
@@ -1202,47 +1406,72 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection, String.format(sql, tableName), "Unknown column 'nodept'");
     }
 
+    private static String reverseValues(String valueString) {
+        List<String> values = new ArrayList<>();
+        String regex = "\\((.*?)\\)";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(valueString);
+        while (matcher.find()) {
+            values.add(matcher.group());
+        }
+
+        List<String> reversedValues = new ArrayList<>();
+        for (String value : values) {
+            String[] splitValue = value.substring(1, value.length() - 1).split(",");
+            Collections.reverse(Arrays.asList(splitValue));
+            reversedValues.add("(" + String.join(",", splitValue) + ")");
+        }
+        return String.join(",", reversedValues);
+    }
+
     private static final String[][] TEST_PARAMS = new String[][] {
         new String[] {
             "1",
             "add dept int, add company int",
-            "(111,'aaa',111,111)",
-            "(222,'bbb',222,222),(333,'ccc',333,333),(444,'ddd',444,444)",
-            "(333,'ccc',333,333)", "name='ccc++'"},
+            "(1111,'aaa',1112,1113)",
+            "(2221,'bbb',2222,2223),(3331,'ccc',3332,3333),(4441,'ddd',4442,4443)",
+            "(3331,'ccc',3332,3333)", "name='ccc++'",
+            "(company,dept,name,id)"},
         new String[] {
             "2",
             "modify dept bigint after id, change company corp varchar(64) after dept",
-            "(111,111,'aaa','aaa')",
-            "(222,222,'bbb','bbb'),(333,333,'ccc','ccc'),(444,444,'ddd','ddd')",
-            "(333,333,'ccc','ccc')", "name='ccc++', corp='ccc++'"},
+            "(1111,1112,'aaaa','aaab')",
+            "(2221,2222,'bbba','bbbb'),(3331,3332,'ccca','cccb'),(4441,4442,'ddda','dddb')",
+            "(3331,3332,'ccca','cccb')", "name='ccc++', corp='ccc++'",
+            "(name,corp,dept,id)"},
         new String[] {
             "3",
             "change name nickname varchar(64) after id, add boss int first",
-            "(111,111,'aaa',111,'aaa')",
-            "(222,222,'bbb',222,'bbb'),(333,333,'ccc',333,'ccc'),(444,444,'ddd',444,'ddd')",
-            "(333,333,'ccc',333,'ccc')", "nickname='ccc++'"},
+            "(1111,1112,'aaaa',1113,'aaab')",
+            "(2221,2222,'bbba',2223,'bbbb'),(3331,3332,'ccca',3333,'cccb'),(4441,4442,'ddda',4443,'dddb')",
+            "(3331,3332,'ccca',3333,'cccb')", "nickname='ccc++'",
+            "(corp,dept,nickname,id,boss)"},
         new String[] {
             "4",
             "add age int after nickname",
-            "(111,111,'aaa',111,111,'aaa')",
-            "(222,222,'bbb',222,222,'bbb'),(333,333,'ccc',333,333,'ccc'),(444,444,'ddd',444,444,'ddd')",
-            "(333,333,'ccc',333,333,'ccc')", "corp='ccc++', nickname='ccc++'"},
+            "(1111,1112,'aaaa',1113,1114,'aaab')",
+            "(2221,2222,'bbba',2223,2224,'bbbb'),(3331,3332,'ccca',3333,3334,'cccb'),(4441,4442,'ddda',4443,4444,'dddb')",
+            "(3331,3332,'ccca',3333,3334,'cccb')", "corp='ccc++', nickname='ccc++'",
+            "(corp,dept,age,nickname,id,boss)"},
         new String[] {
             "5",
             "drop boss, add leader char(1) after age",
-            "(111,'aaa',111,'Y',111,'aaa')",
-            "(222,'bbb',222,'N',222,'bbb'),(333,'ccc',333,'Y',333,'ccc'),(444,'ddd',444,'N',444,'ddd')",
-            "(333,'ccc',333,'Y',333,'ccc')", "nickname='ccc+++'"},
+            "(1111,'aaaa',1112,'Y',1113,'aaab')",
+            "(2221,'bbba',2222,'N',2223,'bbbb'),(3331,'ccca',3332,'Y',3333,'cccb'),(4441,'ddda',4442,'N',4443,'dddb')",
+            "(3331,'ccca',3332,'Y',3333,'cccb')", "nickname='ccc+++'",
+            "(corp,dept,leader,age,nickname,id)"},
         new String[] {
             "6",
             "add address varchar(256), drop corp, add years int after leader",
-            "(111,'aaa',111,'n',111,111,'aaa')",
-            "(222,'bbb',222,'y',222,222,'bbb'),(333,'ccc',333,'Y',333,333,'ccc'),(444,'ddd',444,'N',444,444,'ddd')",
-            "(333,'ccc',333,'n',333,333,'ccc')", "address='ccc++'"}
+            "(1111,'aaaa',1112,'n',1113,1114,'aaab')",
+            "(2221,'bbba',2222,'y',2223,2224,'bbbb'),(3331,'ccca',3332,'Y',3333,3334,'cccb'),(4441,'ddda',4442,'N',4443,4444,'dddb')",
+            "(3331,'ccca',3332,'n',3333,3334,'cccb')", "address='ccc++'",
+            "(address,dept,years,leader,age,nickname,id)"}
     };
 
     @Test
-    public void testSimpleInsertAfterInstantAddColumn() throws SQLException {
+    public void testSimpleInsertAfterInstantAddColumn() {
+        setGlobalSupportInstantAddColumn(true);
 
         String simpleTableName = "test_instant_add_column_insert";
         String tableName = schemaPrefix + simpleTableName;
@@ -1255,18 +1484,24 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         sql = "create table %s (c1 int not null primary key, c2 int)";
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName));
 
-        String hint = "/*+TDDL:cmd_extra(SUPPORT_INSTANT_ADD_COLUMN=TRUE)*/";
-        sql = hint + "alter table %s add c3 varchar(16) after c1";
+        sql = "alter table %s add c3 varchar(16) after c1";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName));
 
-        sql = "insert into %s values(1,'b',1)";
+        sql = "insert into %s() values(2,'b',3)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName));
+
+        sql = "insert into %s(c2,c3,c1) values(2,'b',3)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName));
+
+        sql = "insert into %s(c1) values(4)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         JdbcUtil.executeUpdateSuccess(mysqlConnection, String.format(sql, tableName));
 
         sql = "select * from %s";
-        selectContentSameAssert(String.format(sql, tableName), null, mysqlConnection, tddlConnection,
-            false);
+        selectContentSameAssert(String.format(sql, tableName), null, mysqlConnection, tddlConnection, false);
     }
 
     private void compareAllColumnPositions(String logicalSchemaName, String tableName, String physicalSchemaName,
@@ -1375,7 +1610,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     @Test
     public void testAlterTableAddIndex() throws SQLException {
-
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = "test_add_index";
         String tableName = schemaPrefix + simpleTableName;
@@ -1729,7 +1963,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     @Test
     public void testAlterTableModifyChangeColumnAddKeys() throws SQLException {
-
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = "test_modify_with_pk";
         String tableName = schemaPrefix + simpleTableName;
@@ -1784,7 +2017,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     @Test
     public void testTimeZone() throws SQLException {
-
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = "test_time_zone";
         String tableName = schemaPrefix + simpleTableName;
@@ -1852,7 +2084,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
                 }
             );
 
-            sql = "insert into test_time_zone(c_timestamp_0,c_timestamp_1,c_timestamp_2,c_timestamp_3,pad) " +
+            sql = "insert into %s(c_timestamp_0,c_timestamp_1,c_timestamp_2,c_timestamp_3,pad) " +
                 "values('2017-12-12 23:59:59.00000045','2017/12/12 23:59:59.00000045','2017-12-12 23:59:59.00000045',"
                 + "'2017/12/12 23:59:59.00000045',111)";
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
@@ -1866,7 +2098,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
                 }
             );
 
-            sql = "insert into test_time_zone(pad) values(222)";
+            sql = "insert into %s(pad) values(222)";
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
             checkQueryResult(tableName, false,
                 new String[][] {
@@ -1893,7 +2125,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
                 + "\tPRIMARY KEY (`pk`),\n"
                 + "\tKEY `auto_shard_key_c_timestamp_0` USING BTREE (`c_timestamp_0`)\n";
 
-            sql = "alter table test_time_zone "
+            sql = "alter table %s "
                 + "add c_timestamp_a timestamp(6) not null default '2021/10/25 12:59:59.222000' after pk, "
                 + "change c_timestamp_1 c_timestamp_c timestamp(6) not null default '2021-10-25 12:59:59.000444', "
                 + "modify c_timestamp_2 timestamp(6) not null default '2021/10/25 12:59:59.789000', "
@@ -1921,7 +2153,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
                 }
             );
 
-            sql = "insert into test_time_zone(pad) values(333)";
+            sql = "insert into %s(pad) values(333)";
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
             checkQueryResult(tableName, true,
                 new String[][] {
@@ -1993,7 +2225,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     @Test
     public void testTimeZoneZeroValue() throws SQLException {
-
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = "test_time_zone_zero_value";
         String tableName = schemaPrefix + simpleTableName;
@@ -2404,6 +2635,36 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         }
     }
 
+    @Test
+    public void testHintIgnoreErrorCode() throws SQLException {
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String simpleTableName = "test_hint_ignore_error_code";
+        String tableName = schemaPrefix + simpleTableName;
+
+        dropTableIfExists(tableName);
+
+        //given: a partitioned table
+        String createSql = "create table %s (id int not null, name char(32), item varchar(32), primary key (id)) " +
+            "dbpartition by hash(id) tbpartition by hash(id) tbpartitions 12";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(createSql, tableName));
+
+        List<org.apache.calcite.util.Pair<String, String>> topoList = showTopologyWithGroup(tddlConnection, tableName);
+
+        //when: one of the physical table already have index i1
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(
+            "/*+TDDL:node='%s'*/alter table %s add index i1 (id)", topoList.get(0).getKey(), topoList.get(0).getValue()
+        ));
+
+        //then: add index i1 to local table will cause error
+        JdbcUtil.executeUpdateFailed(tddlConnection,
+            String.format("alter table %s add index i1 (id)", tableName), "Duplicate key name");
+
+        //then: with hint 'PHYSICAL_DDL_IGNORED_ERROR_CODE', add index i1 to local table will be success
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format("/*+TDDL:cmd_extra(PHYSICAL_DDL_IGNORED_ERROR_CODE='1061')*/" +
+                "alter table %s add index i1 (id)", tableName));
+    }
+
     private void checkTableMeta(String schemaName, String simpleTableName, String fullTableName, String expectedShow,
                                 String[][] expectedMeta, String[][] expectedInfoSchema) throws SQLException {
         checkShowCreateTable(fullTableName, expectedShow);
@@ -2419,6 +2680,9 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
             if (rs.next()) {
                 result = rs.getString(2);
             }
+        }
+        if (isMySQL80()) {
+            result = result.replace(" DEFAULT COLLATE = utf8mb4_0900_ai_ci", "");
         }
         Assert.assertTrue(compareShowCreateTable(result, expectedShow));
     }
@@ -2590,6 +2854,264 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     private void setTimeZone(String gmtTime) {
         String sql = "set time_zone='%s'";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, gmtTime));
+    }
+
+    private void enableSetGlobalSession() {
+        String sql = "set enable_set_global=true";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    private void setGlobalSupportInstantAddColumn(boolean supported) {
+        enableSetGlobalSession();
+        String sql = "set global support_instant_add_column=%s";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, supported ? "on" : "off"));
+        try {
+            Thread.sleep(2000);
+        } catch (InterruptedException ignored) {
+        }
+    }
+
+    private boolean checkInstantAddColumnVariables(boolean supported) throws SQLException {
+        boolean allExpected = true;
+
+        String debugInfo = "IAC(%s): %s for %s from %s";
+
+        String queryInstConfig = String.format("select param_key, param_val from inst_config where param_key='%s'",
+            ConnectionProperties.SUPPORT_INSTANT_ADD_COLUMN);
+        allExpected &= isVariableExpected(queryInstConfig, supported ? "true" : "false");
+
+        log.info(String.format(debugInfo, tddlDatabase1, allExpected, supported, queryInstConfig));
+
+        String showVariables = String.format("show variables like '%s'", Attribute.XDB_VARIABLE_INSTANT_ADD_COLUMN);
+        allExpected &= isVariableExpected(showVariables, supported ? "ON" : "OFF");
+
+        log.info(String.format(debugInfo, tddlDatabase1, allExpected, supported, showVariables));
+
+        return allExpected;
+    }
+
+    private boolean isVariableExpected(String sql, String expected) throws SQLException {
+        try (Connection conn = getMetaConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) {
+                return expected.equalsIgnoreCase(rs.getString(2));
+            }
+        }
+        log.error(String.format("IAC(%s): no result from %s", tddlDatabase1, sql));
+        return false;
+    }
+
+    private void checkVirtualStatistics(String expectedTableName, String[] expectedColumns) throws SQLException {
+        Connection conn = TStringUtil.isBlank(tddlDatabase2) ? tddlConnection : getTddlConnection2();
+        String sql = String.format(
+            "select table_name, column_name from virtual_statistic where table_name = '%s' order by column_name",
+            expectedTableName);
+
+        List<String> actualColumns = new ArrayList<>();
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                actualColumns.add(rs.getString(2));
+            }
+        }
+
+        if (expectedColumns == null || expectedColumns.length == 0) {
+            if (actualColumns.isEmpty()) {
+                return;
+            } else {
+                Assert.fail("There are still obsolete statistics for " + expectedTableName);
+            }
+        } else {
+            if (actualColumns.isEmpty()) {
+                Assert.fail("Missed statistics for " + expectedTableName);
+            } else {
+                if (expectedColumns.length != actualColumns.size()) {
+                    printStatistics(expectedTableName, expectedColumns, actualColumns);
+                    Assert.fail("Inconsistent number of columns in statistics for " + expectedTableName);
+                } else {
+                    for (int i = 0; i < expectedColumns.length; i++) {
+                        if (!TStringUtil.equalsIgnoreCase(expectedColumns[i], actualColumns.get(i))) {
+                            printStatistics(expectedTableName, expectedColumns, actualColumns);
+                            Assert.fail("Inconsistent column names in statistics for " + expectedTableName);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void printStatistics(String expectedTableName, String[] expectedColumns, List<String> actualColumns) {
+        log.error("Table Statistics for " + expectedTableName + ":\n");
+        StringBuilder buf = new StringBuilder();
+        buf.append("Expected Columns: ");
+        Arrays.stream(expectedColumns).forEach(c -> buf.append(c).append("\n"));
+        buf.append("Actual Columns: ");
+        actualColumns.stream().forEach(c -> buf.append(c).append("\n"));
+        log.error(buf);
+    }
+
+    @Test
+    public void testAlterColumnBinaryDefaultValue() {
+        String tableName = "test_bin_col_default_val_primary";
+        String gsiName = "test_bin_col_default_val_gsi";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String createTable = String.format("create table %s ("
+            + "`pk` int primary key auto_increment, "
+            + "`char_col` varchar(20) default 'ggg', "
+            + "`char_col_1` varchar(20) default 'ggg', "
+            + "`pad` varchar(20) default 'ggg' "
+            + ")", tableName);
+        String partitionDef = " dbpartition by hash(`pk`)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String createGsi =
+            String.format(
+                "create global index %s on %s(`char_col`) covering(`char_col_1`) dbpartition by hash(`char_col`)",
+                gsiName,
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+
+        // Use upsert to fill all default values on CN
+        String insert = String.format("insert into %s(`pk`) values (null) on duplicate key update pad=null", tableName);
+        String select = String.format("select `char_col`,`char_col_1` from %s", tableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Set default, non-binary to binary
+        String alter = String.format("alter table %s alter column `char_col` set default x'686868'", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Set default, binary to non-binary
+        alter = String.format("alter table %s alter column `char_col` set default 'iii'", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Drop default, then add binary
+        alter = String.format("alter table %s alter column `char_col` drop default", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        alter =
+            String.format("alter table %s alter column `char_col` set default b'11010100110101001101010'", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Drop default, then add non-binary
+        alter = String.format("alter table %s alter column `char_col` drop default", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        alter = String.format("alter table %s alter column `char_col` set default 'kkk'", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Modify column, non-binary to binary
+        alter = ALLOW_ALTER_GSI_INDIRECTLY_HINT + String.format(
+            "alter table %s modify column `char_col_1` varchar(10) default x'6c6c6c'", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Modify column, binary to non-binary
+        alter = ALLOW_ALTER_GSI_INDIRECTLY_HINT + String.format(
+            "alter table %s modify column `char_col_1` varchar(10) default 'mmm'", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Change column, non-binary to binary
+        alter = ALLOW_ALTER_GSI_INDIRECTLY_HINT + String.format(
+            "alter table %s change column `char_col_1` `char_col_2` varchar(10) default x'6e6e6e'", tableName);
+        select = String.format("select `char_col`,`char_col_2` from %s", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Change column, binary to non-binary
+        alter = ALLOW_ALTER_GSI_INDIRECTLY_HINT + String.format(
+            "alter table %s change column `char_col_2` `char_col_3` varchar(10) default 'ooo'", tableName);
+        select = String.format("select `char_col`,`char_col_3` from %s", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Add column, binary
+        alter = ALLOW_ALTER_GSI_INDIRECTLY_HINT + String.format(
+            "alter table %s add column `char_col_4` varchar(10) default x'707070'", tableName);
+        select = String.format("select `char_col`,`char_col_3`,`char_col_4` from %s", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        // Add column, non-binary
+        alter = ALLOW_ALTER_GSI_INDIRECTLY_HINT + String.format(
+            "alter table %s add column `char_col_5` varchar(10) default 'qqq'", tableName);
+        select = String.format("select `char_col`,`char_col_3`,`char_col_4`,`char_col_5` from %s", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, alter);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testRepartitionWithGsiBinaryDefaultValue() throws Exception {
+        String tableName = "test_bin_col_default_val_primary_1";
+        String gsiName = "test_bin_col_default_val_gsi_1";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String createTable = String.format("create table %s ("
+            + "`pk` int primary key auto_increment, "
+            + "`bin_col` varbinary(20) default x'0A08080E10011894AB0E', "
+            + "`pad` varchar(20) default 'ggg' "
+            + ")", tableName);
+        String partitionDef = " dbpartition by hash(`pk`)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String createGsi =
+            String.format("create global index %s on %s(`pk`) dbpartition by hash(`pk`)", gsiName,
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+
+        // Use upsert to test default value on CN
+        String upsert = String.format("insert into %s(`pk`) values (null) on duplicate key update pad=null", tableName);
+        // Use insert to test default value on DN
+        String insert = String.format("insert into %s(`pk`) values (null)", tableName);
+        String select = String.format("select `bin_col` from %s", tableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        String newPartitionDef = " dbpartition by hash(`pk`) tbpartition by hash(`pk`) tbpartitions 3";
+        String alter = String.format("alter table %s %s", tableName, newPartitionDef);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, alter);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
     }
 
 }

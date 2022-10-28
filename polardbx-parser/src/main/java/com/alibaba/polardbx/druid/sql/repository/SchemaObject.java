@@ -28,17 +28,17 @@ import com.alibaba.polardbx.druid.util.FnvHash;
 public class SchemaObject {
     private final Schema schema;
     private final String name;
-    private final long   hashCode64;
+    private final long hashCode64;
 
     private final SchemaObjectType type;
     private SQLStatement statement;
     private long rowCount = -1;
 
-    protected SchemaObject(Schema schema, String name, SchemaObjectType type) {
+    public SchemaObject(Schema schema, String name, SchemaObjectType type) {
         this(schema, name, type, null);
     }
 
-    protected SchemaObject(Schema schema, String name, SchemaObjectType type, SQLStatement statement) {
+    public SchemaObject(Schema schema, String name, SchemaObjectType type, SQLStatement statement) {
         this.schema = schema;
         this.name = name;
         this.type = type;

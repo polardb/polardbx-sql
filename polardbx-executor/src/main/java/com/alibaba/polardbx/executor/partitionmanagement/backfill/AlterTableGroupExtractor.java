@@ -43,11 +43,13 @@ public class AlterTableGroupExtractor extends Extractor {
                                        PhyTableOperation planSelectWithMin,
                                        PhyTableOperation planSelectWithMinAndMax,
                                        PhyTableOperation planSelectMaxPk,
+                                       PhyTableOperation planSelectSample,
+                                       PhyTableOperation planSelectMinAndMaxSample,
                                        List<Integer> primaryKeysId,
                                        Map<String, Set<String>> sourcePhyTables) {
         super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
-            planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, primaryKeysId);
+            planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
+            planSelectSample, planSelectMinAndMaxSample, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
     }
 
@@ -78,6 +80,10 @@ public class AlterTableGroupExtractor extends Extractor {
                 true, true,
                 SqlSelect.LockMode.SHARED_LOCK),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
+                false, false),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
+                true, true),
             info.getPrimaryKeysId(),
             sourcePhyTables);
     }

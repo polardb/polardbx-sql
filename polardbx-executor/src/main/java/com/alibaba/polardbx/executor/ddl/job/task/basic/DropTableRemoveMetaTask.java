@@ -26,7 +26,6 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import lombok.Getter;
 
 import java.sql.Connection;
@@ -42,15 +41,6 @@ public class DropTableRemoveMetaTask extends BaseGmsTask {
 
     @Override
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        // Remove locality of this table
-        SchemaManager schemaManager = OptimizerContext.getContext(getSchemaName()).getLatestSchemaManager();
-        LocalityManager lm = LocalityManager.getInstance();
-        TableMeta tableMeta = schemaManager.getTableWithNull(getLogicalTableName());
-        if (tableMeta != null && lm.getLocalityOfTable(tableMeta.getId()) != null) {
-            lm.deleteLocalityOfTable(tableMeta.getId());
-        }
-
-        // Remove table meta
         TableMetaChanger.removeTableMeta(metaDbConnection, schemaName, logicalTableName, true, executionContext);
 
         FailPoint.injectRandomExceptionFromHint(executionContext);

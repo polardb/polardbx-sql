@@ -18,13 +18,13 @@ package com.alibaba.polardbx.qatest.dql.sharding;
 
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
 public class GeoFunctionTest extends ReadBaseTestCase {
@@ -40,6 +40,7 @@ public class GeoFunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    @Ignore("not support in 8.0")
     public void geomfromtextTest() throws Exception {
         String sql = "select GEOMFROMTEXT('POINT(1 1)') from " + baseOneTableName + " limit 1";
         if (isMySQL80()) {
@@ -63,6 +64,7 @@ public class GeoFunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    @Ignore("not support in 8.0")
     public void mlinefromtextTest() throws Exception {
         String sql = "select MLineFromText('MULTILINESTRING((10 10, 20 20), (15 15, 30 15))') from " + baseOneTableName
             + " limit 1";
@@ -74,6 +76,7 @@ public class GeoFunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    @Ignore("not support in 8.0")
     public void mPointfromtextTest() throws Exception {
         String sql = "select MPointFromText('MULTIPOINT (1 1, 2 2, 3 3)') from " + baseOneTableName + " limit 1";
         if (isMySQL80()) {
@@ -83,6 +86,7 @@ public class GeoFunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    @Ignore("not support in 8.0")
     public void mPolfromtextTest() throws Exception {
         String sql = "select MPolyFromText('MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)),((5 5,7 5,7 7,5 7, 5 5)))') from "
             + baseOneTableName + " limit 1";
@@ -146,6 +150,7 @@ public class GeoFunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    @Ignore("not support in 8.0")
     public void isemptyTest() throws Exception {
         String sql = "select IsEmpty(ST_GeomFromText('POINT(1 1)')) from " + baseOneTableName + " limit 1";
         if (isMySQL80()) {
@@ -155,6 +160,7 @@ public class GeoFunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    @Ignore("not support in 8.0")
     public void issimpleTest() throws Exception {
         String sql = "select IsSimple(ST_GeomFromText('POINT(1 1)')) from " + baseOneTableName + " limit 1";
         if (isMySQL80()) {
@@ -190,6 +196,7 @@ public class GeoFunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    @Ignore("not support in 8.0")
     public void glengthTest() throws Exception {
         String sql = "select GLength(ST_GeomFromText('LineString(1 1,2 2,3 3)')) from " + baseOneTableName + " limit 1";
         if (isMySQL80()) {

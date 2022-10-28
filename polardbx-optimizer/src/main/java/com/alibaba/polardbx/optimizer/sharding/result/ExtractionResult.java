@@ -74,6 +74,7 @@ public class ExtractionResult {
      */
     public Map<String, PartitionPruneStep> allPartPruneSteps(ExecutionContext ec) {
         Map<String, PartitionPruneStep> allTblPruneStepInfo = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
         for (RelOptTable t : getLogicalTables()) {
             ConditionResult condRs = conditionOf(t).intersect();
             List<String> qualifiedName = t.getQualifiedName();
@@ -198,10 +199,10 @@ public class ExtractionResult {
         final String schemaName = schema;
 
         return tableLabelMap.keySet().stream().filter(k -> {
-            final Pair<String, String> qn = RelUtils.getQualifiedTableName(k);
-            return TStringUtil.equalsIgnoreCase(qn.left, schemaName)
-                && TStringUtil.equalsIgnoreCase(qn.right, tableName);
-        })
+                final Pair<String, String> qn = RelUtils.getQualifiedTableName(k);
+                return TStringUtil.equalsIgnoreCase(qn.left, schemaName)
+                    && TStringUtil.equalsIgnoreCase(qn.right, tableName);
+            })
             .findAny()
             .map(k -> (ConditionResultSet) new NormalConditionResultSet(this, k))
             .orElse(EmptyConditionResultSet.EMPTY);

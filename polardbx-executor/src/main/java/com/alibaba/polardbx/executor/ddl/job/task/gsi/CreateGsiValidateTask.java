@@ -54,7 +54,7 @@ public class CreateGsiValidateTask extends BaseValidateTask {
         this.primaryTableName = primaryTableName;
         this.indexName = indexName;
         this.tableGroupIds = tableGroupIds;
-        this.tableGroupConfig = tableGroupConfig;
+        this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
         if (StringUtils.isEmpty(indexName) || StringUtils.isEmpty(primaryTableName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate",
                 "The table name shouldn't be empty");

@@ -17,11 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.join;
 
 import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
-import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
-import org.apache.calcite.rel.metadata.RelColumnOrigin;
-import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
@@ -32,66 +29,49 @@ import java.util.Set;
 public class LookupPredicateBuilder {
 
     private final Join join;
-    private final RelNode leftNode;
-    private final RelNode rightNode;
-    private final JoinRelType joinType;
 
     private final LookupPredicate predicate;
 
-    public LookupPredicateBuilder(Join join) {
+    public LookupPredicateBuilder(Join join, List<String> lvOriginNames) {
         this.join = join;
-        this.leftNode = join.getLeft();
-        this.rightNode = join.getRight();
-        this.joinType = join.getJoinType();
-
         boolean notIn = (join.getJoinType() == JoinRelType.ANTI);
-        this.predicate = new LookupPredicate(notIn);
+        this.predicate = new LookupPredicate(notIn, lvOriginNames);
     }
 
-    public LookupPredicate build(List<EquiJoinKey> joinKeys) {
+    public LookupPredicate build(List<LookupEquiJoinKey> joinKeys) {
         Set<Integer> lookupColumnSet = new HashSet<>();
-        for (EquiJoinKey key : joinKeys) {
+        for (LookupEquiJoinKey key : joinKeys) {
             if (key.isNullSafeEqual()) {
                 continue; // '<=>' semantics can not be represented as IN expression
             }
             if (!key.isCanFindOriginalColumn()) {
                 continue; // can not be represented as IN expression, because column origin is null
             }
-            SqlIdentifier column;
             int targetIndex;
             if (join instanceof MaterializedSemiJoin) {
                 // lookup on outer side
                 if (!lookupColumnSet.add(key.getOuterIndex())) {
                     continue;
                 }
-                column = getIdentifierByIndex(leftNode, key.getOuterIndex());
+                String column = getJoinKeyColumnName(key);
                 targetIndex = key.getInnerIndex();
+                predicate.addEqualPredicate(
+                    new SqlIdentifier(column, SqlParserPos.ZERO), targetIndex, key.getUnifiedType());
             } else {
                 // lookup on inner side
                 if (!lookupColumnSet.add(key.getInnerIndex())) {
                     continue;
                 }
-                column = getIdentifierByIndex(joinType.innerSide(leftNode, rightNode), key.getInnerIndex());
+                String column = getJoinKeyColumnName(key);
                 targetIndex = key.getOuterIndex();
+                predicate.addEqualPredicate(
+                    new SqlIdentifier(column, SqlParserPos.ZERO), targetIndex, key.getUnifiedType());
             }
-            predicate.addEqualPredicate(column, targetIndex, key.getUnifiedType());
         }
         return predicate;
     }
 
-    public static SqlIdentifier getIdentifierByIndex(RelNode relNode, int index) {
-        RelColumnOrigin relColumnOrigin;
-        RelMetadataQuery mq = relNode.getCluster().getMetadataQuery();
-        synchronized (mq) {
-            //这里会被多个线程同时调用，容易抛出CyclicMetadataException 风险
-            relColumnOrigin = mq.getColumnOrigin(relNode, index);
-        }
-        if (relColumnOrigin != null) {
-            String name = relColumnOrigin.getOriginTable().getRowType().getFieldNames()
-                .get(relColumnOrigin.getOriginColumnOrdinal());
-            return new SqlIdentifier(name, SqlParserPos.ZERO);
-        }
-        return new SqlIdentifier(relNode.getRowType().getFieldNames().get(index), SqlParserPos.ZERO);
+    public static String getJoinKeyColumnName(LookupEquiJoinKey joinKey) {
+        return joinKey.getLookupColunmnName();
     }
-
 }

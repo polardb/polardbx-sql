@@ -16,44 +16,25 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 
 public class ResizePlanCacheSyncAction implements ISyncAction {
 
-    private String db;
     private int newSize;
 
-    public ResizePlanCacheSyncAction() {
-    }
-
-    public ResizePlanCacheSyncAction(String db, int newSize) {
-        this.db = db;
+    public ResizePlanCacheSyncAction(int newSize) {
         this.newSize = newSize;
-    }
-
-    public String getDb() {
-        return db;
-    }
-
-    public void setDb(String db) {
-        this.db = db;
     }
 
     @Override
     public ResultCursor sync() {
-        SchemaConfig schema = CobarServer.getInstance().getConfig().getSchemas().get(db);
-        String schemaName = schema.getDataSource().getSchemaName();
-        Pair<PlanCache.CapacityInfo, PlanCache.CapacityInfo> infoPair =
-            OptimizerContext.getContext(schemaName).getPlanManager().getPlanCache().resize(newSize);
+        Pair<PlanCache.CapacityInfo, PlanCache.CapacityInfo> infoPair = PlanCache.getInstance().resize(newSize);
         ArrayResultCursor result = new ArrayResultCursor("plancache_capacity");
         result.addColumn("COMPUTE_NODE", DataTypes.StringType);
         result.addColumn("OLD_CNT", DataTypes.LongType);

@@ -16,36 +16,13 @@
 
 package com.alibaba.polardbx.net.packet;
 
-import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
-import com.alibaba.polardbx.net.util.BufferUtil;
-
 /**
  * Created by simiao.zw on 2014/8/4.
  */
-public class BinaryResultSetHeaderPacket extends MySQLPacket {
-
-    public int column_count;
+public class BinaryResultSetHeaderPacket extends ResultSetHeaderPacket {
 
     @Override
     protected String packetInfo() {
         return "Binary ResultSet header packet";
-    }
-
-    public IPacketOutputProxy write(IPacketOutputProxy proxy) {
-        proxy.packetBegin();
-        int size = getPacketLength();
-        proxy.checkWriteCapacity(proxy.getConnection().getPacketHeaderSize() + size);
-
-        proxy.writeUB3(size);
-        proxy.write(packetId);
-
-        proxy.writeLength(column_count);
-        proxy.packetEnd();
-        return proxy;
-    }
-
-    private int getPacketLength() {
-        int size = BufferUtil.getLength(column_count);
-        return size;
     }
 }

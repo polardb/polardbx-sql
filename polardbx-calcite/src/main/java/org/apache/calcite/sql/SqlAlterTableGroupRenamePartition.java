@@ -26,36 +26,15 @@ import java.util.List;
  *
  * @author luoyanxin
  */
-public class SqlAlterTableGroupRenamePartition extends SqlAlterSpecification {
-
-    private static final SqlOperator OPERATOR =
-        new SqlSpecialOperator("RENAME PARTITION", SqlKind.ALTER_TABLEGROUP_RENAME_PARTITION);
-
-    private final List<Pair<String, String>> changePartitionsPair;
-
+public class SqlAlterTableGroupRenamePartition extends SqlAlterTableRenamePartition {
     private SqlAlterTableGroup parent;
 
     public SqlAlterTableGroupRenamePartition(SqlParserPos pos, List<Pair<String, String>> changePartitionsPair) {
-        super(pos);
-        this.changePartitionsPair = changePartitionsPair;
-    }
-
-    @Override
-    public SqlOperator getOperator() {
-        return OPERATOR;
+        super(pos, changePartitionsPair);
     }
 
     public void setParent(SqlAlterTableGroup parent) {
         this.parent = parent;
-    }
-
-    @Override
-    public List<SqlNode> getOperandList() {
-        return null;
-    }
-
-    public List<Pair<String, String>> getChangePartitionsPair() {
-        return changePartitionsPair;
     }
 
     public SqlAlterTableGroup getParent() {

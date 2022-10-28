@@ -69,4 +69,6 @@ public class Limits {
      */
 
     public static final int MAX_LENGTH_OF_TABLE_GROUP = MAX_LENGTH_OF_IDENTIFIER_NAME;
+
+    public static final int MAX_LENGTH_OF_JOIN_GROUP = MAX_LENGTH_OF_IDENTIFIER_NAME;
 }

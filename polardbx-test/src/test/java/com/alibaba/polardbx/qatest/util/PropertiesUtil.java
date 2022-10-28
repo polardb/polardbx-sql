@@ -17,7 +17,12 @@
 package com.alibaba.polardbx.qatest.util;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.utils.ClassFinder;
+import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.ReadBaseTestCase;
+import com.alibaba.polardbx.qatest.TestFileStorage;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
+import com.google.common.collect.ImmutableList;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
@@ -27,6 +32,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -99,8 +105,16 @@ public class PropertiesUtil {
         return Boolean.valueOf(configProp.getProperty("use_file_storage", "false"));
     }
 
+    public static String getCreateFileStorageSql() {
+        return configProp.getProperty("create_file_storage_sql");
+    }
+
     public static Engine engine() {
         return Engine.of(configProp.getProperty("engine", "oss"));
+    }
+
+    public static String polardbXVersion() {
+        return String.valueOf(configProp.getProperty("polardbxVersion", ""));
     }
 
     public static String polardbXShardingDBName1() {

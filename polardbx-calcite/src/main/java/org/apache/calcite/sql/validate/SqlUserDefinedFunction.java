@@ -41,6 +41,8 @@ import java.util.List;
 public class SqlUserDefinedFunction extends SqlFunction {
   public final Function function;
 
+  private boolean pushable = false;
+
   /** Creates a {@link SqlUserDefinedFunction}. */
   public SqlUserDefinedFunction(SqlIdentifier opName,
       SqlReturnTypeInference returnTypeInference,
@@ -52,6 +54,18 @@ public class SqlUserDefinedFunction extends SqlFunction {
         paramTypes, function, SqlFunctionCategory.USER_DEFINED_FUNCTION);
   }
 
+  public SqlUserDefinedFunction(SqlIdentifier opName,
+                                SqlReturnTypeInference returnTypeInference,
+                                SqlOperandTypeInference operandTypeInference,
+                                SqlOperandTypeChecker operandTypeChecker,
+                                List<RelDataType> paramTypes,
+                                Function function,
+                                boolean pushable) {
+    this(opName, returnTypeInference, operandTypeInference, operandTypeChecker,
+        paramTypes, function, SqlFunctionCategory.USER_DEFINED_FUNCTION);
+    this.pushable = pushable;
+  }
+
   /** Constructor used internally and by derived classes. */
   protected SqlUserDefinedFunction(SqlIdentifier opName,
       SqlReturnTypeInference returnTypeInference,
@@ -60,7 +74,7 @@ public class SqlUserDefinedFunction extends SqlFunction {
       List<RelDataType> paramTypes,
       Function function,
       SqlFunctionCategory category) {
-    super(Util.last(opName.names), opName, SqlKind.OTHER_FUNCTION,
+    super(Util.last(opName.names), opName, SqlKind.USER_DEFINED_FUNCTION,
         returnTypeInference, operandTypeInference, operandTypeChecker,
         paramTypes, category);
     this.function = function;
@@ -76,6 +90,10 @@ public class SqlUserDefinedFunction extends SqlFunction {
 
   @Override public List<String> getParamNames() {
     return Lists.transform(function.getParameters(), FunctionParameter.NAME_FN);
+  }
+
+  public boolean isPushable() {
+    return pushable;
   }
 }
 

@@ -46,10 +46,11 @@ public class TableRuleManager {
 
     public static Map<String, TableRule> getTableRules(String schemaName) {
         Map<String, TableRule> tableRuleSet = new HashMap<>();
-        Collection<TableRule> tableRules = OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTables();
+        Collection<TableRule> tableRules =
+            OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTables();
         if (tableRules != null && tableRules.size() > 0) {
             for (TableRule tableRule : tableRules) {
-                tableRuleSet.put(tableRule.getVirtualTbName(), tableRule);
+                tableRuleSet.put(tableRule.getVirtualTbName().toLowerCase(), tableRule);
             }
         }
         return tableRuleSet;

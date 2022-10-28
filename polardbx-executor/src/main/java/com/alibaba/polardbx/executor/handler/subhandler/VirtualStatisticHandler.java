@@ -21,13 +21,13 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
-import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.alibaba.polardbx.executor.utils.SchemaMetaUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
@@ -57,80 +57,105 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-        String schemaName = executionContext.getSchemaName();
-        StatisticManager statisticManager = OptimizerContext.getContext(schemaName).getStatisticManager();
-        Map<String, StatisticManager.CacheLine> statisticCache = statisticManager.getStatisticCache();
+        Map<String, Map<String, StatisticManager.CacheLine>> statisticCache =
+            StatisticManager.getInstance().getStatisticCache();
 
-        for (Map.Entry<String, StatisticManager.CacheLine> entry : statisticCache.entrySet()) {
-            String tableName = entry.getKey();
-            StatisticManager.CacheLine cacheLine = entry.getValue();
-            Map<String, TopN> topNMap = cacheLine.getTopNMap();
-            Map<String, Histogram> histogramMap = cacheLine.getHistogramMap();
-
-            TableMeta tableMeta;
-            try {
-                tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
-            } catch (Throwable e) {
-                logger.error(e.getMessage());
+        if (statisticCache == null) {
+            return cursor;
+        }
+        for (Map.Entry<String, Map<String, StatisticManager.CacheLine>> entryTmp : statisticCache.entrySet()) {
+            if (entryTmp.getKey() == null || entryTmp.getValue() == null) {
                 continue;
             }
+            String schema = entryTmp.getKey();
+            for (Map.Entry<String, StatisticManager.CacheLine> entry : entryTmp.getValue().entrySet()) {
+                String tableName = entry.getKey();
+                StatisticManager.CacheLine cacheLine = entry.getValue();
+                Map<String, TopN> topNMap = cacheLine.getTopNMap();
+                Map<String, Histogram> histogramMap = cacheLine.getHistogramMap();
 
-            for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
-                String columnName = columnMeta.getOriginColumnName();
-                Object[] objects = new Object[8];
-                objects[0] = tableName;
-                objects[1] = cacheLine.getRowCount();
-                objects[2] = columnName;
-
-                StatisticResult statisticResult = statisticManager.getCardinality(tableName, columnName);
-                objects[3] = statisticResult.getLongValue();
-                objects[4] = statisticResult.getSource();
-
-                if (topNMap != null && topNMap.get(columnName) != null) {
-                    objects[5] = TopN.serializeToJson(topNMap.get(columnName));
-                } else {
-                    objects[5] = null;
-                }
-                if (histogramMap != null && histogramMap.get(columnName) != null) {
-                    objects[6] = Histogram.serializeToJson(histogramMap.get(columnName));
-                } else {
-                    objects[6] = null;
-                }
-
-                cursor.addRow(objects);
-            }
-
-            // handle mutil columns index
-            for (IndexMeta indexMeta : tableMeta.getIndexes()) {
-                Set<String> cols = indexMeta.getKeyColumns().stream().map(meta -> meta.getOriginColumnName())
-                    .collect(Collectors.toSet());
-                if (cols.size() == 1) {
+                TableMeta tableMeta;
+                try {
+                    OptimizerContext op = OptimizerContext.getContext(schema);
+                    if (op == null) {
+                        continue;
+                    }
+                    SchemaManager sm = op.getLatestSchemaManager();
+                    if (sm == null) {
+                        continue;
+                    }
+                    tableMeta = sm.getTable(tableName);
+                } catch (Throwable e) {
+                    logger.error(e.getMessage());
                     continue;
                 }
-                String columnsName = StatisticUtils.buildColumnsName(cols);
-                Object[] objects = new Object[8];
-                objects[0] = tableName;
-                objects[1] = cacheLine.getRowCount();
-                objects[2] = columnsName;
 
-                StatisticResult statisticResult = statisticManager.getCardinality(tableName, columnsName);
-                objects[3] = statisticResult.getLongValue();
-                objects[4] = statisticResult.getSource();
+                for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
+                    String columnName = columnMeta.getOriginColumnName();
+                    Object[] objects = new Object[11];
+                    objects[0] = schema;
+                    objects[1] = tableName;
+                    objects[2] = cacheLine.getRowCount();
+                    objects[3] = columnName;
 
-                if (topNMap != null && topNMap.get(columnsName) != null) {
-                    objects[5] = TopN.serializeToJson(topNMap.get(columnsName));
-                } else {
-                    objects[5] = null;
+                    StatisticResult statisticResult =
+                        StatisticManager.getInstance().getCardinality(schema, tableName, columnName, false);
+                    objects[4] = statisticResult.getLongValue();
+                    objects[5] = statisticResult.getSource();
+
+                    if (topNMap != null && topNMap.get(columnName) != null) {
+                        objects[6] = TopN.serializeToJson(topNMap.get(columnName));
+                    } else {
+                        objects[7] = null;
+                    }
+                    if (histogramMap != null && histogramMap.get(columnName) != null) {
+                        objects[7] = Histogram.serializeToJson(histogramMap.get(columnName));
+                    } else {
+                        objects[7] = null;
+                    }
+                    objects[8] = cacheLine.getSampleRate();
+                    objects[9] = cacheLine.getLastModifyTime();
+                    objects[10] = cacheLine.getLastAccessTime();
+                    cursor.addRow(objects);
                 }
-                if (histogramMap != null && histogramMap.get(columnsName) != null) {
-                    objects[6] = Histogram.serializeToJson(histogramMap.get(columnsName));
-                } else {
-                    objects[6] = null;
-                }
 
-                cursor.addRow(objects);
+                // handle multi columns index
+                for (IndexMeta indexMeta : tableMeta.getIndexes()) {
+                    Set<String> cols = indexMeta.getKeyColumns().stream().map(ColumnMeta::getOriginColumnName)
+                        .collect(Collectors.toSet());
+                    if (cols.size() == 1) {
+                        continue;
+                    }
+                    String columnsName = StatisticUtils.buildColumnsName(cols);
+                    Object[] objects = new Object[11];
+                    objects[0] = schema;
+                    objects[1] = tableName;
+                    objects[2] = cacheLine.getRowCount();
+                    objects[3] = columnsName;
+
+                    StatisticResult statisticResult =
+                        StatisticManager.getInstance().getCardinality(schema, tableName, columnsName, false);
+                    objects[4] = statisticResult.getLongValue();
+                    objects[5] = statisticResult.getSource();
+
+                    if (topNMap != null && topNMap.get(columnsName) != null) {
+                        objects[6] = TopN.serializeToJson(topNMap.get(columnsName));
+                    } else {
+                        objects[6] = null;
+                    }
+                    if (histogramMap != null && histogramMap.get(columnsName) != null) {
+                        objects[7] = Histogram.serializeToJson(histogramMap.get(columnsName));
+                    } else {
+                        objects[7] = null;
+                    }
+                    objects[8] = cacheLine.getSampleRate();
+                    objects[9] = cacheLine.getLastModifyTime();
+                    objects[10] = cacheLine.getLastAccessTime();
+                    cursor.addRow(objects);
+                }
             }
         }
+
         return cursor;
     }
 }

@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.ddl.job.meta;
 
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.ast.AutoIncrementType;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.validator.SequenceValidator;
-import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceOptRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
@@ -31,8 +31,6 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.sequence.bean.DropSequence;
-import com.alibaba.polardbx.optimizer.core.sequence.bean.SequenceFactory;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
@@ -53,17 +51,17 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.UPPER_LIMI
 public class SequenceMetaChanger {
 
     public static SequenceBean createSequenceIfExists(String schemaName, String logicalTableName,
-                                                      SequenceBean sequenceBean, TablesExtRecord tablesExtRecord,
+                                                      SequenceBean sequence, TablesExtRecord tablesExtRecord,
                                                       boolean isPartitioned, boolean ifNotExists, SqlKind sqlKind,
                                                       ExecutionContext executionContext) {
-        if (sequenceBean == null || !sequenceBean.isNew()) {
+        if (sequence == null || !sequence.isNew()) {
             return null;
         }
 
         boolean isNewPartitionTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
 
         // Check if need default sequence type.
-        if (sequenceBean.getType() == SequenceAttribute.Type.NA) {
+        if (sequence.getType() == Type.NA) {
             if (!isNewPartitionTable) {
                 TableRule tableRule;
                 if (tablesExtRecord != null) {
@@ -72,33 +70,33 @@ public class SequenceMetaChanger {
                     tableRule = OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(logicalTableName);
                 }
                 if (tableRule != null && (isPartitioned || tableRule.isBroadcast())) {
-                    sequenceBean.setType(AutoIncrementType.GROUP);
+                    sequence.setType(AutoIncrementType.GROUP);
                 } else {
                     return null;
                 }
             } else {
-                sequenceBean.setType(AutoIncrementType.GROUP);
+                sequence.setType(AutoIncrementType.NEW);
             }
         }
 
         String seqName = AUTO_SEQ_PREFIX + logicalTableName;
 
-        SequenceAttribute.Type existingSeqType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
-        if (existingSeqType != SequenceAttribute.Type.NA) {
+        Type existingSeqType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
+        if (existingSeqType != Type.NA) {
             boolean allowForCreateTable = sqlKind == SqlKind.CREATE_TABLE && ifNotExists;
             boolean allowForAlterTable = sqlKind == SqlKind.ALTER_TABLE;
             if (allowForCreateTable || allowForAlterTable) {
                 return null;
             }
 
-            if (compareSequence(schemaName, seqName, sequenceBean)) {
+            if (compareSequence(schemaName, seqName, sequence)) {
                 // The sequence has been created, so ignore it.
                 return null;
             }
 
             // Warn user since the sequence already exists.
             StringBuilder errMsg = new StringBuilder();
-            errMsg.append(existingSeqType.getKeyword()).append(" SEQUENCE '");
+            errMsg.append(existingSeqType).append(" SEQUENCE '");
             errMsg.append(seqName).append("' already exists. ");
             errMsg.append("Please try another name to create new sequence or alter an existing sequence instead.");
             throw new SequenceException(errMsg.toString());
@@ -106,21 +104,21 @@ public class SequenceMetaChanger {
 
         // Use START WITH 1 by default when there is no table option
         // AUTO_INCREMENT = xx specified.
-        if (sequenceBean.getStart() == null) {
-            sequenceBean.setStart(DEFAULT_START_WITH);
+        if (sequence.getStart() == null) {
+            sequence.setStart(DEFAULT_START_WITH);
         }
 
-        sequenceBean.setKind(SqlKind.CREATE_SEQUENCE);
+        sequence.setKind(SqlKind.CREATE_SEQUENCE);
 
-        sequenceBean.setSequenceName(seqName);
+        sequence.setName(seqName);
 
-        SequenceValidator.validateSimpleSequence(sequenceBean, executionContext);
+        SequenceValidator.validate(sequence, executionContext);
 
-        return sequenceBean;
+        return sequence;
     }
 
-    private static boolean compareSequence(String schemaName, String seqName, SequenceBean sequenceBean) {
-        SystemTableRecord existingSequenceRecord;
+    private static boolean compareSequence(String schemaName, String seqName, SequenceBean sequence) {
+        SequenceBaseRecord existingSequenceRecord;
 
         SequencesAccessor sequencesAccessor = new SequencesAccessor();
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
@@ -132,117 +130,114 @@ public class SequenceMetaChanger {
             sequencesAccessor.setConnection(null);
         }
 
-        if (existingSequenceRecord == null || sequenceBean == null) {
+        if (existingSequenceRecord == null || sequence == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNEXPECTED, "invalid sequence record or input");
         }
 
-        handleDefaultSequenceParams(sequenceBean);
+        handleDefaultSequenceParams(sequence);
 
         if (existingSequenceRecord instanceof SequenceRecord) {
             SequenceRecord sequenceRecord = (SequenceRecord) existingSequenceRecord;
-            return sequenceRecord.unitCount == sequenceBean.getUnitCount() &&
-                sequenceRecord.unitIndex == sequenceBean.getUnitIndex() &&
-                sequenceRecord.innerStep == sequenceBean.getInnerStep();
+            return sequence.getUnitCount() != null && sequenceRecord.unitCount == sequence.getUnitCount()
+                && sequence.getUnitIndex() != null && sequenceRecord.unitIndex == sequence.getUnitIndex()
+                && sequence.getInnerStep() != null && sequenceRecord.innerStep == sequence.getInnerStep();
         } else if (existingSequenceRecord instanceof SequenceOptRecord) {
             SequenceOptRecord sequenceOptRecord = (SequenceOptRecord) existingSequenceRecord;
-            return sequenceOptRecord.incrementBy == sequenceBean.getIncrement() &&
-                sequenceOptRecord.startWith == sequenceBean.getStart() &&
-                sequenceOptRecord.maxValue == sequenceBean.getMaxValue() &&
-                sequenceOptRecord.cycle == (sequenceBean.getCycle() ? 1 : 0);
+            return sequence.getIncrement() != null && sequenceOptRecord.incrementBy == sequence.getIncrement()
+                && sequence.getStart() != null && sequenceOptRecord.startWith == sequence.getStart()
+                && sequence.getMaxValue() != null && sequenceOptRecord.maxValue == sequence.getMaxValue()
+                && sequence.getCycle() != null && sequenceOptRecord.cycle == (sequence.getCycle() ? 1 : 0);
         } else {
             return false;
         }
     }
 
-    private static void handleDefaultSequenceParams(SequenceBean sequenceBean) {
-        if (sequenceBean.getUnitCount() != null) {
-            if (sequenceBean.getUnitCount() < DEFAULT_UNIT_COUNT ||
-                sequenceBean.getUnitCount() > UPPER_LIMIT_UNIT_COUNT) {
-                sequenceBean.setUnitCount(DEFAULT_UNIT_COUNT);
+    private static void handleDefaultSequenceParams(SequenceBean sequence) {
+        if (sequence.getUnitCount() != null) {
+            if (sequence.getUnitCount() < DEFAULT_UNIT_COUNT ||
+                sequence.getUnitCount() > UPPER_LIMIT_UNIT_COUNT) {
+                sequence.setUnitCount(DEFAULT_UNIT_COUNT);
             }
         }
 
-        if (sequenceBean.getUnitIndex() != null) {
-            if (sequenceBean.getUnitIndex() < DEFAULT_UNIT_INDEX ||
-                sequenceBean.getUnitIndex() >= sequenceBean.getUnitCount()) {
-                sequenceBean.setUnitIndex(DEFAULT_UNIT_INDEX);
+        if (sequence.getUnitIndex() != null) {
+            if (sequence.getUnitIndex() < DEFAULT_UNIT_INDEX ||
+                sequence.getUnitIndex() >= sequence.getUnitCount()) {
+                sequence.setUnitIndex(DEFAULT_UNIT_INDEX);
             }
         }
 
-        if (sequenceBean.getInnerStep() != null) {
-            if (sequenceBean.getInnerStep() < 1) {
-                sequenceBean.setInnerStep(DEFAULT_INNER_STEP);
+        if (sequence.getInnerStep() != null) {
+            if (sequence.getInnerStep() < 1) {
+                sequence.setInnerStep(DEFAULT_INNER_STEP);
             }
         }
 
-        if (sequenceBean.getIncrement() != null) {
-            if (sequenceBean.getIncrement() < DEFAULT_INCREMENT_BY ||
-                sequenceBean.getIncrement() > Integer.MAX_VALUE) {
-                sequenceBean.setIncrement(DEFAULT_INCREMENT_BY);
+        if (sequence.getIncrement() != null) {
+            if (sequence.getIncrement() < DEFAULT_INCREMENT_BY ||
+                sequence.getIncrement() > Integer.MAX_VALUE) {
+                sequence.setIncrement(DEFAULT_INCREMENT_BY);
             }
         }
 
-        if (sequenceBean.getStart() != null) {
-            if (sequenceBean.getStart() < 1 || sequenceBean.getStart() > Long.MAX_VALUE) {
-                sequenceBean.setStart(DEFAULT_START_WITH);
+        if (sequence.getStart() != null) {
+            if (sequence.getStart() < 1 || sequence.getStart() > Long.MAX_VALUE) {
+                sequence.setStart(DEFAULT_START_WITH);
             }
         }
 
-        if (sequenceBean.getMaxValue() != null) {
-            if (sequenceBean.getMaxValue() < 1 || sequenceBean.getMaxValue() > Long.MAX_VALUE) {
-                sequenceBean.setMaxValue(Long.MAX_VALUE);
+        if (sequence.getMaxValue() != null) {
+            if (sequence.getMaxValue() < 1 || sequence.getMaxValue() > Long.MAX_VALUE) {
+                sequence.setMaxValue(Long.MAX_VALUE);
             }
         }
     }
 
     protected static SequenceBean alterSequenceIfExists(String schemaName, String logicalTableName,
-                                                        SequenceBean sequenceBean, TablesExtRecord tablesExtRecord,
+                                                        SequenceBean sequence, TablesExtRecord tablesExtRecord,
                                                         boolean isPartitioned, boolean ifNotExists, SqlKind sqlKind,
                                                         ExecutionContext executionContext) {
         // Check if any new AUTO_INCREMENT column exists and create
         // the corresponding sequence if any.
-        createSequenceIfExists(schemaName, logicalTableName, sequenceBean, tablesExtRecord, isPartitioned, ifNotExists,
+        createSequenceIfExists(schemaName, logicalTableName, sequence, tablesExtRecord, isPartitioned, ifNotExists,
             sqlKind, executionContext);
 
         String seqName = AUTO_SEQ_PREFIX + logicalTableName;
 
-        if (sequenceBean != null && sequenceBean.isNew()) {
-            if (sequenceBean.getKind() == null && sqlKind == SqlKind.ALTER_TABLE) {
-                sequenceBean.setSequenceName(seqName);
-                sequenceBean.setKind(SqlKind.ALTER_SEQUENCE);
+        if (sequence != null && sequence.isNew()) {
+            if (sequence.getKind() == null && sqlKind == SqlKind.ALTER_TABLE) {
+                sequence.setName(seqName);
+                sequence.setKind(SqlKind.ALTER_SEQUENCE);
             }
-            return sequenceBean;
+            return sequence;
         }
 
         // If no AUTO_INCREMENT column added and table options
         // exist, then check if table option AUTO_INCREMENT exists
         // and alter the existing sequence accordingly.
 
-        SequenceAttribute.Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
+        Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
+        boolean seqTypeIgnored = existingType == Type.NA || existingType == Type.TIME;
 
-        if (sequenceBean != null && !sequenceBean.isNew() && existingType != SequenceAttribute.Type.TIME) {
+        if (sequence != null && !sequence.isNew() && !seqTypeIgnored) {
             // Get table option AUTO_INCREMENT = xxx.
-            final Long start = sequenceBean.getStart();
-            if (start != null && start >= 0) {
-                // If it's a single table, maybe there's no sequence.
-                if (SequenceManagerProxy.getInstance().isUsingSequence(schemaName, logicalTableName)) {
-                    sequenceBean.setSchemaName(schemaName);
-                    sequenceBean.setSequenceName(seqName);
+            if (sequence.getStart() != null && sequence.getStart() >= 0) {
+                sequence.setSchemaName(schemaName);
+                sequence.setName(seqName);
 
-                    if (sequenceBean.getInnerStep() == null) {
-                        sequenceBean.setInnerStep(DEFAULT_INNER_STEP);
-                    }
-
-                    if (sequenceBean.getToType() == null) {
-                        sequenceBean.setToType(SequenceAttribute.Type.NA);
-                    }
-
-                    sequenceBean.setKind(SqlKind.ALTER_SEQUENCE);
-
-                    SequenceValidator.validateSimpleSequence(sequenceBean, executionContext);
-
-                    return sequenceBean;
+                if (sequence.getInnerStep() == null) {
+                    sequence.setInnerStep(DEFAULT_INNER_STEP);
                 }
+
+                if (sequence.getToType() == null) {
+                    sequence.setToType(Type.NA);
+                }
+
+                sequence.setKind(SqlKind.ALTER_SEQUENCE);
+
+                SequenceValidator.validate(sequence, executionContext);
+
+                return sequence;
             }
         }
 
@@ -253,27 +248,27 @@ public class SequenceMetaChanger {
                                                       String newLogicalTableName) {
         String seqName = AUTO_SEQ_PREFIX + logicalTableName;
         String newSeqName = AUTO_SEQ_PREFIX + newLogicalTableName;
-        SequenceAttribute.Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
-        if (existingType != SequenceAttribute.Type.NA) {
-            SequenceBean sequenceBean = new SequenceBean();
-            sequenceBean.setSchemaName(schemaName);
-            sequenceBean.setSequenceName(seqName);
-            sequenceBean.setNewSequenceName(newSeqName);
-            sequenceBean.setKind(SqlKind.RENAME_SEQUENCE);
-            return sequenceBean;
+        Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
+        if (existingType != Type.NA) {
+            SequenceBean sequence = new SequenceBean();
+            sequence.setSchemaName(schemaName);
+            sequence.setName(seqName);
+            sequence.setNewName(newSeqName);
+            sequence.setKind(SqlKind.RENAME_SEQUENCE);
+            return sequence;
         }
         return null;
     }
 
     public static SequenceBean dropSequenceIfExists(String schemaName, String logicalTableName) {
         String seqName = AUTO_SEQ_PREFIX + logicalTableName;
-        DropSequence dropSequence = SequenceFactory.getDropSequence(schemaName, seqName, true);
-        if (dropSequence != null) {
-            SequenceBean sequenceBean = new SequenceBean();
-            sequenceBean.setSchemaName(schemaName);
-            sequenceBean.setSequenceName(seqName);
-            sequenceBean.setKind(SqlKind.DROP_SEQUENCE);
-            return sequenceBean;
+        Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
+        if (existingType != Type.NA) {
+            SequenceBean sequence = new SequenceBean();
+            sequence.setSchemaName(schemaName);
+            sequence.setName(seqName);
+            sequence.setKind(SqlKind.DROP_SEQUENCE);
+            return sequence;
         }
         return null;
     }

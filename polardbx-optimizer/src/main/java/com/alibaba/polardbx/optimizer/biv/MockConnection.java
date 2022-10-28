@@ -74,6 +74,7 @@ public class MockConnection extends DruidPooledConnection implements Connection 
 
     @Override
     public void close() throws SQLException {
+        this.closed = true;
     }
 
     @Override

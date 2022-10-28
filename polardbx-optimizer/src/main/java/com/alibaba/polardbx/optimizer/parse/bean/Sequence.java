@@ -16,28 +16,25 @@
 
 package com.alibaba.polardbx.optimizer.parse.bean;
 
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.AutoIncrementType;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
 
-/**
- * ${DESCRIPTION}
- *
- * @author hongxi.chx
- */
 public class Sequence {
 
     private Long start;
-    private Integer increment;      // increment by
+    private Integer increment;
     private Long maxValue;
     private Integer unitCount;
     private Integer unitIndex;
-    private SequenceAttribute.Type type;
-    private SequenceAttribute.Type toType;
-    private Integer innerStep;      // step
+    private Type type;
+    private Type toType;
+    private Integer innerStep;
     private SqlKind kind;
     private Boolean cycle;
     private String sequenceName;
@@ -48,7 +45,7 @@ public class Sequence {
     }
 
     private Sequence(AutoIncrementType type) {
-        this.type = getType(type);
+        setType(type);
     }
 
     public static Sequence newSequence(AutoIncrementType type) {
@@ -87,11 +84,11 @@ public class Sequence {
         this.unitCount = unitCount;
     }
 
-    public SequenceAttribute.Type getType() {
+    public Type getType() {
         return type;
     }
 
-    public void setType(SequenceAttribute.Type type) {
+    public void setType(Type type) {
         this.type = type;
     }
 
@@ -105,59 +102,45 @@ public class Sequence {
 
     public void setType(AutoIncrementType autoIncrementType) {
         switch (autoIncrementType) {
+        case NEW:
+            type = Type.NEW;
+            break;
         case GROUP:
-            type = SequenceAttribute.Type.GROUP;
+            type = Type.GROUP;
             break;
         case SIMPLE:
-            type = SequenceAttribute.Type.SIMPLE;
+            type = Type.SIMPLE;
             break;
         case TIME:
-            type = SequenceAttribute.Type.TIME;
+            type = Type.TIME;
             break;
         default:
-            type = SequenceAttribute.Type.NA;
+            type = Type.NA;
             break;
         }
     }
 
-    public SequenceAttribute.Type getToType() {
+    public Type getToType() {
         return toType;
     }
 
     public void setToType(AutoIncrementType autoIncrementType) {
         switch (autoIncrementType) {
+        case NEW:
+            toType = Type.NEW;
+            break;
         case GROUP:
-            toType = SequenceAttribute.Type.GROUP;
+            toType = Type.GROUP;
             break;
         case SIMPLE:
-            toType = SequenceAttribute.Type.SIMPLE;
+            toType = Type.SIMPLE;
             break;
         case TIME:
-            toType = SequenceAttribute.Type.TIME;
+            toType = Type.TIME;
             break;
-
         default:
             throw new NotSupportException("Not supported change to " + autoIncrementType.name());
         }
-    }
-
-    public static SequenceAttribute.Type getType(AutoIncrementType autoIncrementType) {
-        SequenceAttribute.Type type = SequenceAttribute.Type.NA;
-        switch (autoIncrementType) {
-        case GROUP:
-            type = SequenceAttribute.Type.GROUP;
-            break;
-        case SIMPLE:
-            type = SequenceAttribute.Type.SIMPLE;
-            break;
-        case TIME:
-            type = SequenceAttribute.Type.TIME;
-            break;
-        default:
-            type = SequenceAttribute.Type.NA;
-            break;
-        }
-        return type;
     }
 
     public SqlKind getKind() {
@@ -212,19 +195,19 @@ public class Sequence {
         sequenceBean.setUnitIndex(unitIndex);
         sequenceBean.setType(type);
         sequenceBean.setToType(toType);
-        if (toType != null && toType != SequenceAttribute.Type.NA) {
-            if (start == null && toType != SequenceAttribute.Type.TIME) {
-                throw new NotSupportException(
-                    "Not supported changing to " + toType.name() + " without assign START WITH!");
+        if (toType != null && toType != Type.NA) {
+            if (start == null && toType != Type.TIME) {
+                throw new TddlRuntimeException(ErrorCode.ERR_SEQUENCE,
+                    "Changing to " + toType.name() + " sequence must assign a START WITH value");
             }
         } else {
-            sequenceBean.setToType(SequenceAttribute.Type.NA);
+            sequenceBean.setToType(Type.NA);
         }
-        sequenceBean.setInnerStep(innerStep);//step
+        sequenceBean.setInnerStep(innerStep);
         sequenceBean.setKind(kind);
         sequenceBean.setCycle(cycle);
-        sequenceBean.setSequenceName(SQLUtils.normalizeNoTrim(sequenceName));
-        sequenceBean.setNewSequenceName(SQLUtils.normalizeNoTrim(newSequenceName));
+        sequenceBean.setName(SQLUtils.normalizeNoTrim(sequenceName));
+        sequenceBean.setNewName(SQLUtils.normalizeNoTrim(newSequenceName));
         sequenceBean.setSchemaName(schemaName);
         return sequenceBean;
     }

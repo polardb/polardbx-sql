@@ -18,7 +18,11 @@ package com.alibaba.polardbx.matrix.jdbc;
 
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.IdGenerator;
-import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.logger.LoggerInit;
+import com.alibaba.polardbx.common.logical.ITConnection;
+import com.alibaba.polardbx.common.logical.ITDataSource;
 import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
@@ -40,28 +44,35 @@ import com.alibaba.polardbx.gms.config.InstConfigReceiver;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.matrix.config.MatrixConfigHolder;
-import com.alibaba.polardbx.matrix.monitor.MatrixRegisterHelper;
 import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
+import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import com.alibaba.polardbx.rule.TddlRule;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.transaction.TransactionManager;
+import com.alibaba.polardbx.transaction.utils.ParamValidationUtils;
 import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
 import java.io.ByteArrayInputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.text.MessageFormat;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.StringTokenizer;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -70,7 +81,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author mengshi.sunmengshi 2013-11-22 下午3:26:14
  * @since 5.0.0
  */
-public class TDataSource extends AbstractLifecycle implements DataSource {
+public class TDataSource extends AbstractLifecycle implements ITDataSource {
 
     public final static Logger logger = LoggerFactory.getLogger(TDataSource.class);
     private boolean sharding = true;
@@ -96,8 +107,6 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
     private SQLRecorder recorder = null;
 
     private MatrixStatistics statistics = new MatrixStatistics();
-    private AtomicLong activeConnectionCount = new AtomicLong(0);
-    // private SlaveDelayFetcher slaveDelayFetcher = null;
 
     private IServerConfigManager serverConfigManager = null;
 
@@ -141,6 +150,18 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
             .getPropertyBoolean(this.connectionProperties, ConnectionProperties.ENABLE_VERSION_CHECK, true)) {
             System.setProperty("tddl.version.check", "false");
         }
+
+        TableGroupVersionManager.segmentLockSize = GeneralUtil.getPropertyInt(
+            this.connectionProperties,
+            ConnectionProperties.TG_MDL_SEGMENT_SIZE,
+            TableGroupVersionManager.segmentLockSize
+        );
+
+        SchemaVersionManager.segmentLockSize = GeneralUtil.getPropertyInt(
+            this.connectionProperties,
+            ConnectionProperties.DB_MDL_SEGMENT_SIZE,
+            SchemaVersionManager.segmentLockSize
+        );
 
         Version.checkVersion();
         this.executor = new PlanExecutor();
@@ -188,8 +209,6 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
         } catch (Throwable e) {
             logger.error("init recyclebin error," + appName + ":" + appName);
         }
-
-        MatrixRegisterHelper.registerMatrix(this);
 
         MatrixStatistics.setApp(schemaName, appName);
         if (!ConfigDataMode.isFastMock()) {
@@ -308,6 +327,12 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
             this.putConnectionProperties(key.toString(), globalP.getProperty(key.toString()));
         }
 
+        if (configHolder != null && configHolder.isInited()) {
+            // Reload connection properties only after Sequence Manager
+            // has been initialized along with MatrixConfigHolder.
+            configHolder.getExecutorContext().getSequenceManager().reloadConnProps(schemaName, connectionProperties);
+        }
+
         /**
          * 是否开启HINT PARSER 模式识别HINT
          */
@@ -341,6 +366,14 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
             recycleBin.setCmds(this.getConnectionProperties());
         }
 
+        // Reset all timer tasks.
+        if (ParamValidationUtils.isAnyTimerTaskParam(globalP)) {
+            TransactionManager tm = TransactionManager.getInstance(schemaName);
+            if (null != tm && tm.isInited()) {
+                tm.resetAllTimerTasks();
+            }
+        }
+
         logger.info("load connection properties ok");
         logger.info(String.valueOf(this.connectionProperties));
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("load connection properties ok");
@@ -348,7 +381,7 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
     }
 
     @Override
-    public IConnection getConnection() throws SQLException {
+    public ITConnection getConnection() throws SQLException {
         try {
             if (!isInited()) {
                 init();
@@ -370,18 +403,15 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
     }
 
     @Override
-    public Connection getConnection(String username, String password) throws SQLException {
-        return this.getConnection();
-    }
-
-    @Override
     public void doDestroy() {
+        if (destroyed) {
+            logger.warn(String.format("TDataSource:%s is destroyed, so ignore now!!!", appName));
+            return;
+        }
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("--------------");
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("TDataSource stop");
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("appName is: " + appName);
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("unitName is: " + unitName);
-
-        MatrixRegisterHelper.unRegisterMatrix(this);
 
         if (!shareGlobalExecutor && globalExecutorService != null) {
             globalExecutorService.shutdownNow();
@@ -490,42 +520,6 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
         this.sharding = sharding;
     }
 
-    @Override
-    public PrintWriter getLogWriter() throws SQLException {
-        throw new UnsupportedOperationException("getLogWriter");
-    }
-
-    @Override
-    public int getLoginTimeout() throws SQLException {
-        throw new UnsupportedOperationException("getLoginTimeout");
-    }
-
-    @Override
-    public void setLogWriter(PrintWriter arg0) throws SQLException {
-        throw new UnsupportedOperationException("setLogWriter");
-
-    }
-
-    @Override
-    public void setLoginTimeout(int arg0) throws SQLException {
-        throw new UnsupportedOperationException("setLoginTimeout");
-
-    }
-
-    @Override
-    public boolean isWrapperFor(Class<?> iface) throws SQLException {
-        return iface.isAssignableFrom(this.getClass());
-    }
-
-    @Override
-    public <T> T unwrap(Class<T> iface) throws SQLException {
-        try {
-            return (T) this;
-        } catch (Exception e) {
-            throw new SQLException(e);
-        }
-    }
-
     public void setWriteMode(String writeMode) {
         this.writeMode = writeMode;
     }
@@ -554,15 +548,6 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
 
     public boolean isStressTestValid() {
         return stressTestValid;
-    }
-
-    public void setStressTestValid(boolean stressTestValid) {
-        this.stressTestValid = stressTestValid;
-    }
-
-    @Override
-    public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
-        throw new UnsupportedOperationException("getParentLogger");
     }
 
     public MatrixStatistics getStatistics() {
@@ -596,10 +581,6 @@ public class TDataSource extends AbstractLifecycle implements DataSource {
 
     public InternalTimeZone getLogicalDbTimeZone() {
         return logicalDbTimeZone;
-    }
-
-    public IdGenerator getTraceIdGenerator() {
-        return traceIdGenerator;
     }
 
     public void setTraceIdGenerator(IdGenerator traceIdGenerator) {

@@ -41,21 +41,27 @@ import java.util.Collections;
 import java.util.List;
 
 public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Comparable<SQLIdentifierExpr> {
-    protected String    name;
-    private   long      hashCode64;
+    protected String name;
+    private long hashCode64;
 
-    private   SQLObject resolvedColumn;
-    private   SQLObject resolvedOwnerObject;
+    private SQLObject resolvedColumn;
+    private SQLObject resolvedOwnerObject;
 
-    public SQLIdentifierExpr(){
+    /**
+     * whether enclosed by '`', used to distinguish function name and column name
+     * only used in parameterized sql
+     */
+    private boolean enclosedByBacktick = false;
+
+    public SQLIdentifierExpr() {
 
     }
 
-    public SQLIdentifierExpr(String name){
+    public SQLIdentifierExpr(String name) {
         this.name = name;
     }
 
-    public SQLIdentifierExpr(String name, long hash_lower){
+    public SQLIdentifierExpr(String name, long hash_lower) {
         this.name = name;
         // Note: This hash_lower is calculated from bytes of SQL text in Lexer, which may not
         // match the hash_lower calculated from alias (String)
@@ -88,6 +94,14 @@ public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Com
         }
     }
 
+    public boolean isEnclosedByBacktick() {
+        return enclosedByBacktick;
+    }
+
+    public void setEnclosedByBacktick(boolean enclosedByBacktick) {
+        this.enclosedByBacktick = enclosedByBacktick;
+    }
+
     public long nameHashCode64() {
         return hashCode64();
     }
@@ -95,7 +109,7 @@ public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Com
     @Override
     public long hashCode64() {
         if (hashCode64 == 0
-                && name != null) {
+            && name != null) {
             hashCode64 = FnvHash.hashCode64(name);
         }
         return hashCode64;
@@ -118,7 +132,7 @@ public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Com
     @Override
     public int hashCode() {
         long value = hashCode64();
-        return (int)(value ^ (value >>> 32));
+        return (int) (value ^ (value >>> 32));
     }
 
     @Override
@@ -139,6 +153,7 @@ public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Com
         SQLIdentifierExpr x = new SQLIdentifierExpr(this.name, hashCode64);
         x.resolvedColumn = resolvedColumn;
         x.resolvedOwnerObject = resolvedOwnerObject;
+        x.enclosedByBacktick = enclosedByBacktick;
 
         if (hint != null) {
             x.hint = hint.clone();
@@ -150,7 +165,7 @@ public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Com
     public SQLIdentifierExpr simplify() {
         String normalized = SQLUtils.normalize(name);
         if (normalized != name) {
-           return new SQLIdentifierExpr(normalized, hashCode64);
+            return new SQLIdentifierExpr(normalized, hashCode64);
         }
         return this;
     }
@@ -258,8 +273,8 @@ public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Com
             queryBlock = union.getFirstQueryBlock();
         } else if (resolvedOwnerObject instanceof SQLWithSubqueryClause.Entry) {
             queryBlock = ((SQLWithSubqueryClause.Entry) resolvedOwnerObject)
-                    .getSubQuery()
-                    .getFirstQueryBlock();
+                .getSubQuery()
+                .getFirstQueryBlock();
         }
 
         if (queryBlock != null) {
@@ -292,7 +307,7 @@ public final class SQLIdentifierExpr extends SQLExprImpl implements SQLName, Com
     @Override
     public int compareTo(SQLIdentifierExpr o) {
         return this.normalizedName()
-                .compareTo(
-                        o.normalizedName());
+            .compareTo(
+                o.normalizedName());
     }
 }

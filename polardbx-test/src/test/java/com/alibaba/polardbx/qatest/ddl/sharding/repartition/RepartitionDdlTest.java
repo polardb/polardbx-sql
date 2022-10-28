@@ -308,7 +308,7 @@ public class RepartitionDdlTest extends RepartitionBaseTest {
         int originCount = random.nextInt(maxTbCount) + 2;
         int newCount = random.nextInt(maxTbCount) + 2;
         while (newCount == originCount) {
-            newCount = random.nextInt(maxTbCount);
+            newCount = random.nextInt(maxTbCount) + 2;
         }
 
         executeSimpleTestCase(
@@ -591,7 +591,7 @@ public class RepartitionDdlTest extends RepartitionBaseTest {
         executeDDL("drop table if exists st");
         executeDDL("create table st(c1 bigint primary key,c2 bigint,c3 bigint)");
 
-        String ddl = failPointHint + "alter table st broadcast";
+        String ddl = repartitionHint + "alter table st broadcast";
         executeDDL(ddl);
     }
 
@@ -608,7 +608,7 @@ public class RepartitionDdlTest extends RepartitionBaseTest {
         executeDDL("drop table if exists pt");
         executeDDL("create table pt (c1 bigint, c2 bigint, c3 bigint) dbpartition by hash(c1)");
 
-        String ddl = failPointHint + "alter table pt broadcast";
+        String ddl = repartitionHint + "alter table pt broadcast";
         executeDDL(ddl);
     }
 
@@ -625,7 +625,7 @@ public class RepartitionDdlTest extends RepartitionBaseTest {
         executeDDL("drop table if exists bt");
         executeDDL("create table bt (c1 bigint, c2 bigint, c3 bigint) broadcast");
 
-        String ddl = failPointHint + "alter table bt single";
+        String ddl = repartitionHint + "alter table bt single";
         executeDDL(ddl);
     }
 
@@ -642,7 +642,7 @@ public class RepartitionDdlTest extends RepartitionBaseTest {
         executeDDL("drop table if exists st");
         executeDDL("create table st(c1 bigint,c2 bigint,c3 bigint)");
 
-        String ddl = failPointHint + "alter table st broadcast";
+        String ddl = repartitionHint + "alter table st broadcast";
         executeDDL(ddl);
     }
 
@@ -659,7 +659,7 @@ public class RepartitionDdlTest extends RepartitionBaseTest {
         executeDDL("drop table if exists pt");
         executeDDL("create table pt(c1 bigint,c2 bigint,c3 bigint) dbpartition by hash(c1)");
 
-        String ddl = failPointHint + "alter table pt broadcast";
+        String ddl = repartitionHint + "alter table pt broadcast";
         executeDDL(ddl);
     }
 
@@ -676,7 +676,7 @@ public class RepartitionDdlTest extends RepartitionBaseTest {
         executeDDL("drop table if exists bt");
         executeDDL("create table bt(c1 bigint,c2 bigint,c3 bigint) broadcast");
 
-        String ddl = failPointHint + "alter table bt broadcast";
+        String ddl = repartitionHint + "alter table bt broadcast";
         executeDDL(ddl);
     }
 

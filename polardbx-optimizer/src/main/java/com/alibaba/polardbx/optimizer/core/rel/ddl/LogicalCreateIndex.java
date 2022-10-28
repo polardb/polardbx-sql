@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
+import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
@@ -34,7 +36,9 @@ import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.rel.ddl.CreateIndex;
 import org.apache.calcite.sql.SqlCreateIndex;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexOption;
+import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -88,7 +92,7 @@ public class LogicalCreateIndex extends LogicalTableOperation {
 
     /**
      * 1. Create local index on primary table if auto-partitioned
-     * 2. Create local index on clustered-index table if clustered
+     * 2. Create local index on clustered-index table if auto-partitioned
      */
     private void prepareLocalIndexWithGsiData() {
         createIndexWithGsiPreparedData = new CreateIndexWithGsiPreparedData();
@@ -96,9 +100,9 @@ public class LogicalCreateIndex extends LogicalTableOperation {
 
         if (isAutoPartition()) {
             createLocalIndexPreparedDataList.add(prepareCreateLocalIndexData(tableName, indexName, false, true));
-        }
 
-        prepareIndexOnClusteredTable(true);
+            prepareIndexOnClusteredTable(true);
+        }
 
         createIndexWithGsiPreparedData.setLocalIndexPreparedDataList(createLocalIndexPreparedDataList);
     }
@@ -115,17 +119,20 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         final TableRule primaryTableRule = optimizerContext.getRuleManager().getTddlRule().getTable(tableName);
         PartitionInfo partitionInfo = null;
         boolean isBroadcast = false;
+        String locality = "";
         if (isNewPartDb) {
             final PartitionInfoManager partitionInfoManager =
                 OptimizerContext.getContext(schemaName).getPartitionInfoManager();
             partitionInfo = partitionInfoManager.getPartitionInfo(tableName);
             isBroadcast = partitionInfo.isBroadcastTable();
+            locality = partitionInfo.getLocality();
         } else {
             isBroadcast = primaryTableRule.isBroadcast();
         }
 
-        final LocalPartitionDefinitionInfo localPartitionDefinitionInfo = primaryTableMeta.getLocalPartitionDefinitionInfo();
-        if(localPartitionDefinitionInfo != null){
+        final LocalPartitionDefinitionInfo localPartitionDefinitionInfo =
+            primaryTableMeta.getLocalPartitionDefinitionInfo();
+        if (localPartitionDefinitionInfo != null) {
             localPartitionDefinitionInfo.setId(null);
             localPartitionDefinitionInfo.setTableName(indexName);
         }
@@ -149,13 +156,25 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             unique,
             sqlCreateIndex.createClusteredIndex(),
             null,
-            ((CreateIndex) relDdl).getPartBoundExprInfo()
+            locality,
+            ((CreateIndex) relDdl).getPartBoundExprInfo(),
+            sqlCreateIndex.getOriginalSql()
         );
 
         preparedData.setPrimaryPartitionInfo(partitionInfo);
         preparedData.setPrimaryTableRule(primaryTableRule);
         preparedData.setSqlCreateIndex(sqlCreateIndex);
         preparedData.setTableVersion(primaryTableMeta.getVersion());
+        if (isNewPartDb) {
+            JoinGroupInfoRecord record = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tableName, null);
+            if (record != null) {
+                SqlIdentifier joinGroup = new SqlIdentifier(record.joinGroupName, SqlParserPos.ZERO);
+                preparedData.setJoinGroupName(joinGroup);
+                if (preparedData.getIndexTablePreparedData() != null) {
+                    preparedData.getIndexTablePreparedData().setJoinGroupName(joinGroup);
+                }
+            }
+        }
 
         if (sqlCreateIndex.getOptions() != null) {
             String indexComment = "";
@@ -197,7 +216,8 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
                 if (gsiEntry.getValue().clusteredIndex) {
                     final String clusteredTableName = gsiEntry.getKey();
-                    CreateLocalIndexPreparedData preparedData = prepareCreateLocalIndexData(clusteredTableName, indexName, true, onGsi);
+                    CreateLocalIndexPreparedData preparedData =
+                        prepareCreateLocalIndexData(clusteredTableName, indexName, true, onGsi);
                     if (onGsi) {
                         preparedData.setTableVersion(sm.getTable(clusteredTableName).getVersion());
                     }

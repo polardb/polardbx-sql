@@ -1,0 +1,96 @@
+- sql: |
+    select a.id as b
+    from test_single_table a
+    where current_user() = a.data;
+
+  plan: |
+    project(b="id")
+      filter(condition="current_user() = data")
+        logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
+
+- sql: |
+    select a.id as b, concat(current_user(), a.data)
+    from test_single_table a;
+
+  plan: |
+    project(b="id", concat(current_user(), a.data)="concat(current_user(), data)")
+      logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
+
+- sql: |
+    select a.id, a.data
+    from test_single_table a order by concat(current_user(), a.data);
+
+  plan: |
+    project(id="id", data="data")
+      memsort(sort="concat(current_user(), a.data) asc")
+        project(id="id", data="data", concat(current_user(), a.data)="concat(current_user(), data)")
+          logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
+
+- sql: |
+    select a.id as b
+    from test_hash_tb a
+    where current_user() = a.name and id = 1;
+
+  plan: |
+    project(b="id")
+      filter(condition="current_user() = name")
+        logicalview(tables="optest_0001.test_hash_tb", sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where (`id` = 1)")
+
+- sql: |
+    select a.id as b, concat(current_user(), a.name)
+    from test_hash_tb a where id = 1;
+
+  plan: |
+    project(b="id", concat(current_user(), a.name)="concat(current_user(), name)")
+      logicalview(tables="optest_0001.test_hash_tb", sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` where (`id` = 1)")
+
+- sql: |
+    select a.id, a.name
+    from test_hash_tb a where id = 1 order by concat(current_user(), a.name);
+
+  plan: |
+    project(id="id", name="name")
+      memsort(sort="concat(current_user(), a.name) asc")
+        project(id="id", name="name", concat(current_user(), a.name)="concat(current_user(), name)")
+          logicalview(tables="optest_0001.test_hash_tb", sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` where (`id` = 1)")
+
+- sql: |
+    select a.id as b
+    from test_hash_tb a
+    where current_user() = a.name;
+
+  plan: |
+    project(b="id")
+      filter(condition="current_user() = name")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
+
+- sql: |
+    select a.id as b, concat(current_user(), a.name)
+    from test_hash_tb a;
+
+  plan: |
+    project(b="id", concat(current_user(), a.name)="concat(current_user(), name)")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+
+- sql: |
+    select a.id, a.name
+    from test_hash_tb a order by concat(current_user(), a.name);
+
+  plan: |
+    project(id="id", name="name")
+      memsort(sort="concat(current_user(), a.name) asc")
+        project(id="id", name="name", concat(current_user(), a.name)="concat(current_user(), name)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+
+- sql: |
+    select * from test_single_table a where a.data in (
+    select concat(current_user(), a.data) from test_single_table a);
+
+  plan: |
+    semihashjoin(condition="data = concat(current_user(), a.data)", type="semi")
+      logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
+      project(concat(current_user(), a.data)="concat(current_user(), data)")
+        logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")

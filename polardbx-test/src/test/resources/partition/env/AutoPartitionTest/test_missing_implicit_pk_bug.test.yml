@@ -1,0 +1,27 @@
+
+# same with pk
+drop table if exists `tb2`;
+create table tb2(id int primary key, a int, unique index id_index(id));
+show create table `tb2`;
+show full create table `tb2`;
+show create table `id_index`;
+show full create table `id_index`;
+  
+# same index
+drop table if exists `tb2`;
+create table tb2(id int primary key, a int, local index lidx(id), unique index id_index(a));
+show create table `tb2`;
+show full create table `tb2`;
+show create table `id_index`;
+show full create table `id_index`;
+  
+# same unique index
+drop table if exists `tb2`;
+create table tb2(id int primary key, a int, local unique index luidx(id), unique index id_index(a));
+show create table `tb2`;
+show full create table `tb2`;
+show create table `id_index`;
+show full create table `id_index`;
+
+# cleanup
+drop table if exists `tb2`;

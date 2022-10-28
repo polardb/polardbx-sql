@@ -23,6 +23,8 @@ public final class ServerParseResize {
 
     public static final int OTHER = -1;
     public static final int PLANCACHE = 1;
+    public static final int PROCEDURE_CACHE = 2;
+    public static final int FUNCTION_CACHE = 3;
 
     public static int parse(String stmt, int offset) {
         return parse(ByteString.from(stmt), offset);
@@ -40,12 +42,26 @@ public final class ServerParseResize {
                 continue;
             case 'P':
             case 'p':
-                return planCacheCheck(stmt, i);
+                return pCheck(stmt, i);
+            case 'F':
+            case 'f':
+                return functionCheck(stmt, i);
             default:
                 return OTHER;
             }
         }
         return OTHER;
+    }
+
+    private static int pCheck(ByteString stmt, int offset) {
+        final String expect = "PROCEDURE CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            int endOffset = offset + expect.length();
+            if (stmt.substring(offset, endOffset).equalsIgnoreCase(expect)) {
+                return (endOffset << 8) | PROCEDURE_CACHE;
+            }
+        }
+        return planCacheCheck(stmt, offset);
     }
 
     private static int planCacheCheck(ByteString stmt, int offset) {
@@ -54,6 +70,17 @@ public final class ServerParseResize {
             int endOffset = offset + expect.length();
             if (stmt.substring(offset, endOffset).equalsIgnoreCase(expect)) {
                 return (endOffset << 8) | PLANCACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int functionCheck(ByteString stmt, int offset) {
+        final String expect = "FUNCTION CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            int endOffset = offset + expect.length();
+            if (stmt.substring(offset, endOffset).equalsIgnoreCase(expect)) {
+                return (endOffset << 8) | FUNCTION_CACHE;
             }
         }
         return OTHER;

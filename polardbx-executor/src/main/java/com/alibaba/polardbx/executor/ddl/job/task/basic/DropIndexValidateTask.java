@@ -33,11 +33,12 @@ public class DropIndexValidateTask extends BaseValidateTask {
     private TableGroupConfig tableGroupConfig;
 
     @JSONCreator
-    public DropIndexValidateTask(String schemaName, String logicalTableName, String indexName, TableGroupConfig tableGroupConfig) {
+    public DropIndexValidateTask(String schemaName, String logicalTableName, String indexName,
+                                 TableGroupConfig tableGroupConfig) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.indexName = indexName;
-        this.tableGroupConfig = tableGroupConfig;
+        this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
     }
 
     @Override

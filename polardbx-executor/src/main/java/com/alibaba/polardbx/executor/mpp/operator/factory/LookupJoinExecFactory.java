@@ -19,14 +19,14 @@ package com.alibaba.polardbx.executor.mpp.operator.factory;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.LookupJoinExec;
 import com.alibaba.polardbx.executor.operator.LookupJoinGsiExec;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinUtils;
-import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
-import com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
@@ -44,7 +44,6 @@ import java.util.stream.Collectors;
 public class LookupJoinExecFactory extends ExecutorFactory {
 
     private Join join;
-    private LookupPredicate predicate;
     private List<EquiJoinKey> allJoinKeys; // including null-safe equal (`<=>`)
     private List<EquiJoinKey> joinKeys;
     private boolean maxOneRow;
@@ -59,7 +58,6 @@ public class LookupJoinExecFactory extends ExecutorFactory {
         this.allJoinKeys = EquiJoinUtils.buildEquiJoinKeys(join, join.getOuter(), join.getInner(),
             (RexCall) join.getCondition(), join.getJoinType(), true);
         this.joinKeys = allJoinKeys.stream().filter(k -> !k.isNullSafeEqual()).collect(Collectors.toList());
-        this.predicate = new LookupPredicateBuilder(join).build(allJoinKeys);
         addInput(innerFactory);
         addInput(outerFactory);
     }
@@ -68,14 +66,23 @@ public class LookupJoinExecFactory extends ExecutorFactory {
     public Executor createExecutor(ExecutionContext context, int index) {
         Executor ret;
         Executor inner;
+        boolean allowMultiReadConn = ExecUtils.allowMultipleReadConns(context, null);
+
         Executor outer = getInputs().get(1).createExecutor(context, index);
+        if (getInputs().get(1) instanceof LogicalViewExecutorFactory) {
+            LogicalView outerLv = ((LogicalViewExecutorFactory) getInputs().get(1)).getLogicalView();
+            allowMultiReadConn = allowMultiReadConn && ExecUtils.allowMultipleReadConns(context, outerLv);
+        }
 
         int shardCount = -1;
         int parallelism = 1;
         if (getInputs().get(0) instanceof LogicalViewExecutorFactory) {
             LogicalViewExecutorFactory innerLvExecFactory = (LogicalViewExecutorFactory) getInputs().get(0);
+            LogicalView innerLv = innerLvExecFactory.getLogicalView();
+            allowMultiReadConn = allowMultiReadConn && ExecUtils.allowMultipleReadConns(context, innerLv);
+
             // 分库 -> List[List[一个物理 SQL 中的所有表]]]
-            Map<String, List<List<String>>> targetTables = innerLvExecFactory.getLogicalView().getTargetTables(context);
+            Map<String, List<List<String>>> targetTables = innerLv.getTargetTables(context);
             shardCount = targetTables.values().stream().mapToInt(List::size).sum();
             parallelism = innerLvExecFactory.getParallelism();
         }
@@ -94,10 +101,10 @@ public class LookupJoinExecFactory extends ExecutorFactory {
 
         if (!isLookUpGsi) {
             ret = new LookupJoinExec(outer, inner, join.getJoinType(), maxOneRow, joinKeys, allJoinKeys,
-                otherCondition, predicate, context, shardCount, parallelism);
+                otherCondition, context, shardCount, parallelism, allowMultiReadConn);
         } else {
             ret = new LookupJoinGsiExec(outer, inner, join.getJoinType(), maxOneRow, joinKeys, allJoinKeys,
-                otherCondition, predicate, context, shardCount, parallelism);
+                otherCondition, context, shardCount, parallelism, allowMultiReadConn);
         }
 
         ret.setId(join.getRelatedId());

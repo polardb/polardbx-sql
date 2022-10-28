@@ -90,38 +90,29 @@ public class CreateTableJobFactory extends DdlJobFactory {
                 physicalPlanData.isIfNotExists(), physicalPlanData.getKind(), hasTimestampColumnDefault,
                 binaryColumnDefaultValues);
 
+        //Renew this one.
         LocalityDesc locality = physicalPlanData.getLocalityDesc();
-        StoreTableLocalityTask storeLocalityTask = locality == null ?
-            null :
-            new StoreTableLocalityTask(schemaName, logicalTableName, locality.toString(), false);
+        if(locality == null){
+            locality = new LocalityDesc();
+        }
+        StoreTableLocalityTask storeLocalityTask = new StoreTableLocalityTask(schemaName, logicalTableName, locality.toString(), false);
 
         CreateTableShowTableMetaTask showTableMetaTask = new CreateTableShowTableMetaTask(schemaName, logicalTableName);
 
         TableSyncTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);
 
         ExecutableDdlJob4CreateTable result = new ExecutableDdlJob4CreateTable();
-        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
-        if (isNewPartDb) {
-            result.addSequentialTasks(Lists.newArrayList(
-                validateTask,
-                phyDdlTask,
-                addTableMetaTask,
-                showTableMetaTask,
-                tableSyncTask
-            ));
-        } else {
             // TODO(moyi) store locality and show table meta should be put in a transaction
-            result.addSequentialTasks(Lists.newArrayList(
-                validateTask,
-                addExtMetaTask,
-                phyDdlTask,
-                addTableMetaTask,
-                cdcDdlMarkTask,
-                showTableMetaTask,
-                storeLocalityTask,
-                tableSyncTask
-            ).stream().filter(Objects::nonNull).collect(Collectors.toList()));
-        }
+        result.addSequentialTasks(Lists.newArrayList(
+            validateTask,
+            addExtMetaTask,
+            phyDdlTask,
+            addTableMetaTask,
+            cdcDdlMarkTask,
+            showTableMetaTask,
+            storeLocalityTask,
+            tableSyncTask
+        ).stream().filter(Objects::nonNull).collect(Collectors.toList()));
         //todo delete me
         result.labelAsHead(validateTask);
         result.labelAsTail(tableSyncTask);

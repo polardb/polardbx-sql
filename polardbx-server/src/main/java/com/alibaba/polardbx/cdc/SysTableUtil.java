@@ -191,7 +191,12 @@ public class SysTableUtil {
     public void insertDdlRecord(Connection connection, Long jobId, String sqlKind, String schema, String tableName,
                                 String ddlSql, String metaInfo, DdlVisibility visibility, String ext)
         throws SQLException {
+        if (ddlSql.lastIndexOf(";") == (ddlSql.length() - 1)) {
+            ddlSql = StringUtils.substringBeforeLast(ddlSql, ";");
+        }
+
         InnerTransManager transManager = new InnerTransManager(connection);
+        final String finalDdlSql = ddlSql;
         transManager.executeWithTransaction(() -> {
             try (PreparedStatement stmt = connection.prepareStatement(INSERT_CDC_DDL_RECORD)) {
 
@@ -199,7 +204,7 @@ public class SysTableUtil {
                 stmt.setString(2, sqlKind);
                 stmt.setString(3, schema);
                 stmt.setString(4, tableName);
-                stmt.setString(5, ddlSql);
+                stmt.setString(5, finalDdlSql);
                 stmt.setString(6, metaInfo);
                 stmt.setObject(7, visibility.getValue());
                 stmt.setString(8, ext);

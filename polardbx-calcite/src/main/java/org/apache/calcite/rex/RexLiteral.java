@@ -730,7 +730,6 @@ public class RexLiteral extends RexNode {
         switch (typeName) {
             case CHAR:
                 return getValueAs(String.class);
-            case DECIMAL:
             case TIMESTAMP:
             case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
                 return getValueAs(Long.class);

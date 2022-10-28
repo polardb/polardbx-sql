@@ -27,8 +27,6 @@ import com.alibaba.polardbx.rule.MappingRule;
 import com.alibaba.polardbx.rule.VirtualTableSupport;
 import com.alibaba.polardbx.rule.enums.RuleType;
 import com.alibaba.polardbx.rule.model.AdvancedParameter;
-import com.alibaba.polardbx.rule.model.ShardMatchedRuleType;
-import com.alibaba.polardbx.rule.model.ShardPrepareResult;
 import com.alibaba.polardbx.rule.utils.RuleUtils;
 import com.alibaba.polardbx.rule.utils.sample.Samples;
 import com.alibaba.polardbx.rule.utils.sample.SamplesCtx;
@@ -121,9 +119,9 @@ public class ExtPartitionGroovyRule extends WrappedGroovyRule implements ExtRule
 
     @Override
     public Map<String, ?> calculate(Map<String, Comparative> sqlArgs, Object ctx, Object outerCtx,
-                                    Map<String, Object> calcParams, ShardPrepareResult shardPrepareResult,
+                                    Map<String, Object> calcParams,
                                     RuleType ruleType) {
-        Map<String, Set<Object>> enumerates = getEnumerates(sqlArgs, ctx, shardPrepareResult, ruleType);
+        Map<String, Set<Object>> enumerates = getEnumerates(sqlArgs, ctx, ruleType);
         Map<String, Samples> res = new HashMap<>(1);
         for (Map<String, Object> sample : new Samples(enumerates)) { // 遍历笛卡尔抽样
             String value = this.eval(sample, outerCtx, calcParams, ruleType);
@@ -142,9 +140,9 @@ public class ExtPartitionGroovyRule extends WrappedGroovyRule implements ExtRule
 
     @Override
     public Set<String> calculateNoTrace(Map<String, Comparative> sqlArgs, Object ctx, Object outerContext,
-                                        Map<String, Object> calcParams, ShardPrepareResult shardPrepareResult,
+                                        Map<String, Object> calcParams,
                                         RuleType ruleType) {
-        Map<String, Set<Object>> enumerates = getEnumerates(sqlArgs, ctx, shardPrepareResult, ruleType);
+        Map<String, Set<Object>> enumerates = getEnumerates(sqlArgs, ctx, ruleType);
         Set<String> res = new HashSet<String>(1);
         for (Map<String, Object> sample : new Samples(enumerates)) { // 遍历笛卡尔抽样
             String value = this.eval(sample, outerContext, calcParams, ruleType);
@@ -161,15 +159,14 @@ public class ExtPartitionGroovyRule extends WrappedGroovyRule implements ExtRule
 
     @Override
     public Set<String> calculateNoTrace(Map<String, Comparative> sqlArgs, Object ctx, Object outerContext,
-                                        ShardPrepareResult shardPrepareResult, RuleType ruleType) {
-        return this.calculateNoTrace(sqlArgs, ctx, outerContext, null, shardPrepareResult, ruleType);
+                                        RuleType ruleType) {
+        return this.calculateNoTrace(sqlArgs, ctx, outerContext, null, ruleType);
     }
 
     /**
      * 计算一下枚举值
      */
-    protected Map<String, Set<Object>> getEnumerates(Map<String, Comparative> sqlArgs, Object ctx,
-                                                     ShardPrepareResult shardPrepareResult, RuleType ruleType) {
+    protected Map<String, Set<Object>> getEnumerates(Map<String, Comparative> sqlArgs, Object ctx, RuleType ruleType) {
         Set<AdvancedParameter> thisParam = RuleUtils.cast(this.parameterSet);
         Map<String, Set<Object>> enumerates;
         SamplesCtx samplesCtx = (SamplesCtx) ctx;
@@ -186,20 +183,11 @@ public class ExtPartitionGroovyRule extends WrappedGroovyRule implements ExtRule
                 enumerates = RuleUtils.getSamplingField(sqlArgs,
                     thisParam,
                     ((WrappedGroovyRule) this).getExtKeyToMappingRules(),
-                    shardPrepareResult,
                     ruleType);
-                if (shardPrepareResult != null
-                    && !ShardMatchedRuleType.isMutex(shardPrepareResult.getMatchedDBType(),
-                    shardPrepareResult.getMatchedTBType())) {
-                    for (String name : commonSamples.getSubColumSet()) {
-                        enumerates.put(name, commonSamples.getColumnEnumerates(name)); // 公共列只使用上一层规则的描点，值输入的分流窄化问题
-                    }
-                }
             } else if (samplesCtx.dealType == SamplesCtx.merge) {
                 enumerates = RuleUtils.getSamplingField(sqlArgs,
                     thisParam,
                     ((WrappedGroovyRule) this).getExtKeyToMappingRules(),
-                    shardPrepareResult,
                     ruleType);
                 for (String diffType : commonSamples.getSubColumSet()) {
                     enumerates.get(diffType).addAll(commonSamples.getColumnEnumerates(diffType));
@@ -211,7 +199,6 @@ public class ExtPartitionGroovyRule extends WrappedGroovyRule implements ExtRule
             enumerates = RuleUtils.getSamplingField(sqlArgs,
                 thisParam,
                 ((WrappedGroovyRule) this).getExtKeyToMappingRules(),
-                shardPrepareResult,
                 ruleType);
         }
         return enumerates;

@@ -20,7 +20,9 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.alibaba.polardbx.common.SQLModeFlags.*;
 
@@ -51,6 +53,8 @@ public enum SQLMode {
     STRICT_TRANS_TABLES(MODE_STRICT_TRANS_TABLES);
 
     private static Multimap<String, SQLMode> combSQLModeMap = HashMultimap.create();
+
+    private static final Map<String, Long> sqlModeFlagMap = new ConcurrentHashMap<>();
 
     public static final String ANSI = "ANSI";
     public static final String DB_2 = "DB2";
@@ -130,6 +134,13 @@ public enum SQLMode {
         }
 
         return false;
+    }
+
+    public static long getCachedFlag(String sqlModeStr) {
+        if (sqlModeStr == null) {
+            return 0;
+        }
+        return sqlModeFlagMap.computeIfAbsent(sqlModeStr, SQLMode::convertToFlag);
     }
 
     public static long convertToFlag(String sqlModeStr) {

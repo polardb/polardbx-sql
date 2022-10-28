@@ -43,6 +43,7 @@ import com.google.common.collect.ImmutableSet;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Triple;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -198,11 +199,11 @@ public class MdlDeadlockDetectionTask implements Runnable {
                 }
 
                 // Get the waiting and blocking transaction
-                final Pair<Pair<TrxLookupSet.Transaction, TrxLookupSet.Transaction>, String> waitingAndBlockingTrx =
+                final Triple<TrxLookupSet.Transaction, TrxLookupSet.Transaction, String> waitingAndBlockingTrx =
                     lookupSet.getWaitingAndBlockingTrx(groupNames, waiting, blocking);
 
                 // Update waiting trx/DDL
-                TrxLookupSet.Transaction waitingTrx = waitingAndBlockingTrx.getKey().getKey();
+                TrxLookupSet.Transaction waitingTrx = waitingAndBlockingTrx.getLeft();
                 LocalTransaction waitingLocalTrx;
                 // If the waiting_pid corresponds to a DDL statement, its transaction is null
                 if (null == waitingTrx) {
@@ -219,7 +220,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
                     // Note that this fake transaction should have only one local transaction
                     waitingLocalTrx = waitingTrx.getLocalTransaction(FAKE_GROUP_FOR_DDL);
                 } else {
-                    final String groupName = waitingAndBlockingTrx.getValue();
+                    final String groupName = waitingAndBlockingTrx.getRight();
                     waitingLocalTrx = waitingTrx.getLocalTransaction(groupName);
                 }
                 // Update other information of waiting trx
@@ -238,7 +239,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
                 }
 
                 // Update blocking trx/DDL
-                TrxLookupSet.Transaction blockingTrx = waitingAndBlockingTrx.getKey().getValue();
+                TrxLookupSet.Transaction blockingTrx = waitingAndBlockingTrx.getMiddle();
                 LocalTransaction blockingLocalTrx;
                 // If the blocking_pid corresponds to a DDL statement, its transaction is null
                 if (null == blockingTrx) {
@@ -257,7 +258,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
                     final Long startTime = System.currentTimeMillis() - blockingQuerySecs * 1000;
                     blockingTrx.setStartTime(startTime);
                 } else {
-                    final String groupName = waitingAndBlockingTrx.getValue();
+                    final String groupName = waitingAndBlockingTrx.getRight();
                     blockingLocalTrx = blockingTrx.getLocalTransaction(groupName);
                 }
                 // Update other information of blocking trx
@@ -345,7 +346,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
         boolean hasLeadership = ExecUtils.hasLeadership(db);
 
         if (!hasLeadership) {
-            TransactionLogger.getLogger().debug("Skip MDL deadlock detection task since I am not the leader");
+            TransactionLogger.debug("Skip MDL deadlock detection task since I am not the leader");
             return;
         }
         logger.debug("MDL Deadlock detection task starts.");
@@ -432,7 +433,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
                 killByBackendConnId(ddlBackendConnId, mysqlConn2DatasourceMap.get(ddlBackendConnId));
             }
 
-            TransactionLogger.getLogger().warn(simpleDeadlockLog.toString());
+            TransactionLogger.warn(simpleDeadlockLog.toString());
             logger.warn(simpleDeadlockLog.toString());
             EventLogger.log(EventType.DEAD_LOCK_DETECTION, simpleDeadlockLog.toString());
 

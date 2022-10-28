@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
@@ -34,15 +36,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class LogicalAlterTableGroupAddPartition extends BaseDdlOperation {
-
-    private AlterTableGroupAddPartitionPreparedData preparedData;
+public class LogicalAlterTableGroupAddPartition extends LogicalAlterTableAddPartition {
 
     public LogicalAlterTableGroupAddPartition(DDL ddl) {
-        super(ddl);
+        super(ddl, true);
     }
 
-    public void preparedData() {
+    public void preparedData(ExecutionContext ec) {
         AlterTableGroupAddPartition alterTableGroupAddPartition = (AlterTableGroupAddPartition) relDdl;
         String tableGroupName = alterTableGroupAddPartition.getTableGroupName();
         String tableName = alterTableGroupAddPartition.getTableName().toString();
@@ -52,7 +52,7 @@ public class LogicalAlterTableGroupAddPartition extends BaseDdlOperation {
             (SqlAlterTableAddPartition) sqlAlterTableGroup.getAlters().get(0);
 
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
-            TableGroupLocation.getOrderedGroupList(schemaName);
+            LocalityInfoUtils.getAllowedGroupInfoOfTableGroup(schemaName, tableGroupName);
 
         preparedData = new AlterTableGroupAddPartitionPreparedData();
         preparedData.setTableGroupName(tableGroupName);
@@ -66,13 +66,10 @@ public class LogicalAlterTableGroupAddPartition extends BaseDdlOperation {
         preparedData.setOldPartitionNames(ImmutableList.of());
 
         preparedData.prepareInvisiblePartitionGroup();
+        preparedData.setPartBoundExprInfo(partBoundExprInfo);
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.ADD_PARTITION);
 
-    }
-
-    public AlterTableGroupAddPartitionPreparedData getPreparedData() {
-        return preparedData;
     }
 
     public static LogicalAlterTableGroupAddPartition create(DDL ddl) {

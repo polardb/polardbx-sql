@@ -25,7 +25,6 @@ import org.junit.Test;
 
 import java.sql.Connection;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.mysqlDBName1;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXShardingDBName1;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;

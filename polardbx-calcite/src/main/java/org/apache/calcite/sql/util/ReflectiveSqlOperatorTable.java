@@ -27,7 +27,6 @@ import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
 
 /**
  * ReflectiveSqlOperatorTable implements the {@link SqlOperatorTable} interface
@@ -126,40 +125,35 @@ public abstract class ReflectiveSqlOperatorTable implements SqlOperatorTable {
     }
   }
 
-  /**
-   * Registers a function or operator in the table.
-   */
-  public void register(SqlOperator op) {
-    operators.put(new Key(op.getName(), op.getSyntax()), op);
-  }
-
-  public void remove(String name) {
-    final String nameUpper = name.toUpperCase();
-    List<Key> keys =
-        operators.keySet().stream().filter(key -> key.getKey().equals(nameUpper)).collect(Collectors.toList());
-    if (keys.isEmpty()) {
-      return;
-    }
-    Key toRemove = keys.get(0);
-    operators.removeAll(toRemove);
-  }
-
-  public List<SqlOperator> getOperatorList() {
-    return ImmutableList.copyOf(operators.values());
-  }
-
-  /** Key for looking up operators. The name is stored in upper-case because we
-   * store case-insensitively, even in a case-sensitive session. */
-  private static class Key extends Pair<String, SqlSyntax> {
-    Key(String name, SqlSyntax syntax) {
-      super(name.toUpperCase(Locale.ROOT), normalize(syntax));
+    /**
+     * Registers a function or operator in the table.
+     */
+    public void register(SqlOperator op) {
+        operators.put(new Key(op.getName(), op.getSyntax()), op);
     }
 
-    private static SqlSyntax normalize(SqlSyntax syntax) {
-      switch (syntax) {
-      case BINARY:
-      case PREFIX:
-      case POSTFIX:
+    public void unregister(String name, SqlSyntax sqlSyntax) {
+        operators.removeAll(new Key(name, sqlSyntax));
+    }
+
+    public List<SqlOperator> getOperatorList() {
+        return ImmutableList.copyOf(operators.values());
+    }
+
+    /**
+     * Key for looking up operators. The name is stored in upper-case because we
+     * store case-insensitively, even in a case-sensitive session.
+     */
+    private static class Key extends Pair<String, SqlSyntax> {
+        Key(String name, SqlSyntax syntax) {
+            super(name.toUpperCase(Locale.ROOT), normalize(syntax));
+        }
+
+        private static SqlSyntax normalize(SqlSyntax syntax) {
+            switch (syntax) {
+            case BINARY:
+            case PREFIX:
+            case POSTFIX:
         return syntax;
       default:
         return SqlSyntax.FUNCTION;

@@ -16,18 +16,26 @@
 
 package com.alibaba.polardbx.executor.balancer.action;
 
-import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
+import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
+import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -48,17 +56,18 @@ public class ActionMoveGroup implements BalanceAction, Comparable<ActionMoveGrou
      * Run move database in debug mode.
      */
     private boolean debug = false;
+    private BalanceStats stats;
 
-    @JSONCreator
-    public ActionMoveGroup(String schema, List<String> sourceGroups, String target, boolean debug) {
+    public ActionMoveGroup(String schema, List<String> sourceGroups, String target, boolean debug, BalanceStats stats) {
         this.schema = schema;
         this.sourceGroups = sourceGroups;
         this.target = target;
         this.debug = debug;
+        this.stats = stats;
     }
 
     public ActionMoveGroup(String schema, List<String> sourceGroups, String target) {
-        this(schema, sourceGroups, target, false);
+        this(schema, sourceGroups, target, false, null);
     }
 
     @Override
@@ -85,7 +94,13 @@ public class ActionMoveGroup implements BalanceAction, Comparable<ActionMoveGrou
         if (this.debug) {
             List<String> params = Lists.newArrayList(
                 ConnectionParams.SCALE_OUT_DEBUG.getName() + "=true",
-                ConnectionParams.SHARE_STORAGE_MODE.getName() + "=true"
+                ConnectionParams.SHARE_STORAGE_MODE.getName() + "=true",
+                ConnectionParams.SKIP_MOVE_DATABASE_VALIDATOR.getName() + "=true"
+            );
+            hint = String.format("/*+TDDL:CMD_EXTRA(%s)*/", StringUtils.join(params, ","));
+        } else {
+            List<String> params = Lists.newArrayList(
+                ConnectionParams.SKIP_MOVE_DATABASE_VALIDATOR.getName() + "=true"
             );
             hint = String.format("/*+TDDL:CMD_EXTRA(%s)*/", StringUtils.join(params, ","));
         }
@@ -102,7 +117,28 @@ public class ActionMoveGroup implements BalanceAction, Comparable<ActionMoveGrou
             ParamManager.setVal(ec.getParamManager().getProps(),
                 ConnectionParams.SCALE_OUT_DEBUG, "true", false);
         }
-        return ActionUtils.convertToDelegatorJob(ec, schema, sql);
+        long totalRows = 0L;
+        long totalSize = 0L;
+        try {
+            if (!DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+                for (GroupStats.GroupsOfStorage groupsOfStorage : GeneralUtil.emptyIfNull(stats.getGroups())) {
+                    if (groupsOfStorage == null || groupsOfStorage.getGroupDataSizeMap() == null) {
+                        continue;
+                    }
+                    for (Map.Entry<String, Pair<Long, Long>> entry : groupsOfStorage.groupDataSizeMap.entrySet()) {
+                        if (sourceGroups.contains(entry.getKey())) {
+                            totalRows += entry.getValue().getKey();
+                            totalSize += entry.getValue().getValue();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
+        }
+
+        return ActionUtils.convertToDelegatorJob(schema, sql,
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
     }
 
     @Override

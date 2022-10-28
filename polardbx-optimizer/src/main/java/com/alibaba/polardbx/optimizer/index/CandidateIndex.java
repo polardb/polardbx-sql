@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexType;
 import com.alibaba.polardbx.optimizer.config.table.Relationship;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -53,6 +54,8 @@ public class CandidateIndex {
     public static final String WHAT_IF_GSI_INFIX = "__what_if_gsi_";
 
     public static final String WHAT_IF_INDEX_INFIX = "__what_if_";
+
+    public static final String WHAT_IF_AUTO_INDEX_INFIX = "__what_if_auto_shard_key_";
 
     private static final String ADVISE_GSI_PREFIX = "__advise_index_gsi_";
 
@@ -281,16 +284,15 @@ public class CandidateIndex {
 
         long indexCardinality = 1;
         for (String columnName : columnNames) {
-            StatisticResult statisticResult = OptimizerContext.getContext(schemaName).getStatisticManager()
-                .getCardinality(tableName, columnName);
+            StatisticResult statisticResult =
+                StatisticManager.getInstance().getCardinality(schemaName, tableName, columnName, true);
             long cardinality = statisticResult.getLongValue();
             if (cardinality <= 0) {
                 return false;
             }
             indexCardinality *= cardinality;
         }
-        StatisticResult statisticResult =
-            OptimizerContext.getContext(schemaName).getStatisticManager().getRowCount(tableName);
+        StatisticResult statisticResult = StatisticManager.getInstance().getRowCount(schemaName, tableName);
         long rowCount = statisticResult.getLongValue();
         return isHighCardinality = indexCardinality > rowCount * 0.0000001;
     }

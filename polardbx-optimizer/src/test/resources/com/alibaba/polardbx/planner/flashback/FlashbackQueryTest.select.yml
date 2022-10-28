@@ -31,7 +31,6 @@
     select a.* from test_broadcast a as of timestamp "2022-02-17 14:40:40" where a.id = 1;
 
   plan: |
-
     logicalview(tables="optest_0000.test_broadcast", sql="select `a`.`id`, `a`.`name`, `a`.`create_time` from `test_broadcast` as of timestamp ? as `a` where (`a`.`id` = ?)", params="2022-02-17 14:40:40,1")
 
 # flashback query on table with gsi

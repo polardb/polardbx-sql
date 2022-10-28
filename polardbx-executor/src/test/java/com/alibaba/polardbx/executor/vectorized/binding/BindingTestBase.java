@@ -22,6 +22,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
@@ -185,6 +186,7 @@ public class BindingTestBase {
         this.typeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
         this.parserConfig = SqlParser.configBuilder().setLex(Lex.MYSQL).setParserFactory(SqlParserImpl.FACTORY).build();
         this.schemaManager = new MockSchemaManager();
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
         initContext();
         initTable("test", TABLE_DDL);
     }
@@ -211,18 +213,18 @@ public class BindingTestBase {
     }
 
     protected void initContext() {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
         Properties properties = new Properties();
         properties.setProperty(CalciteConnectionProperty.CASE_SENSITIVE.camelName(),
             String.valueOf(parserConfig.caseSensitive()));
         CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
 
-        StatisticManager statisticManager = new StatisticManager(SCHEMA_NAME, new MockStatisticDatasource());
+        StatisticManager.sds = MockStatisticDatasource.getInstance();
 
         // prepare optimizer context
         OptimizerContext context = new OptimizerContext(SCHEMA_NAME);
         OptimizerContext.loadContext(context);
         context.setSchemaManager(schemaManager);
-        context.setStatisticManager(statisticManager);
 
         String schemaName = OptimizerContext.getContext(SCHEMA_NAME).getSchemaName();
         CalciteSchema calciteSchema = RootSchemaFactory.createRootSchema(schemaName, executionContext);
@@ -310,7 +312,7 @@ public class BindingTestBase {
             SqlNode validatedAst;
             if (parameterized) {
                 Map<Integer, ParameterContext> currentParameter = new HashMap<>();
-                SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, currentParameter);
+                SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(sql, currentParameter, false);
                 validatedAst = validate(sqlParameterized.getSql(), sqlParameterized.getParameters());
             } else {
                 validatedAst = validate(sql, null);
@@ -351,9 +353,9 @@ public class BindingTestBase {
             } else if (mode == TEST_FILTER) {
                 this.expressions = ImmutableList.of(
                     VectorizedExpressionBuilder.buildVectorizedExpression(
-                        inputTypes,
-                        filter.getCondition(),
-                        executionContext)
+                            inputTypes,
+                            filter.getCondition(),
+                            executionContext)
                         .getKey()
                 );
             }

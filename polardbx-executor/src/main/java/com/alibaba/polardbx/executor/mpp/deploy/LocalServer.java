@@ -36,7 +36,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.Injector;
 import com.google.inject.Module;
 import io.airlift.bootstrap.Bootstrap;
-import io.airlift.event.client.HttpEventModule;
+import io.airlift.event.client.EventModule;
 import io.airlift.http.server.HttpServer;
 import io.airlift.http.server.HttpServerModule;
 import io.airlift.jaxrs.JaxrsModule;
@@ -86,7 +86,7 @@ public class LocalServer extends Server {
         modules.add(new DiscoveryModule());
         modules.add(new JsonModule());
         modules.add(new JaxrsModule());
-        modules.add(new HttpEventModule());
+        modules.add(new EventModule());
         modules.add(new LocalModule(localNode));
 
         Bootstrap app = new Bootstrap(modules.build());

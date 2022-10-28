@@ -16,6 +16,8 @@
  */
 package org.apache.calcite.rel.logical;
 
+import com.google.common.base.Supplier;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
@@ -27,9 +29,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.schema.Table;
-
-import com.google.common.base.Supplier;
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -127,7 +126,7 @@ public final class LogicalTableScan extends TableScan {
                     return table.getStatistic().getCollations();
                   }
                   return ImmutableList.of();
-                }).simplify();
+                });
     return new LogicalTableScan(cluster, traitSet, relOptTable, hints, indexNode, flashback, partitions);
   }
 

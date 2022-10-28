@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterFileStorageAsOfTimestampJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterFileStorageBackupJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterFileStoragePurgeBeforeTimestampJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -41,6 +42,8 @@ public class LogicalAlterFileStoragHandler extends LogicalCommonDdlHandler {
         LogicalAlterFileStorage logicalAlterFileStorage =
             (LogicalAlterFileStorage) logicalDdlPlan;
         logicalAlterFileStorage.preparedData();
+        // god privilege check.
+        TableValidator.checkGodPrivilege(executionContext);
         if (logicalAlterFileStorage.relDdl instanceof AlterFileStorageAsOfTimestamp) {
             return new AlterFileStorageAsOfTimestampJobFactory(logicalAlterFileStorage.getPreparedData(),
                 executionContext).create();

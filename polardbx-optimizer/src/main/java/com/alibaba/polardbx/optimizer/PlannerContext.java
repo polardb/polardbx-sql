@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.Context;
@@ -34,11 +35,13 @@ import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.util.PlannerContextWithParam;
+import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -125,7 +128,11 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.schemaName = executionContext.getSchemaName();
         this.extraCmds = executionContext.getExtraCmds();
         this.paramManager = new ParamManager(extraCmds);
-        this.params = executionContext.getParams();
+        if (executionContext.getParams() == null) {
+            this.params = new Parameters();
+        } else {
+            this.params = executionContext.getParams().clone();
+        }
         this.isExplain = executionContext.getExplain() != null;
         this.isAutoCommit = executionContext.isAutoCommit();
     }
@@ -137,7 +144,11 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.schemaName = executionContext.getSchemaName();
         this.extraCmds = executionContext.getExtraCmds();
         this.paramManager = new ParamManager(extraCmds);
-        this.params = executionContext.getParams().clone();
+        if (executionContext.getParams() == null) {
+            this.params = new Parameters();
+        } else {
+            this.params = executionContext.getParams().clone();
+        }
         this.isExplain = executionContext.getExplain() != null;
         this.isAutoCommit = executionContext.isAutoCommit();
         this.sqlKind = sqlkind;
@@ -220,7 +231,7 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     @Override
     public void setParams(Parameters params) {
-        this.params = params;
+        this.params = params.clone();
     }
 
     public Map<String, Object> getExtraCmds() {
@@ -346,6 +357,22 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.evalFunc = evalFunc;
     }
 
+    public void setEvalFuncFromExecutionContext() {
+        if (executionContext != null) {
+            this.evalFunc = RexUtils.getEvalFunc(executionContext);
+        }
+    }
+
+    @Override
+    public Optional<CalcitePlanOptimizerTrace> getCalcitePlanOptimizerTrace() {
+        return executionContext == null ? Optional.empty() : executionContext.getCalcitePlanOptimizerTrace();
+    }
+
+    @Override
+    public Object getExecContext() {
+        return executionContext;
+    }
+
     public boolean isSkipPostOpt() {
         return isSkipPostOpt;
     }
@@ -430,6 +457,7 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     /**
      * prune CBOPushJoinRule rule
+     *
      * @param tables the list of tables in the logicalView
      * @return false if CBOPushJoinRule is invoked too many times and the table multiset has been optimized
      */

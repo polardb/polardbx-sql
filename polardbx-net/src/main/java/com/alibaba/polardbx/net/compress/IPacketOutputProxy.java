@@ -99,4 +99,5 @@ public interface IPacketOutputProxy {
      */
     void writeArrayAsPacket(byte[] src);
 
+    void close();
 }

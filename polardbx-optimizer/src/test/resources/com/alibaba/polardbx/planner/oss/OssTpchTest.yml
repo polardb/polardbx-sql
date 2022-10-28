@@ -81,24 +81,24 @@ SQL:
   - sql: |
       select s_name, s_address  from supplier, nation  where s_suppkey in ( 	select 		ps_suppkey 	from 		partsupp 	where 		ps_partkey in ( 			select 				p_partkey 			from 				part 			where 				p_name like 'mint%' 		) 		and ps_availqty > ( 			select 				0.5 * sum(l_quantity) 			from 				lineitem 			where 				l_partkey = ps_partkey 				and l_suppkey = ps_suppkey 				and l_shipdate >= '1993-01-01' 				and l_shipdate < '1993-01-01' + interval '1' year 		) ) and s_nationkey = n_nationkey and n_name = 'UNITED STATES'  order by s_name;
     plan: |
-      MemSort(sort="s_name ASC")
-        Project(s_name="s_name", s_address="s_address")
-          HashJoin(condition="n_nationkey = s_nationkey", type="inner")
-            SemiHashJoin(condition="s_suppkey = ps_suppkey", type="semi")
-              Gather(concurrent=true)
-                OSSTableScan(tables="supplier[p1,p2,p3,p4]", shardCount=4, sql="SELECT `s_suppkey`, `s_name`, `s_address`, `s_nationkey` FROM `supplier` AS `supplier`")
-              Project(ps_suppkey="ps_suppkey")
-                HashJoin(condition="l_partkey = ps_partkey AND l_suppkey = ps_suppkey AND ps_availqty > ?1 * $f2", type="inner")
-                  HashAgg(group="l_partkey,l_suppkey", $f2="SUM(l_quantity)")
-                    Gather(concurrent=true)
-                      OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_partkey`, `l_suppkey`, `l_quantity` FROM `lineitem` AS `lineitem` WHERE ((`l_shipdate` >= ?) AND (`l_shipdate` < DATE_ADD(?, INTERVAL '1' YEAR)))")
-                  SemiHashJoin(condition="ps_partkey = p_partkey", type="semi")
-                    Gather(concurrent=true)
-                      OSSTableScan(tables="partsupp[p1,p2,p3,p4]", shardCount=4, sql="SELECT `ps_partkey`, `ps_suppkey`, `ps_availqty` FROM `partsupp` AS `partsupp`")
-                    Gather(concurrent=true)
-                      OSSTableScan(tables="part[p1,p2,p3,p4]", shardCount=4, sql="SELECT `p_partkey` FROM `part` AS `part` WHERE (`p_name` LIKE ?)")
-            Gather(concurrent=true)
-              OSSTableScan(tables="nation", shardCount=0, sql="SELECT `n_nationkey` FROM `nation` AS `nation` WHERE (`n_name` = ?)")
+      memsort(sort="s_name asc")
+        project(s_name="s_name", s_address="s_address")
+          hashjoin(condition="n_nationkey = s_nationkey", type="inner")
+            semihashjoin(condition="s_suppkey = ps_suppkey", type="semi")
+              gather(concurrent=true)
+                osstablescan(tables="supplier[p1,p2,p3,p4]", shardcount=4, sql="select `s_suppkey`, `s_name`, `s_address`, `s_nationkey` from `supplier` as `supplier`")
+              project(ps_suppkey="ps_suppkey")
+                hashjoin(condition="l_partkey = ps_partkey and l_suppkey = ps_suppkey and ps_availqty > ?1 * $f2", type="inner")
+                  hashagg(group="l_partkey,l_suppkey", $f2="sum(l_quantity)")
+                    gather(concurrent=true)
+                      osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_suppkey`, `l_quantity` from `lineitem` as `lineitem` where ((`l_shipdate` < date_add(?, interval '1' year)) and (`l_shipdate` >= ?))")
+                  semihashjoin(condition="ps_partkey = p_partkey", type="semi")
+                    gather(concurrent=true)
+                      osstablescan(tables="partsupp[p1,p2,p3,p4]", shardcount=4, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty` from `partsupp` as `partsupp`")
+                    gather(concurrent=true)
+                      osstablescan(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey` from `part` as `part` where (`p_name` like ?)")
+            gather(concurrent=true)
+              osstablescan(tables="nation", shardcount=0, sql="select `n_nationkey` from `nation` as `nation` where (`n_name` = ?)")
   - sql: |
       select c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice, sum(l_quantity)  from customer, orders, lineitem  where o_orderkey in ( 	select 		l_orderkey 	from 		lineitem 	group by 		l_orderkey having 			sum(l_quantity) > 312 ) and c_custkey = o_custkey and o_orderkey = l_orderkey  group by c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice  order by o_totalprice desc, o_orderdate  limit 100;
     plan: |
@@ -123,43 +123,44 @@ SQL:
   - sql: |
       select sum(l_extendedprice* (1 - l_discount)) as revenue  from lineitem, part  where ( 	p_partkey = l_partkey 	and p_brand = 'Brand#13' 	and p_container in ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG') 	and l_quantity >= 7 and l_quantity <= 7 + 10 	and p_size between 1 and 5 	and l_shipmode in ('AIR', 'AIR REG') 	and l_shipinstruct = 'DELIVER IN PERSON' ) or ( 	p_partkey = l_partkey 	and p_brand = 'Brand#15' 	and p_container in ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK') 	and l_quantity >= 18 and l_quantity <= 18 + 10 	and p_size between 1 and 10 	and l_shipmode in ('AIR', 'AIR REG') 	and l_shipinstruct = 'DELIVER IN PERSON' ) or ( 	p_partkey = l_partkey 	and p_brand = 'Brand#35' 	and p_container in ('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG') 	and l_quantity >= 21 and l_quantity <= 21 + 10 	and p_size between 1 and 15 	and l_shipmode in ('AIR', 'AIR REG') 	and l_shipinstruct = 'DELIVER IN PERSON' );
     plan: |
-      HashAgg(revenue="SUM(__*__)")
-        Project(p_partkey="p_partkey", =="p_brand = ?1", IN="p_container IN ROW(?2, ?3, ?4, ?5)", BETWEEN ASYMMETRIC="BETWEEN ASYMMETRIC($8, ?9, ?10)", =4="p_brand = ?14", IN5="p_container IN ROW(?15, ?16, ?17, ?18)", BETWEEN ASYMMETRIC6="BETWEEN ASYMMETRIC($8, ?22, ?23)", =7="p_brand = ?27", IN8="p_container IN ROW(?28, ?29, ?30, ?31)", BETWEEN ASYMMETRIC9="BETWEEN ASYMMETRIC($8, ?35, ?36)", l_partkey="l_partkey", __*__="l_extendedprice * ?0 - l_discount", >=="l_quantity >= ?6", <=="l_quantity <= ?7 + ?8", IN0="l_shipmode IN ROW(?11, ?12)", =0="l_shipinstruct = ?13", >=6="l_quantity >= ?19", <=7="l_quantity <= ?20 + ?21", IN80="l_shipmode IN ROW(?24, ?25)", =9="l_shipinstruct = ?26", >=10="l_quantity >= ?32", <=11="l_quantity <= ?33 + ?34", IN12="l_shipmode IN ROW(?37, ?38)", =13="l_shipinstruct = ?39")
-          HashJoin(condition="p_partkey = l_partkey AND ((p_partkey = l_partkey AND p_brand = ?1 AND p_container IN ROW(?2, ?3, ?4, ?5) AND l_quantity >= ?6 AND l_quantity <= ?7 + ?8 AND BETWEEN ASYMMETRIC($8, ?9, ?10) AND l_shipmode IN ROW(?11, ?12) AND l_shipinstruct = ?13) OR (p_partkey = l_partkey AND p_brand = ?14 AND p_container IN ROW(?15, ?16, ?17, ?18) AND l_quantity >= ?19 AND l_quantity <= ?20 + ?21 AND BETWEEN ASYMMETRIC($8, ?22, ?23) AND l_shipmode IN ROW(?24, ?25) AND l_shipinstruct = ?26) OR (p_partkey = l_partkey AND p_brand = ?27 AND p_container IN ROW(?28, ?29, ?30, ?31) AND l_quantity >= ?32 AND l_quantity <= ?33 + ?34 AND BETWEEN ASYMMETRIC($8, ?35, ?36) AND l_shipmode IN ROW(?37, ?38) AND l_shipinstruct = ?39))", type="inner")
-            Gather(concurrent=true)
-              OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_partkey`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_shipinstruct`, `l_shipmode` FROM `lineitem` AS `lineitem` WHERE ((((((`l_quantity` >= ?) AND (`l_quantity` <= (? + ?))) AND (`l_shipmode` IN(?, ?))) AND (`l_shipinstruct` = ?)) OR ((((`l_quantity` >= ?) AND (`l_quantity` <= (? + ?))) AND (`l_shipmode` IN(?, ?))) AND (`l_shipinstruct` = ?))) OR ((((`l_quantity` >= ?) AND (`l_quantity` <= (? + ?))) AND (`l_shipmode` IN(?, ?))) AND (`l_shipinstruct` = ?)))")
-            Gather(concurrent=true)
-              OSSTableScan(tables="part[p1,p2,p3,p4]", shardCount=4, sql="SELECT `p_partkey`, `p_brand`, `p_size`, `p_container` FROM `part` AS `part` WHERE (((((`p_brand` = ?) AND (`p_container` IN(?, ?, ?, ?))) AND (`p_size` BETWEEN ? AND ?)) OR (((`p_brand` = ?) AND (`p_container` IN(?, ?, ?, ?))) AND (`p_size` BETWEEN ? AND ?))) OR (((`p_brand` = ?) AND (`p_container` IN(?, ?, ?, ?))) AND (`p_size` BETWEEN ? AND ?)))")
+      hashagg(revenue="sum(__*__)")
+        project(p_partkey="p_partkey", =="p_brand = ?1", in="p_container in row(?2)", between asymmetric="between asymmetric($8, ?6, ?7)", =4="p_brand = ?10", in5="p_container in row(?11)", between asymmetric6="between asymmetric($8, ?15, ?16)", =7="p_brand = ?19", in8="p_container in row(?20)", between asymmetric9="between asymmetric($8, ?24, ?25)", l_partkey="l_partkey", __*__="l_extendedprice * ?0 - l_discount", >=="l_quantity >= ?3", <=="l_quantity <= ?4 + ?5", in0="l_shipmode in row(?8)", =0="l_shipinstruct = ?9", >=6="l_quantity >= ?12", <=7="l_quantity <= ?13 + ?14", in80="l_shipmode in row(?17)", =9="l_shipinstruct = ?18", >=10="l_quantity >= ?21", <=11="l_quantity <= ?22 + ?23", in12="l_shipmode in row(?26)", =13="l_shipinstruct = ?27")
+          hashjoin(condition="p_partkey = l_partkey and ((p_partkey = l_partkey and p_brand = ?1 and p_container in row(?2) and l_quantity >= ?3 and l_quantity <= ?4 + ?5 and between asymmetric($8, ?6, ?7) and l_shipmode in row(?8) and l_shipinstruct = ?9) or (p_partkey = l_partkey and p_brand = ?10 and p_container in row(?11) and l_quantity >= ?12 and l_quantity <= ?13 + ?14 and between asymmetric($8, ?15, ?16) and l_shipmode in row(?17) and l_shipinstruct = ?18) or (p_partkey = l_partkey and p_brand = ?19 and p_container in row(?20) and l_quantity >= ?21 and l_quantity <= ?22 + ?23 and between asymmetric($8, ?24, ?25) and l_shipmode in row(?26) and l_shipinstruct = ?27))", type="inner")
+            gather(concurrent=true)
+              osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_shipinstruct`, `l_shipmode` from `lineitem` as `lineitem` where ((((((`l_quantity` >= ?) and (`l_quantity` <= (? + ?))) and (`l_shipmode` in(?))) and (`l_shipinstruct` = ?)) or ((((`l_quantity` >= ?) and (`l_quantity` <= (? + ?))) and (`l_shipmode` in(?))) and (`l_shipinstruct` = ?))) or ((((`l_quantity` >= ?) and (`l_quantity` <= (? + ?))) and (`l_shipmode` in(?))) and (`l_shipinstruct` = ?)))", isdynamicparam="true")
+            gather(concurrent=true)
+              osstablescan(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey`, `p_brand`, `p_size`, `p_container` from `part` as `part` where (((((`p_brand` = ?) and (`p_container` in(?))) and (`p_size` between ? and ?)) or (((`p_brand` = ?) and (`p_container` in(?))) and (`p_size` between ? and ?))) or (((`p_brand` = ?) and (`p_container` in(?))) and (`p_size` between ? and ?)))", isdynamicparam="true")
   - sql: |
       select 100.00 * sum(case 	when p_type like 'PROMO%' 		then l_extendedprice * (1 - l_discount) 	else 0 end) / sum(l_extendedprice * (1 - l_discount)) as promo_revenue  from lineitem, part  where l_partkey = p_partkey and l_shipdate >= '1993-11-01' and l_shipdate < '1993-11-01' + interval '1' month;
     plan: |
-      Project(promo_revenue="?0 * $f0 / $f1")
-        HashAgg($f0="SUM($f0)", $f1="SUM($f1)")
-          Project($f0="CASE(LIKE($1, ?1), *($3, -(?2, $4)), CAST(?3):DECIMAL(37, 4))", $f1="l_extendedprice * ?4 - l_discount")
-            HashJoin(condition="l_partkey = p_partkey", type="inner")
-              Gather(concurrent=true)
-                OSSTableScan(tables="part[p1,p2,p3,p4]", shardCount=4, sql="SELECT `p_partkey`, `p_type` FROM `part` AS `part`")
-              Gather(concurrent=true)
-                OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_partkey`, `l_extendedprice`, `l_discount` FROM `lineitem` AS `lineitem` WHERE ((`l_shipdate` >= ?) AND (`l_shipdate` < DATE_ADD(?, INTERVAL '1' MONTH)))")
+      project(promo_revenue="?0 * $f0 / $f1")
+        hashagg($f0="sum($f0)", $f1="sum($f1)")
+          project($f0="case(like($1, ?1), *($3, -(?2, $4)), cast(?3):decimal(37, 4))", $f1="l_extendedprice * ?4 - l_discount")
+            hashjoin(condition="l_partkey = p_partkey", type="inner")
+              gather(concurrent=true)
+                osstablescan(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey`, `p_type` from `part` as `part`")
+              gather(concurrent=true)
+                osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_extendedprice`, `l_discount` from `lineitem` as `lineitem` where ((`l_shipdate` < date_add(?, interval '1' month)) and (`l_shipdate` >= ?))")
+
   - sql: |
       select s_suppkey, s_name, s_address, s_phone, total_revenue  from supplier, ( 	select 		l_suppkey as supplier_no, 		sum(l_extendedprice * (1 - l_discount)) as total_revenue 	from 		lineitem 	where 		l_shipdate >= '1995-02-01' 		and l_shipdate < '1995-02-01' + interval '3' month 	group by 		l_suppkey ) revenue0  where s_suppkey = supplier_no and total_revenue = ( 	select 		max(total_revenue) 	from 		( 			select 				l_suppkey as supplier_no, 				sum(l_extendedprice * (1 - l_discount)) as total_revenue 			from 				lineitem 			where 				l_shipdate >= '1995-02-01' 				and l_shipdate < '1995-02-01' + interval '3' month 			group by 				l_suppkey 		) revenue0 )  order by s_suppkey;
     plan: |
-      MemSort(sort="s_suppkey ASC")
-        Project(s_suppkey="s_suppkey", s_name="s_name", s_address="s_address", s_phone="s_phone", total_revenue="total_revenue")
-          HashJoin(condition="supplier_no = s_suppkey", type="inner")
-            Gather(concurrent=true)
-              OSSTableScan(tables="supplier[p1,p2,p3,p4]", shardCount=4, sql="SELECT `s_suppkey`, `s_name`, `s_address`, `s_phone` FROM `supplier` AS `supplier`")
-            Project(max(total_revenue)="max(total_revenue)", supplier_no="supplier_no", total_revenue="total_revenue")
-              HashJoin(condition="max(total_revenue) = total_revenue", type="inner")
-                HashAgg(group="supplier_no", total_revenue="SUM($f1)")
-                  Project(supplier_no="l_suppkey", $f1="l_extendedprice * ?0 - l_discount")
-                    Gather(concurrent=true)
-                      OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_suppkey`, `l_extendedprice`, `l_discount` FROM `lineitem` AS `lineitem` WHERE ((`l_shipdate` >= ?) AND (`l_shipdate` < DATE_ADD(?, INTERVAL '3' MONTH)))")
-                HashAgg(max(total_revenue)="MAX(total_revenue)")
-                  HashAgg(group="supplier_no", total_revenue="SUM($f1)")
-                    Project(supplier_no="l_suppkey", $f1="l_extendedprice * ?3 - l_discount")
-                      Gather(concurrent=true)
-                        OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_suppkey`, `l_extendedprice`, `l_discount` FROM `lineitem` AS `lineitem` WHERE ((`l_shipdate` >= ?) AND (`l_shipdate` < DATE_ADD(?, INTERVAL '3' MONTH)))")
+      memsort(sort="s_suppkey asc")
+        project(s_suppkey="s_suppkey", s_name="s_name", s_address="s_address", s_phone="s_phone", total_revenue="total_revenue")
+          hashjoin(condition="supplier_no = s_suppkey", type="inner")
+            gather(concurrent=true)
+              osstablescan(tables="supplier[p1,p2,p3,p4]", shardcount=4, sql="select `s_suppkey`, `s_name`, `s_address`, `s_phone` from `supplier` as `supplier`")
+            project(max(total_revenue)="max(total_revenue)", supplier_no="supplier_no", total_revenue="total_revenue")
+              hashjoin(condition="max(total_revenue) = total_revenue", type="inner")
+                hashagg(group="supplier_no", total_revenue="sum($f1)")
+                  project(supplier_no="l_suppkey", $f1="l_extendedprice * ?0 - l_discount")
+                    gather(concurrent=true)
+                      osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_suppkey`, `l_extendedprice`, `l_discount` from `lineitem` as `lineitem` where ((`l_shipdate` < date_add(?, interval '3' month)) and (`l_shipdate` >= ?))")
+                hashagg(max(total_revenue)="max(total_revenue)")
+                  hashagg(group="supplier_no", total_revenue="sum($f1)")
+                    project(supplier_no="l_suppkey", $f1="l_extendedprice * ?3 - l_discount")
+                      gather(concurrent=true)
+                        osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_suppkey`, `l_extendedprice`, `l_discount` from `lineitem` as `lineitem` where ((`l_shipdate` < date_add(?, interval '3' month)) and (`l_shipdate` >= ?))")
   - sql: |
       select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order  from lineitem  where l_shipdate <= '1998-12-01' - interval '118' day  group by l_returnflag, l_linestatus  order by l_returnflag, l_linestatus;
     plan: |
@@ -172,18 +173,18 @@ SQL:
   - sql: |
       select sum(l_extendedprice) / 7.0 as avg_yearly  from lineitem, part  where p_partkey = l_partkey and p_brand = 'Brand#51' and p_container = 'SM JAR' and l_quantity < ( 	select 		0.2 * avg(l_quantity) 	from 		lineitem 	where 		l_partkey = p_partkey );
     plan: |
-      Project(avg_yearly="$f0 / ?0")
-        HashAgg($f0="SUM(l_extendedprice)")
-          Filter(condition="l_quantity < $16 * f17w0$o0")
-            SortWindow(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", $16="$16", f5w0$o0="window#0AVG($2)", Reference Windows="window#0=window(partition {1} order by [] range between UNBOUNDED PRECEDING and UNBOUNDED PRECEDING aggs [AVG($2)])")
-              MemSort(sort="l_partkey ASC")
-                Project(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", $16="$16")
-                  HashJoin(condition="l_partkey = p_partkey", type="inner")
-                    Project(l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", $16="?3")
-                      Gather(concurrent=true)
-                        OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_partkey`, `l_quantity`, `l_extendedprice` FROM `lineitem` AS `lineitem`")
-                    Gather(concurrent=true)
-                      OSSTableScan(tables="part[p1,p2,p3,p4]", shardCount=4, sql="SELECT `p_partkey` FROM `part` AS `part` WHERE ((`p_brand` = ?) AND (`p_container` = ?))")
+      project(avg_yearly="$f0 / ?0")
+        hashagg($f0="sum(l_extendedprice)")
+          filter(condition="l_quantity < $16 * f17w0$o0")
+            sortwindow(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", $16="$16", f5w0$o0="window#0avg($2)", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded preceding aggs [avg($2)])")
+              memsort(sort="l_partkey asc")
+                project(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", $16="$16")
+                  hashjoin(condition="l_partkey = p_partkey", type="inner")
+                    project(l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", $16="?3")
+                      gather(concurrent=true)
+                        osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_quantity`, `l_extendedprice` from `lineitem` as `lineitem`")
+                    gather(concurrent=true)
+                      osstablescan(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey` from `part` as `part` where ((`p_container` = ?) and (`p_brand` = ?))")
   - sql: |
       select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority  from customer, orders, lineitem  where c_mktsegment = 'HOUSEHOLD' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_orderdate < '1995-03-29' and l_shipdate > '1995-03-29'  group by l_orderkey, o_orderdate, o_shippriority  order by revenue desc, o_orderdate  limit 10;
     plan: |
@@ -238,36 +239,38 @@ SQL:
   - sql: |
       select p_brand, p_type, p_size, count(distinct ps_suppkey) as supplier_cnt  from partsupp, part  where p_partkey = ps_partkey and p_brand <> 'Brand#15' and p_type not like 'STANDARD BRUSHED%' and p_size in (5, 29, 4, 49, 30, 42, 33, 39) and ps_suppkey not in ( 	select 		s_suppkey 	from 		supplier 	where 		s_comment like '%Customer%Complaints%' )  group by p_brand, p_type, p_size  order by supplier_cnt desc, p_brand, p_type, p_size;
     plan: |
-      MemSort(sort="supplier_cnt DESC,p_brand ASC,p_type ASC,p_size ASC")
-        HashAgg(group="p_brand,p_type,p_size", supplier_cnt="COUNT(ps_suppkey)")
-          HashAgg(group="p_brand,p_type,p_size,ps_suppkey")
-            Project(p_brand="p_brand", p_type="p_type", p_size="p_size", ps_suppkey="ps_suppkey")
-              SemiHashJoin(condition="ps_suppkey = s_suppkey", type="anti")
-                HashJoin(condition="p_partkey = ps_partkey", type="inner")
-                  Gather(concurrent=true)
-                    OSSTableScan(tables="partsupp[p1,p2,p3,p4]", shardCount=4, sql="SELECT `ps_partkey`, `ps_suppkey` FROM `partsupp` AS `partsupp`")
-                  Gather(concurrent=true)
-                    OSSTableScan(tables="part[p1,p2,p3,p4]", shardCount=4, sql="SELECT `p_partkey`, `p_brand`, `p_type`, `p_size` FROM `part` AS `part` WHERE (((`p_brand` <> ?) AND (`p_type` NOT LIKE ?)) AND (`p_size` IN(?, ?, ?, ?, ?, ?, ?, ?)))")
-                Gather(concurrent=true)
-                  OSSTableScan(tables="supplier[p1,p2,p3,p4]", shardCount=4, sql="SELECT `s_suppkey` FROM `supplier` AS `supplier` WHERE (`s_comment` LIKE ?)")
+      memsort(sort="supplier_cnt desc,p_brand asc,p_type asc,p_size asc")
+        hashagg(group="p_brand,p_type,p_size", supplier_cnt="count(ps_suppkey)")
+          hashagg(group="p_brand,p_type,p_size,ps_suppkey")
+            project(p_brand="p_brand", p_type="p_type", p_size="p_size", ps_suppkey="ps_suppkey")
+              semihashjoin(condition="ps_suppkey = s_suppkey", type="anti")
+                hashjoin(condition="p_partkey = ps_partkey", type="inner")
+                  gather(concurrent=true)
+                    osstablescan(tables="partsupp[p1,p2,p3,p4]", shardcount=4, sql="select `ps_partkey`, `ps_suppkey` from `partsupp` as `partsupp`", isdynamicparam="true")
+                  gather(concurrent=true)
+                    osstablescan(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey`, `p_brand`, `p_type`, `p_size` from `part` as `part` where (((`p_size` in(?)) and (`p_brand` <> ?)) and (`p_type` not like ?))", isdynamicparam="true")
+                gather(concurrent=true)
+                  osstablescan(tables="supplier[p1,p2,p3,p4]", shardcount=4, sql="select `s_suppkey` from `supplier` as `supplier` where (`s_comment` like ?)", isdynamicparam="true")
+
   - sql: |
       select l_shipmode, sum(case 	when o_orderpriority = '1-URGENT' 		or o_orderpriority = '2-HIGH' 		then 1 	else 0 end) as high_line_count, sum(case 	when o_orderpriority <> '1-URGENT' 		and o_orderpriority <> '2-HIGH' 		then 1 	else 0 end) as low_line_count  from orders, lineitem  where o_orderkey = l_orderkey and l_shipmode in ('AIR', 'REG AIR') and l_commitdate < l_receiptdate and l_shipdate < l_commitdate and l_receiptdate >= '1993-01-01' and l_receiptdate < '1993-01-01' + interval '1' year  group by l_shipmode  order by l_shipmode;
     plan: |
-      MemSort(sort="l_shipmode ASC")
-        HashAgg(group="l_shipmode", high_line_count="SUM(CASE)", low_line_count="SUM(CASE2)")
-          Project(o_orderkey="o_orderkey", CASE="CASE(OR(=($1, ?0), =($1, ?1)), ?2, ?3)", CASE2="CASE(AND(<>($1, ?4), <>($1, ?5)), ?6, ?7)", l_orderkey="l_orderkey", l_shipmode="l_shipmode")
-            HashJoin(condition="l_orderkey = o_orderkey", type="inner")
-              Gather(concurrent=true)
-                OSSTableScan(tables="orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `o_orderkey`, `o_orderpriority` FROM `orders` AS `orders`")
-              Gather(concurrent=true)
-                OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_orderkey`, `l_shipmode` FROM `lineitem` AS `lineitem` WHERE (((((`l_shipmode` IN(?, ?)) AND (`l_commitdate` < `l_receiptdate`)) AND (`l_shipdate` < `l_commitdate`)) AND (`l_receiptdate` >= ?)) AND (`l_receiptdate` < DATE_ADD(?, INTERVAL '1' YEAR)))")
+      memsort(sort="l_shipmode asc")
+        hashagg(group="l_shipmode", high_line_count="sum(case)", low_line_count="sum(case2)")
+          project(o_orderkey="o_orderkey", case="case(or(=($1, ?0), =($1, ?1)), ?2, ?3)", case2="case(and(<>($1, ?4), <>($1, ?5)), ?6, ?7)", l_orderkey="l_orderkey", l_shipmode="l_shipmode")
+            hashjoin(condition="l_orderkey = o_orderkey", type="inner")
+              gather(concurrent=true)
+                osstablescan(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_orderpriority` from `orders` as `orders`", isdynamicparam="true")
+              gather(concurrent=true)
+                osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey`, `l_shipmode` from `lineitem` as `lineitem` where (((((`l_receiptdate` < date_add(?, interval '1' year)) and (`l_shipmode` in(?))) and (`l_commitdate` < `l_receiptdate`)) and (`l_shipdate` < `l_commitdate`)) and (`l_receiptdate` >= ?))", isdynamicparam="true")
   - sql: |
       select sum(l_extendedprice * l_discount) as revenue  from lineitem  where l_shipdate >= '1996-01-01' and l_shipdate < '1996-01-01' + interval '1' year and l_discount between 0.09 - 0.01 and 0.09 + 0.01 and l_quantity < 24;
     plan: |
-      HashAgg(revenue="SUM($f0)")
-        Project($f0="l_extendedprice * l_discount")
-          Gather(concurrent=true)
-            OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_extendedprice`, `l_discount` FROM `lineitem` AS `lineitem` WHERE ((((`l_shipdate` >= ?) AND (`l_shipdate` < DATE_ADD(?, INTERVAL '1' YEAR))) AND (`l_discount` BETWEEN (? - ?) AND (? + ?))) AND (`l_quantity` < ?))")
+      hashagg(revenue="sum($f0)")
+        project($f0="l_extendedprice * l_discount")
+          gather(concurrent=true)
+            osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_extendedprice`, `l_discount` from `lineitem` as `lineitem` where ((((`l_discount` between (? - ?) and (? + ?)) and (`l_quantity` < ?)) and (`l_shipdate` >= ?)) and (`l_shipdate` < date_add(?, interval '1' year)))")
+
   - sql: |
       select supp_nation, cust_nation, l_year, sum(volume) as revenue  from ( 	select 		n1.n_name as supp_nation, 		n2.n_name as cust_nation, 		extract(year from l_shipdate) as l_year, 		l_extendedprice * (1 - l_discount) as volume 	from 		supplier, 		lineitem, 		orders, 		customer, 		nation n1, 		nation n2 	where 		s_suppkey = l_suppkey 		and o_orderkey = l_orderkey 		and c_custkey = o_custkey 		and s_nationkey = n1.n_nationkey 		and c_nationkey = n2.n_nationkey 		and ( 			(n1.n_name = 'UNITED STATES' and n2.n_name = 'INDIA') 			or (n1.n_name = 'INDIA' and n2.n_name = 'UNITED STATES') 		) 		and l_shipdate between '1995-01-01' and '1996-12-31' ) as shipping  group by supp_nation, cust_nation, l_year  order by supp_nation, cust_nation, l_year;
     plan: |
@@ -356,22 +359,23 @@ SQL:
   - sql: |
       select c_custkey, c_name, sum(l_extendedprice * (1 - l_discount)) as revenue, c_acctbal, n_name, c_address, c_phone, c_comment  from customer, orders, lineitem, nation  where c_custkey = o_custkey and l_orderkey = o_orderkey and o_orderdate >= '1995-01-01' and o_orderdate < '1995-01-01' + interval '3' month and l_returnflag = 'R' and c_nationkey = n_nationkey  group by c_custkey, c_name, c_acctbal, c_phone, n_name, c_address, c_comment  order by revenue desc  limit 20;
     plan: |
-      Project(c_custkey="c_custkey", c_name="c_name", revenue="revenue", c_acctbal="c_acctbal", n_name="n_name", c_address="c_address", c_phone="c_phone", c_comment="c_comment")
-        TopN(sort="revenue DESC", offset=0, fetch=?4)
-          HashAgg(group="c_custkey,n_name", c_name="__FIRST_VALUE(c_name)", c_acctbal="__FIRST_VALUE(c_acctbal)", c_phone="__FIRST_VALUE(c_phone)", c_address="__FIRST_VALUE(c_address)", c_comment="__FIRST_VALUE(c_comment)", revenue="SUM(__*__)")
-            Project(c_custkey="c_custkey", c_name="c_name", c_address="c_address", c_nationkey="c_nationkey", c_phone="c_phone", c_acctbal="c_acctbal", c_comment="c_comment", n_nationkey="n_nationkey", n_name="n_name", o_orderkey="o_orderkey", o_custkey="o_custkey", l_orderkey="l_orderkey", __*__="l_extendedprice * ?0 - l_discount")
-              HashJoin(condition="n_nationkey = c_nationkey", type="inner")
-                HashJoin(condition="o_custkey = c_custkey", type="inner")
-                  Gather(concurrent=true)
-                    OSSTableScan(tables="customer[p1,p2,p3,p4]", shardCount=4, sql="SELECT `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_comment` FROM `customer` AS `customer`")
-                  Project(o_orderkey="o_orderkey", o_custkey="o_custkey", l_orderkey="l_orderkey", l_extendedprice="l_extendedprice", l_discount="l_discount")
-                    HashJoin(condition="l_orderkey = o_orderkey", type="inner")
-                      Gather(concurrent=true)
-                        OSSTableScan(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_orderkey`, `l_extendedprice`, `l_discount` FROM `lineitem` AS `lineitem` WHERE (`l_returnflag` = ?)")
-                      Gather(concurrent=true)
-                        OSSTableScan(tables="orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `o_orderkey`, `o_custkey` FROM `orders` AS `orders` WHERE ((`o_orderdate` >= ?) AND (`o_orderdate` < DATE_ADD(?, INTERVAL '3' MONTH)))")
-                Gather(concurrent=true)
-                  OSSTableScan(tables="nation", shardCount=0, sql="SELECT `n_nationkey`, `n_name` FROM `nation` AS `nation`")
+      project(c_custkey="c_custkey", c_name="c_name", revenue="revenue", c_acctbal="c_acctbal", n_name="n_name", c_address="c_address", c_phone="c_phone", c_comment="c_comment")
+        topn(sort="revenue desc", offset=0, fetch=?4)
+          hashagg(group="c_custkey,n_name", c_name="__first_value(c_name)", c_acctbal="__first_value(c_acctbal)", c_phone="__first_value(c_phone)", c_address="__first_value(c_address)", c_comment="__first_value(c_comment)", revenue="sum(__*__)")
+            project(c_custkey="c_custkey", c_name="c_name", c_address="c_address", c_nationkey="c_nationkey", c_phone="c_phone", c_acctbal="c_acctbal", c_comment="c_comment", n_nationkey="n_nationkey", n_name="n_name", o_orderkey="o_orderkey", o_custkey="o_custkey", l_orderkey="l_orderkey", __*__="l_extendedprice * ?0 - l_discount")
+              hashjoin(condition="n_nationkey = c_nationkey", type="inner")
+                hashjoin(condition="o_custkey = c_custkey", type="inner")
+                  gather(concurrent=true)
+                    osstablescan(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_comment` from `customer` as `customer`")
+                  project(o_orderkey="o_orderkey", o_custkey="o_custkey", l_orderkey="l_orderkey", l_extendedprice="l_extendedprice", l_discount="l_discount")
+                    hashjoin(condition="l_orderkey = o_orderkey", type="inner")
+                      gather(concurrent=true)
+                        osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey`, `l_extendedprice`, `l_discount` from `lineitem` as `lineitem` where (`l_returnflag` = ?)")
+                      gather(concurrent=true)
+                        osstablescan(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_custkey` from `orders` as `orders` where ((`o_orderdate` < date_add(?, interval '3' month)) and (`o_orderdate` >= ?))")
+                gather(concurrent=true)
+                  osstablescan(tables="nation", shardcount=0, sql="select `n_nationkey`, `n_name` from `nation` as `nation`")
+
   - sql: |
       select o_orderpriority, count(*) as order_count  from orders  where o_orderdate >= '1997-05-01' and o_orderdate < '1997-05-01' + interval '3' month and exists ( 	select 		* 	from 		lineitem 	where 		l_orderkey = o_orderkey 		and l_commitdate < l_receiptdate )  group by o_orderpriority  order by o_orderpriority;
     plan: |

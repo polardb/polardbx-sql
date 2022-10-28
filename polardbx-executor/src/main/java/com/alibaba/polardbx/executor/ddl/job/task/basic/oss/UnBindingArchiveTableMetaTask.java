@@ -26,9 +26,12 @@ import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
 import lombok.Getter;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -50,19 +53,20 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        if (tableArchive != null && tableArchive.size() > 0) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "table archive record should be null");
+        if (tableArchive == null) {
+            tableArchive = new TreeMap<>(String::compareToIgnoreCase);
         }
-        tableArchive = new TreeMap<>(String::compareToIgnoreCase);
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
         for (String table : tables) {
             TableLocalPartitionRecord record =
                 tableInfoManager.getLocalPartitionRecord(getSchemaName(), table);
-            tableArchive.put(table, record.getArchiveTableSchema() + "." + record.getArchiveTableName());
-            tableInfoManager
-                .updateArchiveTable(getSchemaName(), table, null, null);
+            if (record.getArchiveTableName() != null) {
+                tableArchive.put(table, record.getArchiveTableSchema() + "." + record.getArchiveTableName());
+                tableInfoManager
+                    .updateArchiveTable(getSchemaName(), table, null, null);
+            }
         }
     }
 
@@ -73,10 +77,9 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
             tableInfoManager.setConnection(metaDbConnection);
             for (Map.Entry<String, String> entry : tableArchive.entrySet()) {
                 String[] tableFull = entry.getValue().split(".");
-                if (tableFull.length == 2) {
-                    tableInfoManager
-                        .updateArchiveTable(getSchemaName(), entry.getKey(), tableFull[0], tableFull[1]);
-                }
+                Preconditions.checkArgument(tableFull.length == 2);
+                tableInfoManager
+                    .updateArchiveTable(getSchemaName(), entry.getKey(), tableFull[0], tableFull[1]);
             }
         }
     }

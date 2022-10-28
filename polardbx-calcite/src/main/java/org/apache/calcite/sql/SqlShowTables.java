@@ -16,9 +16,7 @@
 
 package org.apache.calcite.sql;
 
-import java.util.LinkedList;
-import java.util.List;
-
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
@@ -27,7 +25,8 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 
-import com.alibaba.polardbx.common.utils.TStringUtil;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * @author chenmo.cm
@@ -158,6 +157,7 @@ public class SqlShowTables extends SqlShow {
                 typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             if (isFull) {
                 columns.add(new RelDataTypeFieldImpl("Table_type", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+                columns.add(new RelDataTypeFieldImpl("Auto_partition", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             }
 
             return typeFactory.createStructType(columns);

@@ -1,0 +1,48 @@
+
+drop table if exists `bmsql_oorder`;
+
+CREATE TABLE `bmsql_oorder` (
+`o_w_id` int(11) NOT NULL,
+`o_d_id` int(11) NOT NULL,
+`o_id` int(11) NOT NULL,
+`o_c_id` int(11) DEFAULT NULL,
+`o_carrier_id` int(11) DEFAULT NULL,
+`o_ol_cnt` int(11) DEFAULT NULL,
+`o_all_local` int(11) DEFAULT NULL,
+`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+UNIQUE INDEX `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+show create table bmsql_oorder;
+
+show full create table bmsql_oorder;
+
+show create table bmsql_oorder_idx1;
+
+show full create table bmsql_oorder_idx1;
+
+drop table if exists `bmsql_oorder`;
+
+CREATE TABLE `bmsql_oorder` (
+`o_w_id` int(11) NOT NULL,
+`o_d_id` int(11) NOT NULL,
+`o_id` int(11) NOT NULL,
+`o_c_id` int(11) DEFAULT NULL,
+`o_carrier_id` int(11) DEFAULT NULL,
+`o_ol_cnt` int(11) DEFAULT NULL,
+`o_all_local` int(11) DEFAULT NULL,
+`o_entry_d` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+PRIMARY KEY (`o_w_id`, `o_d_id`, `o_id`),
+UNIQUE CLUSTERED INDEX `bmsql_oorder_idx1` (`o_w_id`, `o_d_id`, `o_carrier_id`, `o_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+show create table bmsql_oorder;
+
+show full create table bmsql_oorder;
+
+show create table bmsql_oorder_idx1;
+
+show full create table bmsql_oorder_idx1;
+
+drop table if exists `bmsql_oorder`;

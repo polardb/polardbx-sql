@@ -18,7 +18,7 @@ package com.alibaba.polardbx.qatest.sequence;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.qatest.BaseSequenceTestCase;
-import com.alibaba.polardbx.qatest.entity.NewSequence;
+import com.alibaba.polardbx.qatest.entity.TestSequence;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.apache.commons.lang.StringUtils;
@@ -54,54 +54,57 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
     @Parameterized.Parameters(name = "{index}:srcSeqType={0}, dstSeqType={1}, schema={2}")
     public static List<String[]> prepareData() {
         String[][] postFix = {
-            {"", "simple", ""},
-            //{"", "simple with cache", ""},
-            {"", "group", ""},
-            {"", "time", ""}, {"simple", "simple", ""},
-            //{"simple", "simple with cache", ""},
-            {"simple", "group", ""}, {"simple", "time", ""},
-//            {"simple with cache", "simple", ""},
-//            {"simple with cache", "simple with cache", ""},
-//            {"simple with cache", "group", ""},
-//            {"simple with cache", "time", ""},
-            {"group", "simple", ""},
-            //{"group", "simple with cache", ""},
+            {"new", "new", ""},
+            {"new", "group", ""},
+            {"new", "simple", ""},
+            {"new", "time", ""},
+
+            {"group", "new", ""},
             {"group", "group", ""},
+            {"group", "simple", ""},
             {"group", "time", ""},
+
+            {"simple", "new", ""},
+            {"simple", "group", ""},
+            {"simple", "simple", ""},
+            {"simple", "time", ""},
+
+            {"time", "new", ""},
+            {"time", "group", ""},
             {"time", "simple", ""},
-            //{"time", "simple with cache", ""},
-            {"time", "group", ""}, {"time", "time", ""},
-            {"", "simple", PropertiesUtil.polardbXShardingDBName2()},
-            //{"", "simple with cache", PropertiesUtil.polardbXShardingDBName2()},
-            {"", "group", PropertiesUtil.polardbXShardingDBName2()},
-            {"", "time", PropertiesUtil.polardbXShardingDBName2()},
-            {"simple", "simple", PropertiesUtil.polardbXShardingDBName2()},
-            //{"simple", "simple with cache", PropertiesUtil.polardbXShardingDBName2()},
-            {"simple", "group", PropertiesUtil.polardbXShardingDBName2()},
-            {"simple", "time", PropertiesUtil.polardbXShardingDBName2()},
-//            {"simple with cache", "simple", PropertiesUtil.polardbXShardingDBName2()},
-//            {"simple with cache", "simple with cache", PropertiesUtil.polardbXShardingDBName2()},
-//            {"simple with cache", "group", PropertiesUtil.polardbXShardingDBName2()},
-//            {"simple with cache", "time", PropertiesUtil.polardbXShardingDBName2()},
-            {"group", "simple", PropertiesUtil.polardbXShardingDBName2()},
-            //{"group", "simple with cache", PropertiesUtil.polardbXShardingDBName2()},
-            {"group", "group", PropertiesUtil.polardbXShardingDBName2()},
-            {"group", "time", PropertiesUtil.polardbXShardingDBName2()},
-            {"time", "simple", PropertiesUtil.polardbXShardingDBName2()},
-            //{"time", "simple with cache", PropertiesUtil.polardbXShardingDBName2()},
-            {"time", "group", PropertiesUtil.polardbXShardingDBName2()},
-            {"time", "time", PropertiesUtil.polardbXShardingDBName2()}};
+            {"time", "time", ""},
+
+            {"new", "new", PropertiesUtil.polardbXAutoDBName2()},
+            {"new", "group", PropertiesUtil.polardbXAutoDBName2()},
+            {"new", "simple", PropertiesUtil.polardbXAutoDBName2()},
+            {"new", "time", PropertiesUtil.polardbXAutoDBName2()},
+
+            {"group", "new", PropertiesUtil.polardbXAutoDBName2()},
+            {"group", "group", PropertiesUtil.polardbXAutoDBName2()},
+            {"group", "simple", PropertiesUtil.polardbXAutoDBName2()},
+            {"group", "time", PropertiesUtil.polardbXAutoDBName2()},
+
+            {"simple", "new", PropertiesUtil.polardbXAutoDBName2()},
+            {"simple", "group", PropertiesUtil.polardbXAutoDBName2()},
+            {"simple", "simple", PropertiesUtil.polardbXAutoDBName2()},
+            {"simple", "time", PropertiesUtil.polardbXAutoDBName2()},
+
+            {"time", "new", PropertiesUtil.polardbXAutoDBName2()},
+            {"time", "group", PropertiesUtil.polardbXAutoDBName2()},
+            {"time", "simple", PropertiesUtil.polardbXAutoDBName2()},
+            {"time", "time", PropertiesUtil.polardbXAutoDBName2()}
+        };
         return Arrays.asList(postFix);
     }
 
     @Before
     public void cleanEnv() {
-        dropSeqence(seqName);
+        dropSequence(seqName);
     }
 
     @After
     public void afterCleanEnv() {
-        dropSeqence(seqName);
+        dropSequence(seqName);
     }
 
     /**
@@ -204,7 +207,7 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 100", seqName, dstSeqType);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         if (dstSeqType.equals("simple") || dstSeqType.equals("") || dstSeqType.equals("simple with cache")) {
             assertThat(sequence.getMaxValue()).isEqualTo(9223372036854775807L);
             assertThat(sequence.getValue()).isAnyOf(100L, 100100L);
@@ -247,7 +250,7 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 9223372036854775807", seqName, dstSeqType);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         if (!isSpecialSequence(dstSeqType)) {
             assertThat(sequence.getMaxValue()).isEqualTo(9223372036854775807L);
             assertThat(sequence.getStartWith()).isEqualTo(9223372036854775807L);
@@ -276,7 +279,7 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 0", seqName, dstSeqType);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         if (!isSpecialSequence(dstSeqType)) {
             assertThat(sequence.getMaxValue()).isEqualTo(9223372036854775807L);
             assertThat(sequence.getStartWith()).isEqualTo(1);
@@ -320,7 +323,7 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
             dstSeqType);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         if (!isSpecialSequence(dstSeqType)) {
             assertThat(sequence.getIncrementBy()).isEqualTo(1);
         }
@@ -349,7 +352,7 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 1 increment by -1", seqName, dstSeqType);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Numeric value expected");
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         if (!isSpecialSequence(srcSeqType)) {
             assertThat(sequence.getIncrementBy()).isEqualTo(1);
         }
@@ -378,14 +381,14 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 1 increment by 10", seqName, dstSeqType);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
-        if (!isSpecialSequence(dstSeqType)) {
+        TestSequence sequence = showSequence(seqName);
+        if (!isSpecialSequence(dstSeqType) && !dstSeqType.toLowerCase().contains("new")) {
             assertThat(sequence.getIncrementBy()).isEqualTo(10);
         }
 
         long startValue = getSequenceNextVal(seqName);
         long endValue = getSequenceNextVal(seqName);
-        if (!(dstSeqType.equals("time") || (dstSeqType.equals("group")))) {
+        if (dstSeqType.equalsIgnoreCase("simple")) {
             assertThat(startValue).isAtMost(endValue - 10);
         } else {
             assertThat(startValue).isLessThan(endValue);
@@ -407,15 +410,15 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 1 maxvalue 2 cycle", seqName, dstSeqType);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
-        if (!isSpecialSequence(dstSeqType)) {
+        TestSequence sequence = showSequence(seqName);
+        if (dstSeqType.equalsIgnoreCase("simple")) {
             assertThat(sequence.getIncrementBy()).isEqualTo(1);
             assertThat(sequence.getMaxValue()).isEqualTo(2);
         }
 
         long startValue = getSequenceNextVal(seqName);
         long endValue = getSequenceNextVal(seqName);
-        if ((!dstSeqType.equals("time")) && (!dstSeqType.equals("group"))) {
+        if (dstSeqType.equalsIgnoreCase("simple")) {
             assertThat(getSequenceNextVal(seqName)).isEqualTo(1);
             assertThat(getSequenceNextVal(seqName)).isEqualTo(2);
             assertThat(getSequenceNextVal(seqName)).isEqualTo(1);
@@ -438,15 +441,14 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 1 maxvalue 2", seqName, dstSeqType);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        NewSequence sequence = showSequence(seqName);
-        if (!isSpecialSequence(dstSeqType)) {
+        TestSequence sequence = showSequence(seqName);
+        if (dstSeqType.equalsIgnoreCase("simple")) {
             assertThat(sequence.getMaxValue()).isEqualTo(2);
             assertThat(sequence.getStartWith()).isEqualTo(1);
             assertThat(getSequenceNextVal(seqName)).isEqualTo(1);
             assertThat(getSequenceNextVal(seqName)).isEqualTo(2);
             JdbcUtil.executeUpdateFailed(tddlConnection, String.format("select %s.nextval", seqName),
                 "exceeds maximum value allowed");
-
         }
 
     }
@@ -466,7 +468,7 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
         sql = String.format("alter sequence %s change to %s start with 0 maxvalue -1", seqName, dstSeqType);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Numeric value expected");
 
-        NewSequence sequence = showSequence(seqName);
+        TestSequence sequence = showSequence(seqName);
         if (!isSpecialSequence(srcSeqType)) {
             assertThat(sequence.getMaxValue()).isEqualTo(9223372036854775807L);
         }
@@ -475,4 +477,8 @@ public class ChangeSequenceTest extends BaseSequenceTestCase {
 
     }
 
+    @Override
+    public boolean usingNewPartDb() {
+        return true;
+    }
 }

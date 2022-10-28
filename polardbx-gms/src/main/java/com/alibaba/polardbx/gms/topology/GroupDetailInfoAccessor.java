@@ -77,6 +77,14 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
     private static final String SELECT_GROUP_DETAILS_BY_DB_NAME_AND_STORAGE_INST_ID =
         "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where db_name =? and storage_inst_id=?";
 
+    private static final String SELECT_ALL_PHY_DB_NAME_BY_DB_NAME_AND_STORAGE_INST_ID =
+            "select t2.* from " + GROUP_DETAIL_INFO_TABLE + " as t1 " +
+                    "join " + GmsSystemTables.DB_GROUP_INFO + " as t2 " +
+                    "on t1.group_name = t2.group_name " +
+                    "and t1.db_name=t2.db_name " +
+                    "where t1.storage_inst_id = ? " +
+                    "and t1.db_name=?";
+
     private static final String SELECT_GROUP_DETAILS_BY_DB_NAME_AND_GROUP =
         "select * from `" + GROUP_DETAIL_INFO_TABLE + "` where db_name =? and group_name=?";
 
@@ -238,6 +246,21 @@ public class GroupDetailInfoAccessor extends AbstractAccessor {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
                 GROUP_DETAIL_INFO_TABLE,
                 e.getMessage());
+        }
+    }
+
+    public List<DbGroupInfoRecord> getAllPhyDbNameByInstId(String dbName, String storageInstId) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, storageInstId);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, dbName);
+            return MetaDbUtil.query(SELECT_ALL_PHY_DB_NAME_BY_DB_NAME_AND_STORAGE_INST_ID, params, DbGroupInfoRecord.class,
+                            connection);
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + GROUP_DETAIL_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                    GROUP_DETAIL_INFO_TABLE,
+                    e.getMessage());
         }
     }
 

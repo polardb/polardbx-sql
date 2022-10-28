@@ -142,12 +142,12 @@ public abstract class EnumerativeRule<T> extends ExpressionRule<T> {
                     }
                 }
                 // 非公共列使用自己的枚举值，公共列使用上下文中，实现replace
-                enumerates = RuleUtils.getSamplingField(sqlArgs, withoutCommon, extKeyToMappingRules, null, null);
+                enumerates = RuleUtils.getSamplingField(sqlArgs, withoutCommon, extKeyToMappingRules, null);
                 for (String name : commonSamples.getSubColumSet()) {
                     enumerates.put(name, commonSamples.getColumnEnumerates(name)); // 公共列只使用上一层规则的描点，值输入的分流窄化问题
                 }
             } else if (samplesCtx.dealType == SamplesCtx.merge) {
-                enumerates = RuleUtils.getSamplingField(sqlArgs, thisParam, extKeyToMappingRules, null, null);
+                enumerates = RuleUtils.getSamplingField(sqlArgs, thisParam, extKeyToMappingRules, null);
                 for (String diffType : commonSamples.getSubColumSet()) {
                     enumerates.get(diffType).addAll(commonSamples.getColumnEnumerates(diffType));
                 }
@@ -155,7 +155,7 @@ public abstract class EnumerativeRule<T> extends ExpressionRule<T> {
                 throw new IllegalStateException("Should not happen! SamplesCtx.dealType has a new Enum?");
             }
         } else {
-            enumerates = RuleUtils.getSamplingField(sqlArgs, thisParam, extKeyToMappingRules, null, null);
+            enumerates = RuleUtils.getSamplingField(sqlArgs, thisParam, extKeyToMappingRules, null);
         }
         return enumerates;
     }

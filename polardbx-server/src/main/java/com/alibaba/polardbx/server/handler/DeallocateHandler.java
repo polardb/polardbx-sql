@@ -32,14 +32,16 @@ import java.sql.SQLSyntaxErrorException;
  */
 public final class DeallocateHandler {
 
-    public static void handle(ByteString stmt, ServerConnection c, boolean hasMore) {
+    public static void handle(ByteString stmt, ServerConnection c, boolean hasMore, boolean inProcedureCall) {
 
         try {
             parseAndRemove(stmt, c.getSmForQuery());
 
-            // return OK
-            PacketOutputProxyFactory.getInstance().createProxy(c)
-                .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+            if (!inProcedureCall) {
+                // return OK
+                PacketOutputProxyFactory.getInstance().createProxy(c)
+                    .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+            }
         } catch (SQLSyntaxErrorException e) {
             c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, "Parse '" + stmt + "'");
         } finally {

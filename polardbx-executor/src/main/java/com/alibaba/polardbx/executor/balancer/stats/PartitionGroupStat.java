@@ -17,9 +17,11 @@
 package com.alibaba.polardbx.executor.balancer.stats;
 
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Stats of a partition-group
@@ -37,5 +39,18 @@ public class PartitionGroupStat {
 
     public PartitionStat getFirstPartition() {
         return this.partitions.get(0);
+    }
+
+    public Optional<PartitionStat> getLargestSizePartition() {
+        if (CollectionUtils.isEmpty(partitions)) {
+            return Optional.empty();
+        }
+        PartitionStat largest = this.partitions.get(0);
+        for (PartitionStat p : partitions) {
+            if (p.getPartitionDiskSize() > largest.getPartitionDiskSize()) {
+                largest = p;
+            }
+        }
+        return Optional.of(largest);
     }
 }

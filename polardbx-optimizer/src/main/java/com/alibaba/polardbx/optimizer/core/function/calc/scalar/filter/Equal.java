@@ -21,6 +21,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -38,7 +39,7 @@ public class Equal extends AbstractCollationScalarFunction {
                 return null;
             }
         }
-        DataType type = getCompareType();
+        DataType type = getEqualType(Arrays.asList(args));
         return type.compare(args[0], args[1]) == 0 ? 1L : 0L;
     }
 

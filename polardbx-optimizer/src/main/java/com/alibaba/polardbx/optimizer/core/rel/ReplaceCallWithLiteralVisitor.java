@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.charset.CharsetName;
@@ -37,6 +38,7 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexCallParam;
 import org.apache.calcite.rex.RexDynamicParam;
+import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
@@ -79,7 +81,7 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
                                          Function<RexNode, Object> calcValueFunc, boolean needConsistency) {
         this.calcColumnIndexes = calcColumnIndexes;
         this.calcValueFunc = calcValueFunc;
-        rexVisitor = new ReplaceCallRexVisitor(params, needConsistency);
+        this.rexVisitor = new ReplaceCallRexVisitor(params, needConsistency);
     }
 
     private RexBuilder getRexBuilder() {
@@ -434,7 +436,7 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
 
             // It can't be computed if parameters not function or literal
             if (!verifyOperands(call)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_FUNCTION, "'" + call + "'");
+                return call;
             }
 
             // If must compute, apply RexCall directly
@@ -467,6 +469,7 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
         /**
          * If it's an argument of a function, it must be a literal.
          */
+        @Override
         public RexNode visitDynamicParam(RexDynamicParam dynamicParam) {
             if (!mustCompute) {
                 return dynamicParam;
@@ -489,4 +492,6 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
     public void setReplaceRexCallParam(boolean replaceRexCallParam) {
         this.replaceRexCallParam = replaceRexCallParam;
     }
+
+
 }

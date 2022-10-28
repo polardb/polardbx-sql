@@ -96,11 +96,20 @@ public class CastDecimalRandomTest extends NumericTestBase {
             .mapToObj(i -> generator.get())
             .collect(Collectors.toList());
 
+        paramList = addFixedCase(paramList);
+
         insertData(paramList, col);
 
         // select cast(col as decimal(precision, scale)) from table
         String sql = String.format(CAST_DECIMAL_FORMAT, col, col, precision, scale);
 //        System.out.println(sql);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    private List<Object> addFixedCase(List<Object> paramList) {
+        if (DECIMAL_TEST_HIGH.equals(col) && precision.equals("4") && scale.equals("0")) {
+            paramList.add("9999.953990000000000000000000000000");
+        }
+        return paramList;
     }
 }

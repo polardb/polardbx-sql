@@ -16,37 +16,15 @@
 
 package com.alibaba.polardbx.common.jdbc;
 
-import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
-
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
 public interface IConnection extends Connection {
 
     void kill() throws SQLException;
-
-    long getLastInsertId();
-
-    void setLastInsertId(long id);
-
-    long getReturnedLastInsertId();
-
-    void setReturnedLastInsertId(long id);
-
-    List<Long> getGeneratedKeys();
-
-    void setGeneratedKeys(List<Long> ids);
-
-    ITransactionPolicy getTrxPolicy();
-
-    void setTrxPolicy(ITransactionPolicy trxPolicy);
-
-    BatchInsertPolicy getBatchInsertPolicy(Map<String, Object> extraCmds);
-
-    void setBatchInsertPolicy(BatchInsertPolicy policy);
 
     void setEncoding(String encoding) throws SQLException;
 
@@ -59,6 +37,10 @@ public interface IConnection extends Connection {
     void setStressTestValid(boolean stressTestValid);
 
     boolean isStressTestValid();
+
+    boolean isBytesSqlSupported() throws SQLException;
+
+    PreparedStatement prepareStatement(BytesSql sql, byte[] hint) throws SQLException;
 
     @Override
     void setNetworkTimeout(Executor executor, int milliseconds) throws SQLException;
@@ -76,28 +58,17 @@ public interface IConnection extends Connection {
     default void setConnectionVariables(Map<String, Object> connectionVariables) throws SQLException {
     }
 
-    long getFoundRows();
-
-    void setFoundRows(long foundRows);
-
-    long getAffectedRows();
-
-    void setAffectedRows(long affectedRows);
-
-    String getUser();
-
-    void setUser(String userName);
-
+    /**
+     * Run a SQL later within the next execution.
+     *
+     * @param sql - The deferred SQL.
+     */
     void executeLater(String sql) throws SQLException;
 
     void flushUnsent() throws SQLException;
 
     default long getId() {
         return 0L;
-    }
-
-    default LockingFunctionHandle getLockHandle(Object object) {
-        return null;
     }
 
     default ConnectionStats getConnectionStats() {
@@ -108,11 +79,19 @@ public interface IConnection extends Connection {
         return this;
     }
 
-    default int getReadViewId() {
-        return -1;
+    default String getTrxXid() {
+        throw new UnsupportedOperationException("Connection does not support trx xid.");
     }
 
-    default void setReadViewId(int readViewId) {
-        throw new UnsupportedOperationException("Connection does not support read view id.");
+    default void setTrxXid(String xid) {
+        throw new UnsupportedOperationException("Connection does not support trx xid.");
+    }
+
+    default void setInShareReadView(boolean inShareReadView) {
+        throw new UnsupportedOperationException("Connection does not support share read view.");
+    }
+
+    default boolean inShareReadView() {
+        throw new UnsupportedOperationException("Connection does not support share read view.");
     }
 }

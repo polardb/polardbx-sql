@@ -1,0 +1,18 @@
+1:
+  update mdb_mtb1 set integer_test=integer_test-1 where pk=300000;
+
+2:
+  update mdb_mtb2 set integer_test=integer_test+1 where pk=300000;
+
+3:
+  update mdb_mtb3 set integer_test=integer_test-1 where pk=300000;
+
+4:
+  update mdb_mtb4 set integer_test=integer_test+1 where pk=300000;
+
+5:
+  update mdb_mtb3 set integer_test=integer_test-1 order by pk desc limit 2;
+
+6:
+  update mdb_mtb4 set integer_test=integer_test+1 order by pk desc limit 2;
+

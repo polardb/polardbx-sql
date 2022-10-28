@@ -61,6 +61,10 @@ public interface ITransaction {
     IConnection getConnection(String schemaName, String group, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException;
 
+    IConnection getConnection(String schemaName, String group, Long grpConnId, IDataSource ds, RW rw,
+                              ExecutionContext ec)
+        throws SQLException;
+
     boolean isClosed();
 
     void close();
@@ -76,6 +80,8 @@ public interface ITransaction {
     void clearTrxContext();
 
     void setCrucialError(ErrorCode errorCode);
+
+    ErrorCode getCrucialError();
 
     void checkCanContinue();
 
@@ -108,4 +114,14 @@ public interface ITransaction {
     void setInventoryMode(InventoryMode inventoryMode);
 
     ITransactionManagerUtil getTransactionManagerUtil();
+
+    /**
+     * Handle a single statement error.
+     *
+     * @param t the error.
+     * @return true if this statement is rolled back, or false otherwise.
+     */
+    boolean handleStatementError(Throwable t);
+
+    void releaseAutoSavepoint();
 }

@@ -18,24 +18,25 @@ package com.alibaba.polardbx.executor.statistic.ndv;
 
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
+import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
-import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
-import com.alibaba.polardbx.optimizer.utils.MetaUtils;
-import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -51,9 +52,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_HLL;
+import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.HLL_REGISTERS;
+import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.buildReghisto;
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.buildSketchKey;
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.estimate;
-import static com.alibaba.polardbx.optimizer.OptimizerContext.getContext;
+import static com.alibaba.polardbx.executor.utils.ExecUtils.needSketchInterrupted;
+import static com.alibaba.polardbx.gms.module.LogPattern.INTERRUPTED;
+import static com.alibaba.polardbx.gms.module.LogPattern.NDV_SKETCH_NOT_READY;
+import static com.alibaba.polardbx.gms.module.LogPattern.PROCESSING;
+import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_END;
+import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_START;
+import static com.alibaba.polardbx.gms.module.LogPattern.UNEXPECTED;
+import static com.alibaba.polardbx.gms.module.LogPattern.UPDATE_NDV_FOR_CHANGED;
+import static com.alibaba.polardbx.gms.module.LogPattern.UPDATE_NDV_FOR_EXPIRED;
 
 public class NDVShardSketch {
     private static final Logger logger = LoggerFactory.getLogger("statistics");
@@ -66,8 +78,6 @@ public class NDVShardSketch {
     public static final String HYPER_LOG_LOG_SQL = "SELECT HYPERLOGLOG(%1$2s) AS HLL FROM %2$2s";
 
     public static final String HYPER_LOG_LOG_MUL_COLUMNS_SQL = "SELECT HYPERLOGLOG(concat(%1$2s)) AS HLL FROM %2$2s";
-
-//    public static final String SAMPLE_HINT = "/*+sample_percentage(%1$2s)*/";
 
     /**
      * schemaName:table name:columns name
@@ -120,15 +130,12 @@ public class NDVShardSketch {
      * @return -1 meaning invalid
      */
     public long getCardinality() {
-        if (!validityCheck()) {
-            cardinality = -1;
-            return -1;
-        }
         return cardinality;
     }
 
     /**
      * check the validity of the shard parts
+     * table might change the topology by ddl
      */
     public boolean validityCheck() {
         String[] shardInfo = shardKey.split(":");
@@ -136,7 +143,11 @@ public class NDVShardSketch {
         String tableName = shardInfo[1];
         Map<String, Set<String>> topologyTmp;
         try {
-            topologyTmp = getContext(schemaName).getLatestSchemaManager().getTable(tableName).getLatestTopology();
+            OptimizerContext op = OptimizerContext.getContext(schemaName);
+            if (op == null) {
+                return false;
+            }
+            topologyTmp = op.getLatestSchemaManager().getTable(tableName).getLatestTopology();
         } catch (TableNotFoundException tableNotFoundException) {
             return false;
         }
@@ -152,7 +163,7 @@ public class NDVShardSketch {
 
         // build topology map using statistic info
         Map<String, Set<String>> topologyStatistic = Maps.newHashMap();
-        for (String shardPart : getShardParts()) {
+        for (String shardPart : shardParts) {
             String[] parts = shardPart.split(":");
             String nodeName = parts[0];
             String phyTableNames = parts[1];
@@ -178,114 +189,18 @@ public class NDVShardSketch {
      * update all shard parts
      */
     public boolean updateAllShardParts() throws SQLException {
-        String[] shardInfo = shardKey.split(":");
-        String schemaName = shardInfo[0];
-        String tableName = shardInfo[1];
-        String columnNames = shardInfo[2];
-
-        // expired time for x-conn
-        int expiredTime = OptimizerContext.getContext(schemaName).getParamManager()
-            .getInt(ConnectionParams.STATISTIC_NDV_SKETCH_EXPIRE_TIME);
-        long current = System.currentTimeMillis();
-        long sketchInfoTime = 0;
-        long cardinalityTime = 0;
-        boolean hasUpdated = false;
-
-        // record update shard parts and bytes for cal new cardinality(CompositeCardinality)
-        List<String> updateShardParts = Lists.newLinkedList();
-        Map<String, byte[]> updateBytes = Maps.newHashMap();
-        for (int i = 0; i < getGmtUpdate().length; i++) {
-            boolean needUpdate = false;
-            if (current - getGmtUpdate()[i] > expiredTime) {
-                StatisticUtils.logInfo(schemaName,
-                    "update ndv sketch for timeout:" + shardKey + "," + Arrays.toString(getShardParts()) +
-                        ",current:" + new Date(current) +
-                        ",record:" + new Date(getGmtUpdate()[i]) +
-                        ",expiredTime:" + expiredTime);
-                needUpdate = true;
-            } else {
-                long currentCardinality = getCurrentCardinality(shardKey, getShardParts()[i]);
-                if (currentCardinality == -1) {
-                    StatisticUtils.logInfo(schemaName,
-                        "update ndv sketch for currentCardinality equals -1:" + shardKey + "," + Arrays
-                            .toString(getShardParts()));
-                    needUpdate = true;
-                } else {
-                    long dValue = Math.abs(currentCardinality - getDnCardinalityArray()[i]);
-                    int maxDValue = OptimizerContext.getContext(schemaName).getParamManager()
-                        .getInt(ConnectionParams.STATISTIC_NDV_SKETCH_MAX_DIFFERENT_VALUE);
-                    if (dValue > maxDValue || ((double) dValue / currentCardinality) > MAX_DIFF_VALUE_RATIO) {
-                        StatisticUtils.logInfo(schemaName,
-                            "update ndv sketch for currentCardinality changed:" + shardKey + "," + Arrays
-                                .toString(getShardParts()) +
-                                ", max d-value:" + maxDValue +
-                                ",current d-value:" + dValue +
-                                ", currentCardinality:" + currentCardinality +
-                                ", d-value-ratio:" + MAX_DIFF_VALUE_RATIO
-                        );
-                        needUpdate = true;
-                    }
-                }
-            }
-            if (needUpdate) {
-                long start = System.currentTimeMillis();
-                long cardinalityTmp = getCurrentCardinality(shardKey, getShardParts()[i]);
-                cardinalityTime += System.currentTimeMillis() - start;
-                start = System.currentTimeMillis();
-                byte[] bytes = getCurrentHll(shardKey, getShardParts()[i], false);
-                if (bytes == null) {
-                    // null meaning the hll request is stoped by something, like flow control
-                    StatisticUtils.logInfo(schemaName, "update ndv sketch stopped by flow control");
-                    continue;
-                }
-                updateBytes.put(getShardParts()[i], bytes);
-                updateShardParts.add(shardParts[i]);
-                getDnCardinalityArray()[i] = cardinalityTmp;
-                getGmtUpdate()[i] = System.currentTimeMillis();
-                SystemTableNDVSketchStatistic.SketchRow sketchRow = new SystemTableNDVSketchStatistic.SketchRow
-                    (schemaName, tableName, columnNames, getShardParts()[i], getDnCardinalityArray()[i], -1,
-                        "HYPER_LOG_LOG");
-                sketchRow.setSketchBytes(bytes);
-                PolarDbXSystemTableNDVSketchStatistic.getInstance()
-                    .batchReplace(new SystemTableNDVSketchStatistic.SketchRow[] {sketchRow});
-
-                sketchInfoTime += System.currentTimeMillis() - start;
-                StatisticUtils.logInfo(schemaName, "update ndv sketch :" + shardKey + ", " + getShardParts()[i]);
-                hasUpdated = true;
-            }
-        }
-        if (hasUpdated) {
-            /**
-             * update sketch bytes
-             */
-            Map<String, byte[]> bytesMap = PolarDbXSystemTableNDVSketchStatistic.getInstance()
-                .loadByTableNameAndColumnName(schemaName, tableName, columnNames);
-            for (String shardPart : updateShardParts) {
-                bytesMap.put(shardPart, updateBytes.get(shardPart));
-            }
-
-            /**
-             * compute new cardinality
-             */
-            setCardinality(HyperLogLogUtil.estimate(bytesMap.values().toArray(new byte[0][])));
-
-            // record new cardinality
-            PolarDbXSystemTableNDVSketchStatistic.getInstance()
-                .updateCompositeCardinality(schemaName, tableName, columnNames, getCardinality());
-
-            StatisticUtils.logInfo(schemaName,
-                "update ndv sketch :" + shardKey + ", sketchInfo time:" + sketchInfoTime + ", cardinality time:"
-                    + cardinalityTime);
-        }
-        return hasUpdated;
-    }
-
-    /**
-     * update stock shard parts
-     */
-    public boolean updateStockShardParts() throws SQLException {
-        if (!validityCheck()) {
-            logger.error("find invalid ndv sketch :" + shardKey + "," + Arrays.toString(getShardParts()));
+        if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+            // just return
+            ModuleLogInfo.getInstance()
+                .logRecord(
+                    Module.STATISTIC,
+                    INTERRUPTED,
+                    new String[] {
+                        "ndv sketch " + shardKey,
+                        ENABLE_HLL + " is false"
+                    },
+                    LogLevel.WARNING
+                );
             return false;
         }
         String[] shardInfo = shardKey.split(":");
@@ -294,94 +209,147 @@ public class NDVShardSketch {
         String columnNames = shardInfo[2];
 
         // expired time for x-conn
-        int expiredTime = OptimizerContext.getContext(schemaName).getParamManager()
-            .getInt(ConnectionParams.STATISTIC_NDV_SKETCH_EXPIRE_TIME);
+        int expiredTime = InstConfUtil.getInt(ConnectionParams.STATISTIC_NDV_SKETCH_EXPIRE_TIME);
         long current = System.currentTimeMillis();
         long sketchInfoTime = 0;
         long cardinalityTime = 0;
         boolean hasUpdated = false;
+
         // record update shard parts and bytes for cal new cardinality(CompositeCardinality)
         List<String> updateShardParts = Lists.newLinkedList();
         Map<String, byte[]> updateBytes = Maps.newHashMap();
-
-        for (int i = 0; i < getGmtUpdate().length; i++) {
+        for (int i = 0; i < gmtUpdate.length; i++) {
             boolean needUpdate = false;
-            if (current - getGmtUpdate()[i] > expiredTime) {
-                StatisticUtils.logInfo(schemaName,
-                    "update ndv sketch for timeout:" + shardKey + "," + Arrays.toString(getShardParts()) +
-                        ",current:" + new Date(current) +
-                        ",record:" + new Date(getGmtUpdate()[i]) +
-                        ",expiredTime:" + expiredTime);
+            if (current - gmtUpdate[i] > expiredTime) {
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTIC,
+                        UPDATE_NDV_FOR_EXPIRED,
+                        new String[] {
+                            shardKey, shardParts[i], new Date(current).toString(), new Date(gmtUpdate[i]).toString(),
+                            expiredTime + ""
+                        },
+                        LogLevel.NORMAL
+                    );
                 needUpdate = true;
             } else {
-                long currentCardinality = getCurrentCardinality(shardKey, getShardParts()[i]);
+                long currentCardinality = getCurrentCardinality(shardKey, shardParts[i]);
                 if (currentCardinality != -1) {
-                    long dValue = Math.abs(currentCardinality - getDnCardinalityArray()[i]);
-                    int maxDValue = OptimizerContext.getContext(schemaName).getParamManager()
-                        .getInt(ConnectionParams.STATISTIC_NDV_SKETCH_MAX_DIFFERENT_VALUE);
+                    long dValue = Math.abs(currentCardinality - dnCardinalityArray[i]);
+                    int maxDValue = InstConfUtil.getInt(ConnectionParams.STATISTIC_NDV_SKETCH_MAX_DIFFERENT_VALUE);
                     if (dValue > maxDValue || ((double) dValue / currentCardinality) > MAX_DIFF_VALUE_RATIO) {
-                        StatisticUtils.logInfo(schemaName,
-                            "update ndv sketch for currentCardinality changed:" + shardKey + "," + Arrays
-                                .toString(getShardParts()) +
-                                ", max d-value:" + maxDValue +
-                                ",current d-value:" + dValue +
-                                ", currentCardinality:" + currentCardinality +
-                                ", d-value-ratio:" + MAX_DIFF_VALUE_RATIO
-                        );
+                        ModuleLogInfo.getInstance()
+                            .logRecord(
+                                Module.STATISTIC,
+                                UPDATE_NDV_FOR_CHANGED,
+                                new String[] {
+                                    shardKey, shardParts[i], maxDValue + "", dValue + "",
+                                    currentCardinality + "", MAX_DIFF_VALUE_RATIO + ""
+                                },
+                                LogLevel.NORMAL
+                            );
                         needUpdate = true;
                     }
                 }
             }
             if (needUpdate) {
                 long start = System.currentTimeMillis();
-                long cardinalityTmp = getCurrentCardinality(shardKey, getShardParts()[i]);
+                long cardinalityTmp = getCurrentCardinality(shardKey, shardParts[i]);
                 cardinalityTime += System.currentTimeMillis() - start;
                 start = System.currentTimeMillis();
-                byte[] bytes = getCurrentHll(shardKey, getShardParts()[i], false);
+                byte[] bytes = getCurrentHll(shardKey, shardParts[i], false);
                 if (bytes == null) {
-                    // null meaning the hll request is stoped by something, like flow control
-                    StatisticUtils.logInfo(schemaName, "update ndv sketch stopped by flow control");
+                    // null meaning the hll request is stopped by something
+                    ModuleLogInfo.getInstance()
+                        .logRecord(
+                            Module.STATISTIC,
+                            INTERRUPTED,
+                            new String[] {"ndv sketch", shardKey + "," + shardParts[i]},
+                            LogLevel.NORMAL
+                        );
                     continue;
                 }
-                updateBytes.put(getShardParts()[i], bytes);
+                updateBytes.put(shardParts[i], bytes);
                 updateShardParts.add(shardParts[i]);
-                getDnCardinalityArray()[i] = cardinalityTmp;
-                getGmtUpdate()[i] = System.currentTimeMillis();
+                dnCardinalityArray[i] = cardinalityTmp;
+                gmtUpdate[i] = System.currentTimeMillis();
                 SystemTableNDVSketchStatistic.SketchRow sketchRow = new SystemTableNDVSketchStatistic.SketchRow
-                    (schemaName, tableName, columnNames, getShardParts()[i], getDnCardinalityArray()[i], -1,
+                    (schemaName, tableName, columnNames, shardParts[i], dnCardinalityArray[i], -1,
                         "HYPER_LOG_LOG");
                 sketchRow.setSketchBytes(bytes);
                 PolarDbXSystemTableNDVSketchStatistic.getInstance()
                     .batchReplace(new SystemTableNDVSketchStatistic.SketchRow[] {sketchRow});
 
                 sketchInfoTime += System.currentTimeMillis() - start;
-                StatisticUtils.logInfo(schemaName, "update ndv sketch :" + shardKey + ", " + getShardParts()[i]);
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTIC,
+                        PROCESS_END,
+                        new String[] {"ndv sketch", shardKey + "," + shardParts[i]},
+                        LogLevel.NORMAL
+                    );
                 hasUpdated = true;
             }
         }
-        if (hasUpdated) {
+        if (hasUpdated || cardinality < 0) {
             /**
              * update sketch bytes
              */
-            Map<String, byte[]> bytesMap = PolarDbXSystemTableNDVSketchStatistic.getInstance()
-                .loadByTableNameAndColumnName(schemaName, tableName, columnNames);
-            for (String shardPart : updateShardParts) {
-                bytesMap.put(shardPart, updateBytes.get(shardPart));
+            int[] registers = new int[HLL_REGISTERS];
+            try {
+                PolarDbXSystemTableNDVSketchStatistic.getInstance()
+                    .loadByTableNameAndColumnName(schemaName, tableName, columnNames, updateBytes, registers);
+                /**
+                 * compute new cardinality
+                 */
+                setCardinality(HyperLogLogUtil.reckon(buildReghisto(registers)));
+
+                // record new cardinality
+                PolarDbXSystemTableNDVSketchStatistic.getInstance()
+                    .updateCompositeCardinality(schemaName, tableName, columnNames, getCardinality());
+            } catch (IllegalArgumentException e) {
+                if (e.getMessage().contains("sketch bytes not ready yet")) {
+                    ModuleLogInfo.getInstance()
+                        .logRecord(
+                            Module.STATISTIC,
+                            NDV_SKETCH_NOT_READY,
+                            new String[] {shardKey},
+                            LogLevel.NORMAL
+                        );
+                } else {
+                    ModuleLogInfo.getInstance()
+                        .logRecord(
+                            Module.STATISTIC,
+                            UNEXPECTED,
+                            new String[] {"update ndv sketch:" + shardKey, e.getMessage()},
+                            LogLevel.CRITICAL,
+                            e
+                        );
+                }
+            } catch (Exception e) {
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTIC,
+                        UNEXPECTED,
+                        new String[] {"update ndv sketch:" + shardKey, e.getMessage()},
+                        LogLevel.CRITICAL,
+                        e
+                    );
+            } finally {
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTIC,
+                        PROCESS_END,
+                        new String[] {
+                            "update ndv sketch:" + shardKey,
+                            "update size:" + updateBytes.size() +
+                                ", sketchInfo time:" + sketchInfoTime +
+                                ", cardinality time:" + cardinalityTime +
+                                ", new:" + getCardinality()
+                        },
+                        LogLevel.NORMAL
+                    );
             }
-
-            /**
-             * compute new cardinality
-             */
-            long old = getCardinality();
-            setCardinality(HyperLogLogUtil.estimate(bytesMap.values().toArray(new byte[0][])));
-
-            // record new cardinality
-            PolarDbXSystemTableNDVSketchStatistic.getInstance()
-                .updateCompositeCardinality(schemaName, tableName, columnNames, getCardinality());
-
-            StatisticUtils.logInfo(schemaName,
-                "update ndv sketch :" + shardKey + ", sketchInfo time:" + sketchInfoTime + ", cardinality time:"
-                    + cardinalityTime + ", old value:" + old + ", new:" + getCardinality());
         }
         return hasUpdated;
     }
@@ -394,8 +362,6 @@ public class NDVShardSketch {
         String[] shardKeys = shardKey.split(":");
         String schemaName = shardKeys[0];
         String columnsName = shardKeys[2];
-        StatisticUtils.logDebug(schemaName, "get cardinality from dn statistic start:" + shardKey + "," + shardPart);
-
         Map<String, Set<String>> shardPartToTopology = shardPartToTopology(shardPart);
         long sum = -1;
 
@@ -416,8 +382,6 @@ public class NDVShardSketch {
             Connection c = null;
             Statement st = null;
             ResultSet rs = null;
-            StatisticUtils.logDebug(schemaName,
-                "get cardinality from dn statistic from:" + shardKey + "," + nodeName + "," + sql);
 
             try {
                 c = ds.getConnection();
@@ -455,7 +419,6 @@ public class NDVShardSketch {
                 }
             }
         }
-        StatisticUtils.logDebug(schemaName, "get cardinality from dn statistic end:" + shardKey + "," + shardPart);
         return sum;
     }
 
@@ -498,20 +461,34 @@ public class NDVShardSketch {
         return shardParts;
     }
 
-    public static NDVShardSketch buildNDVShardSketch(String shardKey) throws SQLException {
-        String[] splits = shardKey.split(":");
-        String schemaName = splits[0];
-        String tableName = splits[1];
-        String columnName = splits[2];
-        return buildNDVShardSketch(schemaName, tableName, columnName);
-    }
-
     /**
      * build one ndv sketch
      */
-    public static NDVShardSketch buildNDVShardSketch(String schemaName, String tableName, String columnName)
+    public static NDVShardSketch buildNDVShardSketch(String schemaName, String tableName, String columnName,
+                                                     boolean isForce)
         throws SQLException {
-        StatisticUtils.logDebug(schemaName, "build ndv sketch start:" + tableName + "," + columnName);
+        if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+            // just return
+            ModuleLogInfo.getInstance()
+                .logRecord(
+                    Module.STATISTIC,
+                    INTERRUPTED,
+                    new String[] {
+                        "ndv sketch " + tableName + "," + columnName,
+                        ENABLE_HLL + " is false"
+                    },
+                    LogLevel.WARNING
+                );
+            return null;
+        }
+
+        ModuleLogInfo.getInstance()
+            .logRecord(
+                Module.STATISTIC,
+                PROCESS_START,
+                new String[] {"ndv sketch rebuild:", tableName + "," + columnName},
+                LogLevel.NORMAL
+            );
         String shardKey = buildSketchKey(schemaName, tableName, columnName);
 
         // shard parts build
@@ -534,16 +511,42 @@ public class NDVShardSketch {
             dnCardinalityArray[i] = getCurrentCardinality(shardKey, shardPart[i]);
             long mid = System.currentTimeMillis();
             cardinalityTime += mid - start;
-            sketchArray[i] = getCurrentHll(shardKey, shardPart[i], true);
+            sketchArray[i] = getCurrentHll(shardKey, shardPart[i], isForce);
             sketchTime += System.currentTimeMillis() - mid;
-            gmtUpdate[i] = System.currentTimeMillis();
+            if (sketchArray[i] == null) {
+                gmtUpdate[i] = 0L;
+            } else {
+                gmtUpdate[i] = System.currentTimeMillis();
+            }
             gmtCreated[i] = System.currentTimeMillis();
         }
-        StatisticUtils.logInfo(schemaName,
-            "build ndv sketch end:" + tableName + "," + columnName + ", sketch time:" + sketchTime
-                + ", cardinality time:" + cardinalityTime);
 
-        long cardinality = estimate(sketchArray);
+        long cardinality = -1;
+
+        /**
+         * sketch data has null meaning it was interrupted for some reason.
+         * manual analyze table to force rebuilt it or wait the update job.
+         */
+        if (isSketchDataReady(sketchArray)) {
+            cardinality = estimate(sketchArray);
+        }
+
+        if (cardinality < 0) {
+            cardinality = 0;
+        }
+
+        ModuleLogInfo.getInstance()
+            .logRecord(
+                Module.STATISTIC,
+                PROCESS_END,
+                new String[] {
+                    "ndv sketch rebuild:" + tableName + "," + columnName,
+                    "sketch time:" + sketchTime +
+                        ", cardinality time:" + cardinalityTime +
+                        ", cardinality value:" + cardinality
+                },
+                LogLevel.NORMAL
+            );
 
         NDVShardSketch ndvShardSketch =
             new NDVShardSketch(shardKey, shardPart, dnCardinalityArray, sketchType, gmtUpdate, gmtCreated);
@@ -563,18 +566,24 @@ public class NDVShardSketch {
         return ndvShardSketch;
     }
 
+    private static boolean isSketchDataReady(byte[][] sketchArray) {
+        return !Arrays.stream(sketchArray).anyMatch(bytes -> bytes == null || bytes.length == 0);
+    }
+
     /**
      * build shard parts, every phy table is one shard part.
      */
     public static String[] buildShardParts(String schemaName, String tableName) {
+        OptimizerContext op = OptimizerContext.getContext(schemaName);
+        if (op == null) {
+            return null;
+        }
         // shard parts build
         Map<String, Set<String>> topologyMap;
         if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
-            topologyMap = OptimizerContext.getContext(schemaName).getRuleManager().getTddlRule().getTable(tableName)
-                .getActualTopology();
+            topologyMap = op.getRuleManager().getTddlRule().getTable(tableName).getActualTopology();
         } else {
-            topologyMap = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
-                .getPartitionInfo(tableName).getTopology();
+            topologyMap = op.getPartitionInfoManager().getPartitionInfo(tableName).getTopology();
         }
         return topologyPartToShard(topologyMap);
     }
@@ -591,19 +600,13 @@ public class NDVShardSketch {
         String schemaName = shardKeys[0];
         String columnsName = shardKeys[2];
 
-        if (!ifForce && !FlowControl.getInstance(schemaName).acquire()) {
-            // canceled by flow control
-            return null;
-        }
-
         long startTime = System.currentTimeMillis();
-
-        StatisticUtils.logDebug(schemaName, "get hll sketch info start:" + shardKey + "," + shardPart);
-
+        // only one part for now
         Map<String, Set<String>> shardPartToTopology = shardPartToTopology(shardPart);
 
         byte[] hllBytes = new byte[12288];
         if (shardPartToTopology.size() > 1) {
+            // should not happen
             throw new IllegalArgumentException("not support multi shardpart");
         }
         for (Map.Entry<String, Set<String>> entry : shardPartToTopology.entrySet()) {
@@ -612,9 +615,59 @@ public class NDVShardSketch {
             IDataSource ds = ExecutorContext.getContext(schemaName).getTopologyHandler().get(nodeName).getDataSource();
 
             if (physicalTables.size() > 1) {
+                // should not happen
                 throw new IllegalArgumentException("not support multi shard part");
             }
+
             for (String physicalTable : physicalTables) {
+                // add time check
+                if (!ifForce) {
+                    if (!LeaderStatusBridge.getInstance().hasLeadership()) {
+                        ModuleLogInfo.getInstance()
+                            .logRecord(
+                                Module.STATISTIC,
+                                INTERRUPTED,
+                                new String[] {
+                                    "ndv sketch " + shardKey,
+                                    "leader changed"
+                                },
+                                LogLevel.WARNING
+                            );
+                        return null;
+                    }
+                    Pair<Boolean, String> p = needSketchInterrupted();
+                    if (p.getKey()) {
+                        // just return
+                        ModuleLogInfo.getInstance()
+                            .logRecord(
+                                Module.STATISTIC,
+                                INTERRUPTED,
+                                new String[] {
+                                    "ndv sketch " + shardKey,
+                                    p.getValue()
+                                },
+                                LogLevel.WARNING
+                            );
+                        return null;
+                    }
+                } else {
+                    // from analyze table
+                    if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+                        // just return
+                        ModuleLogInfo.getInstance()
+                            .logRecord(
+                                Module.STATISTIC,
+                                INTERRUPTED,
+                                new String[] {
+                                    "ndv sketch " + shardKey,
+                                    ENABLE_HLL + " is false"
+                                },
+                                LogLevel.WARNING
+                            );
+                        return null;
+                    }
+                }
+
                 // check if columnsName represent one column or one index
                 String sql;
                 if (!columnsName.contains(",")) {
@@ -623,14 +676,27 @@ public class NDVShardSketch {
                     sql = String.format(HYPER_LOG_LOG_MUL_COLUMNS_SQL, columnsName, physicalTable);
                 }
 
-                StatisticUtils
-                    .logDebug(schemaName, "get hll sketch info from:" + shardKey + "," + nodeName + "," + sql);
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTIC,
+                        PROCESSING,
+                        new String[] {
+                            "ndv sketch " + shardKey + "," + nodeName,
+                            sql
+                        },
+                        LogLevel.NORMAL
+                    );
+
                 Connection c = null;
                 Statement st = null;
                 ResultSet rs = null;
                 try {
+                    OptimizerContext op = OptimizerContext.getContext(schemaName);
+                    if (op == null) {
+                        return null;
+                    }
                     c = ds.getConnection();
-                    int queryTimeout = OptimizerContext.getContext(schemaName).getParamManager()
+                    int queryTimeout = op.getParamManager()
                         .getInt(ConnectionParams.STATISTIC_NDV_SKETCH_QUERY_TIMEOUT);
                     Executor socketTimeoutExecutor = TGroupDirectConnection.socketTimeoutExecutor;
                     c.setNetworkTimeout(socketTimeoutExecutor, queryTimeout);
@@ -645,9 +711,8 @@ public class NDVShardSketch {
                     }
                 } catch (SQLException ex) {
                     if (ex.getErrorCode() == 1146 && ex.getSQLState().equals("42S02")) {
-                        OptimizerContext.getContext(schemaName).getStatisticManager().getSds()
-                            .removeLogicalTableList(Lists.newArrayList(shardKeys[1]));
-
+                        StatisticManager.getInstance().getSds()
+                            .removeLogicalTableList(schemaName, Lists.newArrayList(shardKeys[1]));
                         return null;
                     }
                     throw ex;
@@ -678,16 +743,19 @@ public class NDVShardSketch {
             }
 
         }
-        StatisticUtils.logDebug(schemaName, "get hll sketch info end:" + shardKey + "," + shardPart);
+
+        ModuleLogInfo.getInstance()
+            .logRecord(
+                Module.STATISTIC,
+                PROCESS_END,
+                new String[] {
+                    "ndv sketch " + shardKey + "," + shardPart,
+                    ""
+                },
+                LogLevel.NORMAL
+            );
+
         return hllBytes;
-    }
-
-    private static Set<String> indexMatch(String schemaName, String tableName, String columnsName) {
-        TableMeta tableMeta =
-            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
-        Map<String, Set<String>> indexMap = GlobalIndexMeta.getLocalIndexColumnMap(tableMeta);
-
-        return indexMap.get(columnsName);
     }
 
     public SystemTableNDVSketchStatistic.SketchRow[] serialize(byte[][] sketchBytes) {
@@ -697,34 +765,24 @@ public class NDVShardSketch {
         String columnNames = shardInfo[2];
         List<SystemTableNDVSketchStatistic.SketchRow> rows = Lists.newLinkedList();
         for (int i = 0; i < shardParts.length; i++) {
+            byte[] sketchByte = null;
+            if (sketchBytes[i] == null) {
+                continue;
+            } else {
+                sketchByte = sketchBytes[i];
+            }
             SystemTableNDVSketchStatistic.SketchRow sketchRow =
                 new SystemTableNDVSketchStatistic.SketchRow(schemaName, tableName, columnNames,
                     shardParts[i], dnCardinalityArray[i], cardinality,
-                    sketchType, sketchBytes[i], gmtCreated[i], gmtUpdate[i]);
+                    sketchType, sketchByte, gmtCreated[i], gmtUpdate[i]);
             rows.add(sketchRow);
         }
 
         return rows.toArray(new SystemTableNDVSketchStatistic.SketchRow[0]);
     }
 
-    public String[] getShardParts() {
-        return shardParts;
-    }
-
     public String getSketchType() {
         return sketchType;
-    }
-
-    public long[] getGmtUpdate() {
-        return gmtUpdate;
-    }
-
-    public long[] getDnCardinalityArray() {
-        return dnCardinalityArray;
-    }
-
-    public long[] getGmtCreated() {
-        return gmtCreated;
     }
 
     public void setCardinality(long cardinality) {

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
+import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -37,6 +38,8 @@ import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import io.airlift.concurrent.SetThreadName;
+import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.lang.ref.WeakReference;
@@ -140,6 +143,7 @@ public class SqlTaskExecution {
         this.notificationExecutor = requireNonNull(notificationExecutor, "notificationExecutor is null");
         this.bloomFilterExpression = bloomFilterExpressionMap;
 
+        RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE));
         List<PipelineFactory> pipelineFactories = planner.plan(
             fragment, outputBuffer, session);
         taskContext.setPipelineDepTree(new PipelineDepTree(pipelineFactories));

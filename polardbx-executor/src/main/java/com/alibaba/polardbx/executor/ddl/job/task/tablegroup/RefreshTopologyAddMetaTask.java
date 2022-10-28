@@ -35,11 +35,17 @@ import java.util.List;
 // so no need to extends from BaseGmsTask
 public class RefreshTopologyAddMetaTask extends AlterTableGroupAddMetaTask {
 
-    @JSONCreator
     public RefreshTopologyAddMetaTask(String schemaName, String tableGroupName, Long tableGroupId, String sourceSql,
                                       int status, int type, List<String> targetDbList, List<String> newPartitions) {
         super(schemaName, tableGroupName, tableGroupId, sourceSql, status, type, new HashSet<>(), targetDbList,
             newPartitions);
+    }
+
+    @JSONCreator
+    public RefreshTopologyAddMetaTask(String schemaName, String tableGroupName, Long tableGroupId, String sourceSql,
+                                      int status, int type, List<String> targetDbList, List<String> newPartitions, List<String> localities) {
+        super(schemaName, tableGroupName, tableGroupId, sourceSql, status, type, new HashSet<>(), targetDbList,
+            newPartitions, localities);
     }
 
     @Override

@@ -321,9 +321,11 @@ public class DecimalBlock extends AbstractBlock {
             if (!isNull(position)) {
                 int integers = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + INTEGERS_OFFSET) & 0xFF;
                 int fractions = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + FRACTIONS_OFFSET) & 0xFF;
+                int isNeg = memorySegments.getByte(position * DECIMAL_MEMORY_SIZE + IS_NEG_OFFSET) & 0xFF;
+
                 int intWord = roundUp(integers);
                 int fracWord = roundUp(fractions);
-                if (!((intWord == 0 || intWord == 1 || intWord == 2) && fracWord == 1)) {
+                if (isNeg == 1 || !((intWord == 0 || intWord == 1 || intWord == 2) && fracWord == 1)) {
                     isSimple = false;
                     int1Pos = UNSET;
                     int2Pos = UNSET;

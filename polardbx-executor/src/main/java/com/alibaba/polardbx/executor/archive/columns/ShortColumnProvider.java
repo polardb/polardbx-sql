@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
@@ -42,6 +43,7 @@ import org.apache.orc.sarg.PredicateLeaf;
 
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Optional;
 
 class ShortColumnProvider implements ColumnProvider<Short> {
     @Override
@@ -106,10 +108,10 @@ class ShortColumnProvider implements ColumnProvider<Short> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -119,8 +121,10 @@ class ShortColumnProvider implements ColumnProvider<Short> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((LongColumnVector) columnVector).vector[rowNumber] = 0;
+                accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
                 ((LongColumnVector) columnVector).vector[rowNumber] = num;
+                accumulator.ifPresent(a -> a.appendHash(Short.hashCode(num)));
             }
         }
     }

@@ -16,43 +16,13 @@
 
 package com.alibaba.polardbx.net.packet;
 
-import java.util.List;
-
-import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
-
 /**
  * Created by simiao.zw on 2014/8/4.
  */
-public class MysqlBinaryResultSetPacket extends MySQLPacket {
-
-    public BinaryResultSetHeaderPacket resulthead;
-    public FieldPacket[] fieldPackets;
-    public List<BinaryRowDataPacket> rowList;
+public class MysqlBinaryResultSetPacket extends MysqlResultSetPacket {
 
     @Override
     protected String packetInfo() {
         return "Binary ResultSet Packet";
-    }
-
-    public IPacketOutputProxy write(IPacketOutputProxy proxy) {
-        proxy.packetBegin();
-        // write header
-        resulthead.packetId = proxy.getConnection().getNewPacketId();
-        resulthead.write(proxy);
-        // write fields
-        if (this.fieldPackets != null) {
-            for (FieldPacket field : this.fieldPackets) {
-                field.packetId = proxy.getConnection().getNewPacketId();
-                field.write(proxy);
-            }
-        }
-        // write eof
-        EOFPacket eof = new EOFPacket();
-        eof.packetId = proxy.getConnection().getNewPacketId();
-        eof.write(proxy);
-
-        proxy.packetEnd();
-        // row data should be deal outside the function since it need other fact
-        return proxy;
     }
 }

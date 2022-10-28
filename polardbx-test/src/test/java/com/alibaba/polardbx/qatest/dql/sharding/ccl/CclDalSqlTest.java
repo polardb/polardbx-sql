@@ -56,9 +56,8 @@ public class CclDalSqlTest extends ReadBaseTestCase {
             stmt.execute("clear ccl_triggers");
             stmt.execute("create database if not exists " + testNoMatchCacheDbName);
             stmt.execute("use " + testNoMatchCacheDbName);
-            stmt.execute(
-                "create table if not exists " + CCL_TEST_TABLE_NAME
-                    + "(id int not null, myname char(50) not null, primary key(id)) dbpartition by hash(id)");
+            stmt.execute("create table if not exists " + CCL_TEST_TABLE_NAME
+                + "(id int not null, myname char(50) not null, primary key(id)) dbpartition by hash(id)");
             stmt.execute("clear ccl_rules");
         }
         connection.close();
@@ -83,8 +82,7 @@ public class CclDalSqlTest extends ReadBaseTestCase {
             stmt.execute("use " + testNoMatchCacheDbName);
             stmt.execute("clear ccl_rules");
             stmt.execute("CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%' "
-                + "             FOR SELECT "
-                + "             FILTER BY KEYWORD('" + keyword + "') "
+                + "             FOR SELECT " + "             FILTER BY KEYWORD('" + keyword + "') "
                 + "             WITH MAX_CONCURRENCY=0");
         }
     }
@@ -102,18 +100,17 @@ public class CclDalSqlTest extends ReadBaseTestCase {
     @Test
     public void test1a() throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
-            String createSql = "CREATE CCL_RULE  if not exists testassignments ON `*`.`*` TO 'polardbx_root'@'%' "
-                + "FOR SELECT "
-                + "FILTER BY KEYWORD('" + keyword + "') "
-                + "WITH MAX_CONCURRENCY=1,WAIT_TIMEOUT=11,WAIT_QUEUE_SIZE=11,FAST_MATCH=1";
+            String createSql =
+                "CREATE CCL_RULE  if not exists testassignments ON `*`.`*` TO 'polardbx_root'@'%' " + "FOR SELECT "
+                    + "FILTER BY KEYWORD('" + keyword + "') "
+                    + "WITH MAX_CONCURRENCY=1,WAIT_TIMEOUT=11,WAIT_QUEUE_SIZE=11,FAST_MATCH=1";
             try {
                 stmt.execute(createSql);
             } catch (Exception e) {
                 e.printStackTrace();
             }
 
-            try (ResultSet rs = stmt
-                .executeQuery("show ccl_rule testassignments")) {
+            try (ResultSet rs = stmt.executeQuery("show ccl_rule testassignments")) {
                 rs.next();
                 Assert.assertTrue(rs.getInt("WAIT_QUEUE_SIZE_PER_NODE") == 11);
                 Assert.assertTrue(rs.getInt("FAST_MATCH") == 1);
@@ -129,8 +126,7 @@ public class CclDalSqlTest extends ReadBaseTestCase {
     public void test1() throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
 
-            try (ResultSet rs = stmt
-                .executeQuery("show ccl_rule busu1118")) {
+            try (ResultSet rs = stmt.executeQuery("show ccl_rule busu1118")) {
                 rs.next();
                 Assert.assertEquals("busu1118", rs.getString("RULE_NAME"));
                 Assert.assertEquals("SELECT", rs.getString("SQL_TYPE"));
@@ -146,21 +142,18 @@ public class CclDalSqlTest extends ReadBaseTestCase {
                 Assert.assertTrue(rs.getInt("ACTIVE_NODE_COUNT") > 0);
             }
 
-            try (ResultSet rs = stmt
-                .executeQuery("show ccl_rules")) {
+            try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
                 rs.next();
                 Assert.assertEquals("busu1118", rs.getString("RULE_NAME"));
             }
 
-            try (ResultSet rs = stmt
-                .executeQuery("show ccl_rules")) {
+            try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
                 rs.next();
                 Assert.assertEquals("busu1118", rs.getString("RULE_NAME"));
             }
 
             SQLException exception = null;
-            try (ResultSet rs = stmt
-                .executeQuery(String.format("select 1 as %s", keyword))) {
+            try (ResultSet rs = stmt.executeQuery(String.format("select 1 as %s", keyword))) {
 
             } catch (SQLException e) {
                 exception = e;
@@ -168,8 +161,7 @@ public class CclDalSqlTest extends ReadBaseTestCase {
             Assert.assertTrue(exception != null);
             Assert.assertTrue(exception.getMessage().contains("busu1118"));
 
-            try (ResultSet rs = stmt
-                .executeQuery("show ccl_rules")) {
+            try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
                 Assert.assertTrue(rs.next());
                 Assert.assertTrue(rs.getInt("KILLED") == 1);
             }
@@ -182,8 +174,7 @@ public class CclDalSqlTest extends ReadBaseTestCase {
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.execute("drop ccl_rule busu1118");
 
-            try (ResultSet rs = stmt
-                .executeQuery("show ccl_rules")) {
+            try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
                 Assert.assertFalse(rs.next());
             }
 
@@ -195,17 +186,15 @@ public class CclDalSqlTest extends ReadBaseTestCase {
     public void test3() throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.execute("clear ccl_rules;");
-            stmt.execute("CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n"
-                + "FOR SELECT \n"
-                + " FILTER BY KEYWORD('sleep')\n"
-                + " WITH MAX_CONCURRENCY=0,WAIT_QUEUE_SIZE=1,light_wait=0");
+            stmt.execute(
+                "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                    + " FILTER BY KEYWORD('sleep')\n" + " WITH MAX_CONCURRENCY=0,WAIT_QUEUE_SIZE=1,light_wait=0");
             final Connection anotherConnection = getPolardbxDirectConnection();
             Thread thread = new Thread() {
                 @SneakyThrows
                 public void run() {
 
-                    try (Connection connection = anotherConnection;
-                        Statement stmt = connection.createStatement()) {
+                    try (Connection connection = anotherConnection; Statement stmt = connection.createStatement()) {
                         stmt.execute("select sleep(6)");
                     } catch (Exception e) {
                         System.out.println(ExceptionUtils.getFullStackTrace(e));
@@ -258,10 +247,9 @@ public class CclDalSqlTest extends ReadBaseTestCase {
         Exception exception = null;
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.execute("clear ccl_rules;");
-            stmt.execute("CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n"
-                + "FOR SELECT \n"
-                + " FILTER BY KEYWORD(\"dingfeng\")\n"
-                + " WITH MAX_CONCURRENCY=0");
+            stmt.execute(
+                "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                    + " FILTER BY KEYWORD(\"dingfeng\")\n" + " WITH MAX_CONCURRENCY=0");
 
             try (PreparedStatement pStmt = tddlConnection.prepareStatement("select ?")) {
                 pStmt.setString(1, "dingfeng");
@@ -282,12 +270,11 @@ public class CclDalSqlTest extends ReadBaseTestCase {
         Exception exception = null;
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.execute("clear ccl_rules;");
-            stmt.execute("CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n"
-                + "FOR SELECT \n"
-                + " FILTER BY KEYWORD('dingfeng')\n"
-                + " WITH MAX_CONCURRENCY=0");
-            try (PreparedStatement pStmt = tddlConnection
-                .prepareStatement("update " + CCL_TEST_TABLE_NAME + " set myname = ? where id = 1")) {
+            stmt.execute(
+                "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                    + " FILTER BY KEYWORD('dingfeng')\n" + " WITH MAX_CONCURRENCY=0");
+            try (PreparedStatement pStmt = tddlConnection.prepareStatement(
+                "update " + CCL_TEST_TABLE_NAME + " set myname = ? where id = 1")) {
                 pStmt.setString(1, "busu");
                 pStmt.executeUpdate();
                 pStmt.setString(1, "dingfeng");
@@ -305,11 +292,9 @@ public class CclDalSqlTest extends ReadBaseTestCase {
         Exception exception = null;
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.execute("clear ccl_rules;");
-            stmt.execute(
-                "CREATE CCL_RULE  if not exists busu1118 ON " + "*.*  "
-                    + "FOR SELECT "
-                    + " FILTER BY QUERY 'select * from " + CCL_TEST_TABLE_NAME + " where id = ?'\n"
-                    + " WITH MAX_CONCURRENCY=0");
+            stmt.execute("CREATE CCL_RULE  if not exists busu1118 ON " + "*.*  " + "FOR SELECT "
+                + " FILTER BY QUERY 'select * from " + CCL_TEST_TABLE_NAME + " where id = ?'\n"
+                + " WITH MAX_CONCURRENCY=0");
             for (int i = 0; i < 5; ++i) {
                 try {
                     stmt.execute("select * from " + CCL_TEST_TABLE_NAME + " where id = 1");
@@ -326,8 +311,7 @@ public class CclDalSqlTest extends ReadBaseTestCase {
     @Test
     public void testExplainContainingTemplateId() throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
-            try (ResultSet rs = stmt
-                .executeQuery("explain select 1 as a")) {
+            try (ResultSet rs = stmt.executeQuery("explain select 1 as a")) {
                 boolean hasTemplateId = false;
                 while (rs.next()) {
                     String row = rs.getString(1);
@@ -348,9 +332,7 @@ public class CclDalSqlTest extends ReadBaseTestCase {
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.execute("clear ccl_rules;");
             stmt.execute(
-                "CREATE CCL_RULE  if not exists busu1118 ON " + "*.* TO '" + userName
-                    + "'@'%'\n"
-                    + "FOR SELECT \n"
+                "CREATE CCL_RULE  if not exists busu1118 ON " + "*.* TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
                     + " FILTER BY QUERY 'select * from " + CCL_TEST_TABLE_NAME + " where id = ?'\n"
                     + " WITH MAX_CONCURRENCY=0");
             for (int i = 0; i < 5; ++i) {
@@ -373,11 +355,9 @@ public class CclDalSqlTest extends ReadBaseTestCase {
             stmt.execute("clear ccl_rules;");
             String database = testNoMatchCacheDbName;
             stmt.execute("use " + database);
-            stmt.execute(
-                "CREATE CCL_RULE  if not exists busu1118 ON " + database + ".`*` TO '" + userName + "'@'%'\n"
-                    + "FOR SELECT \n"
-                    + " FILTER BY QUERY 'select * from " + CCL_TEST_TABLE_NAME + " where id = 1'\n"
-                    + " WITH MAX_CONCURRENCY=0");
+            stmt.execute("CREATE CCL_RULE  if not exists busu1118 ON " + database + ".`*` TO '" + userName + "'@'%'\n"
+                + "FOR SELECT \n" + " FILTER BY QUERY 'select * from " + CCL_TEST_TABLE_NAME + " where id = 1'\n"
+                + " WITH MAX_CONCURRENCY=0");
             for (int i = 0; i < 5; ++i) {
                 try {
                     stmt.execute("select * from " + CCL_TEST_TABLE_NAME + " where id = 1");
@@ -410,12 +390,9 @@ public class CclDalSqlTest extends ReadBaseTestCase {
             stmt.execute("clear ccl_rules;");
             String database = testNoMatchCacheDbName;
             stmt.execute("use " + database);
-            stmt.execute(
-                "CREATE CCL_RULE  if not exists busu1118 ON " + database + ".`*` TO '" + userName
-                    + "'@'%'\n"
-                    + "FOR SELECT \n"
-                    + " FILTER BY QUERY 'select * from " + CCL_TEST_TABLE_NAME + " where id = 1 and myname = ?'\n"
-                    + " WITH MAX_CONCURRENCY=0");
+            stmt.execute("CREATE CCL_RULE  if not exists busu1118 ON " + database + ".`*` TO '" + userName + "'@'%'\n"
+                + "FOR SELECT \n" + " FILTER BY QUERY 'select * from " + CCL_TEST_TABLE_NAME
+                + " where id = 1 and myname = ?'\n" + " WITH MAX_CONCURRENCY=0");
             for (int i = 0; i < 5; ++i) {
                 try {
                     stmt.execute("select * from " + CCL_TEST_TABLE_NAME + " where id = 1 and myname = 'busu'");
@@ -433,6 +410,34 @@ public class CclDalSqlTest extends ReadBaseTestCase {
                     stmt.execute("select * from " + CCL_TEST_TABLE_NAME + " where id = 1 and myname = 'busu'");
                 } catch (Exception e) {
                     exception = e;
+                }
+                Thread.sleep(200);
+            }
+            Assert.assertTrue(exception != null);
+            Assert.assertTrue(exception.getMessage().contains("Exceeding the max concurrency"));
+        }
+    }
+
+    @Test
+    public void testTableUnquoteKeyword() throws Exception {
+        Exception exception = null;
+        try (Statement stmt = tddlConnection.createStatement()) {
+            stmt.execute("clear ccl_rules;");
+            String database = testNoMatchCacheDbName;
+            stmt.execute("use " + database);
+            stmt.execute(
+                "CREATE CCL_RULE  if not exists busu1118 ON " + database + ".`" + CCL_TEST_TABLE_NAME + "` TO '"
+                    + userName + "'@'%'\n" + "FOR SELECT \n" + " FILTER BY KEYWORD('" + keyword + "') "
+                    + " WITH MAX_CONCURRENCY=0");
+
+            for (int i = 0; i < 50; ++i) {
+                try {
+                    stmt.execute(
+                        "select * from `" + CCL_TEST_TABLE_NAME + "` where id = 1 and myname = '" + keyword + "'");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    exception = e;
+                    break;
                 }
                 Thread.sleep(200);
             }

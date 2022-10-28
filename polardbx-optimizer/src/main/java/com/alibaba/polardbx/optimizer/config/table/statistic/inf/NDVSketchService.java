@@ -26,19 +26,14 @@ import java.util.Map;
  */
 public interface NDVSketchService {
     /**
-     * 更新已存在的分片的 ndv sketch 信息, 如果不存在则直接返回,如果已存在判断是否需要更新
-     */
-    boolean updateStockShardParts(String tableName, String columnName) throws SQLException;
-
-    /**
      * 重建全部分片的 ndv sketch 信息
      */
-    void reBuildShardParts(String tableName, String columnName) throws SQLException;
+    void reBuildShardParts(String schema, String tableName, String columnName) throws SQLException;
 
     /**
      * 更新所有分片的 ndv sketch 信息,如果不存在重建.如果已存在则判断是否需要更新
      */
-    void updateAllShardParts(String tableName, String columnName) throws SQLException;
+    void updateAllShardParts(String schema, String tableName, String columnName) throws SQLException;
 
     /**
      * 加载组装 meta db 中的数据
@@ -48,17 +43,22 @@ public interface NDVSketchService {
     /**
      * remove by table
      */
-    void remove(String tableName);
+    void remove(String schema, String tableName);
 
     /**
      * remove by table, column
      */
-    void remove(String tableName, String column);
+    void remove(String schema, String tableName, String column);
 
     /**
      * cal the ndv value
      */
-    StatisticResult getCardinality(String tableName, String columnName);
+    StatisticResult getCardinality(String schema, String tableName, String columnName);
 
     Map<? extends String, ? extends Long> getCardinalityMap();
+
+    // temp
+    String scheduleJobs();
+
+    boolean sampleColumns(String schema, String logicalTableName);
 }

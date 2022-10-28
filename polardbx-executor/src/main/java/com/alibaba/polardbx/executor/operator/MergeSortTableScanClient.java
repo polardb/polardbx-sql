@@ -40,4 +40,9 @@ public class MergeSortTableScanClient extends TableScanClient {
         //对于merge-sort，使用滑动窗口
         return pushdownSplitIndex.get() - readyResultSet.size();
     }
+
+    @Override
+    protected boolean isReady() {
+        return completePrefetchNum.get() == splitList.size();
+    }
 }

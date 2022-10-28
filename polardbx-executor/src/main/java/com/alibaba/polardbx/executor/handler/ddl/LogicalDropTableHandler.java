@@ -66,6 +66,8 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+
 public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
 
     public LogicalDropTableHandler(IRepository repo) {
@@ -118,7 +120,12 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
                         return buildRecycleFileStorageTableJob(logicalDropTable, executionContext);
                     }
                 } else {
-                    return buildDropPartitionTableJob(logicalDropTable, executionContext);
+                    if (isAvailableForRecycleBin(logicalDropTable.getTableName(), executionContext) &&
+                        !logicalDropTable.isPurge()) {
+                        return handleRecycleBin(logicalDropTable, executionContext);
+                    } else {
+                        return buildDropPartitionTableJob(logicalDropTable, executionContext);
+                    }
                 }
             }
         }
@@ -137,7 +144,7 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
             DdlContext ddlContext = executionContext.getDdlContext();
             CdcManagerHelper.getInstance().notifyDdlNew(schemaName, logicalTableName, SqlKind.DROP_TABLE.name(),
                 ddlContext.getDdlStmt(), ddlContext.getDdlType(), null, null,
-                DdlVisibility.Public, executionContext.getExtraCmds());
+                DdlVisibility.Public, buildExtendParameter(executionContext));
 
             // Prompt "show warning" only.
             DdlHelper.storeFailedMessage(schemaName, DdlConstants.ERROR_UNKNOWN_TABLE,
@@ -196,7 +203,8 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         RenameTablePreparedData renameTablePreparedData = logicalRenameTable.getRenameTablePreparedData();
 
         DdlPhyPlanBuilder renameTableBuilder =
-            new RenameTableBuilder(logicalRenameTable.relDdl, renameTablePreparedData, executionContext).build();
+            RenameTableBuilder.create(logicalRenameTable.relDdl, renameTablePreparedData, executionContext).build();
+
         PhysicalPlanData physicalPlanData = renameTableBuilder.genPhysicalPlanData();
 
         return new RenameTableJobFactory(physicalPlanData, executionContext).create();

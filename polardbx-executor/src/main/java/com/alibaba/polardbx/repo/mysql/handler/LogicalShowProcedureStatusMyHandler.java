@@ -16,25 +16,34 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.ProcedureAccessor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureStatusRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
-import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
-import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlCharStringLiteral;
+import org.apache.calcite.sql.SqlShowProcedureStatus;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author chenmo.cm
  */
 public class LogicalShowProcedureStatusMyHandler extends HandlerCommon {
+    private static final Logger logger = LoggerFactory.getLogger(LogicalShowProcedureStatusMyHandler.class);
 
     public LogicalShowProcedureStatusMyHandler(IRepository repo) {
         super(repo);
@@ -42,9 +51,14 @@ public class LogicalShowProcedureStatusMyHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-        Cursor cursor = null;
-        try {
-            ArrayResultCursor result = new ArrayResultCursor("SOUTINES");
+        LogicalShow showNode = (LogicalShow) logicalPlan;
+        SqlShowProcedureStatus show = (SqlShowProcedureStatus) showNode.getNativeSqlNode();
+        String like = "%";
+        if (show.like instanceof SqlCharStringLiteral) {
+            like = ((SqlCharStringLiteral) show.like).getNlsString().getValue();
+        }
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            ArrayResultCursor result = new ArrayResultCursor("ROUTINES");
             result.addColumn("Db", DataTypes.StringType);
             result.addColumn("Name", DataTypes.StringType);
             result.addColumn("Type", DataTypes.StringType);
@@ -58,49 +72,31 @@ public class LogicalShowProcedureStatusMyHandler extends HandlerCommon {
             result.addColumn("Database Collation", DataTypes.StringType);
             result.initMeta();
 
-            final LogicalShow show = (LogicalShow) logicalPlan;
-            cursor = repo.getCursorFactory().repoCursor(executionContext,
-                new PhyShow(show.getCluster(),
-                    show.getTraitSet(),
-                    show.getNativeSqlNode(),
-                    show.getRowType(),
-                    show.getDbIndex(),
-                    show.getPhyTable(),
-                    show.getSchemaName()));
-            Row row = null;
-            while ((row = cursor.next()) != null) {
-                String Db = null;
-                if (!TStringUtil.isEmpty(executionContext.getSchemaName())) {
-                    /**
-                     * should replace it by appname if appName is avaiable in
-                     * server
-                     */
-                    Db = executionContext.getSchemaName();
-                } else {
-                    Db = row.getString(0);
-                }
-                String Name = row.getString(1);
-                String Type = row.getString(2);
-                String Definer = row.getString(3);
-                Timestamp Modified = row.getTimestamp(4);
-                Timestamp Created = row.getTimestamp(5);
-                String Security_type = row.getString(6);
-                String Comment = row.getString(7);
-                String character_set_client = row.getString(8);
-                String collation_connection = row.getString(9);
-                String Database_Collation = row.getString(10);
+            ProcedureAccessor accessor = new ProcedureAccessor();
+            accessor.setConnection(connection);
+            List<ProcedureStatusRecord> records = accessor.getProcedureStatus(like);
+            for (ProcedureStatusRecord record : records) {
+                String db = record.schema;
+                String name = record.name;
+                String type = record.type;
+                String definer = record.definer;
+                Timestamp modified = record.lastAltered;
+                Timestamp created = record.created;
+                String securityType = record.securityType;
+                String comment = record.routineComment;
+                String characterSetClient = record.characterSetClient;
+                String collationConnection = record.collationConnection;
+                String databaseCollation = record.databaseCollation;
 
                 result.addRow(new Object[] {
-                    Db, Name, Type, Definer, Modified, Created, Security_type, Comment,
-                    character_set_client, collation_connection, Database_Collation});
+                    db, name, type, definer, modified, created, securityType, comment,
+                    characterSetClient, collationConnection, databaseCollation});
             }
 
             return result;
-        } finally {
-            // 关闭cursor
-            if (cursor != null) {
-                cursor.close(new ArrayList<Throwable>());
-            }
+        } catch (SQLException ex) {
+            logger.error("show procedure status failed", ex);
+            throw new TddlRuntimeException(ErrorCode.ERR_PROCEDURE_EXECUTE, ex);
         }
     }
 }

@@ -27,6 +27,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
+import java.sql.Types;
+
 import java.util.List;
 
 /**
@@ -57,7 +59,7 @@ public class ToDays extends AbstractScalarFunction {
             return null;
         }
 
-        MysqlDateTime t = DataTypeUtil.toMySQLDatetimeByFlags(args[0], TimeParserFlags.FLAG_TIME_NO_ZERO_DATE);
+        MysqlDateTime t = DataTypeUtil.toMySQLDatetimeByFlags(args[0], Types.TIMESTAMP, TimeParserFlags.FLAG_TIME_NO_ZERO_DATE);
         if (t == null) {
             return null;
         }

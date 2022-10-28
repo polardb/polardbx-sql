@@ -42,6 +42,8 @@ import java.util.List;
  *         -> 'string'
  * mysql> SELECT HEX(UNHEX('1267'));
  *         -> '1267'
+ * mysql> SELECT HEX(UNHEX('123'));
+ *         -> '0123'
  *
  * The characters in the argument string must be legal hexadecimal digits: '0' .. '9', 'A' .. 'F', 'a' .. 'f'. If the argument contains any nonhexadecimal digits, the result is NULL:
  *
@@ -80,13 +82,24 @@ public class Unhex extends AbstractScalarFunction {
 
         String byteStr = DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]).toUpperCase();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        for (int i = 0; i < byteStr.length(); i += 2) {
-            int index0 = hexString.indexOf(byteStr.charAt(i));
+
+        boolean needPad = byteStr.length() % 2 == 1;
+        for (int i = 0; i < byteStr.length(); ) {
+            if (i == 0 && needPad) {
+                int index0 = 0;
+                int index1 = hexString.indexOf(byteStr.charAt(i++));
+                if (index1 < 0) {
+                    return null;
+                }
+                baos.write((index0 << 4 | index1));
+                continue;
+            }
+            int index0 = hexString.indexOf(byteStr.charAt(i++));
             if (index0 < 0) {
                 return null;
             }
-            if (i + 1 < byteStr.length()) {
-                int index1 = hexString.indexOf(byteStr.charAt(i + 1));
+            if (i < byteStr.length()) {
+                int index1 = hexString.indexOf(byteStr.charAt(i++));
                 if (index1 < 0) {
                     return null;
                 }
@@ -97,11 +110,7 @@ public class Unhex extends AbstractScalarFunction {
             }
         }
 
-        if (resultType instanceof SliceType) {
-            CharsetHandler charsetHandler = ((SliceType) resultType).getCharsetHandler();
-            return charsetHandler.decode(baos.toByteArray());
-        }
-        return resultType.convertFrom(baos.toByteArray());
+        return baos.toByteArray();
     }
 
 }

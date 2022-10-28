@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.archive.columns;
 
+import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
@@ -30,6 +31,7 @@ import org.apache.orc.TypeDescription;
 
 import java.math.BigInteger;
 import java.time.ZoneId;
+import java.util.Optional;
 
 class BigBitColumnProvider implements ColumnProvider<Long> {
 
@@ -89,10 +91,10 @@ class BigBitColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -102,8 +104,10 @@ class BigBitColumnProvider implements ColumnProvider<Long> {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((LongColumnVector) columnVector).vector[rowNumber] = 0;
+                accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
                 ((LongColumnVector) columnVector).vector[rowNumber] = num;
+                accumulator.ifPresent(a -> a.appendHash(Long.hashCode(num)));
             }
         }
     }

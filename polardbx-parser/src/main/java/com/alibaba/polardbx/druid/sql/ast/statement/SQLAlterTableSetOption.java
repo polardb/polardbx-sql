@@ -27,6 +27,7 @@ public class SQLAlterTableSetOption extends SQLObjectImpl implements SQLAlterTab
     private SQLName on;
 
     boolean isAlterTableGroup = false;
+    boolean force = false;
 
     public SQLAlterTableSetOption() {
 
@@ -48,6 +49,15 @@ public class SQLAlterTableSetOption extends SQLObjectImpl implements SQLAlterTab
     public void setAlterTableGroup(boolean alterTableGroup) {
         isAlterTableGroup = alterTableGroup;
     }
+
+    public boolean isForce() {
+        return force;
+    }
+
+    public void setForce(boolean force) {
+        this.force = force;
+    }
+
     @Override
     protected void accept0(SQLASTVisitor visitor) {
         if (visitor.visit(this)) {

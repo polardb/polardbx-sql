@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Matrix;
@@ -37,6 +38,7 @@ import com.alibaba.polardbx.optimizer.config.schema.RootSchemaFactory;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlJavaTypeFactoryImpl;
@@ -50,6 +52,7 @@ import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
@@ -78,7 +81,6 @@ import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.hep.HepRelVertex;
@@ -127,6 +129,7 @@ import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDynamicParam;
+import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlJoin;
@@ -192,6 +195,25 @@ public class RelUtils {
         return sqlNode.toSqlString(dbType.getDialect().getCalciteSqlDialect()).getSql();
     }
 
+    /**
+     * 将SQLNode转换为对应的Sql语句
+     */
+    public static BytesSql toNativeBytesSql(final SqlNode sqlNode, final DbType dbType) {
+        if (sqlNode.isA(SqlKind.DDL)) {
+            String sql = toNativeSql(sqlNode, dbType);
+            return BytesSql.getBytesSql(sql);
+        }
+        return sqlNode.toBytesSql(dbType.getDialect().getCalciteSqlDialect(), true);
+    }
+
+    public static BytesSql toNativeBytesSql(final SqlNode sqlNode) {
+        if (sqlNode.isA(SqlKind.DDL)) {
+            String sql = toNativeSql(sqlNode);
+            return BytesSql.getBytesSql(sql);
+        }
+        return sqlNode.toBytesSql(DbType.MYSQL.getDialect().getCalciteSqlDialect(), true);
+    }
+
     public static String toNativeSql(final SqlNode sqlNode) {
         DbType dbType = DbType.MYSQL;
         return sqlNode.toSqlString(dbType.getDialect().getCalciteSqlDialect()).getSql();
@@ -239,15 +261,18 @@ public class RelUtils {
         return nodeList;
     }
 
-    public static String toString(RelNode rel, Map<Integer, ParameterContext> params) {
-        RelDrdsWriter relWriter = new RelDrdsWriter(params);
+    public static String toString(SqlExplainLevel sqlExplainLevel, RelNode rel, Map<Integer, ParameterContext> params) {
+        RelDrdsWriter relWriter = new RelDrdsWriter(sqlExplainLevel, params);
         rel.explainForDisplay(relWriter);
         return relWriter.asString();
     }
 
     public static String toString(RelNode rel, Map<Integer, ParameterContext> params,
-                                  Function<RexNode, Object> funcEvaluator, Object executionContext) {
-        RelDrdsWriter relWriter = new RelDrdsWriter(null, params, funcEvaluator, executionContext);
+                                  Function<RexNode, Object> funcEvaluator, ExecutionContext executionContext) {
+        RelDrdsWriter relWriter =
+            new RelDrdsWriter(null, executionContext.getSqlExplainLevel(), false, params, funcEvaluator, null,
+                executionContext,
+                executionContext.getCalcitePlanOptimizerTrace().orElse(null));
         rel.explainForDisplay(relWriter);
         return relWriter.asString();
     }
@@ -256,10 +281,11 @@ public class RelUtils {
      * Get detail information from RelNode tree with extra info functions.
      */
     public static List<Object[]> toStringWithExtraInfo(RelNode rel, Map<Integer, ParameterContext> params,
-                                                       Function<RexNode, Object> funcEvaluator, Object executionContext,
+                                                       Function<RexNode, Object> funcEvaluator,
+                                                       ExecutionContext executionContext,
                                                        Function<RelNode, String> extraInfoBuilder) {
         RelDrdsWriter relWriter = new RelDrdsWriter(
-            null, CalcitePlanOptimizerTrace.getSqlExplainLevel(), false,
+            null, executionContext.getSqlExplainLevel(), false,
             params, funcEvaluator, extraInfoBuilder, executionContext);
         rel.explainForDisplay(relWriter);
 
@@ -287,22 +313,23 @@ public class RelUtils {
     }
 
     public static String toJsonString(RelNode rel, Map<Integer, ParameterContext> params,
-                                      Function<RexNode, Object> funcEvaluator, Object executionContext) {
-        RelDrdsJsonWriter relWriter = new RelDrdsJsonWriter(params, funcEvaluator, executionContext);
+                                      Function<RexNode, Object> funcEvaluator, ExecutionContext executionContext) {
+        RelDrdsJsonWriter relWriter = new RelDrdsJsonWriter(executionContext.getSqlExplainLevel()
+            , params, funcEvaluator, executionContext, executionContext.getCalcitePlanOptimizerTrace().orElse(null));
         rel.explainForDisplay(relWriter);
         return relWriter.asString();
     }
 
     public static String toString(RelNode plan) {
-        return toString(plan, null);
+        return toString(CalcitePlanOptimizerTrace.DEFAULT_LEVEL, plan, null);
     }
 
     public static String toString(ExecutionPlan executionPlan) {
-        return toString(executionPlan.getPlan(), null);
+        return toString(CalcitePlanOptimizerTrace.DEFAULT_LEVEL, executionPlan.getPlan(), null);
     }
 
     public static String toString(ExecutionPlan executionPlan, Map<Integer, ParameterContext> params) {
-        return toString(executionPlan.getPlan(), params);
+        return toString(CalcitePlanOptimizerTrace.DEFAULT_LEVEL, executionPlan.getPlan(), params);
     }
 
     public static String stringValue(SqlNode sqlNode) {
@@ -515,7 +542,7 @@ public class RelUtils {
     /**
      * <pre>
      * UPDATE ? AS xx FORCE INDEX(PRIMARY) SET xx.a = ?, ...
-     * WHERE pk0 = ? AND pk1 = ? AND ...
+     * WHERE pk0 <=> ? AND pk1 <=> ? AND ...
      * </pre>
      */
     public static SqlUpdate buildUpdateWithAndCondition(String targetTableName, List<? extends SqlNode> targetColumns,
@@ -524,6 +551,42 @@ public class RelUtils {
                                                         String indexName,
                                                         AtomicInteger paramIndex, ExecutionContext ec) {
         final SqlNode condition = buildAndCondition(columnNames, paramIndex);
+
+        final SqlNode targetTableNode = buildTargetNode();
+        final SqlBasicCall tableReference = wrapWithAlias(targetTableNode, targetTableName, indexName);
+
+        final SqlSelect sourceSelect = new SqlSelect(SqlParserPos.ZERO,
+            null,
+            SqlNodeList.EMPTY,
+            tableReference,
+            condition,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        return FastSqlConstructUtils.collectTableInfo(new SqlUpdate(SqlParserPos.ZERO,
+            tableReference.operands[0],
+            new SqlNodeList(targetColumns, SqlParserPos.ZERO),
+            new SqlNodeList(sourceExpressions, SqlParserPos.ZERO),
+            condition,
+            sourceSelect,
+            (SqlIdentifier) tableReference.operands[1],
+            null,
+            null,
+            keywords,
+            null), ec);
+    }
+
+    public static SqlUpdate buildUpdateWithAndNotDistinctCondition(String targetTableName,
+                                                                   List<? extends SqlNode> targetColumns,
+                                                                   List<? extends SqlNode> sourceExpressions,
+                                                                   List<String> columnNames, SqlNodeList keywords,
+                                                                   String indexName, AtomicInteger paramIndex,
+                                                                   ExecutionContext ec) {
+        final SqlNode condition = buildAndNotDistinctCondition(columnNames, paramIndex);
 
         final SqlNode targetTableNode = buildTargetNode();
         final SqlBasicCall tableReference = wrapWithAlias(targetTableNode, targetTableName, indexName);
@@ -635,6 +698,19 @@ public class RelUtils {
             SqlIdentifier sqlIdentifier = new SqlIdentifier(primaryKeyName, SqlParserPos.ZERO);
             SqlDynamicParam dynamicParam = new SqlDynamicParam(paramIndex.getAndIncrement(), SqlParserPos.ZERO);
             SqlNode equal = new SqlBasicCall(SqlStdOperatorTable.EQUALS,
+                new SqlNode[] {sqlIdentifier, dynamicParam},
+                SqlParserPos.ZERO);
+            equalNodes.add(equal);
+        }
+        return buildAndTree(equalNodes);
+    }
+
+    public static SqlNode buildAndNotDistinctCondition(List<String> columns, AtomicInteger paramIndex) {
+        List<SqlNode> equalNodes = new ArrayList<>(columns.size());
+        for (String primaryKeyName : columns) {
+            SqlIdentifier sqlIdentifier = new SqlIdentifier(primaryKeyName, SqlParserPos.ZERO);
+            SqlDynamicParam dynamicParam = new SqlDynamicParam(paramIndex.getAndIncrement(), SqlParserPos.ZERO);
+            SqlNode equal = new SqlBasicCall(SqlStdOperatorTable.IS_NOT_DISTINCT_FROM,
                 new SqlNode[] {sqlIdentifier, dynamicParam},
                 SqlParserPos.ZERO);
             equalNodes.add(equal);
@@ -894,6 +970,21 @@ public class RelUtils {
         return result;
     }
 
+    public static boolean containOnlineModifyColumnTable(Map<String, TableProperties> tablePropertiesMap,
+                                                         List<String> tableNames, ExecutionContext ec) {
+        for (String tableName : tableNames) {
+            TableProperties tableProperties = tablePropertiesMap.get(tableName);
+            if (tableProperties == null) {
+                continue;
+            }
+            if (TableColumnUtils.isModifying(tableProperties.getSchemaName(), tableName, ec)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static boolean containsGsiTable(Map<String, TableProperties> tablePropertiesMap, List<String> tableNames) {
         boolean result = false;
 
@@ -972,7 +1063,7 @@ public class RelUtils {
         return result;
     }
 
-    public static RelOptSchema buildCatalogReader(String schema, ExecutionContext ec) {
+    public static CalciteCatalogReader buildCatalogReader(String schema, ExecutionContext ec) {
         final Config parserConfig = SqlParser.configBuilder().setLex(Lex.MYSQL).setParserFactory(
             SqlParserImpl.FACTORY).build();
 
@@ -1168,12 +1259,13 @@ public class RelUtils {
                 } else {
                     // for partitioned(or gsi) table
                     // check if has only one partitions
+                    if (!partInfo.isSingleTable()) {
+                        // it has multi- partitions
+                        return null;
+                    }
                     // for single table / partitioned(or gsi) table with only one partitions
                     // return the group index of its first partitions
-//                    if (partInfo.isSingleTable()) {
-//                        return partInfo.getPartitionBy().getPartitions().get(0).getLocation().getGroupKey();
-//                    }
-                    return null;
+                    return partInfo.getPartitionBy().getPartitions().get(0).getLocation().getGroupKey();
                 }
             }
 
@@ -1242,7 +1334,8 @@ public class RelUtils {
             PlannerContext.getPlannerContext(primary).getExecutionContext().getSchemaManager(primary.getSchemaName())
                 .getTable(primaryTableName);
         final List<String> pkList = Optional.ofNullable(primaryTable.getPrimaryKey())
-            .map(cmList -> cmList.stream().map(ColumnMeta::getName).map(x -> x.toLowerCase()).collect(Collectors.toList()))
+            .map(cmList -> cmList.stream().map(ColumnMeta::getName).map(x -> x.toLowerCase())
+                .collect(Collectors.toList()))
             .orElse(ImmutableList.of());
         final List<String> skList = OptimizerContext.getContext(primary.getSchemaName())
             .getRuleManager()
@@ -1691,5 +1784,19 @@ public class RelUtils {
             RelNode rel2 = subQuery.rel.accept(new ReplaceFieldAccessRelShuttle(rexCorrelVariable, mapping));
             return subQuery.clone(rel2);
         }
+    }
+
+    public static boolean dmlWithDerivedSubquery(final RelNode plan, final SqlNode ast) {
+        if (plan instanceof LogicalModifyView) {
+            switch (ast.getKind()) {
+            case UPDATE:
+                return ((SqlUpdate) ast).withSubquery();
+            case DELETE:
+                return ((SqlDelete) ast).withSubquery();
+            default:
+                return false;
+            }
+        }
+        return false;
     }
 }

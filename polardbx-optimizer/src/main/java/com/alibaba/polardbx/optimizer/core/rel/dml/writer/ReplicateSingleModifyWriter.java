@@ -46,8 +46,9 @@ public class ReplicateSingleModifyWriter extends SingleModifyWriter implements R
 
     private final TableMeta tableMeta;
     public ReplicateSingleModifyWriter(RelOptTable targetTable, LogicalModify modify, Mapping pkMapping,
-                                       Mapping updateSetMapping, Mapping groupingMapping, TableMeta tableMeta) {
-        super(targetTable, modify, pkMapping, updateSetMapping, groupingMapping);
+                                       Mapping updateSetMapping, Mapping groupingMapping, TableMeta tableMeta,
+                                       boolean withoutPk) {
+        super(targetTable, modify, pkMapping, updateSetMapping, groupingMapping, withoutPk);
         this.tableMeta = tableMeta;
     }
 

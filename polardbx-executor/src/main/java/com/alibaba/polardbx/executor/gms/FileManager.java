@@ -25,7 +25,7 @@ import java.util.Map;
 public interface FileManager {
     FileManager INSTANCE = new OSSOrcFileManager();
 
-    List<FileMeta> getFiles(String physicalSchema, String physicalTable);
+    List<FileMeta> getFiles(String physicalSchema, String physicalTable, String logicalTableName);
 
     /**
      * Get file metas from partition info.

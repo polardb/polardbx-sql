@@ -65,6 +65,10 @@ public class LogicalUpsert extends LogicalInsertIgnore {
 
     private final int rowNumberColumnIndex;
 
+    // If all sharding columns in update list referencing same column in after value
+    // e.g. insert into t1(a,b,c) values (1,2,3) on duplicate key update a=values(a),b=values(b),c=values(c)
+    private final boolean allUpdatedSkRefValue;
+
     public LogicalUpsert(LogicalInsert insert,
                          InsertWriter primaryInsertWriter,
                          UpsertWriter primaryUpsertWriter,
@@ -77,7 +81,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          int rowNumberColumnIndex,
                          boolean modifyPartitionKey,
                          boolean modifyUniqueKey,
-                         boolean withBeforeValueRef) {
+                         boolean withBeforeValueRef,
+                         boolean allUpdatedSkRefValue) {
         super(insert, selectListForDuplicateCheck);
         this.beforeUpdateMapping = beforeUpdateMapping;
         this.rowNumberColumnIndex = rowNumberColumnIndex;
@@ -91,6 +96,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         this.gsiUpsertWriters = gsiUpsertWriters;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.gsiInsertWriters = gsiInsertWriters;
+        this.allUpdatedSkRefValue = allUpdatedSkRefValue;
     }
 
     public LogicalUpsert(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table,
@@ -103,7 +109,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          List<Integer> selectInsertRowMapping, List<String> pkColumnNames,
                          List<Integer> beforePkMapping, List<Integer> afterPkMapping, Set<String> allUkSet,
                          Map<String, Map<String, Set<String>>> tableUkMap,
-                         Map<String, List<List<String>>> ukGroupByTable,
+                         Map<String, List<List<String>>> ukGroupByTable, Map<String, List<String>> localIndexPhyName,
                          List<ColumnMeta> rowColumnMetas, List<ColumnMeta> tableColumnMetas,
                          List<String> selectListForDuplicateCheck, UpsertWriter primaryUpsertWriter,
                          List<UpsertWriter> gsiUpsertWriters, RelocateWriter primaryRelocateWriter,
@@ -113,15 +119,17 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          boolean sourceTablesIsReadyToPublish, LogicalDynamicValues logicalDynamicValues,
                          List<RexNode> unOptimizedDuplicateKeyUpdateList, InsertWriter pushDownInsertWriter,
                          List<InsertWriter> gsiInsertIgnoreWriters, DistinctWriter primaryDeleteWriter,
-                         List<DistinctWriter> gsiDeleteWriters) {
+                         List<DistinctWriter> gsiDeleteWriters, boolean allUpdatedSkRefValue,
+                         boolean usePartFieldChecker,
+                         Map<String, ColumnMeta> columnMetaMap) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping,
             selectInsertRowMapping, pkColumnNames, beforePkMapping, afterPkMapping, allUkSet, tableUkMap,
-            ukGroupByTable, rowColumnMetas, tableColumnMetas, selectListForDuplicateCheck, targetTableIsWritable,
-            targetTableIsReadyToPublish, sourceTablesIsReadyToPublish, logicalDynamicValues,
+            ukGroupByTable, localIndexPhyName, rowColumnMetas, tableColumnMetas, selectListForDuplicateCheck,
+            targetTableIsWritable, targetTableIsReadyToPublish, sourceTablesIsReadyToPublish, logicalDynamicValues,
             unOptimizedDuplicateKeyUpdateList, pushDownInsertWriter, gsiInsertIgnoreWriters, primaryDeleteWriter,
-            gsiDeleteWriters);
+            gsiDeleteWriters, usePartFieldChecker, columnMetaMap);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.primaryUpsertWriter = primaryUpsertWriter;
@@ -131,6 +139,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
         this.modifyPartitionKey = modifyPartitionKey;
         this.modifyUniqueKey = modifyUniqueKey;
         this.withBeforeValueRef = withBeforeValueRef;
+        this.allUpdatedSkRefValue = allUpdatedSkRefValue;
     }
 
     @Override
@@ -162,6 +171,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             getAllUkSet(),
             getTableUkMap(),
             getUkGroupByTable(),
+            getLocalIndexPhyName(),
             getRowColumnMetaList(),
             getTableColumnMetaList(),
             getSelectListForDuplicateCheck(),
@@ -182,7 +192,10 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             getPushDownInsertWriter(),
             getGsiInsertIgnoreWriters(),
             getPrimaryDeleteWriter(),
-            getGsiDeleteWriters());
+            getGsiDeleteWriters(),
+            isAllUpdatedSkRefValue(),
+            isUsePartFieldChecker(),
+            getColumnMetaMap());
         return newLogicalUpsert;
     }
 
@@ -220,6 +233,10 @@ public class LogicalUpsert extends LogicalInsertIgnore {
 
     public boolean isWithBeforeValueRef() {
         return withBeforeValueRef;
+    }
+
+    public boolean isAllUpdatedSkRefValue() {
+        return allUpdatedSkRefValue;
     }
 
     @Override

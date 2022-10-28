@@ -109,18 +109,18 @@
       test_hash_tb2 b
       on a.id=b.id
     where
-      a.id=(select id from test_hash_tb3 limit 1)
+      a.id=(select id from test_hash_tb3 order by id limit 1)
 
 
 
   plan: |
 
-    Gather(concurrent=true)
+    gather(concurrent=true)
       logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) where (`test_hash_tb`.`id` = ?)")
 
     >> individual scalar subquery :
-    MergeSort(sort="", offset=0, fetch=1)
-      LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` FROM `test_hash_tb3` AS `test_hash_tb3` LIMIT 1")
+    MergeSort(sort="id asc", offset=0, fetch=1)
+      LogicalView(tables="[0000-0003].test_hash_tb3", shardCount=4, sql="SELECT `id` FROM `test_hash_tb3` AS `test_hash_tb3` order by `id` LIMIT 1")
 
 
 - sql: |

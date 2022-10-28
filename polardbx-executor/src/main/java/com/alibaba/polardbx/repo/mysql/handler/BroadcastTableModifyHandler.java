@@ -16,20 +16,20 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ExecutorHelper;
-import org.apache.calcite.rel.RelNode;
-
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
+import org.apache.calcite.rel.RelNode;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class BroadcastTableModifyHandler extends HandlerCommon {
 
@@ -40,12 +40,14 @@ public class BroadcastTableModifyHandler extends HandlerCommon {
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         BroadcastTableModify broadcastTableModify = (BroadcastTableModify) logicalPlan;
-        List<RelNode> inputs = broadcastTableModify.getInputs(executionContext);
+        ExecutionContext ec = executionContext.copy();
+        PhyTableOperationUtil.enableIntraGroupParallelism(broadcastTableModify.getSchemaName(),ec);
+        List<RelNode> inputs = broadcastTableModify.getInputs(ec);
         List<Cursor> inputCursors = new ArrayList<>(inputs.size());
         boolean partialFinished = false;
         try {
             for (RelNode inputNode : inputs) {
-                inputCursors.add(ExecutorHelper.execute(inputNode, executionContext));
+                inputCursors.add(ExecutorHelper.execute(inputNode, ec));
                 partialFinished = true;
             }
 
@@ -56,7 +58,7 @@ public class BroadcastTableModifyHandler extends HandlerCommon {
             return new AffectRowCursor(affectRows);
         } catch (Exception e) {
             if (partialFinished) {
-                executionContext.getTransaction().setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL);
+                ec.getTransaction().setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL);
             }
             throw new TddlNestableRuntimeException(e);
         }

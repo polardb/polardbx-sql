@@ -27,10 +27,7 @@
 
   plan: |
     mergesort(sort="a asc,b asc,c asc")
-      logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where ((((((`a` < 100) or (`b` < 2000)) or (`b` > 1000)) or (`c` <= 30000)) and (`b` <= 3000)) and (((`b` >= 1000) or (`c` <= 10000)) or (`a` > 900))) order by `a`, `b`, `c`")
-
-
-
+      logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where (((`b` <= 3000) and ((((`a` < 100) or (`b` < 2000)) or (`b` > 1000)) or (`c` <= 30000))) and (((`b` >= 1000) or (`c` <= 10000)) or (`a` > 900))) order by `a`, `b`, `c`")
 - sql: |
      select a,b,c,d from random_pruning_test where (((c <= 70000) OR (c >= 70000) OR (b > 8000) OR (a < 900)) AND (a >= 700)) OR (a >= 200) OR (c <= 30000) OR (c = 80000)
 
@@ -60,3 +57,4 @@
   plan: |
     gather(concurrent=true)
       logicalview(tables="random_pruning_test[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardcount=10, sql="select `a`, `b`, `c`, `d` from `random_pruning_test` as `random_pruning_test` where (((((((`b` > 5000) and (`b` >= 7000)) and (`c` < 50000)) or ((`a` <= 500) and (`b` <= 8000))) or (`b` > 9000)) or (`c` < 90000)) or (`a` = 800))")
+

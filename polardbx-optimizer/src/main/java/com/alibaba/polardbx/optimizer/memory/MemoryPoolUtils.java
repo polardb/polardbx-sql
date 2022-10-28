@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.memory;
 
-import com.alibaba.polardbx.common.model.SqlType;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.SqlTypeUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;

@@ -18,7 +18,6 @@ package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -26,27 +25,13 @@ import java.util.List;
  *
  * @author luoyanxin
  */
-public class SqlAlterTableGroupMergePartition extends SqlAlterSpecification {
+public class SqlAlterTableGroupMergePartition extends SqlAlterTableMergePartition {
 
-    private static final SqlOperator OPERATOR = new SqlSpecialOperator("MERGE PARTITION", SqlKind.MERGE_PARTITION);
-    private final SqlNode targetPartitionName;
-    private final List<SqlNode> oldPartitions;
     private SqlAlterTableGroup parent;
 
-    public SqlAlterTableGroupMergePartition(SqlParserPos pos, SqlNode targetPartitionName, List<SqlNode> oldPartitions) {
-        super(pos);
-        this.targetPartitionName = targetPartitionName;
-        this.oldPartitions = oldPartitions == null ? new ArrayList<>() : oldPartitions;
-    }
-
-    @Override
-    public SqlOperator getOperator() {
-        return OPERATOR;
-    }
-
-    @Override
-    public List<SqlNode> getOperandList() {
-        return null;
+    public SqlAlterTableGroupMergePartition(SqlParserPos pos, SqlNode targetPartitionName,
+                                            List<SqlNode> oldPartitions) {
+        super(pos, targetPartitionName, oldPartitions);
     }
 
     public SqlAlterTableGroup getParent() {
@@ -55,14 +40,6 @@ public class SqlAlterTableGroupMergePartition extends SqlAlterSpecification {
 
     public void setParent(SqlAlterTableGroup parent) {
         this.parent = parent;
-    }
-
-    public SqlNode getTargetPartitionName() {
-        return targetPartitionName;
-    }
-
-    public List<SqlNode> getOldPartitions() {
-        return oldPartitions;
     }
 }
 

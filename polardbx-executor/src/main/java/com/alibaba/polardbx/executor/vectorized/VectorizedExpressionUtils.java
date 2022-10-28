@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.executor.vectorized;
 
+import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTime;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
@@ -305,5 +309,17 @@ public class VectorizedExpressionUtils {
         for (int i = 0; i < children.length; i++) {
             getInputIndex(children[i], inputIndex);
         }
+    }
+
+    public static long packedLong(RandomAccessBlock vector, int position) {
+        Object o = vector.elementAt(position);
+        if (o instanceof OriginalDate) {
+            return TimeStorage.writeDate(((OriginalDate) o).getMysqlDateTime());
+        } else if (o instanceof OriginalTimestamp) {
+            return TimeStorage.writeTimestamp(((OriginalTimestamp) o).getMysqlDateTime());
+        } else if (o instanceof OriginalTime) {
+            return TimeStorage.writeTimestamp((((OriginalTime) o).getMysqlDateTime()));
+        }
+        return 0L;
     }
 }

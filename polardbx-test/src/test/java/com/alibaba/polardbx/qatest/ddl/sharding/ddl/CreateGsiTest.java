@@ -28,7 +28,6 @@ import org.junit.Test;
 
 import java.sql.SQLException;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAssert;
 
 /**
@@ -592,7 +591,6 @@ public class CreateGsiTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void addGsi7_error_duplicated_column_name() {
         final String gsiName = "gsi_create_1";
         final String gsiPartition =
@@ -610,6 +608,21 @@ public class CreateGsiTest extends DDLBaseNewDBTestCase {
         } catch (Exception e) {
             throw new RuntimeException("CREATE INDEX statement execution failed!", e);
         }
+    }
+
+    @Test
+    public void testMysqlBug26780307() {
+        String primaryTableName = "testMysqlBug26780307";
+        String gsiName = "testMysqlBug26780307_g1";
+        String createPrimaryTable =
+            String.format("create table %s(a int, b json) dbpartition by hash(a);", primaryTableName);
+        String insert = String.format("insert into %s values(%d,'%s')", primaryTableName, 1,
+            "{\"text\": \"c3\\\\u0001^l\\\\u001F@@Z\"}");
+        String createGsi = String.format("create global index %s on %s(a) covering(b) dbpartition by hash(a)", gsiName,
+            primaryTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createPrimaryTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
     }
 
     private String buildCreateTable(String gsiDef) {

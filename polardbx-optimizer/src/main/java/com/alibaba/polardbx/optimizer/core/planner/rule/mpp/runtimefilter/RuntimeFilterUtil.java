@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -26,9 +29,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ParamManager;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
@@ -43,19 +43,29 @@ import java.util.List;
 import java.util.Set;
 
 public class RuntimeFilterUtil {
+
     /**
-     * TODO 重构支持类型判断
+     * CN与DN共同支持的RuntimeFilter过滤类型
      */
-    private static final Set<DataType<?>> RUNTIME_FILTER_SUPPORTED_TYPES = Sets.newHashSet(
+    private static final Set<DataType<?>> RUNTIME_FILTER_BOTH_SUPPORTED_TYPES = Sets.newHashSet(
         DataTypes.StringType,
-        DataTypes.ULongType,
         DataTypes.ShortType,
+        DataTypes.DoubleType,
+        DataTypes.FloatType,
+        DataTypes.TinyIntType,
+        DataTypes.UTinyIntType,
+        DataTypes.SmallIntType,
+        DataTypes.USmallIntType,
+        DataTypes.MediumIntType,
+        DataTypes.UMediumIntType,
+        DataTypes.IntegerType,
+        DataTypes.UIntegerType,
+        DataTypes.LongType,
+        DataTypes.ULongType,
         DataTypes.DateType,
         DataTypes.TimestampType,
         DataTypes.DatetimeType,
-        DataTypes.TimeType,
-        DataTypes.DecimalType
-    );
+        DataTypes.TimeType);
 
     private static final Set<DataType<?>> OSS_MIN_MAX_FILTER_SUPPORTED_DATATYPES = Sets.newHashSet(
         DataTypes.DateType,
@@ -84,23 +94,15 @@ public class RuntimeFilterUtil {
         return OSS_MIN_MAX_FILTER_SUPPORTED_DATATYPES.contains(dataType);
     }
 
-    private static final Set<DataType<?>> MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES = Sets.newHashSet(
-        DataTypes.DoubleType,
-        DataTypes.FloatType,
-        DataTypes.TinyIntType,
-        DataTypes.UTinyIntType,
-        DataTypes.SmallIntType,
-        DataTypes.USmallIntType,
-        DataTypes.MediumIntType,
-        DataTypes.UMediumIntType,
-        DataTypes.IntegerType,
-        DataTypes.UIntegerType,
-        DataTypes.LongType,
-        DataTypes.ULongType);
-//        DataTypes.DecimalType);
+    /**
+     * 仅CN支持的RuntimeFilter过滤类型
+     */
+    private static final Set<DataType<?>> RUNTIME_FILTER_SUPPORTED_TYPES = Sets.newHashSet(
+        DataTypes.DecimalType
+    );
 
     public static boolean canPushRuntimeFilterToMysql(DataType<?> dataType) {
-        return MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES.contains(dataType);
+        return RUNTIME_FILTER_BOTH_SUPPORTED_TYPES.contains(dataType);
     }
 
     public static boolean supportsRuntimeFilter(DataType<?> dataType) {
@@ -115,7 +117,7 @@ public class RuntimeFilterUtil {
         }
         // 如果一个类型支持生成的bloomfilter下推到mysql，必定支持类型在polarx这一层生成runtime filter
         return RUNTIME_FILTER_SUPPORTED_TYPES.contains(dataType) ||
-            MYSQL_BLOOMFILTER_SUPPORTED_DATATYPES.contains(dataType) ||
+            RUNTIME_FILTER_BOTH_SUPPORTED_TYPES.contains(dataType) ||
             OSS_MIN_MAX_FILTER_SUPPORTED_DATATYPES.contains(dataType);
     }
 

@@ -75,7 +75,7 @@ public interface SchemaManager extends Lifecycle {
         return Collections.emptySet();
     }
 
-    default TableMeta getTableMetaFromConnection(String tableName, Connection conn) {
+    default TableMeta getTableMetaFromConnection(String schema, String tableName, Connection conn) {
         throw new UnsupportedOperationException();
     }
 

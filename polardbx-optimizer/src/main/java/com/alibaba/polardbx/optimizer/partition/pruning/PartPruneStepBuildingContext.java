@@ -64,7 +64,7 @@ public class PartPruneStepBuildingContext {
      * <p>
      * <pre>
      * a prefixPathInfoCache[i] means
-     *  all the prefix from partKeyIdx=0 from partKeyIdx=i-1.
+     *  all the prefix predicate that contain partitions cols from partKeyIdx=0 to partKeyIdx=i-1.
      *
      *  e.g. (p1,p2,p3) is the multi-columns part keys.
      *
@@ -73,21 +73,22 @@ public class PartPruneStepBuildingContext {
      *  ,
      *  we have
      *
-     *  prefixPathInfoCache[0]:
+     *  prefixPathInfoCache[0](all predicates contains only one col p1):
      *      p1<=a ===> (p1,p2,p3)<=(a,max,max)
      *      (
+     *          inference process:
      *          p1<=a
-     *          ===> (p1 < a or p1 = a)
-     *          ===> ((p1,p2,p3) < (a,min,min) OR (a,min,min)<=(p1,p2,p3)<=(a,max,max))
-     *          ===> (p1,p2,p3)<=(a,max,max)
+     *              ==> (p1 < a or p1 = a)
+     *              ==> ((p1,p2,p3) < (a,min,min) OR (a,min,min)<=(p1,p2,p3)<=(a,max,max))
+     *              ==> (p1,p2,p3)<=(a,max,max)
      *
      *      )
      *  ,
-     *  prefixPathInfoCache[1]:
+     *  prefixPathInfoCache[1](all predicates contains only two col p1 and p2):
      *      p1=a and p2<=b ===> (p1,p2,p3)<=(a,b,max),
      *      p1=a and p2<c ===> (p1,p2,p3)<(a,c,min),
      *  ,
-     *  prefixPathInfoCache[2]:
+     *  prefixPathInfoCache[2](all predicates contains only two col p1, p2 and p3):
      *      p1=a and p2=b and p3=d ===> (p1,p2,p3)=(a,b,d),
      *      p1=a and p2=b and p3>e ===> (p1,p2,p3)>(a,b,e),
      *      p1=a and p2=b and p3<=f ===> (p1,p2,p3)<=(a,b,f),
@@ -116,8 +117,17 @@ public class PartPruneStepBuildingContext {
      * then it will give up pruning and return full scan instead
      */
     private int pruneStepOpCountLimit = Integer.MAX_VALUE;
-    
+
+    /**
+     * Label if treat the first found equal-expr as the interval merging result of the and expr
+     *
+     * e.g
+     * When there are many equal expr in an AndExpr, such as pk=?1 and pk=?2 and pk=?3,
+     * then the equal expr of pk=?1 will become the the interval merging result of the whole and expr
+     *
+     */
     private boolean useFastSinglePointIntervalMerging = true;
+
 
     public static PartPruneStepBuildingContext getNewPartPruneStepContext(PartitionInfo partInfo,
                                                                           AtomicInteger constExprIdGenerator,
@@ -413,4 +423,5 @@ public class PartPruneStepBuildingContext {
     public boolean isUseFastSinglePointIntervalMerging() {
         return useFastSinglePointIntervalMerging;
     }
+
 }

@@ -1,0 +1,93 @@
+DROP TABLE IF EXISTS tbl_rc;
+CREATE TABLE `tbl_rc` (
+	`a` bigint(20) NOT NULL,
+	`b` bigint(20) NOT NULL,
+	`c` bigint(20) NOT NULL,
+	`d` bigint(20) NOT NULL,
+	`e` bigint(20) NOT NULL,
+	PRIMARY KEY (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS (`a`, `b`, `c`) (
+	PARTITION p1 VALUES LESS THAN (100, 1000, 10000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p2 VALUES LESS THAN (200, 2000, 20000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p3 VALUES LESS THAN (300, 3000, 30000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p4 VALUES LESS THAN (400, 4000, 40000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p5 VALUES LESS THAN (500, 5000, 50000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p6 VALUES LESS THAN (600, 6000, 60000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p7 VALUES LESS THAN (700, 7000, 70000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p8 VALUES LESS THAN (800, 8000, 80000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p9 VALUES LESS THAN (900, 9000, 90000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p10 VALUES LESS THAN (1000, 10000, 100000)
+		STORAGE ENGINE InnoDB
+);
+INSERT INTO tbl_rc
+VALUES (300, 2000, 30000, 300000, 3000000);
+INSERT INTO tbl_rc
+VALUES (300, 3000, 90000, 900000, 9000000);
+INSERT INTO tbl_rc
+VALUES (900, 2000, 90000, 900000, 9000000);
+INSERT INTO tbl_rc
+VALUES (900, 3000, 90000, 900000, 9000000);
+EXPLAIN SELECT a, b
+FROM tbl_rc
+WHERE (a = 300
+		OR a = 900)
+	AND b != 2000
+ORDER BY a, b, c;
+Logical ExecutionPlan
+Project(a="a", b="b")
+  MergeSort(sort="a ASC,b ASC,c ASC")
+    LogicalView(tables="tbl_rc[p3,p4,p9,p10]", shardCount=4, sql="SELECT `a`, `b`, `c` FROM `tbl_rc` AS `tbl_rc` WHERE ((`b` <> ?) AND ((`a` = ?) OR (`a` = ?))) ORDER BY `a`, `b`, `c`")
+SELECT a, b
+FROM tbl_rc
+WHERE (a = 300
+		OR a = 900)
+	AND b != 2000
+ORDER BY a, b, c;
+a,b
+300,3000
+900,3000
+EXPLAIN SELECT a, b
+FROM tbl_rc
+WHERE a != 100
+ORDER BY a, b, c;
+Logical ExecutionPlan
+Project(a="a", b="b")
+  MergeSort(sort="a ASC,b ASC,c ASC")
+    LogicalView(tables="tbl_rc[p1,p2,p3,p4,p5,p6,p7,p8,p9,p10]", shardCount=10, sql="SELECT `a`, `b`, `c` FROM `tbl_rc` AS `tbl_rc` WHERE (`a` <> ?) ORDER BY `a`, `b`, `c`")
+SELECT a, b
+FROM tbl_rc
+WHERE a != 100
+ORDER BY a, b, c;
+a,b
+300,2000
+300,3000
+900,2000
+900,3000
+EXPLAIN SELECT a, b
+FROM tbl_rc
+WHERE a = 300
+	AND (b != 3000
+		OR b != 3000)
+ORDER BY a, b, c;
+Logical ExecutionPlan
+Project(a="a", b="b")
+  MergeSort(sort="a ASC,b ASC,c ASC")
+    LogicalView(tables="tbl_rc[p3,p4]", shardCount=2, sql="SELECT `a`, `b`, `c` FROM `tbl_rc` AS `tbl_rc` WHERE ((`a` = ?) AND ((`b` <> ?) OR (`b` <> ?))) ORDER BY `a`, `b`, `c`")
+SELECT a, b
+FROM tbl_rc
+WHERE a = 300
+	AND (b != 3000
+		OR b != 3000)
+ORDER BY a, b, c;
+a,b
+300,2000

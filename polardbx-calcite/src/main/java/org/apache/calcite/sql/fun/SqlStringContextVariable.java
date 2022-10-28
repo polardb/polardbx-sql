@@ -29,14 +29,6 @@ public class SqlStringContextVariable extends SqlBaseContextVariable {
   protected SqlStringContextVariable(String name) {
     super(name, ReturnTypes.VARCHAR_2000, SqlFunctionCategory.SYSTEM);
   }
-
-  @Override
-  public boolean canPushDown() {
-    if ("CURRENT_USER".equals(getName())) {
-      return false;
-    }
-    return super.canPushDown();
-  }
 }
 
 // End SqlStringContextVariable.java

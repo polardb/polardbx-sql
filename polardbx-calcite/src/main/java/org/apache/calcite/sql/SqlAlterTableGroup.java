@@ -121,7 +121,8 @@ public class SqlAlterTableGroup extends SqlDdl {
         validator.setColumnReferenceExpansion(false);
         for (SqlAlterSpecification sqlAlterSpecification : alters) {
             if (sqlAlterSpecification instanceof SqlAlterTableGroupSplitPartition ||
-                sqlAlterSpecification instanceof SqlAlterTableGroupExtractPartition) {
+                sqlAlterSpecification instanceof SqlAlterTableGroupExtractPartition ||
+                sqlAlterSpecification instanceof SqlAlterTableSplitPartitionByHotValue) {
                 sqlAlterSpecification.validate(validator, scope);
             }
         }

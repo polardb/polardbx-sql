@@ -77,7 +77,7 @@ public class MetaDbSchema extends AbsSchema {
         try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
             tableMeta =
                 OptimizerContext.getContext(InformationSchema.NAME).getLatestSchemaManager()
-                    .getTableMetaFromConnection(tableName, connection);
+                    .getTableMetaFromConnection(InformationSchema.NAME, tableName, connection);
 
             if (tableMeta == null) {
                 throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, tableName);

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.gsi;
 
 import com.alibaba.druid.util.JdbcUtils;
+import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -26,15 +27,21 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.ddl.engine.AsyncDDLCache;
 import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.partition.BackfillExtraFieldJSON;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiUtils.Consumer;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import org.apache.calcite.linq4j.Ord;
@@ -42,7 +49,9 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.sql.DataSource;
-import javax.validation.constraints.NotNull;
+
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Connection;
@@ -78,6 +87,36 @@ import static com.alibaba.polardbx.executor.gsi.GsiUtils.DEFAULT_PARAMETER_METHO
 public class GsiBackfillManager {
 
     private static final String SYSTABLE_BACKFILL_OBJECTS = GmsSystemTables.BACKFILL_OBJECTS;
+
+    private static final String SYSTABLE_FILE_STORAGE_BACKFILL_OBJECTS =
+        GmsSystemTables.FILE_STORAGE_BACKFILL_OBJECTS;
+
+    public static final String CREATE_GSI_BACKFILL_OBJECTS_TABLE = "CREATE TABLE IF NOT EXISTS `"
+        + SYSTABLE_BACKFILL_OBJECTS
+        + "` ("
+        + "  `ID` BIGINT(21) UNSIGNED NOT NULL AUTO_INCREMENT,"
+        + "  `JOB_ID` BIGINT UNSIGNED NOT NULL,"
+        + "  `TABLE_SCHEMA` VARCHAR(64) NOT NULL DEFAULT '',"
+        + "  `TABLE_NAME` VARCHAR(64) NOT NULL DEFAULT '',"
+        + "  `INDEX_SCHEMA` VARCHAR(64) NOT NULL DEFAULT '',"
+        + "  `INDEX_NAME` VARCHAR(64) NOT NULL DEFAULT '',"
+        + "  `PHYSICAL_DB` VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Group key',"
+        + "  `PHYSICAL_TABLE` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Physical table name',"
+        + "  `COLUMN_INDEX` BIGINT NOT NULL DEFAULT -1 COMMENT 'Column index in index table',"
+        + "  `PARAMETER_METHOD` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'Parameter method for applying LAST_VALUE to extractor',"
+        + "  `LAST_VALUE` LONGTEXT DEFAULT NULL,"
+        + "  `MAX_VALUE` LONGTEXT DEFAULT NULL,"
+        + "  `STATUS` BIGINT(10) NOT NULL DEFAULT 0 COMMENT '0:INIT,1:RUNNING,2:SUCCESS,3:FAILED',"
+        + "  `MESSAGE` LONGTEXT DEFAULT NULL ,"
+        + "  `SUCCESS_ROW_COUNT` BIGINT UNSIGNED NOT NULL,"
+        + "  `START_TIME` DATETIME DEFAULT NULL,"
+        + "  `END_TIME` DATETIME DEFAULT NULL,"
+        + "  `EXTRA` LONGTEXT DEFAULT NULL,"
+        + "  PRIMARY KEY(`ID`),"
+        + "  UNIQUE KEY `i_job_db_tb_column`(`JOB_ID`, `PHYSICAL_DB`, `PHYSICAL_TABLE`, `COLUMN_INDEX`),"
+        + "  KEY `i_job_id`(`JOB_ID`),"
+        + "  KEY `i_job_id_status`(`JOB_ID`, `STATUS`)"
+        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
     public static class BackfillMetaCleaner {
 
@@ -116,6 +155,9 @@ public class GsiBackfillManager {
                         wrapWithTransaction(dataSource, (conn) -> {
                             try {
                                 try (PreparedStatement ps = conn.prepareStatement(SQL_CLEAN_OUTDATED_LOG)) {
+                                    ps.execute();
+                                }
+                                try (PreparedStatement ps = conn.prepareStatement(SQL_CLEAN_OUTDATED_FILESTORAGE_LOG)) {
                                     ps.execute();
                                 }
                             } catch (SQLException e) {
@@ -163,6 +205,7 @@ public class GsiBackfillManager {
         final BackfillObjectRecord logicalBfo = bfo.copy();
         logicalBfo.setPhysicalDb(null);
         logicalBfo.setPhysicalTable(null);
+        logicalBfo.setExtra("");
         initBackfillObjects.add(0, logicalBfo);
 
         insertBackfillMeta(ec, initBackfillObjects, true);
@@ -266,6 +309,9 @@ public class GsiBackfillManager {
                     first.set(false);
                 }
 
+                bfo.lastValue = columnValue;
+                bfo.extra.setProgress(String.valueOf(partitionProgress.get()));
+
                 return new BackfillObjectRecord(bfo.id,
                     bfo.jobId,
                     bfo.tableSchema,
@@ -283,7 +329,7 @@ public class GsiBackfillManager {
                     successCount,
                     bfo.startTime,
                     new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
-                    bfo.extra);
+                    BackfillExtraFieldJSON.toJson(bfo.extra));
             })
             .collect(Collectors.toList());
 
@@ -311,22 +357,61 @@ public class GsiBackfillManager {
         return 0;
     }
 
+    public void
+    splitBackfillObject(ExecutionContext ec, List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
+                        List<GsiBackfillManager.BackfillObjectRecord> newBackfillRecords) {
+
+        final List<Map<Integer, ParameterContext>> params = backfillObjects.stream()
+            .map(bfo -> (Map) ImmutableMap.builder()
+                .put(1, new ParameterContext(ParameterMethod.setLong, new Object[] {1, bfo.jobId}))
+                .put(2, new ParameterContext(ParameterMethod.setString, new Object[] {2, bfo.physicalDb}))
+                .put(3, new ParameterContext(ParameterMethod.setString, new Object[] {3, bfo.physicalTable}))
+                .put(4, new ParameterContext(ParameterMethod.setLong, new Object[] {4, bfo.columnIndex}))
+                .build())
+            .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+
+        wrapWithTransaction(dataSource,
+            (conn) -> {
+                try {
+                    long backfillId = ec.getBackfillId();
+                    BackfillBean backfillBean = loadBackfillMeta(backfillId);
+                    if (backfillBean == BackfillBean.EMPTY) {
+                        // do nothing
+                    } else if (backfillBean.status == BackfillStatus.SUCCESS) {
+                        // should not arrive here
+                        return;
+                    }
+                    // delete old backfill range object
+                    update(SQL_DELETE_BACKFILL_RANGE, params, conn);
+                    batchInsert(SQL_INSERT_BACKFILL_OBJECT, newBackfillRecords, conn);
+                } catch (SQLException e) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
+                        e,
+                        "change backfill meta failed!");
+                }
+            });
+    }
+
     public void updateLogicalBackfillObject(BackfillBean bb, BackfillStatus status) {
         updateLogicalBackfillObject(
             String.valueOf(bb.getProgress()),
             status.getValue(),
             bb.message,
             new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
-            bb.extra,
+            BackfillExtraFieldJSON.toJson(bb.extra),
             bb.jobId
         );
     }
 
     public void updateLogicalBackfillProcess(String progress, Long backfillId) {
 
+        BackfillExtraFieldJSON extra = new BackfillExtraFieldJSON();
+        extra.setProgress(progress);
+        String extraStr = BackfillExtraFieldJSON.toJson(extra);
         Map<Integer, ParameterContext> params = new HashMap<>();
         params.put(1, new ParameterContext(ParameterMethod.setString, new Object[] {1, progress}));
-        params.put(2, new ParameterContext(ParameterMethod.setLong, new Object[] {2, backfillId}));
+        params.put(2, new ParameterContext(ParameterMethod.setString, new Object[] {2, extraStr}));
+        params.put(3, new ParameterContext(ParameterMethod.setLong, new Object[] {3, backfillId}));
 
         wrapWithTransaction(dataSource, (conn) -> {
             try {
@@ -361,6 +446,9 @@ public class GsiBackfillManager {
             ps = conn.prepareStatement(SQL_CLEAN_ALL);
             ps.setString(1, schemaName.toLowerCase());
             ps.executeUpdate();
+            ps = conn.prepareStatement(SQL_CLEAN_ALL_FILE_STORAGE);
+            ps.setString(1, schemaName.toLowerCase());
+            ps.executeUpdate();
             return true;
         } catch (SQLException e) {
             throw new TddlNestableRuntimeException(e);
@@ -377,24 +465,22 @@ public class GsiBackfillManager {
         wrapWithTransaction(dataSource,
             (conn) -> {
                 try {
-                    Long backfillId = ec.getBackfillId();
-                    if (backfillId != null) {
-                        BackfillBean backfillBean = loadBackfillMeta(backfillId);
-                        if (backfillBean == BackfillBean.EMPTY) {
-                            //do nothing
-                        } else if (backfillBean.status == BackfillStatus.SUCCESS) {
-                            if (isSameTask(backfillObjectRecords, backfillBean)) {
-                                return;
-                            } else {
-                                deleteByBackfillId(backfillId);
-                            }
+                    long backfillId = ec.getBackfillId();
+                    BackfillBean backfillBean = loadBackfillMeta(backfillId);
+                    if (backfillBean == BackfillBean.EMPTY) {
+                        //do nothing
+                    } else if (backfillBean.status == BackfillStatus.SUCCESS) {
+                        if (isSameTask(backfillObjectRecords, backfillBean)) {
+                            return;
                         } else {
-                            if (isSameTask(backfillObjectRecords, backfillBean)) {
-                                return;
-                            } else {
-                                throw new TddlNestableRuntimeException(
-                                    "does not allow concurrent backfill job on a logical table");
-                            }
+                            deleteByBackfillId(backfillId);
+                        }
+                    } else {
+                        if (isSameTask(backfillObjectRecords, backfillBean)) {
+                            return;
+                        } else {
+                            throw new TddlNestableRuntimeException(
+                                "does not allow concurrent backfill job on a logical table");
                         }
                     }
                     batchInsert(insertIgnore ? SQL_INSERT_IGNORE_BACKFILL_OBJECT : SQL_INSERT_BACKFILL_OBJECT,
@@ -423,6 +509,20 @@ public class GsiBackfillManager {
 
     public List<BackfillObjectRecord> queryBackfillProgress(long backfillId) {
         return queryByJobId(SQL_SELECT_BACKFILL_PROGRESS, backfillId, BackfillObjectRecord.ORM);
+    }
+
+    public List<BackFillAggInfo> queryBackFillAggInfoById(List<Long> backFillIdList) {
+        if (CollectionUtils.isEmpty(backFillIdList)) {
+            return new ArrayList<>();
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            String ids = Joiner.on(",").join(backFillIdList);
+            String sql = String.format(SQL_SELECT_BACKFILL_VIEW_BY_ID, ids);
+            return MetaDbUtil.query(sql, BackFillAggInfo.class, connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
+                e, "queryBackFillAggInfo failed!");
+        }
     }
 
     private void updateBackfillObject(List<BackfillObjectRecord> backfillObjectRecords) {
@@ -519,6 +619,10 @@ public class GsiBackfillManager {
         "SELECT ID,JOB_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA FROM "
             + SYSTABLE_BACKFILL_OBJECTS + " WHERE JOB_ID = ? AND PHYSICAL_DB IS NULL AND PHYSICAL_TABLE IS NULL";
 
+    private static final String SQL_SELECT_BACKFILL_VIEW_BY_ID =
+        "select job_id, table_schema, table_name, `status`, success_row_count, start_time, duration from ( SELECT JOB_ID,TABLE_SCHEMA,TABLE_NAME,`STATUS`,SUM(SUCCESS_ROW_COUNT) as SUCCESS_ROW_COUNT, START_TIME, TIMESTAMPDIFF(SECOND, START_TIME, END_TIME) AS DURATION FROM "
+            + SYSTABLE_BACKFILL_OBJECTS + " WHERE JOB_ID IN (%s) GROUP BY JOB_ID, COLUMN_INDEX) t group by job_id";
+
     private static final String SQL_UPDATE_BACKFILL_PROGRESS = "UPDATE "
         + SYSTABLE_BACKFILL_OBJECTS
         + " SET PARAMETER_METHOD = ?, `LAST_VALUE` = ?, STATUS = ?, MESSAGE = ?, SUCCESS_ROW_COUNT = ?, END_TIME=?, EXTRA = ?"
@@ -531,18 +635,28 @@ public class GsiBackfillManager {
 
     private static final String SQL_UPDATE_LOGICAL_BACKFILL_PROCESS = "UPDATE "
         + SYSTABLE_BACKFILL_OBJECTS
-        + " SET `LAST_VALUE` = ? "
+        + " SET `LAST_VALUE` = ?, EXTRA = ? "
         + " WHERE JOB_ID = ? AND PHYSICAL_DB is null AND PHYSICAL_TABLE is null ";
 
     private static final String SQL_DELETE_BY_JOB_ID = "DELETE FROM "
         + SYSTABLE_BACKFILL_OBJECTS
         + " WHERE JOB_ID = ?";
 
+    private static final String SQL_DELETE_BACKFILL_RANGE = "DELETE FROM "
+        + SYSTABLE_BACKFILL_OBJECTS
+        + " WHERE JOB_ID = ? AND PHYSICAL_DB = ? AND PHYSICAL_TABLE = ? AND COLUMN_INDEX = ? ";
+
     private static final String SQL_CLEAN_OUTDATED_LOG = "DELETE FROM "
         + SYSTABLE_BACKFILL_OBJECTS
         + " WHERE DATE(END_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY ) AND DATE(START_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY )";
 
+    private static final String SQL_CLEAN_OUTDATED_FILESTORAGE_LOG = "DELETE FROM "
+        + SYSTABLE_FILE_STORAGE_BACKFILL_OBJECTS
+        + " WHERE DATE(END_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY ) AND DATE(START_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY )";
     private static final String SQL_CLEAN_ALL = "DELETE FROM " + SYSTABLE_BACKFILL_OBJECTS + " WHERE TABLE_SCHEMA = ?";
+
+    private static final String SQL_CLEAN_ALL_FILE_STORAGE =
+        "DELETE FROM " + SYSTABLE_FILE_STORAGE_BACKFILL_OBJECTS + " WHERE TABLE_SCHEMA = ?";
 
     private <T> List<T> query(String sql, Map<Integer, ParameterContext> params, Connection connection, Orm<T> orm)
         throws SQLException {
@@ -560,7 +674,7 @@ public class GsiBackfillManager {
         }
     }
 
-    private void update(String sql, List<Map<Integer, ParameterContext>> params, Connection connection)
+    protected void update(String sql, List<Map<Integer, ParameterContext>> params, Connection connection)
         throws SQLException {
         final int batchSize = 512;
         for (int i = 0; i < params.size(); i += batchSize) {
@@ -608,7 +722,7 @@ public class GsiBackfillManager {
         public final String message;
         public final String startTime;
         public final String endTime;
-        public final String extra;
+        public final BackfillExtraFieldJSON extra;
         public final Map<BackfillObjectKey, List<BackfillObjectBean>> backfillObjects;
 
         private Integer progress;
@@ -645,7 +759,7 @@ public class GsiBackfillManager {
             this.message = message;
             this.startTime = startTime;
             this.endTime = endTime;
-            this.extra = extra;
+            this.extra = BackfillExtraFieldJSON.fromJson(extra);
             this.progress = progress;
             this.backfillObjects = backfillObjects;
         }
@@ -759,14 +873,14 @@ public class GsiBackfillManager {
         public final String physicalTable;
         public final long columnIndex;
         public final String parameterMethod;
-        public final String lastValue;
+        public String lastValue;
         public final String maxValue;
         public final BackfillStatus status;
         public final String message;
         public final long successRowCount;
         public final String startTime;
         public final String endTime;
-        public final String extra;
+        public final BackfillExtraFieldJSON extra;
 
         public Integer progress;
 
@@ -795,8 +909,8 @@ public class GsiBackfillManager {
         public BackfillObjectBean(long id, long jobId, String tableSchema, String tableName, String indexSchema,
                                   String indexName, String physicalDb, String physicalTable, long columnIndex,
                                   String parameterMethod, String lastValue, String maxValue, BackfillStatus status,
-                                  String message, long successRowCount, String startTime, String endTime, String extra,
-                                  Integer progress) {
+                                  String message, long successRowCount, String startTime, String endTime,
+                                  BackfillExtraFieldJSON extra, Integer progress) {
             this.id = id;
             this.jobId = jobId;
             this.tableSchema = tableSchema;
@@ -851,7 +965,7 @@ public class GsiBackfillManager {
                 bfoRecord.successRowCount,
                 bfoRecord.startTime,
                 bfoRecord.endTime,
-                bfoRecord.extra,
+                BackfillExtraFieldJSON.fromJson(bfoRecord.extra),
                 progress);
         }
 
@@ -887,14 +1001,14 @@ public class GsiBackfillManager {
                 ", successRowCount=" + successRowCount +
                 ", startTime='" + startTime + '\'' +
                 ", endTime='" + endTime + '\'' +
-                ", extra='" + extra + '\'' +
+                ", extra='" + BackfillExtraFieldJSON.toJson(extra) + '\'' +
                 ", progress=" + progress +
                 '}';
         }
     }
 
     public enum BackfillStatus {
-        INIT(0), RUNNING(1), SUCCESS(2), FAILED(3);
+        INIT(0), RUNNING(1), SUCCESS(2), FAILED(3), SPLIT(4);
 
         private long value;
 
@@ -916,8 +1030,27 @@ public class GsiBackfillManager {
                 return SUCCESS;
             case 3:
                 return FAILED;
+            case 4:
+                return SPLIT;
             default:
                 throw new IllegalArgumentException("Unsupported BackfillStatus value " + value);
+            }
+        }
+
+        public static String display(long value) {
+            switch ((int) value) {
+            case 0:
+                return INIT.name();
+            case 1:
+                return RUNNING.name();
+            case 2:
+                return SUCCESS.name();
+            case 3:
+                return FAILED.name();
+            case 4:
+                return SPLIT.name();
+            default:
+                return "UNKNOWN";
             }
         }
 
@@ -928,7 +1061,7 @@ public class GsiBackfillManager {
         public static final EnumSet<BackfillStatus> UNFINISHED = EnumSet.of(INIT, RUNNING, FAILED);
     }
 
-    private interface Orm<T> {
+    public interface Orm<T> {
 
         T convert(ResultSet resultSet) throws SQLException;
 
@@ -1147,6 +1280,85 @@ public class GsiBackfillManager {
 
         public void setExtra(String extra) {
             this.extra = extra;
+        }
+    }
+
+    public static class BackFillAggInfo implements SystemTableRecord {
+
+        private long backFillId;
+        private String tableSchema;
+        private String tableName;
+        private long status;
+        private long successRowCount;
+        private String startTime;
+        private long duration;
+
+        @Override
+        public BackFillAggInfo fill(ResultSet resultSet) throws SQLException {
+            this.backFillId = resultSet.getLong("JOB_ID");
+            this.tableSchema = resultSet.getString("TABLE_SCHEMA");
+            this.tableName = resultSet.getString("TABLE_NAME");
+            this.status = resultSet.getLong("STATUS");
+            this.successRowCount = resultSet.getLong("SUCCESS_ROW_COUNT");
+            this.startTime = resultSet.getString("START_TIME");
+            this.duration = resultSet.getLong("DURATION");
+            return this;
+        }
+
+        public long getBackFillId() {
+            return backFillId;
+        }
+
+        public void setBackFillId(long backFillId) {
+            this.backFillId = backFillId;
+        }
+
+        public String getTableSchema() {
+            return tableSchema;
+        }
+
+        public void setTableSchema(String tableSchema) {
+            this.tableSchema = tableSchema;
+        }
+
+        public String getTableName() {
+            return tableName;
+        }
+
+        public void setTableName(String tableName) {
+            this.tableName = tableName;
+        }
+
+        public long getStatus() {
+            return status;
+        }
+
+        public void setStatus(long status) {
+            this.status = status;
+        }
+
+        public long getSuccessRowCount() {
+            return successRowCount;
+        }
+
+        public void setSuccessRowCount(long successRowCount) {
+            this.successRowCount = successRowCount;
+        }
+
+        public String getStartTime() {
+            return startTime;
+        }
+
+        public void setStartTime(String startTime) {
+            this.startTime = startTime;
+        }
+
+        public long getDuration() {
+            return duration;
+        }
+
+        public void setDuration(long duration) {
+            this.duration = duration;
         }
     }
 

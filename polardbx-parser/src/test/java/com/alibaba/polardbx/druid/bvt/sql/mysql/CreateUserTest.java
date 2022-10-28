@@ -46,7 +46,7 @@ public class CreateUserTest extends MysqlTest {
 
         SQLStatement statement = SQLUtils.parseSingleMysqlStatement(sql);
 
-        assertEquals("CREATE USER IF NOT EXISTS user1 IDENTIFIED BY 'auth_string'", statement.toString());
+        assertEquals("CREATE USER IF NOT EXISTS 'user1'@'%' IDENTIFIED BY 'auth_string'", statement.toString());
     }
 
     public void test_2() throws Exception {
@@ -54,6 +54,6 @@ public class CreateUserTest extends MysqlTest {
 
         SQLStatement statement = SQLUtils.parseSingleMysqlStatement(sql);
 
-        assertEquals("CREATE USER IF NOT EXISTS user1 IDENTIFIED BY 'auth_string'", statement.toString());
+        assertEquals("CREATE USER IF NOT EXISTS 'user1'@'%' IDENTIFIED BY 'auth_string'", statement.toString());
     }
 }

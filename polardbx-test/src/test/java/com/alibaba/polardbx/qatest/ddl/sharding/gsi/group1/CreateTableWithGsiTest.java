@@ -26,6 +26,7 @@ import org.apache.calcite.util.Litmus;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -39,7 +40,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAssert;
 
 /**
@@ -888,6 +888,11 @@ public class CreateTableWithGsiTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    /***
+     * Let DN rather CN validate whether the GSI key is too long.
+     * The following test cases depend on CN's validation, so ignore them.
+     */
+    @Ignore
     @Test
     public void testCreate17ColumnTooLong() {
         final String gsiTestTableName = "gsi_test_table";

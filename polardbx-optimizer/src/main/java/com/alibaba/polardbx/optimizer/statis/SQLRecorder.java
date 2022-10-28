@@ -21,41 +21,59 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.google.common.annotations.VisibleForTesting;
 
 /**
  * SQL统计排序记录器
- * 
+ *
  * @author xianmao.hexm 2010-9-30 上午10:48:28
  */
 public final class SQLRecorder {
 
-    private static final Logger logger          = LoggerFactory.getLogger(SQLRecorder.class);
+    private static final Logger logger = LoggerFactory.getLogger(SQLRecorder.class);
 
-    private int                 index;
+    // 淘汰7天前记录的慢SQL
+    private long slowSqlExpireTime = 7 * 24 * 3600 * 1000L;
+
+    private int index;
     // SQL执行时间的最小值
-    private long                minValue;
-    private int                 count;
-    private SQLRecord[]         records;
-    private int                 lastIndex;
+    private long minValue;
+    private int count;
+    private SQLRecord[] records;
+    private int lastIndex;
     // 记录的SQL总数
     private final ReentrantLock lock;
-    private volatile long       maxSizeThresold = 4 * 1024;
-    private volatile long       slowSqlTime     = 1000;
+    private volatile long maxSizeThreshold = 4 * 1024;
+    private volatile long slowSqlTime = 1000;
+    // 最早一条慢SQL的开始时间
+    private long oldestSqlStartTime = -1;
+    private volatile boolean isSorted = false;
 
-    public SQLRecorder(int count){
+    public SQLRecorder(int count) {
         this(count, 16384, 1000);
     }
 
-    public SQLRecorder(int count, int maxSizeThresold, long slowSqlTime){
+    public SQLRecorder(int count, int maxSizeThreshold, long slowSqlTime) {
+        if (count < 1) {
+            throw new IllegalArgumentException("Size cannot be less than 1");
+        }
         this.count = count;
         this.lastIndex = count - 1;
-        this.maxSizeThresold = maxSizeThresold;
+        this.maxSizeThreshold = maxSizeThreshold;
         this.slowSqlTime = slowSqlTime;
         this.records = new SQLRecord[count];
         this.lock = new ReentrantLock();
     }
 
     public SQLRecord[] getRecords() {
+        return records;
+    }
+
+    public SQLRecord[] getSortedRecords() {
+        if (index <= 1 || isSorted) {
+            return records;
+        }
+        Arrays.sort(records, 0, index);
         return records;
     }
 
@@ -70,11 +88,21 @@ public final class SQLRecorder {
         final ReentrantLock lock = this.lock;
         lock.lock();
         try {
+            if (isFull() && hasExpiredRecords(record)) {
+                // 有可能过期记录在swap时被淘汰了, 不影响正确性
+                expireRecords(record.startTime);
+            }
             if (index < count) {
+                this.isSorted = false;
+                if (index == 0) {
+                    oldestSqlStartTime = record.startTime;
+                    this.isSorted = true;
+                }
                 records[index++] = record;
-                if (index == count) {
+                if (isFull()) {
                     Arrays.sort(records);
                     minValue = records[0].executeTime;
+                    this.isSorted = true;
                 }
             } else {
                 swap(record);
@@ -82,6 +110,51 @@ public final class SQLRecorder {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * 当SQL记录满时, 整理并淘汰过期的慢SQL记录
+     * 结果仍然保序
+     */
+    private void expireRecords(long curTime) {
+        long curOldestSqlStartTime = Long.MAX_VALUE;
+        int curIdx = 0;
+        for (int i = 0; i < records.length; i++) {
+            SQLRecord record = records[i];
+            if (record == null) {
+                // 插入机制保证不会有空
+                return;
+            }
+            if (curTime - record.startTime <= slowSqlExpireTime) {
+                curOldestSqlStartTime = Math.min(curOldestSqlStartTime, record.startTime);
+                records[curIdx] = record;
+                curIdx++;
+            }
+        }
+        this.index = curIdx;
+        this.oldestSqlStartTime = curOldestSqlStartTime;
+        this.minValue = curIdx > 0 ? records[0].executeTime : 0;
+        if (this.index < this.count) {
+            Arrays.fill(this.records, this.index, this.count, null);
+        }
+    }
+
+    private boolean hasExpiredRecords(SQLRecord record) {
+        if (oldestSqlStartTime == -1) {
+            return false;
+        }
+        return isRecordExpired(record.startTime);
+    }
+
+    private boolean hasExpiredRecords(long newStartTime) {
+        if (oldestSqlStartTime == -1) {
+            return false;
+        }
+        return isRecordExpired(newStartTime);
+    }
+
+    private boolean isRecordExpired(long newStartTime) {
+        return (newStartTime - oldestSqlStartTime) > slowSqlExpireTime;
     }
 
     public void clear() {
@@ -93,17 +166,7 @@ public final class SQLRecorder {
             }
             index = 0;
             minValue = 0;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public void sort() {
-        final ReentrantLock lock = this.lock;
-        lock.lock();
-        try {
-            Arrays.sort(records);
-            minValue = records[0].executeTime;
+            oldestSqlStartTime = -1;
         } finally {
             lock.unlock();
         }
@@ -115,20 +178,19 @@ public final class SQLRecorder {
     private void swap(SQLRecord record) {
         int x = find(record.executeTime, 0, lastIndex);
         switch (x) {
-            case 0:
-                break;
-            case 1:
-                minValue = record.executeTime;
-                records[0] = record;
-                break;
-            default:
-                --x;// 向左移动一格
-                final SQLRecord[] records = this.records;
-                for (int i = 0; i < x; i++) {
-                    records[i] = records[i + 1];
-                }
-                records[x] = record;
-                minValue = records[0].executeTime;
+        case 0:
+            break;
+        case 1:
+            minValue = record.executeTime;
+            records[0] = record;
+            break;
+        default:
+            --x;// 向左移动一格
+            final SQLRecord[] records = this.records;
+            for (int i = 0; i < x; i++) {
+                records[i] = records[i + 1];
+            }
+            records[x] = record;
         }
     }
 
@@ -156,14 +218,13 @@ public final class SQLRecorder {
 
     /**
      * 记录逻辑sql执行信息
-     * 
-     * @param endTime
      */
-    public void recordSql(String sql, long startTime, String user, String host, String port, String schema, long affectRow,
+    public void recordSql(String sql, long startTime, String user, String host, String port, String schema,
+                          long affectRow,
                           long endTime, String uuid) {
         try {
             long time = endTime - startTime;
-            if (this.check(time)) {
+            if (this.check(time) || hasExpiredRecords(startTime)) {
 
                 SQLRecord record = new SQLRecord();
                 record.statement = sql;
@@ -187,10 +248,10 @@ public final class SQLRecorder {
      */
     public void recordSql(SQLRecord record) {
         try {
-            if (this.check(record.executeTime)) {
-                if (record.statement.length() > maxSizeThresold) {
-                    StringBuilder newSql = new StringBuilder((int) maxSizeThresold + 3);
-                    newSql.append(record.statement.substring(0, (int) maxSizeThresold));
+            if (this.check(record.executeTime) || hasExpiredRecords(record)) {
+                if (record.statement.length() > maxSizeThreshold) {
+                    StringBuilder newSql = new StringBuilder((int) maxSizeThreshold + 3);
+                    newSql.append(record.statement, 0, (int) maxSizeThreshold);
                     newSql.append("...");
                     record.statement = newSql.toString();
                 }
@@ -202,12 +263,12 @@ public final class SQLRecorder {
         }
     }
 
-    public long getMaxSizeThresold() {
-        return maxSizeThresold;
+    public long getMaxSizeThreshold() {
+        return maxSizeThreshold;
     }
 
-    public void setMaxSizeThresold(long maxSizeThresold) {
-        this.maxSizeThresold = maxSizeThresold;
+    public void setMaxSizeThreshold(long maxSizeThreshold) {
+        this.maxSizeThreshold = maxSizeThreshold;
     }
 
     public void setCount(int count) {
@@ -235,4 +296,16 @@ public final class SQLRecorder {
         this.slowSqlTime = slowSqlTime;
     }
 
+    public boolean isFull() {
+        return this.index == this.count;
+    }
+
+    public int size() {
+        return index;
+    }
+
+    @VisibleForTesting
+    public void setSlowSqlExpireTime(long slowSqlExpireTime) {
+        this.slowSqlExpireTime = slowSqlExpireTime;
+    }
 }

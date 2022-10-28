@@ -55,10 +55,10 @@ public class InformationSchema extends AbsSchema {
             if (row.isVirtual()) {
                 VirtualViewType virtualViewType = row.getVirtualViewType();
                 relProtoDataType =
-                    new TddlCalciteSchema.VirtualViewProtoDataType(virtualViewType, new ExecutionContext());
+                    new TddlCalciteSchema.VirtualViewProtoDataType(NAME, virtualViewType);
             } else {
                 relProtoDataType =
-                    new TddlCalciteSchema.ViewProtoDataType(columnList, viewDefinition, new ExecutionContext());
+                    new TddlCalciteSchema.ViewProtoDataType(NAME, columnList, viewDefinition);
             }
             Table table = new ViewTable(null, relProtoDataType, viewDefinition, ImmutableList.<String>of(), null);
             return table;

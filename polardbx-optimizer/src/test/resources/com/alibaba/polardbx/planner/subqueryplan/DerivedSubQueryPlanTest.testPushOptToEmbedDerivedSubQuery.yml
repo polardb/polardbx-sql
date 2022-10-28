@@ -71,10 +71,9 @@
       ) tb
     where tb.id > 100
   plan: |
-
-    Project(c1="id", c2="int_col1", c3="int_col2", c4="int_col3")
-      MergeSort(sort="id ASC,int_col1 ASC,int_col2 ASC,int_col3 ASC,int_col4 ASC,int_col5 ASC")
-        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`int_col1` > 100) AND (`id` > 100)) ORDER BY `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`")
+    project(c1="id", c2="int_col1", c3="int_col2", c4="int_col3")
+      mergesort(sort="id asc,int_col1 asc,int_col2 asc,int_col3 asc,int_col4 asc,int_col5 asc")
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5` from `test_hash_tb` as `test_hash_tb` where ((`int_col1` > 100) and (`id` > 100)) order by `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`")
 
 - sql: |
     select tb.id as c1,tb.int_col1 as c2, tb.int_col2 as c3, tb.int_col3 as c4
@@ -89,11 +88,9 @@
     where tb.id > 100
     group by tb.id,tb.int_col1, tb.int_col2, tb.int_col3
   plan: |
-
     project(c1="id", c2="int_col1", c3="int_col2", c4="int_col3")
       mergesort(sort="id asc,int_col1 asc,int_col2 asc,int_col3 asc,int_col4 asc,int_col5 asc")
         logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5` from `test_hash_tb` as `test_hash_tb` where ((`int_col1` > 100) and (`id` > 100)) order by `id`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`")
-
 - sql: |
     select
         count(distinct tb.id),

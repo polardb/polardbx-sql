@@ -65,6 +65,7 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.metadata.InfoSchemaCommon;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyQueryCursor;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.rel.RelNode;
@@ -103,6 +104,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
@@ -338,6 +340,7 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
         }
 
         Set<String> tableNames = null;
+        Map<String, Boolean> tablesAutoPartInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         String targetDb = showNode.getSchemaName();
         if (!DbInfoManager.getInstance().isNewPartitionDb(targetDb)) {
 
@@ -355,8 +358,9 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
             tableNames.addAll(infoSchemaContext.getOptimizerContext().getPartitionInfoManager().getPartitionTables());
         }
 
-        // Remove system tables.
-        tableNames.removeIf(SystemTables::contains);
+        if (infoSchemaContext.isWithView()) {
+            tableNames.addAll(infoSchemaContext.getOptimizerContext().getViewManager().selectAllViewName());
+        }
 
         SchemaManager schemaManager =
             OptimizerContext.getContext(targetDb).getLatestSchemaManager();
@@ -366,7 +370,7 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
         while (!ConfigDataMode.isFastMock() && iter.hasNext()) {
             String tableName = iter.next();
 
-            boolean isRecyclelBinTable = RecycleBin.isRecyclebinTable(tableName);
+            boolean isRecycleBinTable = RecycleBin.isRecyclebinTable(tableName);
 
             boolean isTruncateTmpTable = TruncateUtil.isTruncateTmpPrimaryTable(tableName);
 
@@ -377,15 +381,18 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
 
             boolean needRemoveGsi = false;
             boolean needRemoveNonPublic = false;
-            try {
-                TableMeta tableMeta = schemaManager.getTable(tableName);
-                needRemoveGsi = tableMeta.isGsi();
-                needRemoveNonPublic = tableMeta.getStatus() != TableStatus.PUBLIC;
-            } catch (Throwable t) {
-                // ignore table not exists
+
+                try {
+                    TableMeta tableMeta = schemaManager.getTable(tableName);
+                    needRemoveGsi = tableMeta.isGsi();
+                    needRemoveNonPublic = tableMeta.getStatus() != TableStatus.PUBLIC;
+                    tablesAutoPartInfo.put(tableName, tableMeta.isAutoPartition());
+                } catch (Throwable t) {
+                    // ignore table not exists
+
             }
 
-            if (isRecyclelBinTable || isTableWithoutPrivileges || needRemoveGsi || needRemoveNonPublic
+            if (isRecycleBinTable || isTableWithoutPrivileges || needRemoveGsi || needRemoveNonPublic
                 || isTruncateTmpTable) {
                 iter.remove();
             }
@@ -417,7 +424,11 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
                 if (type == null) {
                     type = InfoSchemaCommon.DEFAULT_TABLE_TYPE;
                 }
-                result.add(new Object[] {table, type});
+                String autoPart = "NO";
+                if (tablesAutoPartInfo.get(table) != null) {
+                    autoPart = tablesAutoPartInfo.get(table) ? "YES" : "NO";
+                }
+                result.add(new Object[] {table, type, autoPart});
             } else {
                 result.add(new Object[] {table});
             }
@@ -654,7 +665,7 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
         }
 
         // Re-generate native sql
-        infoSchemaQuery.setSqlTemplate(RelUtils.toNativeSqlLine(queryNode));
+        infoSchemaQuery.setBytesSql(RelUtils.toNativeBytesSql(queryNode));
     }
 
     private void adjustIndexForCustomSchemaFilter(int count, PhyQueryOperation infoSchemaQuery,
@@ -970,6 +981,8 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
             groupsByInstance,
             infoSchemaContext.getExecutionContext());
 
+        boolean shouldCheckView = true;
+
         for (Entry<String, Pair<String, String>> groupAndFilter : groupsAndFilters.entrySet()) {
             TGroupDataSource groupDataSource = (TGroupDataSource) infoSchemaContext.getRealRepo()
                 .getDataSource(groupAndFilter.getKey());
@@ -981,6 +994,7 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
 
                 try (PreparedStatement ps = conn.prepareStatement(collectSql); ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
+                        shouldCheckView = false;
                         engine = rs.getString("Engine");
                         version = rs.getLong("Version");
                         rowFormat = rs.getString("Row_format");
@@ -1018,6 +1032,12 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
 
         if (rows.compareTo(BigDecimal.ZERO) > 0) {
             avgRowLength = totalLength.divide(rows, 0, RoundingMode.HALF_UP);
+        }
+
+        if (shouldCheckView) {
+            if (infoSchemaContext.getOptimizerContext().getViewManager().select(logicalTableName) != null) {
+                comment = "VIEW";
+            }
         }
 
         return new Object[] {

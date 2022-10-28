@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeBaseList;
@@ -265,6 +266,10 @@ public class RuleEnumeratorImpl extends BaseEnumerator implements Enumerator {
     private void processComparativeOne(Comparable<?> condition, Set<Object> retValue, Integer cumulativeTimes,
                                        Comparable<?> atomIncrValue, boolean needMergeValueInCloseInterval) {
         Comparative comp = (Comparative) condition;
+        if (comp.getRawIndex() > -1 && comp.getValue() instanceof RawString) {
+            retValue.add(((RawString) comp.getValue()).getObj(comp.getRawIndex(), comp.getSkIndex()));
+            return;
+        }
         int comparison = comp.getComparison();
         switch (comparison) {
         case 0:
@@ -272,6 +277,10 @@ public class RuleEnumeratorImpl extends BaseEnumerator implements Enumerator {
             process(comp.getValue(), retValue, cumulativeTimes, atomIncrValue, needMergeValueInCloseInterval);
             break;
         case Comparative.Equivalent:
+            if (comp.getRawIndex() > -1 && comp.getValue() instanceof RawString) {
+                RawString rawString = (RawString) comp.getValue();
+                retValue.add(EnumeratorUtils.toPrimaryValue(rawString.getObj(comp.getRawIndex(), comp.getSkIndex())));
+            }
             // 等于关系，直接放在collection
             retValue.add(EnumeratorUtils.toPrimaryValue(comp.getValue()));
             break;

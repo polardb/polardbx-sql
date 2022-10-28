@@ -34,6 +34,9 @@ public enum MemoryType {
     EXECUTOR("executor"),
     TASK("task"),
     OPERATOR("operator"),
+    STORED_FUNCTION("stored_function"),
+    STORED_PROCEDURE("stored_procedure"),
+    PROCEDURE_CURSOR("procedure_cursor"),
     OTHER("other");
 
     private String extensionName;

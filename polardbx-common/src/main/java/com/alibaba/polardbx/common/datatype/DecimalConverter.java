@@ -893,33 +893,28 @@ public class DecimalConverter {
      */
     public static void rescale(DecimalStructure from, DecimalStructure to, int precision, int scale,
                                boolean isUnsigned) {
-        int fromPrecision = from.getPrecision();
-        int fractions = from.getFractions();
-        int integers = fromPrecision - fractions;
-        int toIntegers = precision - scale;
+        int targetIntegers = precision - scale;
         boolean isNeg = from.isNeg();
 
-        from.copyTo(to);
-
-        if (!from.isZero() && integers > toIntegers) {
-            // overflow the valid range, use max / min decimal value
-            if (isUnsigned && isNeg) {
-                to.toZero();
-            } else {
-                DecimalStructure boundValue = isNeg
-                    ? DecimalBounds.minValue(precision, scale)
-                    : DecimalBounds.maxValue(precision, scale);
-                boundValue.copyTo(to);
-            }
-        } else if (fractions != scale) {
-            // destination scale does not match the original fractions
-            // need round.
-            FastDecimalUtils.round(from, to, scale, DecimalRoundMod.HALF_UP);
-        }
+        // destination scale does not match the original fractions
+        // need round.
+        FastDecimalUtils.round(from, to, scale, DecimalRoundMod.HALF_UP);
+        boolean toNeg = to.isNeg();
 
         // prevent from minus unsigned value
-        if (isUnsigned && to != null && to.isNeg()) {
+        if (isUnsigned && toNeg) {
             to.toZero();
+        }
+
+        int toPrecision = to.getPrecision();
+        int toFractions = to.getFractions();
+        int toIntegers = toPrecision - toFractions;
+        if (targetIntegers < toIntegers) {
+            // overflow the valid range, use max / min decimal value
+            DecimalStructure boundValue = isNeg
+                ? DecimalBounds.minValue(precision, scale)
+                : DecimalBounds.maxValue(precision, scale);
+            boundValue.copyTo(to);
         }
     }
 }

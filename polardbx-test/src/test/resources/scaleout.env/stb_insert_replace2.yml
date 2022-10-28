@@ -1,0 +1,15 @@
+1:
+  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (null, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12'), (null, 2, '1001', '2020-12-12 12:12:12', '2021-12-12 12:12:12'), (null, 3, '1001', '2020-12-12 12:12:12', '2021-12-12 12:12:12');
+
+2:
+  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (1234560, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12'), (1234567, 100001, '1001', '2020-12-12 12:12:12', '2021-12-12 12:12:12');
+
+3:
+  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');
+
+4:
+  replace into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');
+
+5:
+  replace into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (null, 11, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12'), (null, 22, '1001', '2020-12-12 12:12:12', '2021-12-12 12:12:12'), (null, 33, '1001', '2020-12-12 12:12:12', '2021-12-12 12:12:12');
+

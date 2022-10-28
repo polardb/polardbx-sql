@@ -16,21 +16,15 @@
 
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.TddlNode;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlaceHolderExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
@@ -43,21 +37,28 @@ import java.util.stream.Collectors;
  */
 public class FetchPlanCacheSyncAction implements ISyncAction {
 
-    private String schemaName = null;
+    private String schemaName;
 
-    private boolean withPlan;
+    private final boolean withPlan;
 
-    public FetchPlanCacheSyncAction() {
-    }
+    private final boolean withParameter;
 
     public FetchPlanCacheSyncAction(String schemaName) {
         this.schemaName = schemaName;
         this.withPlan = true;
+        this.withParameter = false;
     }
 
     public FetchPlanCacheSyncAction(String schemaName, boolean withPlan) {
         this.schemaName = schemaName;
         this.withPlan = withPlan;
+        this.withParameter = false;
+    }
+
+    public FetchPlanCacheSyncAction(String schemaName, boolean withPlan, boolean withParameter) {
+        this.schemaName = schemaName;
+        this.withPlan = withPlan;
+        this.withParameter = withParameter;
     }
 
     public String getSchemaName() {
@@ -68,18 +69,8 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
         this.schemaName = schemaName;
     }
 
-    public boolean isWithPlan() {
-        return withPlan;
-    }
-
-    public void setWithPlan(boolean withPlan) {
-        this.withPlan = withPlan;
-    }
-
     @Override
     public ResultCursor sync() {
-        PlanCache planCache = OptimizerContext.getContext(schemaName).getPlanManager().getPlanCache();
-
         ArrayResultCursor result = new ArrayResultCursor("PLAN_CACHE");
         result.addColumn("COMPUTE_NODE", DataTypes.StringType);
         result.addColumn("TABLE_NAMES", DataTypes.StringType);
@@ -88,8 +79,10 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
         result.addColumn("SQL", DataTypes.StringType);
         result.addColumn("TYPE_DIGEST", DataTypes.LongType);
         result.addColumn("PLAN", DataTypes.StringType);
+        result.addColumn("PARAMETER", DataTypes.StringType);
 
-        for (Map.Entry<PlanCache.CacheKey, ExecutionPlan> entry : planCache.getCache().asMap().entrySet()) {
+        for (Map.Entry<PlanCache.CacheKey, ExecutionPlan> entry : PlanCache.getInstance().getCache().asMap()
+            .entrySet()) {
             PlanCache.CacheKey cacheKey = entry.getKey();
             ExecutionPlan executionPlan = entry.getValue();
             final String plan;
@@ -105,15 +98,26 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
             } else {
                 plan = null;
             }
+            final String parameter;
+            if (withParameter) {
+                if (cacheKey.getParameters() == null) {
+                    parameter = null;
+                } else {
+                    parameter = JSON.toJSONString(cacheKey.getParameters());
+                }
+            } else {
+                parameter = null;
+            }
 
             result.addRow(new Object[] {
                 TddlNode.getHost() + ":" + TddlNode.getPort(),
-                cacheKey.getTableMetas().stream().map(meta -> meta.getTableName()).collect(Collectors.joining(",")),
+                cacheKey.getTableMetas().stream().map(TableMeta::getTableName).collect(Collectors.joining(",")),
                 cacheKey.getTemplateId(),
                 executionPlan.getHitCount().longValue(),
                 cacheKey.getParameterizedSql(),
                 cacheKey.getTypeDigest(),
-                plan
+                plan,
+                parameter
             });
         }
 

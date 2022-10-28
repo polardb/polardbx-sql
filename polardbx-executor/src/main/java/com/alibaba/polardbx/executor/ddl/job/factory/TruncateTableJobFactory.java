@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -27,6 +28,8 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.google.common.collect.Lists;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 public class TruncateTableJobFactory extends DdlJobFactory {
@@ -34,11 +37,13 @@ public class TruncateTableJobFactory extends DdlJobFactory {
     private final PhysicalPlanData physicalPlanData;
     private final String schemaName;
     private final String logicalTableName;
+    private final long tableVersion;
 
-    public TruncateTableJobFactory(PhysicalPlanData physicalPlanData) {
+    public TruncateTableJobFactory(PhysicalPlanData physicalPlanData, long tableVersion) {
         this.physicalPlanData = physicalPlanData;
         this.schemaName = physicalPlanData.getSchemaName();
         this.logicalTableName = physicalPlanData.getLogicalTableName();
+        this.tableVersion = tableVersion;
     }
 
     @Override
@@ -50,12 +55,18 @@ public class TruncateTableJobFactory extends DdlJobFactory {
     protected ExecutableDdlJob doCreate() {
         boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         TableGroupConfig tableGroupConfig = isNewPart ? physicalPlanData.getTableGroupConfig() : null;
+
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(logicalTableName, tableVersion);
+        ValidateTableVersionTask validateTableVersionTask = new ValidateTableVersionTask(schemaName, tableVersions);
+
         DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName, tableGroupConfig);
         DdlTask phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
         DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
+            validateTableVersionTask,
             validateTask,
             phyDdlTask.onExceptionTryRecoveryThenRollback(),
             cdcDdlMarkTask

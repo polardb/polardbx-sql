@@ -62,6 +62,7 @@ public class LogicalShowTableStatusHandler extends LogicalInfoSchemaQueryHandler
 
         LogicalInfoSchemaContext infoSchemaContext = new LogicalInfoSchemaContext(executionContext);
         infoSchemaContext.setTargetSchema(schemaName);
+        infoSchemaContext.setWithView(true);
         infoSchemaContext.prepareContextAndRepository(repo);
 
         showTables(showTableStatus.like,

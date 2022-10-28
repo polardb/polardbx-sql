@@ -45,7 +45,7 @@ public enum ParameterMethod {
     setCharacterStream, setClob, setDate1, setDate2, setDouble, setFloat, setInt, setLong, setBit,
     setNull1, setNull2, setObject1, setObject2, setObject3, setRef, setShort, setString,
     setTime1, setTime2, setTimestamp1, setTimestamp2, setURL, setUnicodeStream, setTableName,
-    setBloomFilterData, setBloomFilterDataLength, setBloomFilterFuncNum;
+    setBloomFilterData, setBloomFilterDataLength, setBloomFilterFuncNum, setDelegate;
 
     public boolean isBloomFilterParameterMethod() {
         return (this == setBloomFilterData)
@@ -70,7 +70,6 @@ public enum ParameterMethod {
 
         if (null != parameterSettings) {
             for (ParameterContext context : parameterSettings.values()) {
-
                 context.getParameterMethod().setParameter((PreparedStatement) stmt, context.getArgs());
             }
         }

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -31,11 +30,14 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.SubqueryUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.context.ScalarSubQueryExecContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceCallWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.sql.SqlSelect;
@@ -64,6 +66,8 @@ public class LogicalViewHandler extends HandlerCommon {
             throw new RuntimeException("multi-get is not supported in Cursor executor");
         }
 
+        PhyTableOperationUtil.enableIntraGroupParallelism(logicalView.getSchemaName(),executionContext);
+
         QueryConcurrencyPolicy queryConcurrencyPolicy =
             ExecUtils.getQueryConcurrencyPolicy(executionContext, logicalView);
 
@@ -73,17 +77,19 @@ public class LogicalViewHandler extends HandlerCommon {
         SubqueryUtils.buildScalarSubqueryValue(scalarList, executionContext);// handle scalar subquery
 
         List<RelNode> inputs;
+        Map<Integer, ParameterContext> params = null;
+        if (executionContext.getParams() != null) {
+            params = executionContext.getParams().getCurrentParameter();
+        }
+        ReplaceCallWithLiteralVisitor visitor = new ReplaceCallWithLiteralVisitor(Lists.newArrayList(),
+            params, RexUtils.getEvalFunc(executionContext), true);
+        // Dynamic functions will be calculated in buildSqlTemplate()
+        final SqlSelect sqlTemplate = (SqlSelect) logicalView.getSqlTemplate(visitor, executionContext);
         if (executionContext.isModifyCrossDb()) {
-            Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
-            ReplaceCallWithLiteralVisitor visitor = new ReplaceCallWithLiteralVisitor(Lists.newArrayList(),
-                params, RexUtils.getEvalFunc(executionContext), true);
-
-            // Dynamic functions will be calculated in buildSqlTemplate()
-            final SqlSelect sqlTemplate = (SqlSelect) logicalView.getSqlTemplate(visitor);
             inputs = logicalView.getInnerInput(
                 sqlTemplate, ExecUtils.getUnionOptHelper(logicalView, executionContext), executionContext);
         } else {
-            inputs = ExecUtils.getInputs(logicalView, executionContext, false);
+            inputs = ExecUtils.getInputs(logicalView, executionContext, false, sqlTemplate);
         }
 
         String schemaName = StringUtils.isEmpty(
@@ -127,4 +133,5 @@ public class LogicalViewHandler extends HandlerCommon {
         }
 
     }
+
 }

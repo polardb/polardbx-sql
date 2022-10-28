@@ -107,12 +107,12 @@ public class ResultSetCursorExec extends AbstractExecutor {
             while (count < chunkLimit && (row = cursor.next()) != null) {
                 if (row instanceof ResultSetRow) {
                     ResultSet rs = ((ResultSetRow) row).getResultSet();
-                    buildOneRow(rs, dataTypes, blockBuilders);
+                    buildOneRow(rs, dataTypes, blockBuilders, context);
                 } else if (row instanceof IXRowChunk) {
                     // XResult and deal with new interface.
                     ((IXRowChunk) row).buildChunkRow(dataTypes, blockBuilders);
                 } else {
-                    ResultSetCursorExec.buildOneRow(row, dataTypes, blockBuilders);
+                    ResultSetCursorExec.buildOneRow(row, dataTypes, blockBuilders, context);
                 }
                 count++;
             }
@@ -129,21 +129,21 @@ public class ResultSetCursorExec extends AbstractExecutor {
         }
     }
 
-    public static void buildOneRow(ResultSet rs, DataType[] dataTypes, BlockBuilder[] blockBuilders)
+    public static void buildOneRow(ResultSet rs, DataType[] dataTypes, BlockBuilder[] blockBuilders, ExecutionContext context)
         throws SQLException {
         if (rs.isWrapperFor(XResultSet.class)) {
             XResult xResult = rs.unwrap(XResultSet.class).getXResult();
             XRowSet.buildChunkRow(xResult, xResult.getMetaData(), xResult.current().getRow(), dataTypes, blockBuilders);
         } else {
             for (int i = 0; i < dataTypes.length; i++) {
-                buildOneCell(rs, i, dataTypes[i], blockBuilders[i]);
+                buildOneCell(rs, i, dataTypes[i], blockBuilders[i], context);
             }
         }
     }
 
-    public static void buildOneRow(Row row, DataType[] dataTypes, BlockBuilder[] blockBuilders) throws SQLException {
+    public static void buildOneRow(Row row, DataType[] dataTypes, BlockBuilder[] blockBuilders, ExecutionContext context) throws SQLException {
         if (row instanceof ResultSetRow) {
-            buildOneRow(((ResultSetRow) row).getResultSet(), dataTypes, blockBuilders);
+            buildOneRow(((ResultSetRow) row).getResultSet(), dataTypes, blockBuilders, context);
         } else {
             for (int i = 0; i < row.getColNum(); i++) {
                 blockBuilders[i].writeObject(dataTypes[i].convertFrom(row.getObject(i)));
@@ -151,7 +151,7 @@ public class ResultSetCursorExec extends AbstractExecutor {
         }
     }
 
-    private static void buildOneCell(ResultSet rs, int i, DataType type, BlockBuilder builder) throws SQLException {
+    private static void buildOneCell(ResultSet rs, int i, DataType type, BlockBuilder builder, ExecutionContext context) throws SQLException {
         final Class clazz = type.getDataClass();
         if (clazz == Integer.class) {
             if (DataTypeUtil.equalsSemantically(type,
@@ -206,14 +206,17 @@ public class ResultSetCursorExec extends AbstractExecutor {
                 builder.appendNull();
             }
         } else if (clazz == Slice.class) {
-            if (type.isUtf8Encoding()) {
+            CharsetName sessionCharset = context.getSessionCharset();
+            if (sessionCharset == null
+                || sessionCharset == CharsetName.UTF8
+                || sessionCharset == CharsetName.UTF8MB4) {
                 byte[] rawBytes = rs.getBytes(i + 1);
                 if (rawBytes != null) {
                     builder.writeByteArray(rawBytes);
                 } else {
                     builder.appendNull();
                 }
-            } else if (type.isLatin1Encoding()) {
+            } else if (sessionCharset == CharsetName.LATIN1) {
                 byte[] rawBytes = rs.getBytes(i + 1);
                 if (rawBytes != null) {
                     ((SliceBlockBuilder) builder).writeBytesInLatin1(rawBytes);

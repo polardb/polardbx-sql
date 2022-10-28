@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic;
 
-import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchService;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
@@ -24,6 +23,7 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVS
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -35,28 +35,17 @@ public class StatisticDataTableSource implements StatisticDataSource {
 
     private SystemTableNDVSketchStatistic ndvSketchStatistic;
 
-    /**
-     * TDataSource connection properties manager
-     */
-    private final ParamManager paramManager;
-
     private NDVSketchService ndvSketch;
 
-    private String schemaName;
-
-    public StatisticDataTableSource(String schemaName,
-                                    SystemTableTableStatistic systemTableTableStatistic,
+    public StatisticDataTableSource(SystemTableTableStatistic systemTableTableStatistic,
                                     SystemTableColumnStatistic systemTableColumnStatistic,
                                     SystemTableNDVSketchStatistic ndvSketchStatistic,
-                                    NDVSketchService ndvSketch,
-                                    Map<String, Object> connectionProperties
+                                    NDVSketchService ndvSketch
     ) {
-        this.schemaName = schemaName;
         this.systemTableTableStatistic = systemTableTableStatistic;
         this.systemTableColumnStatistic = systemTableColumnStatistic;
         this.ndvSketchStatistic = ndvSketchStatistic;
         this.ndvSketch = ndvSketch;
-        this.paramManager = new ParamManager(connectionProperties);
     }
 
     @Override
@@ -80,7 +69,7 @@ public class StatisticDataTableSource implements StatisticDataSource {
 
     @Override
     public Map<? extends String, ? extends Long> loadAllCardinality() {
-        ndvSketch.parse(ndvSketchStatistic.loadAll(schemaName));
+        ndvSketch.parse(ndvSketchStatistic.loadAll());
         return ndvSketch.getCardinalityMap();
     }
 
@@ -90,52 +79,65 @@ public class StatisticDataTableSource implements StatisticDataSource {
     }
 
     @Override
-    public void reloadNDVbyTableName(String tableName) {
-        ndvSketch.parse(ndvSketchStatistic.loadByTableName(schemaName, tableName));
+    public void batchReplace(List<SystemTableTableStatistic.Row> rowList) {
+        systemTableTableStatistic.batchReplace(rowList);
     }
 
     @Override
-    public ParamManager acquireStatisticConfig() {
-        return paramManager;
+    public void batchReplace(ArrayList<SystemTableColumnStatistic.Row> rowList) {
+        systemTableColumnStatistic.batchReplace(rowList);
     }
 
     @Override
-    public void renameTable(String oldTableName, String newTableName) {
-        systemTableTableStatistic.renameTable(oldTableName, newTableName);
-        systemTableColumnStatistic.renameTable(oldTableName, newTableName);
-        ndvSketchStatistic.updateTableName(schemaName, oldTableName, newTableName);
-        ndvSketch.remove(oldTableName);
+    public String scheduleJobs() {
+        return ndvSketch.scheduleJobs();
     }
 
     @Override
-    public void removeLogicalTableColumnList(String logicalTableName, List<String> columnNameList) {
-        systemTableColumnStatistic.removeLogicalTableColumnList(logicalTableName, columnNameList);
+    public void reloadNDVbyTableName(String schema, String tableName) {
+        ndvSketch.parse(ndvSketchStatistic.loadByTableName(schema, tableName));
     }
 
     @Override
-    public void removeLogicalTableList(List<String> logicalTableNameList) {
-        systemTableTableStatistic.removeLogicalTableList(logicalTableNameList);
-        systemTableColumnStatistic.removeLogicalTableList(logicalTableNameList);
-        logicalTableNameList.forEach(table -> ndvSketchStatistic.deleteByTableName(schemaName, table));
-        logicalTableNameList.forEach(table -> ndvSketch.remove(table));
+    public void renameTable(String schema, String oldTableName, String newTableName) {
+        systemTableTableStatistic.renameTable(schema, oldTableName, newTableName);
+        systemTableColumnStatistic.renameTable(schema, oldTableName, newTableName);
+        ndvSketchStatistic.updateTableName(schema, oldTableName, newTableName);
+        ndvSketch.remove(schema, oldTableName);
     }
 
     @Override
-    public void updateColumnCardinality(String tableName, String columnName) {
-        try {
-            ndvSketch.updateAllShardParts(tableName, columnName);
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
+    public void removeLogicalTableColumnList(String schema, String logicalTableName, List<String> columnNameList) {
+        systemTableColumnStatistic.removeLogicalTableColumnList(schema, logicalTableName, columnNameList);
     }
 
     @Override
-    public void rebuildColumnCardinality(String tableName, String columnNames) {
-        try {
-            ndvSketch.reBuildShardParts(tableName, columnNames);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+    public void removeLogicalTableList(String schema, List<String> logicalTableNameList) {
+        systemTableTableStatistic.removeLogicalTableList(schema, logicalTableNameList);
+        systemTableColumnStatistic.removeLogicalTableList(schema, logicalTableNameList);
+        logicalTableNameList.forEach(table -> ndvSketchStatistic.deleteByTableName(schema, table));
+        logicalTableNameList.forEach(table -> ndvSketch.remove(schema, table));
+    }
+
+    @Override
+    public boolean sampleColumns(String schema, String logicalTableName) {
+        return ndvSketch.sampleColumns(schema, logicalTableName);
+    }
+
+    @Override
+    public void removeNdvLogicalTable(String schema, String logicalTableName) {
+        ndvSketchStatistic.deleteByTableName(schema, logicalTableName);
+        ndvSketch.remove(schema, logicalTableName);
+    }
+
+    @Override
+    public void updateColumnCardinality(String schema, String tableName, String columnName) throws SQLException {
+        ndvSketch.updateAllShardParts(schema, tableName, columnName);
+    }
+
+    @Override
+    public void rebuildColumnCardinality(String schema, String tableName, String columnNames) throws SQLException {
+        ndvSketch.reBuildShardParts(schema, tableName, columnNames);
     }
 
 }

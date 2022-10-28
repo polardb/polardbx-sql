@@ -1,0 +1,111 @@
+## DISABLE_FAST_SQL_PARSER
+
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+PRIMARY KEY (`a`),
+index `gidx` (a, b),
+unique index `ugidx` (c, d)
+);
+
+insert into tbl values (101, 101, 101, 101),
+(102, 102, 102, 102),
+(103, 103, 103, 103),
+(201, 201, 201, 201),
+(202, 202, 202, 202),
+(203, 203, 203, 203);
+
+select * from tbl order by a;
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl partition by key(c);
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl remove partitioning;
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl partition by key(d);
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl add local index `idx_c`(c);
+
+alter table tbl add unique local index `idx_b`(b);
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl remove partitioning;
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl partitions 4;
+
+show create table tbl;
+show full create table tbl;
+
+select * from tbl order by a;
+
+alter table tbl single;
+
+show create table tbl;
+show full create table tbl;
+  
+## error_msg: $# it is not allow alter table remove partitioning on a single or broadcast table #$
+alter table tbl remove partitioning;
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl broadcast;
+
+show create table tbl;
+show full create table tbl;
+  
+## error_msg: $# it is not allow alter table remove partitioning on a single or broadcast table #$
+alter table tbl remove partitioning;
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl drop index `idx_b`;
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl partition by range(c) 
+(
+partition p1 values less than(10),
+partition p2 values less than(50),
+partition p3 values less than(100),
+partition p4 values less than(300)
+);
+
+show create table tbl;
+show full create table tbl;
+  
+## error_msg: $# can not alter partition count on a non auto_partition table #$
+alter table tbl partitions 5;
+
+show create table tbl;
+show full create table tbl;
+
+alter table tbl remove partitioning;
+
+show create table tbl;
+show full create table tbl;
+
+select * from tbl order by a;
+
+drop table if exists `tbl`;

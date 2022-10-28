@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
@@ -29,11 +29,8 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPrepa
 import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.sql.SqlBinaryStringLiteral;
 import org.apache.calcite.sql.SqlColumnDeclaration;
-import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.util.Pair;
 
 import java.util.Map;
 import java.util.TreeMap;
@@ -55,7 +52,10 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                              SqlNode partitionings,
                                                              LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
                                                              SqlNode tableGroupName,
-                                                             Map<SqlNode, RexNode> partBoundExprInfo) {
+                                                             SqlNode joinGroupName,
+                                                             String locality,
+                                                             Map<SqlNode, RexNode> partBoundExprInfo,
+                                                             String sourceSql) {
         CreateTablePreparedData preparedData = new CreateTablePreparedData();
 
         preparedData.setSchemaName(schemaName);
@@ -75,7 +75,10 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setPartitioning(partitionings);
         preparedData.setLocalPartitionDefinitionInfo(localPartitionDefinitionInfo);
         preparedData.setTableGroupName(tableGroupName);
+        preparedData.setJoinGroupName(joinGroupName);
         preparedData.setPartBoundExprInfo(partBoundExprInfo);
+        preparedData.setLocality(LocalityDesc.parse(locality));
+        preparedData.setSourceSql(sourceSql);
 
         return preparedData;
     }
@@ -96,7 +99,33 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                                          boolean isUnique,
                                                                          boolean clusteredIndex,
                                                                          SqlNode tableGroupName,
-                                                                         Map<SqlNode, RexNode> partBoundExprInfo) {
+                                                                         Map<SqlNode, RexNode> partBoundExprInfo,
+                                                                         String sourceSql) {
+        return prepareCreateGlobalIndexData(primaryTableName, primaryTableDefinition, indexTableName, tableMeta,
+            isShadow, autoPartition, isBroadcast, dbPartitionBy, dbPartitions,
+            tbPartitionBy, tbParititons, partitionings, localPartitionDefinitionInfo,
+            isUnique, clusteredIndex, tableGroupName, "", partBoundExprInfo, sourceSql);
+    }
+
+    protected CreateGlobalIndexPreparedData prepareCreateGlobalIndexData(String primaryTableName,
+                                                                         String primaryTableDefinition,
+                                                                         String indexTableName,
+                                                                         TableMeta tableMeta,
+                                                                         boolean isShadow,
+                                                                         boolean autoPartition,
+                                                                         boolean isBroadcast,
+                                                                         SqlNode dbPartitionBy,
+                                                                         SqlNode dbPartitions,
+                                                                         SqlNode tbPartitionBy,
+                                                                         SqlNode tbParititons,
+                                                                         SqlNode partitionings,
+                                                                         LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
+                                                                         boolean isUnique,
+                                                                         boolean clusteredIndex,
+                                                                         SqlNode tableGroupName,
+                                                                         String locality,
+                                                                         Map<SqlNode, RexNode> partBoundExprInfo,
+                                                                         String sourceSql) {
         CreateGlobalIndexPreparedData preparedData = new CreateGlobalIndexPreparedData();
 
         preparedData.setSchemaName(schemaName);
@@ -108,12 +137,13 @@ public class LogicalTableOperation extends BaseDdlOperation {
         CreateTablePreparedData indexTablePreparedData =
             prepareCreateTableData(tableMeta, isShadow, autoPartition,
                 isBroadcast, dbPartitionBy, dbPartitions, tbPartitionBy,
-                tbParititons, partitionings, localPartitionDefinitionInfo, tableGroupName, partBoundExprInfo);
+                tbParititons, partitionings, localPartitionDefinitionInfo, tableGroupName,
+                null, locality, partBoundExprInfo, sourceSql);
 
         // Add all columns in primary table whose default value is binary, so binaryColumnDefaultValues may include
         // columns that do not exist in GSI
         Map<String, String> binaryColumnDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (ColumnMeta columnMeta: tableMeta.getAllColumns()) {
+        for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
             if (columnMeta.isBinaryDefault()) {
                 binaryColumnDefaultValues.put(columnMeta.getName(), columnMeta.getField().getDefault());
             }

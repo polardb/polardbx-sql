@@ -45,6 +45,7 @@ public class PartitionGroupAccessor extends AbstractAccessor {
         "`id`,`partition_name`,`gmt_create`,`gmt_modified`,`phy_db`,`locality`,`primary_zone`,`tg_id`,`pax_group_id`, `meta_version`, `visible`";
 
     private static final String ALL_VALUES = "(null,?,null,now(),?,?,?,?,?,?,?)";
+    private static final String ALL_VALUES_WITH_ID = "(?,?,?,now(),?,?,?,?,?,?,?)";
 
     //  phy_db    | locality | primary_zone | pax_group_id | meta_version | visible
     private static final String UPSERT_PART =
@@ -68,6 +69,9 @@ public class PartitionGroupAccessor extends AbstractAccessor {
         "insert into " + GmsSystemTables.PARTITION_GROUP_DELTA + " (" + ALL_COLUMNS + " ,`type`) VALUES " + ALL_VALUES
             + UPSERT_PART;
 
+    private static final String INSERT_INTO_PARTITION_GROUP_WITH_ID =
+        "insert into " + GmsSystemTables.PARTITION_GROUP + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES_WITH_ID;
+
     private static final String GET_TABLE_GROUP_BY_TG_ID =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP + " where tg_id=? and visible=1";
 
@@ -88,7 +92,7 @@ public class PartitionGroupAccessor extends AbstractAccessor {
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP;
 
     private static final String GET_PHYSICAL_TB_CNT_PER_PG =
-        "select a.phy_db, count(1) phy_tb_cnt from partition_group a inner join table_partitions b on a.id=b.group_id where b.next_level = -1 and a.visible=1 group by phy_db";
+        "select a.phy_db, a.tg_id, count(1) phy_tb_cnt from partition_group a inner join table_partitions b on a.id=b.group_id where b.next_level = -1 and a.visible=1 group by phy_db";
 
     private static final String DELETE_PART_GROUP_BY_TG_ID =
         "delete from " + GmsSystemTables.PARTITION_GROUP + " where tg_id=?";
@@ -111,6 +115,9 @@ public class PartitionGroupAccessor extends AbstractAccessor {
     private static final String UPDATE_PART_GROUP_TO_VISIBILITY_BY_TG_ID =
         " update " + GmsSystemTables.PARTITION_GROUP + " set visible=? where tg_id=?";
 
+    private static final String UPDATE_PART_GROUP_LOCALITY_BY_TG_ID =
+        " update " + GmsSystemTables.PARTITION_GROUP + " set locality=? where id=?";
+
     private static final String UPDATE_PHY_DB_BY_ID =
         " update " + GmsSystemTables.PARTITION_GROUP + " set phy_db=? where id=?";
 
@@ -126,6 +133,11 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
     private static final String DELETE_TEMP_PART_GROUP_BY_TID_AND_NAME_FROM_DELTA =
         "delete from " + GmsSystemTables.PARTITION_GROUP_DELTA + " where tg_id=? and partition_name=? and type=1";
+
+    private static final String GET_PARTITION_GROUP_BY_SCHEMA =
+        " select " + ALL_COLUMNS + " from " + GmsSystemTables.PARTITION_GROUP
+            + " where tg_id in ( select id from " + GmsSystemTables.TABLE_GROUP
+            + " where schema_name = ? )";
 
     public List<PartitionGroupRecord> getAllPartitionGroups() {
         try {
@@ -280,6 +292,36 @@ public class PartitionGroupAccessor extends AbstractAccessor {
         return addNewPartitionGroup(partRecord, toDeltaTable, false);
     }
 
+    public Long addNewPartitionGroupWithId(PartitionGroupRecord partRecord) {
+        try {
+            List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>();
+            Map<Integer, ParameterContext> params = new HashMap<>();
+
+            int index = 1;
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, partRecord.id);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, partRecord.partition_name);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setTimestamp1, partRecord.gmt_create);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, partRecord.phy_db);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, partRecord.locality);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, partRecord.primary_zone);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, partRecord.tg_id);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, partRecord.pax_group_id);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setLong, partRecord.meta_version);
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setInt, partRecord.visible);
+            paramsBatch.add(params);
+
+            DdlMetaLogUtil.logSql(INSERT_INTO_PARTITION_GROUP_WITH_ID, paramsBatch);
+
+            return MetaDbUtil.insertAndRetureLastInsertId(
+                INSERT_INTO_PARTITION_GROUP_WITH_ID, paramsBatch,
+                this.connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to insert into the system table " + GmsSystemTables.PARTITION_GROUP, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
     public List<PartitionGroupExtRecord> getGetPhysicalTbCntPerPg() {
         try {
             List<PartitionGroupExtRecord> records;
@@ -369,6 +411,23 @@ public class PartitionGroupAccessor extends AbstractAccessor {
             DdlMetaLogUtil.logSql(UPDATE_PARTITION_NAME_BY_ID, params);
 
             MetaDbUtil.update(UPDATE_PARTITION_NAME_BY_ID, params, connection);
+            return;
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + GmsSystemTables.PARTITION_GROUP, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public void updatePartitionGroupLocality(Long id, String locality) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, locality);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, id);
+
+            DdlMetaLogUtil.logSql(UPDATE_PART_GROUP_LOCALITY_BY_TG_ID, params);
+
+            MetaDbUtil.update(UPDATE_PART_GROUP_LOCALITY_BY_TG_ID, params, connection);
             return;
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + GmsSystemTables.PARTITION_GROUP, e);
@@ -518,6 +577,26 @@ public class PartitionGroupAccessor extends AbstractAccessor {
                 this.connection);
         } catch (Exception e) {
             LOGGER.error("Failed to insert into the system table " + GmsSystemTables.PARTITION_GROUP_DELTA, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public List<PartitionGroupRecord> getPartitionGroupsBySchema(String schemaName) {
+        try {
+            List<PartitionGroupRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+            records =
+                MetaDbUtil
+                    .query(GET_PARTITION_GROUP_BY_SCHEMA,
+                        params,
+                        PartitionGroupRecord.class, connection);
+
+            return records;
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + GmsSystemTables.PARTITION_GROUP, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
                 e.getMessage());
         }

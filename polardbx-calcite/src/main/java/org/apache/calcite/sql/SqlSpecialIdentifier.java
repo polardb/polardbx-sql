@@ -31,7 +31,7 @@ public enum SqlSpecialIdentifier {
     UNCOMMITTED, VARIABLES, VIEW, WARNINGS, SEQUENCES, TOPOLOGY, PARITIONS, BROADCASTS, RULE, TRACE, DATASOURCES,
     CHARSET, PARTITIONS, PREPARE, EXECUTE, DEALLOCATE, DBLOCK, OFF, PHYSICAL_SLOW, STATS, ONLY, STC, HTC, HIS, DS, DDL,
     VERSION, PHYSICAL_PROCESSLIST, DB, OUTLINES, BINARY, LOGS, CHARACTER, SET, FROM, PROCEDURE, FOR, QUERY, LIMIT,
-    OFFSET,
+    OFFSET, LOCALITY,
     RELAYLOG, IN, TABLE, CREATE, DATABASE, IF, NOT, EXISTS, TRIGGER, KEYS, SLOW, RECYCLEBIN, DATABASES, CCL_RULE, INFO;
     private static final Map<String, SqlSpecialIdentifier> specialIdentifiers = new HashMap<>();
 
@@ -86,6 +86,7 @@ public enum SqlSpecialIdentifier {
         specialIdentifiers.put("SWAPS", SqlSpecialIdentifier.SWAPS);
         specialIdentifiers.put("IPC", SqlSpecialIdentifier.IPC);
         specialIdentifiers.put("LOCAL", SqlSpecialIdentifier.LOCAL);
+        specialIdentifiers.put("LOCALITY", SqlSpecialIdentifier.LOCALITY);
         specialIdentifiers.put("HOSTS", SqlSpecialIdentifier.HOSTS);
         specialIdentifiers.put("INDEXES", SqlSpecialIdentifier.INDEXES);
         specialIdentifiers.put("TRANSACTION", SqlSpecialIdentifier.TRANSACTION);

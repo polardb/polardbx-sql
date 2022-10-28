@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -30,29 +27,26 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelOptCostImpl;
-import com.alibaba.polardbx.optimizer.config.schema.RootSchemaFactory;
 import com.alibaba.polardbx.optimizer.config.table.Field;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.TddlJavaTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.TddlValidator;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.view.DrdsViewExpander;
-import org.apache.calcite.config.CalciteConnectionConfig;
-import org.apache.calcite.config.CalciteConnectionConfigImpl;
-import org.apache.calcite.config.CalciteConnectionProperty;
+import com.google.common.collect.Lists;
 import org.apache.calcite.config.Lex;
 import org.apache.calcite.config.NullCollation;
-import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.plan.ConventionTraitDef;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCostFactory;
-import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
@@ -65,6 +59,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlInsert;
@@ -72,6 +67,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOperatorTable;
+import org.apache.calcite.sql.SqlPartitionBy;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
@@ -89,7 +85,7 @@ import org.apache.calcite.util.Pair;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Properties;
+import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -108,7 +104,7 @@ public class SqlConverter {
     private final TddlValidator validator;
     private final CalciteCatalogReader catalog;
     private final SqlOperatorTable opTab;
-    private final ExecutionContext ec;
+    private final Map<String, SchemaManager> smMap;
 
     private SqlConverter(String schemaName, ExecutionContext ec) {
         this.typeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
@@ -118,16 +114,7 @@ public class SqlConverter {
             .withInSubQueryThreshold(Integer.MAX_VALUE)
             .withExpand(false)
             .build();
-
-        Properties properties = new Properties();
-        properties.setProperty(CalciteConnectionProperty.CASE_SENSITIVE.camelName(),
-            String.valueOf(parserConfig.caseSensitive()));
-        CalciteConnectionConfig connectionConfig = new CalciteConnectionConfigImpl(properties);
-        CalciteSchema calciteSchema = RootSchemaFactory.createRootSchema(schemaName, ec);
-        this.catalog = new CalciteCatalogReader(calciteSchema,
-            calciteSchema.path(schemaName),
-            new TddlJavaTypeFactoryImpl(),
-            connectionConfig);
+        this.catalog = RelUtils.buildCatalogReader(schemaName, ec);
 
         this.opTab = TddlOperatorTable.instance();
         this.validator = new TddlValidator(opTab, catalog, typeFactory, SqlConformanceEnum.MYSQL_5);
@@ -137,7 +124,7 @@ public class SqlConverter {
         validator.setDefaultNullCollation(NullCollation.LOW);
         validator.setIdentifierExpansion(false);
         validator.setCallRewrite(false);
-        this.ec = ec;
+        this.smMap = ec.getSchemaManagers();
     }
 
     public static SqlConverter getInstance(ExecutionContext ec) {
@@ -155,8 +142,12 @@ public class SqlConverter {
         validator.setEnableAutoPartition(true);
     }
 
-    public void setAutoPartitionDatabase() {
-        validator.setAutoPartitionDatabase(true);
+    public void disableAutoPartition() {
+        validator.setEnableAutoPartition(false);
+    }
+
+    public void setAutoPartitionDatabase(boolean autoModeDb) {
+        validator.setAutoPartitionDatabase(autoModeDb);
     }
 
     public SqlNode validate(final SqlNode parsedNode) {
@@ -182,7 +173,7 @@ public class SqlConverter {
     }
 
     public RelNode toRel(final SqlNode validatedNode) {
-        return toRel(validatedNode, new PlannerContext(ec));
+        return toRel(validatedNode, new PlannerContext(new ExecutionContext().setSchemaManagers(smMap)));
     }
 
     public RelNode toRel(final SqlNode validatedNode, final PlannerContext plannerContext) {
@@ -219,7 +210,7 @@ public class SqlConverter {
     }
 
     public RelOptCluster createRelOptCluster() {
-        PlannerContext pc = new PlannerContext(this.ec);
+        PlannerContext pc = new PlannerContext(new ExecutionContext().setSchemaManagers(smMap));
         return createRelOptCluster(pc);
     }
 
@@ -227,7 +218,7 @@ public class SqlConverter {
         RexBuilder rexBuilder = new RexBuilder(typeFactory);
         RelOptCostFactory costFactory = DrdsRelOptCostImpl.FACTORY;
         VolcanoPlanner planner = new VolcanoPlanner(costFactory, plannerContext);
-        if (plannerContext != null && plannerContext.getExecutionContext()!=null &&
+        if (plannerContext != null && plannerContext.getExecutionContext() != null &&
             plannerContext.getExecutionContext().isEnableRuleCounter()) {
             planner.setRuleCounter();
         }
@@ -396,5 +387,18 @@ public class SqlConverter {
         } else {
             return oldInsert;
         }
+    }
+
+    public Map<SqlNode, RexNode> getRexInfoFromPartition(SqlPartitionBy sqlPartitionBy,
+                                                         final PlannerContext plannerContext) {
+        final RelOptCluster cluster = createRelOptCluster(plannerContext);
+        final SqlToRelConverter sqlToRelConverter = new TddlSqlToRelConverter(null,
+            validator,
+            catalog,
+            cluster,
+            StandardConvertletTable.INSTANCE,
+            converterConfig,
+            plannerContext);
+        return sqlToRelConverter.getRexInfoFromPartition(sqlPartitionBy);
     }
 }

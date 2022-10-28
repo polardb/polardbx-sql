@@ -43,17 +43,20 @@ public class TopN {
      */
     private Object[] valueArr;
     private long[] countArr;
+    private double sampleRate = 1.0D;
 
-    public TopN(DataType dataType) {
+    public TopN(DataType dataType, double sampleRate) {
         this.dataType = dataType;
+        this.sampleRate = sampleRate;
         valueMap = Maps.newHashMap();
     }
 
-    public TopN(Object[] valueArr, long[] countArr, DataType dataType) {
+    public TopN(Object[] valueArr, long[] countArr, DataType dataType, double sampleRate) {
         assert valueArr.length == countArr.length;
         this.dataType = dataType;
         this.valueArr = valueArr;
         this.countArr = countArr;
+        this.sampleRate = sampleRate;
         this.build = true;
     }
 
@@ -69,8 +72,12 @@ public class TopN {
         if (!build) {
             throw new IllegalStateException("topN not ready yet, need build first");
         }
+        if (o == null) {
+            return 0L;
+        }
         int index = Arrays.binarySearch(valueArr, o);
-        return Long.valueOf(index >= 0 ? countArr[index] : 0);
+        long count = Long.valueOf(index >= 0 ? countArr[index] : 0);
+        return (long) (count / sampleRate);
     }
 
     public long rangeCount(Object lower, boolean lowerInclusive, Object upper, boolean upperInclusive) {
@@ -85,20 +92,17 @@ public class TopN {
             }
         }
 
-        return count;
+        return (long) (count / sampleRate);
     }
 
-    public long ndv() {
-        return valueArr == null ? 0 : valueArr.length;
-    }
-
-    public long rowCount() {
-        return countArr == null ? 0 : Arrays.stream(countArr).sum();
-    }
-
-    public synchronized void build(int n, int min) {
+    /**
+     * @param n TOPN_SIZE
+     * @param min TOPN_MIN_NUM
+     * @return is ready to serv
+     */
+    public synchronized boolean build(int n, int min) {
         if (build) {
-            return;
+            return true;
         }
         if (valueMap == null) {
             throw new IllegalStateException("topN cannot build with empty value");
@@ -107,9 +111,17 @@ public class TopN {
         /**
          * find topn values by count
          */
-        List<Object> vals = valueMap.entrySet().stream().filter(objectLongEntry -> objectLongEntry.getValue() >= min)
-            .sorted(Map.Entry.comparingByValue()).map(objectLongEntry -> objectLongEntry.getKey())
-            .collect(Collectors.toList());
+        List<Object> vals =
+            valueMap.entrySet().stream().
+                filter(o -> o.getKey() != null).
+                filter(o -> o.getValue() >= min)
+                .sorted(Map.Entry.comparingByValue()).
+                map(o -> o.getKey())
+                .collect(Collectors.toList());
+
+        if (vals.size() == 0) {
+            return false;
+        }
 
         int fromIndex = vals.size() - n >= 0 ? vals.size() - n : 0;
         valueArr = vals.subList(fromIndex, vals.size()).toArray(new Object[0]);
@@ -121,7 +133,7 @@ public class TopN {
              */
             Long minNum = valueMap.get(valueArr[0]);
             if (minNum == null) {
-                throw new IllegalArgumentException("illeagal value found when build topn:" + valueArr[0]);
+                throw new IllegalArgumentException("illegal value found when build topn:" + valueArr[0]);
             }
             from = (int) Arrays.stream(valueArr).filter(val -> valueMap.get(val) == minNum).count();
         }
@@ -139,6 +151,7 @@ public class TopN {
         }
         this.build = true;
         valueMap.clear();
+        return true;
     }
 
     public static String serializeToJson(TopN topN) {
@@ -155,6 +168,7 @@ public class TopN {
         }
 
         topNJson.put("type", type);
+        topNJson.put("sampleRate", topN.sampleRate);
         topNJson.put("valueArr", valueJsonArray);
         topNJson.put("countArr", countJsonArray);
         return topNJson.toJSONString();
@@ -167,6 +181,10 @@ public class TopN {
         JSONObject topNJson = JSON.parseObject(json);
 
         String type = topNJson.getString("type");
+        Double sampleRate = topNJson.getDouble("sampleRate");
+        if (sampleRate == null || sampleRate <= 0) {
+            sampleRate = 1D;
+        }
         DataType datatype = StatisticUtils.decodeDataType(type);
         JSONArray valueJsonArray = topNJson.getJSONArray("valueArr");
         JSONArray countJsonArray = topNJson.getJSONArray("countArr");
@@ -176,6 +194,6 @@ public class TopN {
         for (int i = 0; i < countObjArr.length; i++) {
             countArr[i] = Long.valueOf(countObjArr[i].toString());
         }
-        return new TopN(valueArr, countArr, datatype);
+        return new TopN(valueArr, countArr, datatype, sampleRate);
     }
 }

@@ -117,6 +117,10 @@ public interface Block {
         return getObject(position).hashCode();
     }
 
+    default int checksum(int position) {
+        return hashCode(position);
+    }
+
     /**
      * Vectorized version of hashCode
      */

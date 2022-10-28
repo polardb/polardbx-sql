@@ -56,6 +56,7 @@ import org.apache.calcite.jdbc.JavaTypeFactoryImpl;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
+import org.bouncycastle.util.StringList;
 import org.apache.commons.collections.CollectionUtils;
 
 import javax.annotation.Nullable;
@@ -65,6 +66,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -74,6 +76,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -85,7 +88,7 @@ import java.util.stream.IntStream;
  */
 public class StatsUtils {
 
-    private static final Logger LOG = LoggerFactory.getLogger(StatsUtils.class);
+    private static final Logger logger = LoggerFactory.getLogger(StatsUtils.class);
 
     public static List<TableGroupConfig> getTableGroupConfigs() {
         List<TableGroupConfig> res = new ArrayList<>();
@@ -103,6 +106,36 @@ public class StatsUtils {
             throw GeneralUtil.nestedException(e);
         }
         return res;
+    }
+
+    public static List<TableGroupConfig> getTableGroupConfigs(Set<String> schemaNames) {
+        List<TableGroupConfig> res = new ArrayList<>();
+
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
+            tableGroupAccessor.setConnection(connection);
+
+            for (String schemaName : schemaNames) {
+                res.addAll(TableGroupUtils.getAllTableGroupInfoByDb(schemaName));
+            }
+        } catch (SQLException e) {
+            MetaDbLogUtil.META_DB_LOG.error(e);
+            throw GeneralUtil.nestedException(e);
+        }
+        return res;
+    }
+
+    public static List<String> getDistinctSchemaNames() {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
+            tableGroupAccessor.setConnection(connection);
+
+            return tableGroupAccessor.getDistinctSchemaNames();
+
+        } catch (SQLException e) {
+            MetaDbLogUtil.META_DB_LOG.error(e);
+            throw GeneralUtil.nestedException(e);
+        }
     }
 
     /**
@@ -140,6 +173,70 @@ public class StatsUtils {
             if (schemaNamesFilter.contains(schemaName)) {
                 res.add(tableGroupConfig);
             }
+        }
+        return res;
+    }
+
+    public static List<TableGroupStat> getTableGroupsStats(String targetSchema, String targetTableGroup, Boolean idle) {
+        List<TableGroupConfig> tableGroupConfigs = TableGroupUtils.getAllTableGroupInfoByDb(targetSchema);
+        tableGroupConfigs = tableGroupConfigs.stream()
+            .filter(tgConfig -> tgConfig.getTableGroupRecord().getTg_name().equals(targetTableGroup))
+            .collect(Collectors.toList());
+        List<TableGroupStat> res = new ArrayList<>();
+        OptimizerContext oc =
+            Objects.requireNonNull(OptimizerContext.getContext(targetSchema), targetSchema + " not exists");
+        PartitionInfoManager pm = oc.getPartitionInfoManager();
+
+        // execute physical sdl
+        long startMilli = System.currentTimeMillis();
+        Map<String, Map<String, MySQLTablesRowVO>> tablesStatInfo =
+            queryTableGroupStats(targetSchema, tableGroupConfigs);
+        long elapsed = System.currentTimeMillis() - startMilli;
+        SQLRecorderLogger.ddlLogger.info(
+            String.format("got table-group stats for schema(%s) cost %dms: %s", targetSchema, elapsed, tablesStatInfo));
+
+        // iterate all table-groups
+        for (TableGroupConfig tableGroupConfig : tableGroupConfigs) {
+            String schema = tableGroupConfig.getTableGroupRecord().schema;
+            if (targetSchema != null && !targetSchema.equalsIgnoreCase(schema)) {
+                continue;
+            }
+            TableGroupStat tableGroupStat = new TableGroupStat(tableGroupConfig);
+
+            // iterate all tables in a table-group
+            for (TablePartRecordInfoContext tableContext : tableGroupConfig.getAllTables()) {
+                String table = tableContext.getTableName().toLowerCase(Locale.ROOT);
+
+                List<TablePartitionRecord> tablePartitionRecords =
+                    tableContext
+                        .filterPartitions(x -> x.partLevel != TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE);
+                Map<String, MySQLTablesRowVO> tableStatInfo = tablesStatInfo.get(table);
+
+                // TODO: use lock to avoid meta too old exception
+                if (tableStatInfo == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_TABLE_META_TOO_OLD, targetSchema, table);
+                }
+
+                // iterate all partitions in a table
+                for (TablePartitionRecord record : tablePartitionRecords) {
+                    PartitionInfo info = pm.getPartitionInfo(table);
+                    PartitionStat pgStat = new PartitionStat(tableGroupConfig, record, info);
+                    MySQLTablesRowVO phyTableInfo = tableStatInfo.get(record.phyTable.toLowerCase());
+
+                    // TODO: use lock to avoid meta too old exception
+                    if (phyTableInfo == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_TABLE_META_TOO_OLD, targetSchema, table);
+                    }
+
+                    pgStat.setDataLength(phyTableInfo.dataLength);
+                    pgStat.setIndexLength(phyTableInfo.indexLength);
+                    pgStat.setDataRows(phyTableInfo.dataRows);
+
+                    tableGroupStat.addPartition(pgStat);
+                }
+            }
+
+            res.add(tableGroupStat);
         }
         return res;
     }
@@ -384,7 +481,8 @@ public class StatsUtils {
      * Query phyDbNames of a logical db
      */
     public static void queryPhyDbNames(Set<String> schemaNames, Map<String, Set<String>> dbPhyDbNames,
-                                       Map<String, Set<String>> dbAllPhyDbNames) {
+                                       Map<String, Set<String>> dbAllPhyDbNames,
+                                       Map<String, Pair<String, String>> storageInstIdGroupNames) {
         Map<String, Set<String>> dbStorageInstIds = new HashMap<>();
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
 
@@ -399,6 +497,10 @@ public class StatsUtils {
                 String instId = groupDetailInfoExRecord.storageInstId;
                 String dbName = groupDetailInfoExRecord.dbName;
                 String phyDbName = groupDetailInfoExRecord.phyDbName;
+
+                String groupName = groupDetailInfoExRecord.groupName;
+                storageInstIdGroupNames.put(phyDbName, new Pair<>(instId, groupName));
+
                 if (schemaNames.contains(dbName)) {
                     Set<String> storageInstIds =
                         dbStorageInstIds.computeIfAbsent(dbName.toLowerCase(), x -> new HashSet<>());
@@ -420,11 +522,40 @@ public class StatsUtils {
     }
 
     /**
+     * Query GroupName and InstId of schema
+     */
+    public static Map<String, String> queryGroupNameAndInstId(String schemaName) {
+        Map<String, String> storageInstIdGroupNames = new HashMap<>();
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+
+            GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+            groupDetailInfoAccessor.setConnection(metaDbConn);
+            List<GroupDetailInfoExRecord> completedGroupInfos =
+                groupDetailInfoAccessor.getCompletedGroupInfosByInstId(InstIdUtil.getInstId());
+            Collections.sort(completedGroupInfos);
+
+            for (GroupDetailInfoExRecord groupDetailInfoExRecord : completedGroupInfos) {
+                if (schemaName == null || !schemaName.equalsIgnoreCase(groupDetailInfoExRecord.getDbName())) {
+                    continue;
+                }
+                String instId = groupDetailInfoExRecord.storageInstId;
+                String groupName = groupDetailInfoExRecord.groupName;
+                storageInstIdGroupNames.put(instId, groupName);
+            }
+        } catch (Throwable ex) {
+            throw GeneralUtil.nestedException("Failed to get storage and phy db info", ex);
+        }
+        return storageInstIdGroupNames;
+    }
+
+    /**
      * Query statistics of all filtered schema
      */
     public static Map<String, Map<String, List<Object>>> queryTableSchemaStats(Set<String> schemaNames,
                                                                                Set<String> indexTableNames,
-                                                                               String tableLike) {
+                                                                               String tableLike,
+                                                                               Map<String, Pair<String, String>> storageInstIdGroupNames,
+                                                                               Integer maxScanTablesNum) {
         Map<String, Map<String, List<Object>>> phyDbTablesInfo = new HashMap<>();
         if (schemaNames == null || schemaNames.isEmpty()) {
             return phyDbTablesInfo;
@@ -432,22 +563,41 @@ public class StatsUtils {
 
         Map<String, Set<String>> dbPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Map<String, Set<String>> dbAllPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        queryPhyDbNames(schemaNames, dbPhyDbNames, dbAllPhyDbNames);
+
+        queryPhyDbNames(schemaNames, dbPhyDbNames, dbAllPhyDbNames, storageInstIdGroupNames);
+
+        boolean isMeetMax = false;
+        int scanTablesNum = 0;
 
         // build sql and exec
         for (String schemaName : schemaNames) {
+            if (isMeetMax) {
+                break;
+            }
             // get phy tables info of each logical db (character may be different)
             Set<String> phyDbNames = dbPhyDbNames.get(schemaName);
             Set<String> allPhyDbNames = dbAllPhyDbNames.get(schemaName);
             if (phyDbNames == null || phyDbNames.isEmpty()) {
                 continue;
             }
-            String sql = generateQueryPhyTablesStatsSQL(allPhyDbNames, indexTableNames, tableLike);
 
             // get phy tables info from each data node
+            String sql = generateQueryPhyTablesStatsSQL(allPhyDbNames, indexTableNames, tableLike);
+
+            // get phy tables statistic
+            String statisticSql = generateQueryPhyTablesStatisticsSQL(allPhyDbNames, indexTableNames, tableLike);
+
             List<List<Object>> rows = new ArrayList<>();
+            List<List<Object>> statisticRows = new ArrayList<>();
             for (String phyDbName : phyDbNames) {
-                rows.addAll(queryGroupByPhyDb(schemaName, phyDbName, sql));
+                List<List<Object>> phyDbs = queryGroupByPhyDb(schemaName, phyDbName, sql);
+                scanTablesNum += phyDbs.size();
+                if (maxScanTablesNum != null && maxScanTablesNum > 0 && scanTablesNum > maxScanTablesNum) {
+                    isMeetMax = true;
+                    break;
+                }
+                rows.addAll(phyDbs);
+                statisticRows.addAll(queryGroupByPhyDb(schemaName, phyDbName, statisticSql));
             }
 
             // add phyDbTablesInfo
@@ -460,13 +610,7 @@ public class StatsUtils {
                 phyDb.put(phyTbName.toLowerCase(), row);
             }
 
-            // get phy tables statistic
-            String statisticSql = generateQueryPhyTablesStatisticsSQL(allPhyDbNames, indexTableNames, tableLike);
-            List<List<Object>> statisticRows = new ArrayList<>();
-            for (String phyDbName : phyDbNames) {
-                statisticRows.addAll(queryGroupByPhyDb(schemaName, phyDbName, statisticSql));
-            }
-
+            // add phyDbTablesInfo statistic
             for (List<Object> row : statisticRows) {
                 String phyTbName = (String) row.get(0);
                 String phyDbName = (String) row.get(1);
@@ -484,6 +628,216 @@ public class StatsUtils {
         }
 
         return phyDbTablesInfo;
+    }
+
+    public static Map<String, Map<String, List<Object>>> queryTableSchemaStatsForHeatmap(Set<String> schemaNames,
+                                                                                         Set<String> indexTableNames,
+                                                                                         Map<String, Pair<String, String>> storageInstIdGroupNames,
+                                                                                         Integer maxScanTablesNum,
+                                                                                         Integer maxSingleLogicSchemaCount,
+                                                                                         Map<String, Long> phyTableRows) {
+        Map<String, Map<String, List<Object>>> phyDbTablesInfo = new HashMap<>();
+        if (schemaNames == null || schemaNames.isEmpty()) {
+            return phyDbTablesInfo;
+        }
+
+        Map<String, Set<String>> dbPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, Set<String>> dbAllPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        queryPhyDbNames(schemaNames, dbPhyDbNames, dbAllPhyDbNames, storageInstIdGroupNames);
+
+        boolean isMeetMax = false;
+        int scanTablesNum = 0;
+
+        // build sql and exec
+        for (String schemaName : schemaNames) {
+            if (isMeetMax) {
+                break;
+            }
+            // get phy tables info of each logical db (character may be different)
+            Set<String> phyDbNames = dbPhyDbNames.get(schemaName);
+            Set<String> allPhyDbNames = dbAllPhyDbNames.get(schemaName);
+            if (phyDbNames == null || phyDbNames.isEmpty()) {
+                continue;
+            }
+
+            String sql =
+                generateQueryPhyTablesStatsSQLForHeatmap(allPhyDbNames, indexTableNames, maxSingleLogicSchemaCount);
+
+            String countSql = generateQueryPhyTablesCountSQLForHeatmap(allPhyDbNames, indexTableNames);
+
+            List<List<Object>> rows = new ArrayList<>();
+            for (String phyDbName : phyDbNames) {
+                Long count = queryCountByPhyDb(schemaName, phyDbName, countSql);
+                if (count > maxSingleLogicSchemaCount) {
+                    continue;
+                }
+                scanTablesNum += count;
+                if (maxScanTablesNum != null && maxScanTablesNum > 0 && scanTablesNum > maxScanTablesNum) {
+                    isMeetMax = true;
+                    break;
+                }
+
+                List<List<Object>> phyDbs = queryGroupByPhyDb(schemaName, phyDbName, sql);
+                rows.addAll(phyDbs);
+            }
+
+            // add phyDbTablesInfo
+            for (List<Object> row : rows) {
+                String phyTbName = ((String) row.get(0)).toLowerCase();
+                String phyDbName = ((String) row.get(1)).toLowerCase();
+
+                phyTableRows.put(getPhyTableRowsKey(phyDbName, phyTbName), DataTypes.LongType.convertFrom(row.get(2)));
+
+                Map<String, List<Object>> phyDb =
+                    phyDbTablesInfo.computeIfAbsent(phyDbName, x -> new HashMap<>());
+                phyDb.put(phyTbName, row);
+            }
+        }
+        return phyDbTablesInfo;
+    }
+
+    public static Long queryCountByPhyDb(String schemaName, String phyDbName, String countSql) {
+        List<List<Object>> phyDbs = queryGroupByPhyDb(schemaName, phyDbName, countSql);
+        if (phyDbs == null) {
+            return 0L;
+        }
+        Long count = 0L;
+        for (List<Object> row : phyDbs) {
+            count += DataTypes.LongType.convertFrom(row.get(0));
+        }
+        return count;
+    }
+
+    public static String getPhyTableRowsKey(String phyDbName, String phyTbName) {
+        return String.format("%s,%s", phyDbName, phyTbName);
+    }
+
+    public static Map<String, Map<String, List<Object>>> queryTableSchemaStaticsWithoutRowsForHeatmap(
+        Set<String> schemaNames,
+        Set<String> indexTableNames,
+        Map<String, Pair<String, String>> storageInstIdGroupNames,
+        Integer maxScanTablesNum,
+        Integer maxSingleLogicSchemaCount,
+        Map<String, Long> phyTableRows) {
+        Map<String, Map<String, List<Object>>> phyDbTablesInfo = new HashMap<>();
+        if (schemaNames == null || schemaNames.isEmpty()) {
+            return phyDbTablesInfo;
+        }
+
+        Map<String, Set<String>> dbPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, Set<String>> dbAllPhyDbNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        queryPhyDbNames(schemaNames, dbPhyDbNames, dbAllPhyDbNames, storageInstIdGroupNames);
+
+        boolean isMeetMax = false;
+        int scanTablesNum = 0;
+
+        // build sql and exec
+        for (String schemaName : schemaNames) {
+            if (isMeetMax) {
+                break;
+            }
+            // get phy tables info of each logical db (character may be different)
+            Set<String> phyDbNames = dbPhyDbNames.get(schemaName);
+            Set<String> allPhyDbNames = dbAllPhyDbNames.get(schemaName);
+            if (phyDbNames == null || phyDbNames.isEmpty()) {
+                continue;
+            }
+
+            String sql =
+                generateQueryPhyStaticsSQLForHeatmap(allPhyDbNames, indexTableNames, maxSingleLogicSchemaCount);
+
+            String countSql = generateQueryPhyTableStatisticsCountSQLForHeatmap(allPhyDbNames, indexTableNames);
+
+            List<List<Object>> rows = new ArrayList<>();
+            for (String phyDbName : phyDbNames) {
+                Long count = queryCountByPhyDb(schemaName, phyDbName, countSql);
+                if (count > maxSingleLogicSchemaCount) {
+                    continue;
+                }
+                scanTablesNum += count;
+                if (maxScanTablesNum != null && maxScanTablesNum > 0 && scanTablesNum > maxScanTablesNum) {
+                    isMeetMax = true;
+                    break;
+                }
+
+                List<List<Object>> phyDbs = queryGroupByPhyDb(schemaName, phyDbName, sql);
+                rows.addAll(phyDbs);
+            }
+
+            // add phyDbTablesInfo
+            for (List<Object> row : rows) {
+                String phyTbName = ((String) row.get(0)).toLowerCase();
+                String phyDbName = ((String) row.get(1)).toLowerCase();
+
+                Long tableRows = phyTableRows.get(getPhyTableRowsKey(phyDbName, phyTbName));
+                if (tableRows != null) {
+                    row.set(2, tableRows);
+                }
+
+                Map<String, List<Object>> phyDb =
+                    phyDbTablesInfo.computeIfAbsent(phyDbName, x -> new HashMap<>());
+                phyDb.put(phyTbName, row);
+            }
+        }
+        return phyDbTablesInfo;
+    }
+
+    public static Map<String, Map<String, List<Object>>> queryTableGroupStatsForHeatmap(
+        TableGroupConfig tableGroupConfig,
+        Set<String> indexTableNames,
+        String tableLike,
+        Map<String, Map<String, List<Object>>> phyDbTablesInfoForHeatmap) {
+        Map<String, Map<String, List<Object>>> result = new HashMap<>();
+        for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
+            for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
+                // table name filter
+                String logicalTableName = tablePartRecordInfoContext.getTableName().toLowerCase();
+                if (!isFilterTable(indexTableNames, tableLike, logicalTableName)) {
+                    continue;
+                }
+
+                long partitionGroupId = partitionGroupRecord.id;
+                List<TablePartitionRecord> tablePartitionRecords =
+                    tablePartRecordInfoContext.getPartitionRecListByGroupId(partitionGroupId);
+                if (CollectionUtils.isEmpty(tablePartitionRecords)) {
+                    logger.warn(String.format(
+                        "queryTableGroupStatsForHeatmap tablePartitionRecords is null. logicalTableName=%s, partitionGroupId=%s",
+                        logicalTableName, partitionGroupId));
+                    continue;
+                }
+                for (TablePartitionRecord tablePartitionRecord : tablePartitionRecords) {
+                    String phyDbName = partitionGroupRecord.phy_db.toLowerCase();
+                    String phyTbName = tablePartitionRecord.phyTable.toLowerCase();
+                    List<Object> row;
+                    try {
+                        Map<String, List<Object>> phyTablesMap = phyDbTablesInfoForHeatmap.get(phyDbName);
+                        if (phyTablesMap == null) {
+                            row = getDefaultRowList(phyTbName, phyDbName);
+                        } else {
+                            row = phyTablesMap.get(phyTbName);
+                        }
+                        if (row == null) {
+                            //row is null when phy table numbers is over max number. or not be accessed.
+                            row = getDefaultRowList(phyTbName, phyDbName);
+                        }
+                    } catch (Exception ex) {
+                        throw GeneralUtil.nestedException("Failed to get physical table info ", ex);
+                    }
+
+                    Map<String, List<Object>> table =
+                        result.computeIfAbsent(logicalTableName, x -> new HashMap<>());
+                    table.put(phyTbName, row);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public static List<Object> getDefaultRowList(String phyTbName, String phyDbName) {
+        return Arrays.asList(phyTbName, phyDbName, 0, 0, 0, 0);
     }
 
     /**
@@ -521,10 +875,14 @@ public class StatsUtils {
                     String phyTbName = tablePartitionRecord.phyTable.toLowerCase();
                     List<Object> row;
                     try {
-                        row = phyDbTablesInfo.get(phyDbName).get(phyTbName);
+                        Map<String, List<Object>> phyTablesMap = phyDbTablesInfo.get(phyDbName);
+                        if (phyTablesMap == null) {
+                            continue;
+                        }
+                        row = phyTablesMap.get(phyTbName);
                         if (row == null) {
-                            throw GeneralUtil.nestedException(
-                                String.format("Failed to get physical table info:[%s].[%s]", phyDbName, phyTbName));
+                            //row is null when phy table numbers is over max number.
+                            continue;
                         }
                     } catch (Exception ex) {
                         throw GeneralUtil.nestedException("Failed to get physical table info ", ex);
@@ -632,9 +990,9 @@ public class StatsUtils {
             }
             MySQLTablesRowVO res = new MySQLTablesRowVO();
             res.setPhyTable(DataTypes.StringType.convertFrom(row.get(0)).toLowerCase());
-            res.setDataLength(DataTypes.LongType.convertFrom(row.get(1)));
-            res.setIndexLength(DataTypes.LongType.convertFrom(row.get(2)));
-            res.setDataRows(DataTypes.LongType.convertFrom(row.get(3)));
+            res.setDataRows(DataTypes.LongType.convertFrom(row.get(1)));
+            res.setDataLength(DataTypes.LongType.convertFrom(row.get(2)));
+            res.setIndexLength(DataTypes.LongType.convertFrom(row.get(3)));
             return res;
         }
     }
@@ -674,8 +1032,9 @@ public class StatsUtils {
         }
     }
 
-    public static Map<String, Long> queryDbGroupDataSize(String schema, List<GroupDetailInfoExRecord> groupRecords) {
-        Map<String, Long> groupDataSizeMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    public static Map<String, Pair<Long, Long>> queryDbGroupDataSize(String schema,
+                                                                     List<GroupDetailInfoExRecord> groupRecords) {
+        Map<String, Pair<Long, Long>> groupDataSizeMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         groupRecords.stream().collect(Collectors.groupingBy(x -> x.storageInstId))
             .forEach((storageInstId, groups) -> {
                 Map<String, String> phyDbToGroup = groups.stream()
@@ -689,9 +1048,16 @@ public class StatsUtils {
                 for (List<Object> row : rows) {
                     String phyDbName = (String) row.get(0);
                     long dataSizeKB = ((BigDecimal) row.get(1)).longValue();
+                    long tableRows = ((BigDecimal) row.get(2)).longValue();
                     String groupName = phyDbToGroup.get(phyDbName);
 
-                    groupDataSizeMap.merge(groupName, dataSizeKB * 1024, Long::sum);
+                    groupDataSizeMap.merge(groupName, Pair.of(tableRows, dataSizeKB * 1024),
+                        new BiFunction<Pair<Long, Long>, Pair<Long, Long>, Pair<Long, Long>>() {
+                            @Override
+                            public Pair<Long, Long> apply(Pair<Long, Long> a, Pair<Long, Long> b) {
+                                return Pair.of(a.getKey() + b.getKey(), a.getValue() + b.getValue());
+                            }
+                        });
                 }
             });
         return groupDataSizeMap;
@@ -700,11 +1066,18 @@ public class StatsUtils {
     private static String genDbGroupSQL(List<String> phyDbList) {
         String phyDbStr = phyDbList.stream().map(TStringUtil::quoteString).collect(Collectors.joining(","));
         String sql = String.format("SELECT table_schema \"PhyDbName\",  " +
-            "sum( data_length + index_length ) / 1024 \"DataSizeKB\" " +
+            "sum( data_length + index_length ) / 1024 \"DataSizeKB\", " +
+            "SUM(TABLE_ROWS) \"TABLE_ROWS\" " +
             "FROM information_schema.TABLES " +
             "WHERE table_schema in (%s) " +
             "GROUP BY table_schema ", phyDbStr);
         return sql;
+    }
+
+    public static String genTableRowsCountSQL(String phyDb, String phyTableName) {
+        return String.format(
+            "SELECT IFNULL(TABLE_ROWS,0) as TABLE_ROWS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = \"%s\" AND TABLE_NAME = \"%s\"",
+            phyDb, phyTableName);
     }
 
     /**
@@ -751,6 +1124,175 @@ public class StatsUtils {
                 String filter = "and table_name like '" + tableLike + "%'";
                 sb.append(filter);
             }
+            schemaIndex++;
+        }
+        return sb.toString();
+    }
+
+    private static String generateQueryPhyTablesCountSQLForHeatmap(Set<String> schemaNames,
+                                                                   Set<String> indexTableNames) {
+        StringBuilder sb = new StringBuilder();
+        int schemaIndex = 0;
+        for (String schemaName : schemaNames) {
+            if (schemaIndex != 0) {
+                sb.append(" union all ");
+            }
+            sb.append(
+                "select count(1) " +
+                    " FROM information_schema.TABLES " +
+                    " where table_schema = ");
+            // handle schemaName filter
+            sb.append("'");
+            sb.append(schemaName);
+            sb.append("'");
+
+            // handle tableName filter
+            if (indexTableNames != null && !indexTableNames.isEmpty()) {
+                sb.append(" and (");
+                schemaIndex = 0;
+                for (String tableName : indexTableNames) {
+                    String filter = "table_name like '" + tableName + "%'";
+                    if (schemaIndex != 0) {
+                        sb.append(" or ");
+                    }
+                    sb.append(filter);
+                    schemaIndex++;
+                }
+                sb.append(")");
+            }
+            schemaIndex++;
+        }
+        return sb.toString();
+    }
+
+    private static String generateQueryPhyTableStatisticsCountSQLForHeatmap(Set<String> schemaNames,
+                                                                            Set<String> indexTableNames) {
+        StringBuilder sb = new StringBuilder();
+        int schemaIndex = 0;
+        for (String schemaName : schemaNames) {
+            if (schemaIndex != 0) {
+                sb.append(" union all ");
+            }
+            sb.append(
+                "select count(1) " +
+                    " FROM information_schema.table_statistics " +
+                    " where table_schema = ");
+            // handle schemaName filter
+            sb.append("'");
+            sb.append(schemaName);
+            sb.append("'");
+
+            // handle tableName filter
+            if (indexTableNames != null && !indexTableNames.isEmpty()) {
+                sb.append(" and (");
+                schemaIndex = 0;
+                for (String tableName : indexTableNames) {
+                    String filter = "table_name like '" + tableName + "%'";
+                    if (schemaIndex != 0) {
+                        sb.append(" or ");
+                    }
+                    sb.append(filter);
+                    schemaIndex++;
+                }
+                sb.append(")");
+            }
+            schemaIndex++;
+        }
+        return sb.toString();
+    }
+
+    private static String generateQueryPhyTablesStatsSQLForHeatmap(Set<String> schemaNames, Set<String> indexTableNames,
+                                                                   Integer maxSingleLogicSchemaCount) {
+        StringBuilder sb = new StringBuilder();
+        int schemaIndex = 0;
+        int limit = maxSingleLogicSchemaCount / schemaNames.size();
+        for (String schemaName : schemaNames) {
+            if (schemaIndex != 0) {
+                sb.append(" union all ");
+            }
+            sb.append("(");
+            sb.append(
+                "select " +
+                    " t.TABLE_NAME as PHYSICAL_TABLE" +
+                    ", t.TABLE_SCHEMA as PHYSICAL_SCHEMA" +
+                    ", IFNULL(t.TABLE_ROWS,0) as TABLE_ROWS" +
+                    ", IFNULL(s.ROWS_READ,0) as ROWS_READ  " +
+                    ", IFNULL(s.ROWS_INSERTED,0) as ROWS_INSERTED  " +
+                    ", IFNULL(s.ROWS_UPDATED,0) as ROWS_UPDATED  " +
+                    " FROM information_schema.TABLES t LEFT JOIN information_schema.table_statistics s "
+                    + "ON t.TABLE_NAME = s.TABLE_NAME AND t.TABLE_SCHEMA = s.TABLE_SCHEMA " +
+                    " where t.table_schema = ");
+            // handle schemaName filter
+            sb.append("'");
+            sb.append(schemaName);
+            sb.append("'");
+
+            // handle tableName filter
+            if (indexTableNames != null && !indexTableNames.isEmpty()) {
+                sb.append(" and (");
+                schemaIndex = 0;
+                for (String tableName : indexTableNames) {
+                    String filter = "t.table_name like '" + tableName + "%'";
+                    if (schemaIndex != 0) {
+                        sb.append(" or ");
+                    }
+                    sb.append(filter);
+                    schemaIndex++;
+                }
+                sb.append(")");
+            }
+
+            sb.append(" limit ");
+            sb.append(limit);
+            sb.append(")");
+            schemaIndex++;
+        }
+        return sb.toString();
+    }
+
+    private static String generateQueryPhyStaticsSQLForHeatmap(Set<String> schemaNames, Set<String> indexTableNames,
+                                                               Integer maxSingleLogicSchemaCount) {
+        StringBuilder sb = new StringBuilder();
+        int schemaIndex = 0;
+        int limit = maxSingleLogicSchemaCount / schemaNames.size();
+        for (String schemaName : schemaNames) {
+            if (schemaIndex != 0) {
+                sb.append(" union all ");
+            }
+            sb.append("(");
+            sb.append(
+                "select " +
+                    " s.TABLE_NAME as PHYSICAL_TABLE" +
+                    ", s.TABLE_SCHEMA as PHYSICAL_SCHEMA" +
+                    ", 0 as TABLE_ROWS" +
+                    ", IFNULL(s.ROWS_READ,0) as ROWS_READ  " +
+                    ", IFNULL(s.ROWS_INSERTED,0) as ROWS_INSERTED  " +
+                    ", IFNULL(s.ROWS_UPDATED,0) as ROWS_UPDATED  " +
+                    " FROM information_schema.table_statistics s " +
+                    " where s.table_schema = ");
+            // handle schemaName filter
+            sb.append("'");
+            sb.append(schemaName);
+            sb.append("'");
+
+            // handle tableName filter
+            if (indexTableNames != null && !indexTableNames.isEmpty()) {
+                sb.append(" and (");
+                schemaIndex = 0;
+                for (String tableName : indexTableNames) {
+                    String filter = "s.table_name like '" + tableName + "%'";
+                    if (schemaIndex != 0) {
+                        sb.append(" or ");
+                    }
+                    sb.append(filter);
+                    schemaIndex++;
+                }
+                sb.append(")");
+            }
+
+            sb.append(" limit ");
+            sb.append(limit);
+            sb.append(")");
             schemaIndex++;
         }
         return sb.toString();

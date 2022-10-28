@@ -25,13 +25,17 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupKey;
+import com.alibaba.polardbx.executor.utils.NewGroupKey;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
@@ -48,6 +52,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils.ReplaceValuesCall;
@@ -78,6 +83,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.buildGroupKeys;
+import static com.alibaba.polardbx.executor.utils.ExecUtils.buildNewGroupKeys;
 
 /**
  * @author chenmo.cm
@@ -98,12 +104,14 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
 
         // For batch upsert, change params index.
         if (upsert.getBatchSize() > 0) {
-            upsert.buildParamsForBatch(executionContext.getParams());
+            upsert.buildParamsForBatch(executionContext);
         }
 
         final boolean gsiConcurrentWrite =
             executionContext.getParamManager().getBoolean(ConnectionParams.GSI_CONCURRENT_WRITE_OPTIMIZE);
         executionContext.getExtraCmds().put(ConnectionProperties.GSI_CONCURRENT_WRITE, gsiConcurrentWrite);
+
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, executionContext);
 
         // Upsert with NODE/SCAN hint specified
         if (upsert.hasHint()) {
@@ -124,16 +132,20 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         int affectRows = 0;
         try {
             Map<String, List<List<String>>> ukGroupByTable = upsert.getUkGroupByTable();
+            Map<String, List<String>> localIndexPhyName = upsert.getLocalIndexPhyName();
+            List<List<Object>> convertedValues = new ArrayList<>();
+            boolean usePartFieldChecker = upsert.isUsePartFieldChecker() && upsertEc.getParamManager()
+                .getBoolean(ConnectionParams.DML_USE_NEW_DUP_CHECKER);
             List<List<Object>> selectedRows =
                 getDuplicatedValues(upsert, SqlSelect.LockMode.EXCLUSIVE_LOCK, executionContext, ukGroupByTable,
-                    (rowCount) -> memoryAllocator.allocateReservedMemory(
+                    localIndexPhyName, (rowCount) -> memoryAllocator.allocateReservedMemory(
                         MemoryEstimator.calcSelectValuesMemCost(rowCount, insertRowType)), insertRowType, false,
-                    handlerParams);
+                    handlerParams, convertedValues, usePartFieldChecker);
 
             // Bind insert rows to operation
             // Duplicate might exists between upsert values
             final List<DuplicateCheckResult> classifiedRows =
-                new ArrayList<>(bindInsertRows(upsert, selectedRows, upsertEc));
+                new ArrayList<>(bindInsertRows(upsert, selectedRows, convertedValues, upsertEc, usePartFieldChecker));
 
             upsertEc.setPhySqlId(upsertEc.getPhySqlId() + 1);
 
@@ -164,7 +176,7 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         int affectRows;
 
         final ExecutionContext deduplicatedEc = executionContext.copy();
-        final RowClassifier rowClassifier = buildRowClassifier(upsert, executionContext);
+        final RowClassifier rowClassifier = buildRowClassifier(upsert, executionContext, schemaName);
 
         final List<RelNode> primaryDeletePlans = new ArrayList<>();
         final List<RelNode> primaryInsertPlans = new ArrayList<>();
@@ -275,21 +287,68 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         return affectRows;
     }
 
-    @Override
+    protected RowClassifier buildRowClassifier(final LogicalUpsert upsert,
+                                               final ExecutionContext ec, final String schemaName) {
+        return (writer, sourceRows, result) -> {
+            if (null == result) {
+                return result;
+            }
+
+            final LogicalDynamicValues input = RelUtils.getRelInput(upsert);
+
+            final BiPredicate<Writer, Pair<List<Object>, Map<Integer, ParameterContext>>> identicalPartitionKeyChecker =
+                getIdenticalPartitionKeyChecker(upsert, input, ec, schemaName);
+
+            // Classify insert/replace rows for UPDATE/REPLACE/DELETE/INSERT
+            writer.classify(identicalPartitionKeyChecker, sourceRows, ec, result);
+
+            return result;
+        };
+    }
+
     protected BiPredicate<Writer, Pair<List<Object>, Map<Integer, ParameterContext>>> getIdenticalPartitionKeyChecker(
+        LogicalUpsert upsert,
         LogicalDynamicValues input,
-        ExecutionContext executionContext) {
+        ExecutionContext executionContext,
+        String schemaName) {
+        final List<RexNode> rexRow = new ArrayList<>(input.getTuples().get(0));
+        rexRow.addAll(upsert.getDuplicateKeyUpdateValueList());
+
         return (w, p) -> {
             final List<Object> row = p.getKey();
             final RelocateWriter rw = w.unwrap(RelocateWriter.class);
+            final boolean usePartFieldChecker = rw.isUsePartFieldChecker() &&
+                executionContext.getParamManager().getBoolean(ConnectionParams.DML_USE_NEW_SK_CHECKER);
 
-            // Compare partition key in two value list
             final List<Object> skTargets = Mappings.permute(row, rw.getIdentifierKeyTargetMapping());
             final List<Object> skSources = Mappings.permute(row, rw.getIdentifierKeySourceMapping());
-            final GroupKey skTargetKey = new GroupKey(skTargets.toArray(), rw.getIdentifierKeyMetas());
-            final GroupKey skSourceKey = new GroupKey(skSources.toArray(), rw.getIdentifierKeyMetas());
 
-            return skTargetKey.equals(skSourceKey);
+            if (usePartFieldChecker) {
+                // Compare partition key in two value list
+                final List<RexNode> targetSkRex = Mappings.permute(rexRow, rw.getIdentifierKeyTargetMapping());
+                final List<ColumnMeta> skMetas = rw.getIdentifierKeyMetas();
+
+                try {
+                    final NewGroupKey sourceSkGk = new NewGroupKey(skSources,
+                        skMetas.stream().map(ColumnMeta::getDataType).collect(Collectors.toList()), skMetas,
+                        true, executionContext);
+                    final NewGroupKey targetSkGk = new NewGroupKey(skTargets,
+                        targetSkRex.stream().map(rx -> DataTypeUtil.calciteToDrdsType(rx.getType()))
+                            .collect(Collectors.toList()), skMetas, true, executionContext);
+
+                    return sourceSkGk.equals(targetSkGk);
+                } catch (Throwable e) {
+                    // Maybe value can not be cast, just use DELETE + INSERT to be safe
+                    LoggerFactory.getLogger(LogicalUpsertHandler.class).warn("new sk checker failed, cause by " + e);
+                }
+                return false;
+            } else {
+                // Compare partition key in two value list
+                final GroupKey skTargetKey = new GroupKey(skTargets.toArray(), rw.getIdentifierKeyMetas());
+                final GroupKey skSourceKey = new GroupKey(skSources.toArray(), rw.getIdentifierKeyMetas());
+
+                return skTargetKey.equals(skSourceKey);
+            }
         };
     }
 
@@ -308,7 +367,9 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
      */
     protected List<DuplicateCheckResult> bindInsertRows(LogicalUpsert upsert,
                                                         List<List<Object>> duplicateValues,
-                                                        ExecutionContext upsertEc) {
+                                                        List<List<Object>> convertedValues,
+                                                        ExecutionContext upsertEc,
+                                                        boolean usePartFieldChecker) {
         final List<Map<Integer, ParameterContext>> currentBatchParameters = upsertEc.getParams().getBatchParameters();
 
         final List<List<Integer>> beforeUkMapping = upsert.getBeforeUkMapping();
@@ -335,14 +396,19 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         // 1. Init before rows
         final AtomicInteger logicalRowIndex = new AtomicInteger(0);
         final List<DuplicateCheckRow> checkerRows = new ArrayList<>();
-        final List<Map<GroupKey, SortedMap<Integer, DuplicateCheckRow>>> checkerMap =
+        final List<Map<GroupKey, SortedMap<Integer, DuplicateCheckRow>>> checkerMap = usePartFieldChecker ?
+            buildDuplicateCheckersWithNewGroupKey(duplicateValues, beforeUkMapping, ukColumnMetas, checkerRows,
+                logicalRowIndex, upsertEc) :
             buildDuplicateCheckers(duplicateValues, beforeUkMapping, ukColumnMetas, checkerRows, logicalRowIndex);
 
         // 2. Check each insert row
-        currentBatchParameters.forEach(newRow -> {
+        for (int j = 0; j < currentBatchParameters.size(); j++) {
+            Map<Integer, ParameterContext> newRow = currentBatchParameters.get(j);
             // Build group key
-            final List<GroupKey> keys = buildGroupKeys(afterUkMapping, ukColumnMetas,
-                (i) -> RexUtils.getValueFromRexNode(rexRow.get(i), upsertEc, newRow));
+            final List<GroupKey> keys = usePartFieldChecker ?
+                buildNewGroupKeys(afterUkMapping, ukColumnMetas, convertedValues.get(j)::get, upsertEc) :
+                buildGroupKeys(afterUkMapping, ukColumnMetas,
+                    (i) -> RexUtils.getValueFromRexNode(rexRow.get(i), upsertEc, newRow));
 
             // Check Duplicate with rows in table and rows already inserted
             // For batch insert, new row could still duplicate with previously inserted row
@@ -432,7 +498,7 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
 
                 checkerRows.add(newDuplicateCheckRow);
             }
-        });
+        }
 
         // 3. Build result
         final List<DuplicateCheckResult> result = new ArrayList<>();
@@ -574,6 +640,51 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         return ukCheckerMapList;
     }
 
+    private static List<Map<GroupKey, SortedMap<Integer, DuplicateCheckRow>>> buildDuplicateCheckersWithNewGroupKey(
+        List<List<Object>> selectedRows,
+        List<List<Integer>> ukMapping,
+        List<List<ColumnMeta>> ukColumnMetas,
+        List<DuplicateCheckRow> outCheckRows,
+        AtomicInteger logicalRowIndex,
+        ExecutionContext ec) {
+        selectedRows.forEach(row -> {
+            final DuplicateCheckRow duplicateCheckRow = new DuplicateCheckRow();
+
+            duplicateCheckRow.keyList = buildNewGroupKeys(ukMapping, ukColumnMetas, row::get, ec);
+            duplicateCheckRow.before = new ArrayList<>();
+            duplicateCheckRow.after = new ArrayList<>();
+            for (Ord<Object> o : Ord.zip(row)) {
+                duplicateCheckRow.before.add(o.getValue());
+                duplicateCheckRow.after.add(o.getValue());
+            }
+
+            outCheckRows.add(duplicateCheckRow);
+        });
+
+        // Order by first uk
+        Collections.sort(outCheckRows);
+
+        // Set logical row index and build checker map
+        final List<Map<GroupKey, SortedMap<Integer, DuplicateCheckRow>>> ukCheckerMapList =
+            new ArrayList<>(ukMapping.size());
+        IntStream.range(0, ukMapping.size()).forEach(i -> ukCheckerMapList.add(new HashMap<>()));
+
+        outCheckRows.forEach(row -> {
+            row.rowIndex = logicalRowIndex.getAndIncrement();
+
+            for (int i = 0; i < ukMapping.size(); i++) {
+                ukCheckerMapList.get(i).compute(row.keyList.get(i), (k, v) -> {
+                    final SortedMap<Integer, DuplicateCheckRow> checker =
+                        Optional.ofNullable(v).orElseGet(TreeMap::new);
+                    checker.put(row.rowIndex, row);
+                    return checker;
+                });
+            }
+        });
+
+        return ukCheckerMapList;
+    }
+
     private static class DuplicateCheckRow implements Comparable<DuplicateCheckRow> {
         /**
          * Origin row value from table, null if to-be-inserted row not duplicate with existing row in table
@@ -643,6 +754,8 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             final Set<Integer> appendedColumnIndex = upsert.getAppendedColumnIndex();
             final List<ColumnMeta> rowColumnMeta = upsert.getRowColumnMetaList();
             final CursorMeta meta = CursorMeta.build(upsert.getTableColumnMetaList());
+            final boolean usePartFieldChecker = upsert.isUsePartFieldChecker() && upsertEc.getParamManager()
+                .getBoolean(ConnectionParams.DML_USE_NEW_DUP_CHECKER);
 
             // Get update values
             final List<Object> updateValues = new ArrayList<>();
@@ -654,9 +767,14 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             // Do update
             final List<Object> withoutAppended = new ArrayList<>(this.after);
             final List<Object> withAppended = new ArrayList<>(this.after);
+            final List<RexNode> rexNodes = new ArrayList<>();
+            for (int i = 0; i < this.after.size(); i++) {
+                rexNodes.add(null);
+            }
             Ord.zip(updateValues).forEach(o -> {
                 final Integer updateValueIndex = o.getKey();
                 final Integer columnIndex = beforeUpdateMapping.get(updateValueIndex);
+                rexNodes.set(columnIndex, duplicateKeyUpdateValues.get(updateValueIndex));
 
                 withAppended.set(columnIndex, o.getValue());
                 if (!appendedColumnIndex.contains(columnIndex)) {
@@ -672,7 +790,9 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
 
             if (upsert.isModifyUniqueKey()) {
                 // Update group key
-                this.keyList = buildGroupKeys(beforeUkMapping, ukColumnMetas, updated::get);
+                this.keyList = usePartFieldChecker ?
+                    buildNewGroupKeys(beforeUkMapping, ukColumnMetas, updated, rexNodes, upsertEc) :
+                    buildGroupKeys(beforeUkMapping, ukColumnMetas, updated::get);
             }
 
             // Add before value for INSERT-then-UPDATE

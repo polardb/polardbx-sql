@@ -273,6 +273,7 @@ public class SQLExprTableSource extends SQLTableSourceImpl implements SQLReplace
         visitor.endVisit(this);
     }
 
+    @Override
     public String computeAlias() {
         String alias = this.getAlias();
 
@@ -285,6 +286,7 @@ public class SQLExprTableSource extends SQLTableSourceImpl implements SQLReplace
         return SQLUtils.normalize(alias);
     }
 
+    @Override
     public SQLExprTableSource clone() {
         SQLExprTableSource x = new SQLExprTableSource();
         cloneTo(x);

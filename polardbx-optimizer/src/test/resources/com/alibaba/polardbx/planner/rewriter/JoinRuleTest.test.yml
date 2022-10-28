@@ -138,7 +138,7 @@
     select 1 from emp_single e, dept_single d where e.deptno = d.deptno
 
   plan: |
-    LogicalView(tables="optest_0000.emp_single,dept_single", sql="SELECT 1 FROM `emp_single` AS `e`, `dept_single` AS `d` WHERE (`e`.`DEPTNO` = `d`.`DEPTNO`)")
+    logicalview(tables="optest_0000.emp_single,dept_single", sql="select 1 from `emp_single` as `e`, `dept_single` as `d` where (`e`.`deptno` = `d`.`deptno`)")
 
 - sql: |
     select 1 from dept d left join emp e on d.deptno = e.deptno where d.name = 'Charlie'
@@ -180,7 +180,7 @@
     select 1 from emp_single e, dept_broadcast d where e.deptno = d.deptno
 
   plan: |
-    LogicalView(tables="optest_0000.emp_single,dept_broadcast", sql="SELECT 1 FROM `emp_single` AS `e`, `dept_broadcast` AS `d` WHERE (`e`.`DEPTNO` = `d`.`DEPTNO`)")
+    logicalview(tables="optest_0000.emp_single,dept_broadcast", sql="select 1 from `emp_single` as `e`, `dept_broadcast` as `d` where (`e`.`deptno` = `d`.`deptno`)")
 
 - sql: |
     select 1 from dept d left join emp e on d.deptno = e.deptno and d.deptno = 5

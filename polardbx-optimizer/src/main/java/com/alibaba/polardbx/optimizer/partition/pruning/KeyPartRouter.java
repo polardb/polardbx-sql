@@ -53,32 +53,44 @@ public class KeyPartRouter extends RangePartRouter {
                 searchCmp = ComparisonKind.NOT_EQUAL;
             }
             rs = super.routePartitions(ec, searchCmp, hashVals[0]);
-
         } else {
-            PartitionBoundVal[] boundValArr = new PartitionBoundVal[partColInt];
-            for (int i = 0; i < partColInt; i++) {
-                PartitionBoundVal queryValOfOneFld = queryValDatum.datumInfo[i];
-                if (queryValOfOneFld.isNormalValue()) {
-                    boundValArr[i] = PartitionInfoBuilder
-                        .buildOneHashBoundValByLong(null, hashVals[i], boundValDataType,
-                            PartFieldAccessType.QUERY_PRUNING);
-                } else {
-                    if (queryValOfOneFld.isMaxValue()) {
-                        boundValArr[i] = PartitionInfoBuilder
-                            .buildOneHashBoundValByLong(null, SearchDatumHasher.MAX_HASH_VALUE, boundValDataType,
-                                PartFieldAccessType.QUERY_PRUNING);
-                    } else {
-                        boundValArr[i] = PartitionInfoBuilder
-                            .buildOneHashBoundValByLong(null, SearchDatumHasher.MIN_HASH_VALUE, boundValDataType,
-                                PartFieldAccessType.QUERY_PRUNING);
-                    }
-                }
-            }
-            SearchDatumInfo hashValDatum = new SearchDatumInfo(boundValArr);
+            SearchDatumInfo hashValDatum = buildHashSearchDatumInfoInner(queryValDatum, hashVals, partColInt, this.boundValDataType);
             rs = super.routePartitions(ec, comp, hashValDatum);
         }
         rs.strategy = PartitionStrategy.KEY;
         return rs;
+    }
+
+    public SearchDatumInfo buildHashSearchDatumInfo(SearchDatumInfo queryValDatum, ExecutionContext ec) {
+        Long[] hashVals = hasher.calcHashCodeForKeyStrategy(queryValDatum);
+        return buildHashSearchDatumInfoInner(queryValDatum, hashVals, queryValDatum.datumInfo.length, this.boundValDataType);
+    }
+
+    protected SearchDatumInfo buildHashSearchDatumInfoInner(SearchDatumInfo queryValDatum,
+                                                            Long[] hashVals,
+                                                            int partColInt,
+                                                            RelDataType hashBoundValType) {
+        PartitionBoundVal[] boundValArr = new PartitionBoundVal[partColInt];
+        for (int i = 0; i < partColInt; i++) {
+            PartitionBoundVal queryValOfOneFld = queryValDatum.datumInfo[i];
+            if (queryValOfOneFld.isNormalValue()) {
+                boundValArr[i] = PartitionInfoBuilder
+                    .buildOneHashBoundValByLong(null, hashVals[i], hashBoundValType,
+                        PartFieldAccessType.QUERY_PRUNING);
+            } else {
+                if (queryValOfOneFld.isMaxValue() || queryValOfOneFld.isDefaultValue()) {
+                    boundValArr[i] = PartitionInfoBuilder
+                        .buildOneHashBoundValByLong(null, SearchDatumHasher.MAX_HASH_VALUE, hashBoundValType,
+                            PartFieldAccessType.QUERY_PRUNING);
+                } else {
+                    boundValArr[i] = PartitionInfoBuilder
+                        .buildOneHashBoundValByLong(null, SearchDatumHasher.MIN_HASH_VALUE, hashBoundValType,
+                            PartFieldAccessType.QUERY_PRUNING);
+                }
+            }
+        }
+        SearchDatumInfo hashValDatum = new SearchDatumInfo(boundValArr);
+        return hashValDatum;
     }
 
     public RouterResult routePartitionsFromHashCode(ExecutionContext ec, ComparisonKind comp, int partColInt,
@@ -104,4 +116,5 @@ public class KeyPartRouter extends RangePartRouter {
         rs.strategy = PartitionStrategy.KEY;
         return rs;
     }
+
 }

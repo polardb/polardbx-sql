@@ -28,6 +28,19 @@ public class RepoInst {
 
     protected String        address;
 
+    /**
+     *
+     */
+    protected String        dnId;
+
+    /**
+     * repoInstId = dnId@addr
+     */
+    protected String        repoInstId;
+
+    /**
+     * 实例的读权重
+     */
     protected int           readWeight;
 
     protected int           writeWeight;
@@ -64,4 +77,19 @@ public class RepoInst {
         this.writeWeight = writeWeight;
     }
 
+    public String getDnId() {
+        return dnId;
+    }
+
+    public void setDnId(String dnId) {
+        this.dnId = dnId;
+    }
+
+    public String getRepoInstId() {
+        return repoInstId;
+    }
+
+    public void setRepoInstId(String repoInstId) {
+        this.repoInstId = repoInstId;
+    }
 }

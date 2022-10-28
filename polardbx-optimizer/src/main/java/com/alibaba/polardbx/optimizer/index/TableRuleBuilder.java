@@ -47,7 +47,7 @@ public class TableRuleBuilder {
                                                  LocalityDesc locality,
                                                  OptimizerContext optimizerContext,
                                                  boolean randomPhyTableNameEnabled) {
-        String defaultDb = locality == null ?
+        String defaultDb = locality.holdEmptyDnList() ?
             optimizerContext.getRuleManager().getDefaultDbIndex(null) :
             chooseGroupWithLocality(schemaName, locality);
         TableRule tableRule = new TableRule();

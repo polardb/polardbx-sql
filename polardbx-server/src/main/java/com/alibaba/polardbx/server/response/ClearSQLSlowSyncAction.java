@@ -46,9 +46,14 @@ public class ClearSQLSlowSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        SchemaConfig schema = CobarServer.getInstance().getConfig().getSchemas().get(db);
-        schema.getDataSource().getRecorder().clear();
-        schema.getDataSource().getPhysicalRecorder().clear();
+        for (SchemaConfig schema : CobarServer.getInstance().getConfig().getSchemas().values()) {
+            if (schema.getDataSource().getRecorder() != null) {
+                schema.getDataSource().getRecorder().clear();
+            }
+            if (schema.getDataSource().getPhysicalRecorder() != null) {
+                schema.getDataSource().getPhysicalRecorder().clear();
+            }
+        }
         return null;
     }
 }

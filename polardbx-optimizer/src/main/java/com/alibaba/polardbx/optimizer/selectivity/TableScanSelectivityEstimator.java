@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMdSelectivity;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
@@ -236,7 +237,7 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
                 ColumnMeta columnMeta = findColumnMeta(tableMeta, inputRef.getIndex());
                 if (columnMeta != null && value != null) {
                     StatisticResult statisticResult =
-                        OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager().getFrequency(
+                        StatisticManager.getInstance().getFrequency(tableMeta.getSchemaName(),
                             tableMeta.getTableName(), columnMeta.getName(), value.toString());
                     long count = statisticResult.getLongValue();
                     if (count >= 0) {
@@ -320,10 +321,34 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
 
                     for (RexNode rexNode : ((RexCall) rightRexNode).operands) {
                         Object value = DrdsRexFolder.fold(rexNode, plannerContext);
-                        if (value != null) {
+                        if (value instanceof List) {
+                            for (Object o : (List) value) {
+                                StatisticResult statisticResult = StatisticManager.getInstance()
+                                    .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(),
+                                        columnMeta.getName(), o.toString());
+                                long count = statisticResult.getLongValue();
+                                if (count >= 0) {
+                                    if (inCount == null) {
+                                        inCount = count;
+                                    } else {
+                                        inCount += count;
+                                    }
+                                } else if (CBOUtil.isIndexColumn(tableMeta, columnMeta)) {
+                                    // lack of statistics
+                                    count =
+                                        Math.min(LACK_OF_STATISTICS_INDEX_EQUAL_ROW_COUNT, tableRowCount.longValue());
+                                    if (inCount == null) {
+                                        inCount = count;
+                                    } else {
+                                        inCount += count;
+                                    }
+                                }
+                            }
+                        } else if (value != null) {
                             StatisticResult statisticResult =
-                                OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
-                                    .getFrequency(tableMeta.getTableName(), columnMeta.getName(), value.toString());
+                                StatisticManager.getInstance()
+                                    .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(),
+                                        columnMeta.getName(), value.toString());
                             long count = statisticResult.getLongValue();
                             if (count >= 0) {
                                 if (inCount == null) {
@@ -370,11 +395,8 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
         List<ColumnMeta> columnMetaList = tableMeta.getAllColumns();
         List<Object> toRemovePredicateList = new ArrayList<>();
         for (ColumnMeta columnMeta : columnMetaList) {
-            DataType dataType = OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
-                .getDataType(tableMeta.getTableName(), columnMeta.getName());
-//            if (histogram == null) {
-//                continue;
-//            }
+            DataType dataType = StatisticManager.getInstance()
+                .getDataType(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName());
             boolean lowerInclusive = false;
             boolean upperInclusive = false;
             Object lower = null;
@@ -587,10 +609,9 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
             if (lower == null && upper == null) {
                 continue;
             } else {
-                StatisticResult statisticResult =
-                    OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager()
-                        .getRangeCount(tableMeta.getTableName(), columnMeta.getName(), lower, lowerInclusive, upper,
-                            upperInclusive);
+                StatisticResult statisticResult = StatisticManager.getInstance()
+                    .getRangeCount(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(), lower,
+                        lowerInclusive, upper, upperInclusive);
                 long count = statisticResult.getLongValue();
                 if (count >= 0) {
                     if (minCount == null) {
@@ -644,9 +665,9 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
 
                 ColumnMeta columnMeta = findColumnMeta(tableMeta, inputRef.getIndex());
                 if (columnMeta != null && value != null) {
-                    StatisticResult countResult =
-                        OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager().getFrequency(
-                            tableMeta.getTableName(), columnMeta.getName(), value.toString());
+                    StatisticResult countResult = StatisticManager.getInstance()
+                        .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(),
+                            value.toString());
                     long count = countResult.getLongValue();
                     if (count >= 0) {
                         selectivity = selectivity * (tableRowCount - count) / tableRowCount;
@@ -684,7 +705,7 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
                     if (columnMeta != null) {
                         long count;
                         StatisticResult statisticResult =
-                            OptimizerContext.getContext(tableMeta.getSchemaName()).getStatisticManager().getNullCount(
+                            StatisticManager.getInstance().getNullCount(tableMeta.getSchemaName(),
                                 tableMeta.getTableName(), columnMeta.getName());
                         long nullCount = statisticResult.getLongValue();
                         if (pred.isA(SqlKind.IS_NULL)) {

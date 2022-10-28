@@ -19,13 +19,13 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLPartitionByRange extends SQLPartitionBy {
-    protected SQLExpr       interval;
-    protected boolean       isColumns = false;
-    protected SQLExpr       startWith;
+    protected SQLExpr interval;
+    protected boolean isColumns = false;
+    protected SQLExpr startWith;
     protected SQLIntegerExpr expireAfter;
     protected SQLIntegerExpr preAllocate;
-    protected SQLExpr       pivotDateExpr;
-    protected boolean       disableSchedule = false;
+    protected SQLExpr pivotDateExpr;
+    protected boolean disableSchedule = false;
 
     public SQLPartitionByRange() {
 
@@ -39,7 +39,7 @@ public class SQLPartitionByRange extends SQLPartitionBy {
         if (interval != null) {
             interval.setParent(this);
         }
-        
+
         this.interval = interval;
     }
 
@@ -60,7 +60,7 @@ public class SQLPartitionByRange extends SQLPartitionBy {
     }
 
     public void setExpireAfter(final SQLIntegerExpr expireAfter) {
-        if(expireAfter != null){
+        if (expireAfter != null) {
             expireAfter.setParent(this);
         }
         this.expireAfter = expireAfter;
@@ -71,7 +71,7 @@ public class SQLPartitionByRange extends SQLPartitionBy {
     }
 
     public void setPreAllocate(final SQLIntegerExpr preAllocate) {
-        if(preAllocate != null){
+        if (preAllocate != null) {
             preAllocate.setParent(this);
         }
         this.preAllocate = preAllocate;
@@ -82,7 +82,7 @@ public class SQLPartitionByRange extends SQLPartitionBy {
     }
 
     public void setPivotDateExpr(final SQLExpr pivotDateExpr) {
-        if(pivotDateExpr != null){
+        if (pivotDateExpr != null) {
             pivotDateExpr.setParent(this);
         }
         this.pivotDateExpr = pivotDateExpr;
@@ -117,8 +117,8 @@ public class SQLPartitionByRange extends SQLPartitionBy {
             x.setStartWith(startWith.clone());
         }
 
-        if(expireAfter != null){
-            x.setExpireAfter(x.expireAfter.clone());
+        if (expireAfter != null) {
+            x.setExpireAfter(expireAfter.clone());
         }
 
         for (SQLExpr column : columns) {
@@ -126,7 +126,7 @@ public class SQLPartitionByRange extends SQLPartitionBy {
             c2.setParent(x);
             x.columns.add(c2);
         }
-        
+
         x.setColumns(this.isColumns);
         x.setDisableSchedule(this.disableSchedule);
 

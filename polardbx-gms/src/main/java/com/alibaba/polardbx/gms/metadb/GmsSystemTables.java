@@ -23,8 +23,6 @@ public class GmsSystemTables {
 
     private static Set<String> systemTables = new HashSet<>();
 
-    private static Set<String> maybe_IgnoreSystemTables = new HashSet<>();
-
     /**
      * Dummy Table
      */
@@ -44,6 +42,8 @@ public class GmsSystemTables {
     public static final String ENGINES = "engines";
     public static final String GLOBAL_VARIABLES = "global_variables";
     public static final String SESSION_VARIABLES = "session_variables";
+    public static final String ROUTINES = "routines";
+    public static final String PARAMETERS = "parameters";
 
     /**
      * Logical Database Level Info
@@ -68,6 +68,8 @@ public class GmsSystemTables {
     public static final String FILE_STORAGE_INFO = "file_storage_info";
     public static final String FILE_STORAGE_FILES_META = "file_storage_files_meta";
     public static final String TABLE_LOCAL_PARTITIONS = "table_local_partitions";
+    public static final String JOIN_GROUP_INFO = "join_group_info";
+    public static final String JOIN_GROUP_TABLE_DETAIL = "join_group_table_detail";
 
     /**
      * MPP Node Info
@@ -75,15 +77,10 @@ public class GmsSystemTables {
     public static final String NODE_INFO = "node_info";
 
     /**
-     * user defined java code
-     */
-    public static final String USER_DEFINED_JAVA_CODE = "user_defined_java_code";
-
-
-    /**
      * Global Secondary Index
      */
     public static final String BACKFILL_OBJECTS = "backfill_objects";
+    public static final String FILE_STORAGE_BACKFILL_OBJECTS = "file_storage_backfill_objects";
     public static final String CHECKER_REPORTS = "checker_reports";
 
     /**
@@ -184,7 +181,6 @@ public class GmsSystemTables {
     /**
      * partition management
      */
-    public static final String TABLEGROUP_OUTLINE = "tablegroup_outline";
     public static final String COMPLEX_TASK_OUTLINE = "complex_task_outline";
 
     /**
@@ -193,6 +189,9 @@ public class GmsSystemTables {
     public final static String BINLOG_POLARX_COMMAND_TABLE = "binlog_polarx_command";
 
     public final static String DDL_PLAN = "ddl_plan";
+    public final static String LEASE = "lease";
+
+    public final static String PARTITIONS_HEATMAP = "partitions_heatmap";
 
     static {
         register(DUAL);
@@ -203,6 +202,8 @@ public class GmsSystemTables {
         register(ENGINES);
         register(GLOBAL_VARIABLES);
         register(SESSION_VARIABLES);
+        register(ROUTINES);
+        register(PARAMETERS);
         register(SCHEMATA);
         register(TABLES);
         register(TABLES_EXT);
@@ -221,8 +222,8 @@ public class GmsSystemTables {
         register(PARTITION_GROUP);
         register(REFERENTIAL_CONSTRAINTS);
         register(NODE_INFO);
-        register(USER_DEFINED_JAVA_CODE);
         register(BACKFILL_OBJECTS);
+        register(FILE_STORAGE_BACKFILL_OBJECTS);
         register(BASELINE_INFO);
         register(CHECKER_REPORTS);
         register(COLUMN_STATISTICS);
@@ -233,6 +234,7 @@ public class GmsSystemTables {
         register(DDL_ENGINE_TASK_ARCHIVE);
         register(READ_WRITE_LOCK);
         register(TABLE_STATISTICS);
+        register(NDV_SKETCH_STATISTICS);
         register(PLAN_INFO);
         register(RECYCLE_BIN);
         register(GLOBAL_TX_LOG);
@@ -265,7 +267,6 @@ public class GmsSystemTables {
         register(FEATURE_USAGE_STATISTICS);
         register(USER_LOGIN_ERROR_LIMIT);
         register(AUDIT_LOG);
-        register(TABLEGROUP_OUTLINE);
         register(BINLOG_POLARX_COMMAND_TABLE);
         register(TABLE_PARTITIONS_DELTA);
         register(LOCALITY_INFO);
@@ -276,12 +277,10 @@ public class GmsSystemTables {
         register(VARIABLE_CONFIG);
         register(DDL_PLAN);
         register(FILE_STORAGE_FILES_META);
-    }
-
-    static {
-        maybe_IgnoreSystemTables.add(TABLES);
-        maybe_IgnoreSystemTables.add(COLUMNS);
-        maybe_IgnoreSystemTables.add(INDEXES);
+        register(LEASE);
+        register(JOIN_GROUP_INFO);
+        register(JOIN_GROUP_TABLE_DETAIL);
+        register(PARTITIONS_HEATMAP);
     }
 
     private static void register(String systemTableName) {
@@ -292,7 +291,4 @@ public class GmsSystemTables {
         return systemTables.contains(systemTableName.toLowerCase());
     }
 
-    public static boolean systemIgnoreTablescontains(String systemTableName) {
-        return maybe_IgnoreSystemTables.contains(systemTableName.toLowerCase());
-    }
 }
