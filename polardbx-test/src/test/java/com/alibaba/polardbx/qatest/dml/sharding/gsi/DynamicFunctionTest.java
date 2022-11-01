@@ -69,7 +69,7 @@ public class DynamicFunctionTest extends GsiDMLTest {
     // [test_column, function, keyword in physical plan
     String[][] testFunctions = {
         {"decimal_test", "last_insert_id()", "LAST_INSERT_ID"},
-        {"float_test", "rand()", "RAND"}, {"timestamp_test", "now()", "NOW"},
+        {"timestamp_test", "now()", "NOW"},
         {"date_test", "current_date()", "CURRENT_DATE"}, {"date_test", "current_date", "CURRENT_DATE"},
         {"time_test", "current_time()", "CURRENT_TIME"}, {"time_test", "current_time", "CURRENT_TIME"},
         {"timestamp_test", "current_timestamp()", "CURRENT_TIMESTAMP"},
