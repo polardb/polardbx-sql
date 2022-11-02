@@ -1,0 +1,188 @@
+name: DML_DDL_Test
+on:
+  push:
+    branches:
+      - "main"
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+  pull_request_target:
+    types: [labeled]
+    branches:
+      - "main"
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+
+concurrency: 
+  # main branch should complete running
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request_target' && format('ci-pull-{0}', github.event.pull_request.number) || format('ci-main-{0}', github.sha) }}
+  cancel-in-progress: true
+
+permissions:
+  checks: write
+  contents: read
+  issues: read
+  pull-requests: write
+
+env:
+  GIT_URL: https://github.com/${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+  COMMIT_ID: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+  CODE_REF: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref || github.ref }}
+
+jobs:
+  DML_Test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ready for test')
+    env:
+      TEST_UID: ${{ github.run_id }}-${{ github.run_attempt }}-dml
+    steps:
+      - name: Print ENV
+        run: |
+          echo "test_uid: ${TEST_UID}"
+          echo "git_url: ${GIT_URL}"
+          echo "commit_id: ${COMMIT_ID}"
+          echo "code_ref: ${CODE_REF}"
+      - name: Deploy PolarDB-X Cluster
+        uses: appleboy/ssh-action@master
+        id: dml_deploy
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 100m
+          script: |
+            cd workspace/github
+            ./k8s_deploy.sh -u ${TEST_UID} --repository ${GIT_URL} --ref ${CODE_REF} --commit ${COMMIT_ID}
+      - name: Load Init Data
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 60m
+          script: |
+            cd workspace/github
+            ./load_data_by_pod.sh -u ${TEST_UID} --parallel
+      - name: Test DML Case
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 200m
+          script: |
+            cd workspace/github
+            ./create_test_runner.sh -u ${TEST_UID} -i 1 -t dml
+      - name: Get DML Test Report Files
+        id: dml_reports
+        run: |
+          mkdir -p dml
+          sshpass -p ${{ secrets.ECS_PASSWORD }} scp -r -o StrictHostKeyChecking=no -P ${{ secrets.ECS_PORT }} ${{ secrets.ECS_USERNAME }}@${{ secrets.ECS_HOST }}:/root/workspace/reports/${TEST_UID}/1/surefire-reports.tar.gz dml/surefire-reports.tar.gz
+          ls -R dml
+          echo "tar file:"
+          tar -zxvf dml/surefire-reports.tar.gz -C dml
+      - name: Analyze DML Test Result
+        if: ${{ always() && steps.dml_reports.outcome == 'success' }}
+        uses: scacap/action-surefire-report@v1
+        with:
+          check_name: DML Test Result
+          report_paths: dml/surefire-reports/TEST-*.xml
+          fail_on_test_failures: true
+      - name: Clean up PolarDB-X Cluster
+        if: ${{ always() && steps.dml_deploy.outcome == 'success' }}
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 200m
+          script: |
+            cd workspace/github
+            ./cleanup.sh -u ${TEST_UID}
+  DDL_TEST:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'ready for test')
+    env:
+      TEST_UID: ${{ github.run_id }}-${{ github.run_attempt }}-ddl
+    steps:
+      - name: Print ENV
+        run: |
+          echo "test_uid: ${TEST_UID}"
+          echo "git_url: ${GIT_URL}"
+          echo "commit_id: ${COMMIT_ID}"
+          echo "code_ref: ${CODE_REF}"
+      - name: Deploy PolarDB-X Cluster
+        uses: appleboy/ssh-action@master
+        id: ddl_deploy
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 100m
+          script: |
+            cd workspace/github
+            ./k8s_deploy.sh -u ${TEST_UID} --repository ${GIT_URL} --ref ${CODE_REF} --commit ${COMMIT_ID}
+      - name: Load Init Data
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 60m
+          script: |
+            cd workspace/github
+            ./load_data_by_pod.sh -u ${TEST_UID} --only_create_database
+      - name: Test DDL Case
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 400m
+          script: |
+            cd workspace/github
+            ./create_test_runner.sh -u ${TEST_UID} -i 2 -t ddl
+      - name: Get DDL Test Report Files
+        id: ddl_reports
+        run: |
+          mkdir -p ddl
+          sshpass -p ${{ secrets.ECS_PASSWORD }} scp -r -o StrictHostKeyChecking=no -P ${{ secrets.ECS_PORT }} ${{ secrets.ECS_USERNAME }}@${{ secrets.ECS_HOST }}:/root/workspace/reports/${TEST_UID}/2/surefire-reports.tar.gz ddl/surefire-reports.tar.gz
+          ls -R ddl
+          echo "tar file:"
+          tar -zxvf ddl/surefire-reports.tar.gz -C ddl
+      - name: Analyze DDL Test Result
+        if: ${{ always() && steps.ddl_reports.outcome == 'success' }}
+        uses: scacap/action-surefire-report@v1
+        with:
+          check_name: DDL Test Result
+          report_paths: ddl/surefire-reports/TEST-*.xml
+          fail_on_test_failures: true
+      - name: Clean up PolarDB-X Cluster
+        if: ${{ always() && steps.ddl_deploy.outcome == 'success' }}
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USERNAME }}
+          key: ${{ secrets.ECS_KEY }}
+          port: ${{ secrets.ECS_PORT }}
+          envs: TEST_UID,GIT_URL,COMMIT_ID,CODE_REF
+          command_timeout: 200m
+          script: |
+            cd workspace/github
+            ./cleanup.sh -u ${TEST_UID}
+        
