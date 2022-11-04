@@ -1871,7 +1871,7 @@ public class ExecUtils {
             return com.alibaba.polardbx.common.utils.Pair.of(true,
                 "ENABLE_BACKGROUND_STATISTIC_COLLECTION not enabled");
         }
-        if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+        if (!InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
             return com.alibaba.polardbx.common.utils.Pair.of(true, "ENABLE_HLL not enabled");
         }
         try {

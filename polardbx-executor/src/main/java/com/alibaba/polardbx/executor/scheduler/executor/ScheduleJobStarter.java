@@ -89,7 +89,7 @@ public class ScheduleJobStarter {
                 List<ScheduledJobsRecord> list =
                     scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
                 if (list.size() > 0) {
-                    logger.warn("Scheduled Job For BASELINE_SYNC Has Exist");
+                    logger.warn("Scheduled Job For STATISTIC_ROWCOUNT_COLLECTION Has Exist");
                     return 0;
                 }
                 return scheduledJobsAccessor.insert(scheduledJobsRecord);
@@ -118,7 +118,7 @@ public class ScheduleJobStarter {
                 List<ScheduledJobsRecord> list =
                     scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
                 if (list.size() > 0) {
-                    logger.warn("Scheduled Job For BASELINE_SYNC Has Exist");
+                    logger.warn("Scheduled Job For STATISTIC_SAMPLE_SKETCH Has Exist");
                     return 0;
                 }
                 return scheduledJobsAccessor.insert(scheduledJobsRecord);

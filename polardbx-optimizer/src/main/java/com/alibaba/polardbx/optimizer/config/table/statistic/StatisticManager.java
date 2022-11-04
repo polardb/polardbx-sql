@@ -895,6 +895,10 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
             Map<String, String> topNMap = new HashMap<>();
             for (String columnName : cacheLine.getTopNMap().keySet()) {
                 columnName = columnName.toLowerCase(Locale.ROOT);
+                TopN topN = cacheLine.getTopNMap().get(columnName);
+                if (topN == null) {
+                    continue;
+                }
                 topNMap.put(columnName, TopN.serializeToJson(cacheLine.getTopNMap().get(columnName)));
             }
             cacheLineJson.put("topNMap", topNMap);

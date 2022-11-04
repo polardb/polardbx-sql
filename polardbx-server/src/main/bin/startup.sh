@@ -379,7 +379,7 @@ if [ -f $pidfile ] ; then
   fi
 fi
 
-JavaVersion=`$JAVA -version 2>&1 |awk 'NR==1{ gsub(/"/,""); print $3 }' | awk  -F '.' '{print $1}'`
+JavaVersion=`$JAVA -version 2>&1 |awk -F "version" '{print $2}' | sed -e '/^$/d' -e 's/"//g' | awk 'NR==1{ gsub(/"/,""); print $1}' | awk -F "." '{print $1}'`
 
 if [ -f $pidfile ] ; then
 	echo "found $pidfile , Please run shutdown.sh first ,then startup.sh" 2>&2

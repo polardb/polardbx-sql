@@ -21,11 +21,9 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.oss.OSSMetaLifeCycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.IntConfigParam;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
@@ -50,7 +48,9 @@ import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
@@ -76,6 +76,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.clearspring.analytics.stream.cardinality.HyperLogLog;
+import com.clearspring.analytics.stream.membership.BloomFilter;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.airlift.slice.Slice;
@@ -92,6 +93,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -109,8 +111,6 @@ import static com.alibaba.polardbx.executor.scheduler.executor.statistic.Statist
 import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.WARNING;
-import static com.alibaba.polardbx.gms.module.LogPattern.INTERRUPTED;
-import static com.alibaba.polardbx.gms.module.LogPattern.PROCESSING;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_END;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_START;
 import static com.alibaba.polardbx.gms.module.LogPattern.UNEXPECTED;
@@ -129,8 +129,16 @@ public class StatisticUtils {
     /**
      * select table rows sql, need to concat with where filter
      */
-    private static final String SELECT_TABLE_ROWS_SQL =
+    static final String SELECT_TABLE_ROWS_SQL =
         "SELECT table_schema, table_name, table_rows FROM information_schema.tables";
+
+    private static String PRESENT_SQL = "select sum(extent_size) as size from files where "
+        + "logical_schema_name = '%s' and logical_table_name = '%s' and remove_ts is null and " +
+        "life_cycle = " + OSSMetaLifeCycle.READY.ordinal();
+
+    private static String DATA_FREE_SQL = "select sum(extent_size) as size from files where "
+        + "logical_schema_name = '%s' and logical_table_name = '%s' and remove_ts is not null and " +
+        "life_cycle = " + OSSMetaLifeCycle.READY.ordinal();
 
     public static boolean forceAnalyzeColumns(String schema, String logicalTableName) {
         try {
@@ -164,19 +172,13 @@ public class StatisticUtils {
                     schema + "," + logicalTableName
                 },
                 NORMAL);
-        Set<String> dnIds =
-            StorageHaManager.getInstance().getMasterStorageList().stream().filter(s -> !s.isMetaDb())
-                .map(StorageInstHaContext::getStorageInstId).collect(
-                    Collectors.toSet());
-        Map<String, Map<String, Long>> rowCountMap = Maps.newHashMap();
-        for (String dnId : dnIds) {
+        long sum = 0;
+        if (isFileStore(schema, logicalTableName)) {
             try {
-                Map<String, Map<String, Long>> rowRs = collectRowCount(dnId);
-                if (rowRs != null) {
-                    rowCountMap.putAll(rowRs);
-                }
+                Map<String, Long> fileStorageStatisticMap = getFileStoreStatistic(schema, logicalTableName);
+                sum = fileStorageStatisticMap.get("TABLE_ROWS");
             } catch (Throwable e) {
-                String remark = "statistic collection rowcount error: " + e.getMessage();
+                String remark = "file storage statistic collection rowcount error: " + e.getMessage();
                 ModuleLogInfo.getInstance()
                     .logRecord(
                         Module.STATISTIC,
@@ -188,20 +190,50 @@ public class StatisticUtils {
                         WARNING);
                 throw e;
             }
+        } else {
+            Map<String, Set<String>> topologyMap = getTopology(schema, logicalTableName);
+            if (topologyMap == null) {
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.STATISTIC,
+                        UNEXPECTED,
+                        new String[] {
+                            STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
+                            schema + "," + logicalTableName + " topology is null"
+                        },
+                        WARNING);
+            }
+            Collection<String> tbls = Sets.newHashSet();
+            topologyMap.values().stream().forEach(names -> tbls.addAll(names));
+
+            Set<String> dnIds =
+                StorageHaManager.getInstance().getMasterStorageList().stream().filter(s -> !s.isMetaDb())
+                    .map(StorageInstHaContext::getStorageInstId).collect(
+                        Collectors.toSet());
+            Map<String, Map<String, Long>> rowCountMap = Maps.newHashMap();
+            for (String dnId : dnIds) {
+                try {
+                    Map<String, Map<String, Long>> rowRs = collectRowCount(dnId, tbls);
+                    if (rowRs != null) {
+                        rowCountMap.putAll(rowRs);
+                    }
+                } catch (Throwable e) {
+                    String remark = "statistic collection rowcount error: " + e.getMessage();
+                    ModuleLogInfo.getInstance()
+                        .logRecord(
+                            Module.STATISTIC,
+                            UNEXPECTED,
+                            new String[] {
+                                STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
+                                schema + "," + logicalTableName + ":" + remark
+                            },
+                            WARNING);
+                    throw e;
+                }
+            }
+
+            sum = sumRowCount(topologyMap, rowCountMap);
         }
-        Map<String, Set<String>> topologyMap = getTopology(schema, logicalTableName);
-        if (topologyMap == null) {
-            ModuleLogInfo.getInstance()
-                .logRecord(
-                    Module.STATISTIC,
-                    UNEXPECTED,
-                    new String[] {
-                        STATISTIC_ROWCOUNT_COLLECTION + " FROM ANALYZE",
-                        schema + "," + logicalTableName + " topology is null"
-                    },
-                    WARNING);
-        }
-        long sum = sumRowCount(topologyMap, rowCountMap);
         StatisticManager.CacheLine cacheLine = StatisticManager.getInstance().getCacheLine(schema, logicalTableName);
         cacheLine.setRowCount(sum);
         cacheLine.setLastModifyTime(unixTimeStamp());
@@ -237,7 +269,7 @@ public class StatisticUtils {
         return true;
     }
 
-    private static void persistStatistic(String schema, String logicalTableName, boolean withColumnStatistic) {
+    public static void persistStatistic(String schema, String logicalTableName, boolean withColumnStatistic) {
         long start = System.currentTimeMillis();
         ArrayList<SystemTableTableStatistic.Row> rowList = new ArrayList<>();
         StatisticManager.CacheLine cacheLine = StatisticManager.getInstance().getCacheLine(schema, logicalTableName);
@@ -335,13 +367,18 @@ public class StatisticUtils {
      * hyper loglog process
      */
     public static void sketchTable(String schema, String logicalTableName, boolean needRebuild) {
+        // don't sketch archive table
+        if (isFileStore(schema, logicalTableName)) {
+            return;
+        }
+
         List<ColumnMeta> columnMetaList = getColumnMetas(false, schema, logicalTableName);
 
         if (columnMetaList == null || columnMetaList.isEmpty()) {
             ModuleLogInfo.getInstance().logRecord(Module.STATISTIC, UNEXPECTED,
                 new String[] {
                     "statistic sketch",
-        "column meta is empty :" + schema + "," + logicalTableName
+                    "column meta is empty :" + schema + "," + logicalTableName
                 }, LogLevel.NORMAL);
             return;
         }
@@ -480,13 +517,6 @@ public class StatisticUtils {
             histogramBucketSize = Math.min(histogramBucketSize, 64);
         }
 
-        List<HyperLogLog> hyperLogLogList = Lists.newArrayList();
-        List<Long> nullCountList = new ArrayList<>();
-        for (int i = 0; i < analyzeColumnList.size(); i++) {
-            hyperLogLogList.add(new HyperLogLog(16));
-            nullCountList.add(0L);
-        }
-
         /**
          * sample process
          */
@@ -496,21 +526,67 @@ public class StatisticUtils {
             scanAnalyze(schemaName, logicalTableName, analyzeColumnList, sampleRate, maxSampleSize, rows);
         for (int i = 0; i < analyzeColumnList.size(); i++) {
             String colName = analyzeColumnList.get(i).getField().getOriginColumnName();
+
+            HyperLogLog hyperLogLog = new HyperLogLog(16);
+            GEESample geeSample = new GEESample(rows.size());
+            long nullCount = 0L;
+
             for (Row r : rows) {
                 Object columnValue = r.getObject(i);
-                hyperLogLogList.get(i).offer(columnValue);
+                hyperLogLog.offer(columnValue);
                 if (columnValue == null) {
-                    nullCountList.set(i, nullCountList.get(i) + 1);
+                    nullCount++;
+                } else {
+                    geeSample.addElement(columnValue.toString());
                 }
             }
-            cacheLine.setCardinality(colName, (long) (hyperLogLogList.get(i).cardinality()/ sampleRate / sampleRateUp));
-            cacheLine.setNullCount(colName, nullCountList.get(i));
+
+            /*
+             * Use BC_GEE to estimate cardinality
+             */
+            double d = hyperLogLog.cardinality();
+            double f1 = geeSample.getCountFresh();
+            double sumf2tofn = geeSample.getCountDuplicated();
+            double lowerBound;
+            double n = rows.size();
+            double N = rowCount;
+            if (n <= 0) {
+                n = 1;
+            }
+            if (N <= 0) {
+                N = 1;
+            }
+            if (f1 >= n * Math.pow(1 - 1.0 / n, n - 1) && n != 1) {
+                lowerBound = 1.0 / (1 - Math.pow(f1 / n, 1 / (n - 1)));
+            } else {
+                lowerBound = f1 / Math.pow(1 - 1.0 / n, n - 1);
+            }
+            double upperBound = d / (1 - Math.pow(1 - 1.0 / N, n));
+
+            lowerBound = Math.max(d, Math.min(lowerBound, N));
+            upperBound = Math.max(d, Math.min(upperBound, N));
+
+            double lbc = Math.max(f1, lowerBound - sumf2tofn);
+            double ubc = Math.min(f1 * N / n, upperBound - sumf2tofn);
+            double cardinality = Math.sqrt(lbc * ubc) + sumf2tofn;
+
+            cacheLine.setCardinality(colName, (long) cardinality);
+            cacheLine.setNullCount(colName, nullCount);
         }
 
         for (int i = 0; i < analyzeColumnList.size(); i++) {
             int finalI = i;
             List<Object> objs =
                 rows.stream().map(r -> r.getObject(finalI)).filter(o -> o != null).collect(Collectors.toList());
+            if (!CollectionUtils.isEmpty(objs)) {
+                if (objs.get(0) instanceof Slice) {
+                    objs = objs.stream().map(o -> ((Slice) o).toStringUtf8()).collect(Collectors.toList());
+                } else {
+                    if (objs.get(0) instanceof Decimal) {
+                        objs = objs.stream().map(o -> ((Decimal) o).toBigDecimal()).collect(Collectors.toList());
+                    }
+                }
+            }
             DataType dataType = analyzeColumnList.get(i).getField().getDataType();
             String colName = analyzeColumnList.get(i).getField().getOriginColumnName();
             TopN topN = new TopN(dataType, sampleRateUp);
@@ -535,6 +611,37 @@ public class StatisticUtils {
                 "statistic sample",
                 schemaName + "," + logicalTableName
             }, LogLevel.NORMAL);
+    }
+
+    private static Row purgeRowForHistogram(Row r, int size) {
+        Row tmpRow = new ArrayRow(size, r.getParentCursorMeta());
+        for (int i = 0; i < size; i++) {
+            try {
+                Object columnValue = r.getObject(i);
+                if (columnValue instanceof Slice) {
+                    columnValue = ((Slice) columnValue).toStringUtf8();
+                } else if (columnValue instanceof Decimal) {
+                    columnValue = ((Decimal) columnValue).toBigDecimal();
+                }
+                // pruning too long data
+                if (columnValue instanceof String) {
+                    String s = (String) columnValue;
+                    if (s.length() > DATA_MAX_LEN) {
+                        columnValue = s.substring(0, DATA_MAX_LEN);
+                    }
+                } else if (columnValue instanceof byte[]) {
+                    byte[] byteArray = (byte[]) columnValue;
+                    if (byteArray.length > DATA_MAX_LEN) {
+                        columnValue = Arrays.copyOfRange(byteArray, 0, DATA_MAX_LEN);
+                    }
+                }
+                tmpRow.setObject(i, columnValue);
+            } catch (Throwable e) {
+                // deal with TResultSet getObject error
+                continue;
+            }
+        }
+        return tmpRow;
     }
 
     private static double scanAnalyze(String schema, String logicalTableName, List<ColumnMeta> columnMetaList,
@@ -565,40 +672,13 @@ public class StatisticUtils {
             do {
                 if (r != null) {
                     if (rowcount > maxSampleSize) {
-                        if (rand.nextInt(rowcount) > maxSampleSize) {
-                            rows.set(rand.nextInt(maxSampleSize), r);
+                        if (rand.nextInt(rowcount) < maxSampleSize) {
+                            rows.set(rand.nextInt(maxSampleSize), purgeRowForHistogram(r, columnMetaList.size()));
                         } else {
                             // ignore
                         }
                     } else {
-                        Row tmpRow = new ArrayRow(columnMetaList.size(), r.getParentCursorMeta());
-                        for (int i = 0; i < columnMetaList.size(); i++) {
-                            try {
-                                Object columnValue = r.getObject(i);
-                                if (columnValue instanceof Slice) {
-                                    columnValue = ((Slice) columnValue).toStringUtf8();
-                                } else if (columnValue instanceof Decimal) {
-                                    columnValue = ((Decimal) columnValue).toBigDecimal();
-                                }
-                                // pruning too long data
-                                if (columnValue instanceof String) {
-                                    String s = (String) columnValue;
-                                    if (s.length() > DATA_MAX_LEN) {
-                                        columnValue = s.substring(0, DATA_MAX_LEN);
-                                    }
-                                } else if (columnValue instanceof byte[]) {
-                                    byte[] byteArray = (byte[]) columnValue;
-                                    if (byteArray.length > DATA_MAX_LEN) {
-                                        columnValue = Arrays.copyOfRange(byteArray, 0, DATA_MAX_LEN);
-                                    }
-                                }
-                                tmpRow.setObject(i, columnValue);
-                            } catch (Throwable e) {
-                                // deal with TResultSet getObject error
-                                continue;
-                            }
-                        }
-                        rows.add(tmpRow);
+                        rows.add(purgeRowForHistogram(r, columnMetaList.size()));
                     }
                     rowcount++;
                 }
@@ -614,7 +694,7 @@ public class StatisticUtils {
             if (trx != null) {
                 trx.close();
             }
-            if(ec != null) {
+            if (ec != null) {
                 ec.clearContextAfterTrans();
             }
         }
@@ -647,7 +727,8 @@ public class StatisticUtils {
     /**
      * @return phy schema-> phy table name -> rows num
      */
-    public static Map<String, Map<String, Long>> collectRowCount(String dnId) throws SQLException {
+    public static Map<String, Map<String, Long>> collectRowCount(String dnId, Collection<String> tblNames)
+        throws SQLException {
         Map<String, Map<String, Long>> rowCountsMap = Maps.newHashMap();
         Connection conn = null;
         Statement stmt = null;
@@ -656,7 +737,8 @@ public class StatisticUtils {
             conn = DbTopologyManager.getConnectionForStorage(dnId, InstConfUtil.getInt(STATISTIC_VISIT_DN_TIMEOUT));
             avoidInformationSchemaCache(conn);
             stmt = conn.createStatement();
-            rs = stmt.executeQuery(SELECT_TABLE_ROWS_SQL);
+            String sql = buildCollectRowCountSql(tblNames);
+            rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 String tableSchema = rs.getString("table_schema");
                 String tableName = rs.getString("table_name");
@@ -687,6 +769,22 @@ public class StatisticUtils {
             JdbcUtils.close(stmt);
             JdbcUtils.close(conn);
         }
+    }
+
+    /**
+     * build dn sql to collect rowcount, tbl names is null or empty meaning collect all table info
+     *
+     * @param tblNames target tables
+     * @return collect rowcount sql
+     */
+    public static String buildCollectRowCountSql(Collection<String> tblNames) {
+        String sql;
+        if (tblNames == null || tblNames.isEmpty()) {
+            sql = SELECT_TABLE_ROWS_SQL;
+        } else {
+            sql = SELECT_TABLE_ROWS_SQL + " WHERE TABLE_NAME IN ('" + String.join("','", tblNames) + "')";
+        }
+        return sql;
     }
 
     private static void avoidInformationSchemaCache(Connection conn) throws SQLException {
@@ -790,4 +888,98 @@ public class StatisticUtils {
         return sum.get();
     }
 
+    /**
+     * Implementation of Guaranteed-Error Estimator
+     */
+    static class GEESample {
+
+        private static final double BLOOM_FILTER_MAX_FP = 0.05;
+
+        private final BloomFilter bloomFilterOnce;
+        private final BloomFilter bloomFilterTwice;
+
+        private long countFresh = 0; // f0
+        private long countDuplicated = 0; // sum(f1..n)
+
+        public GEESample(int size) {
+            this.bloomFilterOnce = new BloomFilter(size, BLOOM_FILTER_MAX_FP);
+            this.bloomFilterTwice = new BloomFilter(size, BLOOM_FILTER_MAX_FP);
+        }
+
+        public long getCountFresh() {
+            return countFresh;
+        }
+
+        public long getCountDuplicated() {
+            return countDuplicated;
+        }
+
+        public void addElement(String e) {
+            if (!bloomFilterOnce.isPresent(e)) {
+                bloomFilterOnce.add(e);
+                countFresh++;
+            } else if (!bloomFilterTwice.isPresent(e)) {
+                bloomFilterTwice.add(e);
+                countDuplicated++;
+                countFresh--;
+                countFresh = Math.max(countFresh, 0); // just in case
+            }
+        }
+    }
+
+    public static boolean isFileStore(String schema, String logicalTableName) {
+        try {
+            TableMeta tm = OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(logicalTableName);
+            return tm != null && Engine.isFileStore(tm.getEngine());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static Map<String, Long> getFileStoreStatistic(String schema, String logicalTableName) {
+
+        TableMeta tableMeta = OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(logicalTableName);
+        long tableRows = 0L;
+        long dataLength = 0L;
+        long indexLength = 0;
+        long dataFree = 0;
+        for (List<FileMeta> fileMetas : tableMeta.getFlatFileMetas().values()) {
+            for (FileMeta fileMeta : fileMetas) {
+                if (fileMeta instanceof OSSOrcFileMeta) {
+                    OSSOrcFileMeta ossOrcFileMeta = (OSSOrcFileMeta) fileMeta;
+                    if (ossOrcFileMeta.getRemoveTs() == null) {
+                        tableRows += ossOrcFileMeta.getTableRows();
+                        dataLength += ossOrcFileMeta.getFileSize();
+                    }
+                }
+            }
+        }
+
+        try (Connection connection = MetaDbUtil.getConnection();
+            Statement statement = connection.createStatement()) {
+            ResultSet results = statement.executeQuery(
+                String.format(PRESENT_SQL, schema, logicalTableName));
+            if (results.next()) {
+                // total length - date length
+                indexLength = results.getLong("size") - dataLength;
+            }
+            results.close();
+            results = statement.executeQuery(
+                String.format(DATA_FREE_SQL, schema, logicalTableName));
+            if (results.next()) {
+                dataFree = results.getLong("size");
+            }
+            results.close();
+        } catch (SQLException e) {
+            logger.error(e);
+            throw GeneralUtil.nestedException(e);
+        }
+
+        Map<String, Long> statisticMap = new HashMap<>();
+        statisticMap.put("TABLE_ROWS", tableRows);
+        statisticMap.put("DATA_LENGTH", dataLength);
+        statisticMap.put("INDEX_LENGTH", indexLength);
+        statisticMap.put("DATA_FREE", dataFree);
+        return statisticMap;
+    }
 }

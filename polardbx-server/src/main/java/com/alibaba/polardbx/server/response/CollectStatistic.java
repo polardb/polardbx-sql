@@ -18,14 +18,15 @@ package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
-import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
-import com.alibaba.polardbx.net.packet.OkPacket;
-import com.alibaba.polardbx.server.ServerConnection;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateRowCountSyncAction;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
+import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
+import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.server.ServerConnection;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -56,13 +57,22 @@ public class CollectStatistic {
             }
         }
 
+        String schemaLower = schema.getName().toLowerCase();
         Map<String, Long> rowCountMap = new HashMap<>();
-        for (String logicalTableName : StatisticManager.getInstance().getStatisticCache().keySet()) {
-            sampleTable(schema.getName(), logicalTableName);
+        for (String logicalTableName : StatisticManager.getInstance().getStatisticCache()
+            .get(schemaLower).keySet()) {
+            if (StatisticUtils.isFileStore(schemaLower, logicalTableName)) {
+                // don't sample oss table
+                Map<String, Long> statisticMap =
+                    StatisticUtils.getFileStoreStatistic(schema.getName(), logicalTableName);
+                rowCountMap.put(logicalTableName, statisticMap.get("TABLE_ROWS"));
+                continue;
+            }
+            sampleTable(schemaLower, logicalTableName);
             rowCountMap.put(logicalTableName,
-                StatisticManager.getInstance().getCacheLine(schema.getName(), logicalTableName).getRowCount());
+                StatisticManager.getInstance().getCacheLine(schemaLower, logicalTableName).getRowCount());
         }
-        SyncManagerHelper.sync(new UpdateRowCountSyncAction(c.getSchema(), rowCountMap), c.getSchema());
+        SyncManagerHelper.sync(new UpdateRowCountSyncAction(schemaLower, rowCountMap), c.getSchema());
         PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
     }
 }

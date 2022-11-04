@@ -39,7 +39,15 @@
                 <exclude>**/META-INF/**</exclude>
                 <exclude>**/server.properties</exclude>
                 <exclude>**/logback.xml</exclude>
+                <exclude>native/**</exclude>
             </excludes>
+        </fileSet>
+        <fileSet>
+            <directory>./src/main/native</directory>
+            <outputDirectory>lib/native</outputDirectory>
+            <includes>
+                <include>**/libsigar-amd64-linux.so</include>
+            </includes>
         </fileSet>
         <fileSet>
             <directory>target</directory>
