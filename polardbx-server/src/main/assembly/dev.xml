@@ -47,6 +47,7 @@
             <outputDirectory>lib/native</outputDirectory>
             <includes>
                 <include>**/libsigar-amd64-linux.so</include>
+                <include>**/libsigar-aarch64-linux.so</include>
             </includes>
         </fileSet>
         <fileSet>
