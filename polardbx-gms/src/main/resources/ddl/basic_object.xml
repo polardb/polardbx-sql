@@ -343,6 +343,7 @@
             key `table_index`(`table_schema`, `table_name`),
             key `task_id` (`task_id`),
             KEY `file_name`(`file_name`(255)),
+            KEY `logical_name`(`logical_schema_name`,`logical_table_name`),
             primary key (`file_id`)
          ) charset=utf8
         ]]></Create>
@@ -351,6 +352,9 @@
         ]]> </Change>
         <Change><![CDATA[
             alter table `files` add column `local_partition_name` varchar(255) default null
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `files` add key `logical_name`(`logical_schema_name`,`logical_table_name`)
         ]]> </Change>
     </SystemTable>
 

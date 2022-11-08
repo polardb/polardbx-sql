@@ -189,7 +189,7 @@ public class NDVShardSketch {
      * update all shard parts
      */
     public boolean updateAllShardParts() throws SQLException {
-        if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+        if (!InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
             // just return
             ModuleLogInfo.getInstance()
                 .logRecord(
@@ -467,7 +467,7 @@ public class NDVShardSketch {
     public static NDVShardSketch buildNDVShardSketch(String schemaName, String tableName, String columnName,
                                                      boolean isForce)
         throws SQLException {
-        if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+        if (!InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
             // just return
             ModuleLogInfo.getInstance()
                 .logRecord(
@@ -652,7 +652,7 @@ public class NDVShardSketch {
                     }
                 } else {
                     // from analyze table
-                    if (InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
+                    if (!InstConfUtil.getBool(ConnectionParams.ENABLE_HLL)) {
                         // just return
                         ModuleLogInfo.getInstance()
                             .logRecord(

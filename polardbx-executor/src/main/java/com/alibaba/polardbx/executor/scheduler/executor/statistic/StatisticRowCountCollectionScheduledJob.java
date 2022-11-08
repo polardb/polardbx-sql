@@ -133,7 +133,7 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
                     return succeedExit(scheduleId, fireTime, remark);
                 }
                 try {
-                    Map<String, Map<String, Long>> rowRs = collectRowCount(dnId);
+                    Map<String, Map<String, Long>> rowRs = collectRowCount(dnId, null);
                     if (rowRs != null) {
                         rowCountMap.putAll(rowRs);
                     }

@@ -27,6 +27,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
@@ -45,6 +46,7 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
 
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -59,7 +61,6 @@ import java.util.stream.Collectors;
  * @author shengyu
  */
 public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandler {
-
     private static final Logger logger = LoggerFactory.getLogger(InformationSchemaTablesHandler.class);
 
     public InformationSchemaTablesHandler(VirtualViewHandler virtualViewHandler) {
@@ -248,10 +249,29 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             }
                         }
 
-                        long data_length = rs.getLong("DATA_LENGTH");
+                        long single_data_length = rs.getLong("DATA_LENGTH");
                         double scale = 1;
-                        if (data_length != 0 && rs.getLong("AVG_ROW_LENGTH") > 0) {
-                            scale = ((double) (tableRows * rs.getLong("AVG_ROW_LENGTH"))) / data_length;
+                        if (single_data_length != 0 && rs.getLong("AVG_ROW_LENGTH") > 0) {
+                            scale = ((double) (tableRows * rs.getLong("AVG_ROW_LENGTH"))) / single_data_length;
+                        }
+                        long dataLength = (long) (single_data_length * scale);
+                        long indexLength = (long) (rs.getLong("INDEX_LENGTH") * scale);
+                        long dataFree = (long) (rs.getLong("DATA_FREE") * scale);
+                        BigInteger avgRowLength = (BigInteger) rs.getObject("AVG_ROW_LENGTH");
+                        // build info for file storage table
+                        if (!rs.getString("TABLE_SCHEMA").equalsIgnoreCase("information_schema")) {
+                            if (StatisticUtils.isFileStore(schemaName, logicalTableName)) {
+                                Map<String, Long> statisticMap =
+                                    StatisticUtils.getFileStoreStatistic(schemaName, logicalTableName);
+                                tableRows = statisticMap.get("TABLE_ROWS");
+                                dataLength = statisticMap.get("DATA_LENGTH");
+                                indexLength = statisticMap.get("INDEX_LENGTH");
+                                dataFree = statisticMap.get("DATA_FREE");
+                                if (tableRows != 0) {
+                                    avgRowLength = BigInteger.valueOf(dataLength / tableRows);
+                                }
+                            }
+
                         }
 
                         cursor.addRow(new Object[] {
@@ -263,11 +283,11 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                             rs.getObject("VERSION"),
                             rs.getObject("ROW_FORMAT"),
                             tableRows,
-                            rs.getObject("AVG_ROW_LENGTH"),
-                            rs.getLong("DATA_LENGTH") * scale,
+                            avgRowLength,
+                            dataLength,
                             rs.getObject("MAX_DATA_LENGTH"),
-                            rs.getLong("INDEX_LENGTH") * scale,
-                            rs.getLong("DATA_FREE") * scale,
+                            indexLength,
+                            dataFree,
                             rs.getObject("AUTO_INCREMENT"),
                             rs.getObject("CREATE_TIME"),
                             rs.getObject("UPDATE_TIME"),

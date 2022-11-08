@@ -1264,7 +1264,7 @@ public class ConnectionParams {
         ConnectionProperties.BACKFILL_MAX_SAMPLE_PERCENTAGE, -1f, 100f, 10f, true);
 
     public static final BooleanConfigParam ENABLE_INNODB_BTREE_SAMPLING = new BooleanConfigParam(
-        ConnectionProperties.ENABLE_INNODB_BTREE_SAMPLING, true, true);
+        ConnectionProperties.ENABLE_INNODB_BTREE_SAMPLING, false, true);
 
     public static final IntConfigParam HISTOGRAM_MAX_SAMPLE_SIZE = new IntConfigParam(
         ConnectionProperties.HISTOGRAM_MAX_SAMPLE_SIZE, 1000, Integer.MAX_VALUE, 100000, true);
