@@ -195,6 +195,7 @@ public class ServerVariables {
         variables.add("innodb_checksum_algorithm");
         variables.add("innodb_checksums");
         variables.add("innodb_cmp_per_index_enabled");
+        variables.add("innodb_commit_cleanout_max_rows");
         variables.add("innodb_commit_concurrency");
         variables.add("innodb_compression_failure_threshold_pct");
         variables.add("innodb_compression_level");
@@ -1432,6 +1433,7 @@ public class ServerVariables {
         mysqlGlobalVariables.add("innodb_checkpoint_disabled");
         mysqlGlobalVariables.add("innodb_checksum_algorithm");
         mysqlGlobalVariables.add("innodb_cmp_per_index_enabled");
+        mysqlGlobalVariables.add("innodb_commit_cleanout_max_rows");
         mysqlGlobalVariables.add("innodb_commit_concurrency");
         mysqlGlobalVariables.add("innodb_compress_debug");
         mysqlGlobalVariables.add("innodb_compression_failure_threshold_pct");
@@ -2238,6 +2240,7 @@ public class ServerVariables {
         mysqlDynamicVariables.add("innodb_checkpoint_disabled");
         mysqlDynamicVariables.add("innodb_checksum_algorithm");
         mysqlDynamicVariables.add("innodb_cmp_per_index_enabled");
+        mysqlDynamicVariables.add("innodb_commit_cleanout_max_rows");
         mysqlDynamicVariables.add("innodb_commit_concurrency");
         mysqlDynamicVariables.add("innodb_compress_debug");
         mysqlDynamicVariables.add("innodb_compression_failure_threshold_pct");
