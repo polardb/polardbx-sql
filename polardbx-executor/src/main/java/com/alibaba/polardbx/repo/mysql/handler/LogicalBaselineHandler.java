@@ -72,7 +72,6 @@ public class LogicalBaselineHandler extends HandlerCommon {
             "BASELINE FEEDBACK_WORKLOAD SQL <HINT> <Select Statement>"),
         LOAD("Load all baseline info from disk to RAM", "BASELINE LOAD <baseline id>"),
         PERSIST("Write the specified baseline into disk", "BASELINE PERSIST <baseline id>"),
-        CLEAR("Clear baseline in RAM by baseline id", "BASELINE CLEAR <baseline id>"),
         VALIDATE("Check baseline", "BASELINE VALIDATE <baseline id>"),
         DELETE("Delete baseline in disk by baseline id", "BASELINE DELETE <baseline id>"),
         DELETE_ALL("Delete baseline in disk", "BASELINE DELETE_ALL>"),
@@ -102,7 +101,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
 
         case "SELECT": {
             String parameterizedSql = sqlBaseline.getParameterizedSql();
-            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap().get(schema);
+            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap(schema);
             BaselineInfo baselineInfo = baselineInfoMap.get(parameterizedSql);
             baselineIds = new ArrayList<>();
             if (baselineInfo != null) {
@@ -127,7 +126,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
             } else if (workloadType == WorkloadType.TP) {
                 feedBackWorkload = WorkloadType.AP;
             }
-            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap().get(schema);
+            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap(schema);
             BaselineInfo baselineInfo = baselineInfoMap.get(parameterizedSql);
 
             if (feedBackWorkload != null && baselineInfo != null && plannerContext.getPlanInfo() != null) {
@@ -158,7 +157,6 @@ public class LogicalBaselineHandler extends HandlerCommon {
 
         case "LOAD":
         case "PERSIST":
-        case "CLEAR":
         case "VALIDATE":
         case "DELETE":
         case "DELETE_ALL":
@@ -202,7 +200,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
         planExecutor.init();
 
         ExecutionPlan executionPlan = Planner.getInstance().plan(hint + " " + parameterizedSql, executionContext);
-        Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap().get(schemaName);
+        Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap(schemaName);
         BaselineInfo baselineInfo = baselineInfoMap.get(parameterizedSql);
         RelNode plan = executionPlan.getPlan();
         SqlNode ast = executionPlan.getAst();
@@ -253,8 +251,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
                     break;
                 case "DELETE": {
                     BaselineSyncController baselineSyncController = new BaselineSyncController();
-                    for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName)
-                        .values()) {
+                    for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap(schemaName).values()) {
                         if (baselineInfo.getId() == id) {
                             baselineSyncController.deleteBaseline(schemaName, baselineInfo);
                         }
@@ -263,8 +260,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
                 }
                 case "DELETE_PLAN": {
                     BaselineSyncController baselineSyncController = new BaselineSyncController();
-                    for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName)
-                        .values()) {
+                    for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap(schemaName).values()) {
                         for (PlanInfo planInfo : baselineInfo.getAcceptedPlans().values()) {
                             if (planInfo.getId() == id) {
                                 baselineSyncController.deletePlan(schemaName, baselineInfo, planInfo);
@@ -290,7 +286,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
                 break;
             case "DELETE_ALL": {
                 BaselineSyncController baselineSyncController = new BaselineSyncController();
-                for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName).values()) {
+                for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap(schemaName).values()) {
                     baselineSyncController.deleteBaseline(schemaName, baselineInfo);
                 }
                 break;
@@ -331,7 +327,7 @@ public class LogicalBaselineHandler extends HandlerCommon {
         result.addColumn("FIXED", DataTypes.TinyIntType);
         result.addColumn("ACCEPTED", DataTypes.TinyIntType);
         result.addColumn("ORIGIN", DataTypes.StringType);
-        for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap().get(schemaName).values()) {
+        for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap(schemaName).values()) {
             if (!baselineIdSet.isEmpty() && !baselineIdSet.contains(baselineInfo.getId())) {
                 continue;
             }

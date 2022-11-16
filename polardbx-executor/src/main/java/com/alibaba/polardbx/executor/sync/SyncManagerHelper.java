@@ -23,7 +23,6 @@ import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.gms.sync.ISyncResultHandler;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 
 import java.util.List;
 import java.util.Map;

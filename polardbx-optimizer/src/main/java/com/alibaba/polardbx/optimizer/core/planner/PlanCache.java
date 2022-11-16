@@ -19,21 +19,6 @@ package com.alibaba.polardbx.optimizer.core.planner;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
-import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.alibaba.polardbx.optimizer.exception.OptimizerException;
-import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
-import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
-import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.UncheckedExecutionException;
-import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -43,7 +28,6 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
-import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -52,36 +36,22 @@ import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
-import com.alibaba.polardbx.optimizer.exception.OptimizerException;
-import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
-import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
-import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
-import com.alibaba.polardbx.rule.MappingRule;
-import com.alibaba.polardbx.rule.TableRule;
-import com.alibaba.polardbx.rule.meta.ShardFunctionMeta;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.UncheckedExecutionException;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -200,8 +170,7 @@ public final class PlanCache {
             } else {
                 // NOTE: BuildFinalPlanVisitor will change ast, so need compute tableSet in advance
                 Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(ast);
-                int tableSetHashCode =
-                    PlanManagerUtil.computeTablesHashCode(tableSet, schema, ec);
+                int tablesVersion = PlanManagerUtil.computeTablesVersion(tableSet, schema, ec);
                 PlannerContext plannerContext = PlannerContext.fromExecutionContext(ec);
                 ExecutionPlan executionPlan = Planner.getInstance().getPlan(ast, plannerContext);
                 if (ec.getLoadDataContext() != null) {
@@ -217,7 +186,7 @@ public final class PlanCache {
 
                 Map<String, TableMeta> tableMetaSet =
                     PlanManagerUtil.getTableMetaSetByTableSet(tableSet, ec);
-                executionPlan.saveCacheState(tableSet, tableSetHashCode, cacheKey, tableMetaSet);
+                executionPlan.saveCacheState(tableSet, tablesVersion, cacheKey, tableMetaSet);
 
                 // set privilegeVerifyItems to logicalPlan and clear
                 // privilegeVerifyItems in privilegeContext
@@ -454,73 +423,6 @@ public final class PlanCache {
         public String getSchema() {
             return schema;
         }
-    }
-
-    /**
-     * if use latest schema manager
-     */
-    private static int computeTablesHashCode(Set<Pair<String, String>> schemaTables, String defaultSchemaName,
-                                             ExecutionContext executionContext) {
-        // plan manager only compute table column Meta HashCode, which lack of tableRule information
-        int preHashCode = PlanManagerUtil.computeTablesHashCode(schemaTables, defaultSchemaName, executionContext);
-        if (preHashCode == PlanManager.ERROR_TABLES_HASH_CODE) {
-            return PlanManager.ERROR_TABLES_HASH_CODE;
-        }
-
-        HashCombiner hash = new HashCombiner();
-        hash.append(preHashCode);
-        // plus tableRule information here
-        for (Pair<String, String> pair : schemaTables) {
-            String schema = (pair.getKey() != null ? pair.getKey() : defaultSchemaName);
-            String table = pair.getValue();
-            if (InformationSchema.NAME.equalsIgnoreCase(schema)
-                || MysqlSchema.NAME.equalsIgnoreCase(schema)
-                || MetaDbSchema.NAME.equalsIgnoreCase(schema)) {
-                return schema.hashCode();
-            }
-            try {
-                TableRule tableRule = OptimizerContext.getContext(schema).getRuleManager().getTableRule(table);
-
-                hash.append(tableRule.isBroadcast());
-                hash.append(tableRule.isAllowFullTableScan());
-
-                hash.append(tableRule.getDbNamePattern());
-                hash.append(tableRule.getTbNamePattern());
-
-                String[] dbRuleStrs = tableRule.getDbRuleStrs();
-                if (dbRuleStrs != null) {
-                    for (String s : dbRuleStrs) {
-                        hash.append(s);
-                    }
-                }
-
-                String[] tbRuleStrs = tableRule.getTbRulesStrs();
-                if (tbRuleStrs != null) {
-                    for (String s : tbRuleStrs) {
-                        hash.append(s);
-                    }
-                }
-
-                ShardFunctionMeta dbShardFuncTionMeta = tableRule.getDbShardFunctionMeta();
-                if (dbShardFuncTionMeta != null) {
-                    hash.append(dbShardFuncTionMeta.getRuleShardFuncionName());
-                }
-
-                ShardFunctionMeta tbShardFuncTionMeta = tableRule.getTbShardFunctionMeta();
-                if (tbShardFuncTionMeta != null) {
-                    hash.append(tbShardFuncTionMeta.getRuleShardFuncionName());
-                }
-
-                List<MappingRule> extPartitions = tableRule.getExtPartitions();
-                if (extPartitions != null) {
-                    hash.append(extPartitions);
-                }
-            } catch (Throwable e) {
-                logger.debug("plan cache compute tables hash code error", e);
-                return PlanManager.ERROR_TABLES_HASH_CODE;
-            }
-        }
-        return hash.result();
     }
 
     /**

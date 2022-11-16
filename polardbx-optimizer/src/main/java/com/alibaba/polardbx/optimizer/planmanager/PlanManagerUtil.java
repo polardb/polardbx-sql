@@ -274,7 +274,8 @@ public class PlanManagerUtil {
             return false;
         }
 
-        if (parameterizedSql != null && PlanManager.getInstance().getBaselineMap().containsKey(parameterizedSql)) {
+        if (parameterizedSql != null && PlanManager.getInstance().getBaselineMap(schemaName)
+            .containsKey(parameterizedSql)) {
             return true;
         }
 
@@ -401,8 +402,8 @@ public class PlanManagerUtil {
         return schemaTables;
     }
 
-    public static int computeTablesHashCode(Set<Pair<String, String>> schemaTables, String defaultSchemaName,
-                                            ExecutionContext ec) {
+    public static int computeTablesVersion(Set<Pair<String, String>> schemaTables, String defaultSchemaName,
+                                           ExecutionContext ec) {
         if (schemaTables == null) {
             return PlanManager.ERROR_TABLES_HASH_CODE;
         }
@@ -416,7 +417,8 @@ public class PlanManagerUtil {
                 || PerformanceSchema.NAME.equalsIgnoreCase(schema)
                 || MysqlSchema.NAME.equalsIgnoreCase(schema)
                 || MetaDbSchema.NAME.equalsIgnoreCase(schema)) {
-                return schema.hashCode();
+                hash.append(schema.hashCode());
+                continue;
             }
             try {
 
@@ -427,94 +429,8 @@ public class PlanManagerUtil {
                     tableMeta = ec.getSchemaManager(schema).getTable(table);
                 }
 
-                // table name
-                hash.append(tableMeta.getTableName());
-                // all column
-                for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
-                    hash.append(columnMeta);
-                }
-                // secondary index
-                for (IndexMeta indexMeta : tableMeta.getSecondaryIndexes()) {
-                    for (ColumnMeta columnMeta : indexMeta.getKeyColumns()) {
-                        hash.append(columnMeta);
-                    }
-                }
-                // primary key
-                if (tableMeta.isHasPrimaryKey()) {
-                    for (ColumnMeta columnMeta : tableMeta.getPrimaryKey()) {
-                        hash.append(columnMeta);
-                    }
-                }
-                // unique key
-                for (IndexMeta indexMeta : tableMeta.getUniqueIndexes(false)) {
-                    for (ColumnMeta columnMeta : indexMeta.getKeyColumns()) {
-                        hash.append(columnMeta);
-                    }
-                }
-                // global secondary index
-                if (tableMeta.getGsiTableMetaBean() != null) {
-                    hash.append(tableMeta.getGsiTableMetaBean());
-                }
-
-                // scale out status
-                if (tableMeta.getComplexTaskTableMetaBean() != null) {
-                    hash.append(tableMeta.getComplexTaskTableMetaBean());
-                }
-
-                // curr partition info
-                if (tableMeta.getPartitionInfo() != null) {
-                    hash.append(tableMeta.getPartitionInfo());
-                }
-
-                // new partition info
-                if (tableMeta.getNewPartitionInfo() != null) {
-                    hash.append(tableMeta.getNewPartitionInfo());
-                }
-
-                // Table flag status.
-                if (tableMeta.isAutoPartition()) {
-                    hash.append(0xA55A); // Magic number.
-                }
-
-                TableRule tableRule = OptimizerContext.getContext(schema).getRuleManager().getTableRule(table);
-                if (tableRule != null) {
-                    // tableRule
-                    hash.append(tableRule.isBroadcast());
-                    hash.append(tableRule.isAllowFullTableScan());
-
-                    hash.append(tableRule.getDbNamePattern());
-                    hash.append(tableRule.getTbNamePattern());
-
-                    String[] dbRuleStrs = tableRule.getDbRuleStrs();
-                    if (dbRuleStrs != null) {
-                        for (String s : dbRuleStrs) {
-                            hash.append(s);
-                        }
-                    }
-
-                    String[] tbRuleStrs = tableRule.getTbRulesStrs();
-                    if (tbRuleStrs != null) {
-                        for (String s : tbRuleStrs) {
-                            hash.append(s);
-                        }
-                    }
-
-                    ShardFunctionMeta dbShardFuncTionMeta = tableRule.getDbShardFunctionMeta();
-                    if (dbShardFuncTionMeta != null) {
-                        hash.append(dbShardFuncTionMeta.getRuleShardFuncionName());
-                    }
-
-                    ShardFunctionMeta tbShardFuncTionMeta = tableRule.getTbShardFunctionMeta();
-                    if (tbShardFuncTionMeta != null) {
-                        hash.append(tbShardFuncTionMeta.getRuleShardFuncionName());
-                    }
-
-                    List<MappingRule> extPartitions = tableRule.getExtPartitions();
-                    if (extPartitions != null) {
-                        hash.append(extPartitions);
-                    }
-                }
-
+                // table version
+                hash.append(tableMeta.getVersion());
             } catch (Throwable e) {
                 loggerSpm.debug("plan manager compute tables hash code error", e);
                 return PlanManager.ERROR_TABLES_HASH_CODE;

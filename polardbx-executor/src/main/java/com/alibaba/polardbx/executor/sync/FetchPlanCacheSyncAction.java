@@ -39,9 +39,9 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
 
     private String schemaName;
 
-    private final boolean withPlan;
+    private boolean withPlan;
 
-    private final boolean withParameter;
+    private boolean withParameter;
 
     public FetchPlanCacheSyncAction(String schemaName) {
         this.schemaName = schemaName;
@@ -67,6 +67,22 @@ public class FetchPlanCacheSyncAction implements ISyncAction {
 
     public void setSchemaName(String schemaName) {
         this.schemaName = schemaName;
+    }
+
+    public boolean isWithPlan() {
+        return withPlan;
+    }
+
+    public void setWithPlan(boolean withPlan) {
+        this.withPlan = withPlan;
+    }
+
+    public boolean isWithParameter() {
+        return withParameter;
+    }
+
+    public void setWithParameter(boolean withParameter) {
+        this.withParameter = withParameter;
     }
 
     @Override

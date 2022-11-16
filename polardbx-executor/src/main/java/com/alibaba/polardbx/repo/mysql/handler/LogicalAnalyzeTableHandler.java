@@ -48,6 +48,7 @@ import org.apache.calcite.sql.SqlAnalyzeTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang.StringUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -179,6 +180,10 @@ public class LogicalAnalyzeTableHandler extends HandlerCommon {
     }
 
     protected void doAnalyzeOnePhysicalTable(String group, String physicalTableName, IDataSourceGetter mysqlDsGetter) {
+        if (StringUtils.isEmpty(physicalTableName)) {
+            return;
+        }
+        physicalTableName = physicalTableName.toLowerCase();
         DataSource ds = mysqlDsGetter.getDataSource(group);
         if (ds == null) {
             logger.error("Analyze physical table " + physicalTableName

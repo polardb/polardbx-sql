@@ -47,6 +47,8 @@ import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.collectRowCount;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.getTopology;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sumRowCount;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.isFileStore;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.getFileStoreStatistic;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
 import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
@@ -158,7 +160,17 @@ public class StatisticRowCountCollectionScheduledJob extends SchedulerExecutor {
                     if (topologyMap == null) {
                         continue;
                     }
-                    long sum = sumRowCount(topologyMap, rowCountMap);
+                    long sum = 0;
+                    if (isFileStore(schema, tbName)) {
+                        try {
+                            sum = getFileStoreStatistic(schema, tbName).get("TABLE_ROWS");
+                        } catch (Throwable e) {
+                            remark = "statistic background collection task error: " + e.getMessage();
+                            return errorExit(scheduleId, fireTime, remark, "file storage info access error");
+                        }
+                    } else {
+                        sum = sumRowCount(topologyMap, rowCountMap);
+                    }
                     cl.setRowCount(sum);
                     cl.setLastModifyTime(unixTimeStamp());
                     count++;

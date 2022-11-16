@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.scheduler;
 
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.async.AsyncCallableTask;
 import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -274,7 +275,8 @@ public final class ScheduledJobsManager implements ModuleInfo {
                         List<ExecutableScheduledJob> runningJobs = firedScheduledJobsAccessor.getRunningJobs();
                         // TODO timeout control?
                         List<List<Map<String, Object>>> results =
-                            SyncManagerHelper.sync(new FetchRunningScheduleJobsSyncAction());
+                            SyncManagerHelper.sync(new FetchRunningScheduleJobsSyncAction(),
+                                TddlConstants.INFORMATION_SCHEMA);
                         Map<Long, Set<Long>> executingJobs = merge(results);
                         if (!hasLeadership()) {
                             return -1;
