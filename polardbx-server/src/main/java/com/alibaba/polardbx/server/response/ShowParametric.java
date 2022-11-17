@@ -131,8 +131,7 @@ public class ShowParametric {
 
         String schemaName = c.getSchema();
         if (OptimizerContext.getContext(schemaName) != null) {
-            Map<String, BaselineInfo> baselineInfoMap =
-                PlanManager.getInstance().getBaselineMap().get(schemaName.toLowerCase(Locale.ROOT));
+            Map<String, BaselineInfo> baselineInfoMap = PlanManager.getInstance().getBaselineMap(schemaName);
             if (baselineInfoMap != null) {
                 for (BaselineInfo baselineInfo : baselineInfoMap.values()) {
                     if (baselineInfo == null) {

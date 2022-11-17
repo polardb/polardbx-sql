@@ -86,7 +86,7 @@ public class FetchSPMSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         PlanManager planManager = PlanManager.getInstance();
-        Map<String, BaselineInfo> baselineMap = planManager.getBaselineMap().get(schemaName);
+        Map<String, BaselineInfo> baselineMap = planManager.getBaselineMap(schemaName);
 
         ArrayResultCursor result = new ArrayResultCursor("PLAN_CACHE");
         result.addColumn("BASELINE_ID", DataTypes.StringType);

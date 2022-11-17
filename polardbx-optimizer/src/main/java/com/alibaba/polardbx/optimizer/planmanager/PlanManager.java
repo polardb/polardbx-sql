@@ -23,6 +23,7 @@ import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleInfo;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -60,10 +61,12 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jetty.util.StringUtil;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -416,6 +419,20 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         return baselineMap;
     }
 
+    public Map<String, BaselineInfo> getBaselineMap(String schema) {
+        if (StringUtil.isEmpty(schema)) {
+            throw GeneralUtil.nestedException("empty schema name");
+        }
+        schema = schema.toLowerCase(Locale.ROOT);
+        // TODO check if schema exists really
+        Map<String, BaselineInfo> baselineInfoMap = baselineMap.get(schema);
+        if (baselineInfoMap == null) {
+            baselineInfoMap = Maps.newConcurrentMap();
+            baselineMap.put(schema, baselineInfoMap);
+        }
+        return baselineInfoMap;
+    }
+
     @Override
     public String state() {
         return ModuleInfo.buildStateByArgs(
@@ -505,12 +522,12 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             !isExplain &&
             isRepeatableSql(schema, parameterizedSql, executionContext)) {
             final Set<Pair<String, String>> schemaTables = PlanManagerUtil.getTableSetFromAst(ast);
-            int tablesHashCode = PlanManagerUtil.computeTablesHashCode(schemaTables, schema,
+            int tablesVersion = PlanManagerUtil.computeTablesVersion(schemaTables, schema,
                 PlannerContext.getPlannerContext(plan).getExecutionContext());
-            if (tablesHashCode != ERROR_TABLES_HASH_CODE) {
+            if (tablesVersion != ERROR_TABLES_HASH_CODE) {
                 BaselineInfo baselineInfo = new BaselineInfo(parameterizedSql.getSql(), schemaTables);
                 PlanInfo resultPlanInfo = new PlanInfo(planJsonString, baselineInfo.getId(),
-                    simpleCostValue(plan), traceId, PlanManagerUtil.getPlanOrigin(plan), tablesHashCode);
+                    simpleCostValue(plan), traceId, PlanManagerUtil.getPlanOrigin(plan), tablesVersion);
                 baselineInfo.addAcceptedPlan(resultPlanInfo);
                 // we don't add baseline to baselineMap immediately until finishing its execution
                 return new Result(baselineInfo, resultPlanInfo, plan, SPM_NEW_BUILD);
@@ -536,7 +553,7 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         /*
           try fixed plan first
          */
-        int cHashCode = PlanManagerUtil.computeTablesHashCode(baselineInfo.getTableSet(), schema, ec);
+        int cHashCode = PlanManagerUtil.computeTablesVersion(baselineInfo.getTableSet(), schema, ec);
         Collection<PlanInfo> fixPlans = baselineInfo.getFixPlans();
         if (fixPlans != null && !fixPlans.isEmpty()) {
             PlanInfo fixPlan = findMinCostPlan(cluster, relOptSchema, fixPlans, ec, null, cHashCode);
@@ -699,12 +716,12 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             new SqlParameterized(baselineInfo.getParameterSql(), executionContext.getParams().getCurrentParameter());
         ExecutionPlan planWithContext = Planner.getInstance().doBuildPlan(sqlParameterized, executionContext);
         RelNode plan = planWithContext.getPlan();
-        int currentHashCode = PlanManagerUtil
-            .computeTablesHashCode(baselineInfo.getTableSet(), executionContext.getSchemaName(), executionContext);
+        int tablesVersion = PlanManagerUtil
+            .computeTablesVersion(baselineInfo.getTableSet(), executionContext.getSchemaName(), executionContext);
         PlanInfo resultPlanInfo =
             new PlanInfo(plan, baselineInfo.getId(), simpleCostValue(plan),
                 executionContext.getTraceId()
-                , PlanManagerUtil.getPlanOrigin(plan), currentHashCode);
+                , PlanManagerUtil.getPlanOrigin(plan), tablesVersion);
         baselineInfo.getUnacceptedPlans().put(resultPlanInfo.getId(), resultPlanInfo);
     }
 
@@ -772,7 +789,12 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
         if (plans.size() == 0) {
             return null;
         } else if (plans.size() == 1) {
-            return plans.iterator().next();
+            PlanInfo planInfo = plans.iterator().next();
+            if (planInfo != null && planInfo.getTablesHashCode() == tablesHashCode) {
+                return planInfo;
+            } else {
+                return null;
+            }
         }
         RelOptCost bestCost = null;
         PlanInfo basePlan = null;
@@ -1004,8 +1026,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
                                    String origin, SqlNode ast,
                                    ExecutionContext executionContext) {
         final Set<Pair<String, String>> schemaTables = PlanManagerUtil.getTableSetFromAst(ast);
-        int tablesHashCode = PlanManagerUtil.computeTablesHashCode(schemaTables, schema, executionContext);
-        return new PlanInfo(planJsonString, baselineId, simpleCostValue(plan), traceId, origin, tablesHashCode);
+        int tablesVersion = PlanManagerUtil.computeTablesVersion(schemaTables, schema, executionContext);
+        return new PlanInfo(planJsonString, baselineId, simpleCostValue(plan), traceId, origin, tablesVersion);
     }
 
     /**

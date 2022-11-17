@@ -77,7 +77,7 @@ public class PlanInfo {
     }
 
     public PlanInfo(String planJsonString, int baselineId, double cost, String traceId, String origin,
-                    int tablesHashCode) {
+                    int tablesVersion) {
         this.compressPlanByteArray = PlanManagerUtil.compressPlan(planJsonString);
         this.id = planJsonString.hashCode();
         this.baselineId = baselineId;
@@ -85,7 +85,7 @@ public class PlanInfo {
         this.cost = cost;
         this.traceId = traceId;
         this.origin = origin;
-        this.tablesHashCode = tablesHashCode;
+        this.tablesHashCode = tablesVersion;
     }
 
     public PlanInfo(RelNode plan, int baselineId, double cost, String traceId, String origin,

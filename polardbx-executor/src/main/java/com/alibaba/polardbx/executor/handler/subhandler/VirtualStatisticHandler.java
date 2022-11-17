@@ -35,6 +35,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.VirtualStatistic;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -92,6 +93,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
 
                 for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
                     String columnName = columnMeta.getOriginColumnName();
+                    columnName = columnName.toLowerCase(Locale.ROOT);
                     Object[] objects = new Object[11];
                     objects[0] = schema;
                     objects[1] = tableName;
