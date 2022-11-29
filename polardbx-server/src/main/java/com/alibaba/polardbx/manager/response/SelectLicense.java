@@ -21,7 +21,7 @@ import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
 
 /**
- * select @@lincence
+ * select @@license
  *
  * @author arnkore 2016-12-28 11:51
  */
