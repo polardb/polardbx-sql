@@ -291,7 +291,7 @@ public class MetaBuilder {
             DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
             dbGroupInfoAccessor.setConnection(metaDbConn);
 
-            // 在scale out场景下，会查询到group_type为GROUP_TYPE_SCALEOUT_FINISHiED的记录，需要过滤掉
+            // 在scale out场景下，会查询到group_type为GROUP_TYPE_SCALEOUT_FINISHED的记录，需要过滤掉
             return dbGroupInfoAccessor.queryDbGroupByDbName(schemaName).stream()
                 .filter(DbGroupInfoRecord::isVisible).collect(
                     Collectors.toMap(g -> g.groupName, g -> translate(g.phyDbName)));
