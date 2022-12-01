@@ -159,7 +159,7 @@ Initialize PolarDB-X:
 - -u: PolarDB-X root user
 - -S: PolarDB-X root user password
 
-```sql
+```shell
 bin/startup.sh \
 	-I \
 	-P asdf1234ghjk5678 \
